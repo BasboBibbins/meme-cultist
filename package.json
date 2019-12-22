@@ -1,0 +1,38 @@
+{
+  "name": "meme-cultist",
+  "version": "2.0.0",
+  "description": "if cancer was real, this bot would have it.",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node .",
+    "pretest": "eslint --ignore-path .gitignore .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Basbo Bibbins",
+  "license": "ISC",
+  "dependencies": {
+    "booru": "^2.0.4",
+    "canvas": "^2.6.1",
+    "cheerio": "^1.0.0-rc.3",
+    "discord.js": "github:discordjs/discord.js#master",
+    "discord.js-commando": "github:discordjs/Commando",
+    "ffmpeg-static": "^2.5.0",
+    "iso-639-1": "^2.1.0",
+    "m3u8stream": "^0.6.3",
+    "node-opus": "^0.3.2",
+    "node-superfetch": "^0.1.9",
+    "parse-time": "^0.1.4",
+    "path": "^0.12.7",
+    "simple-youtube-api": "^5.2.1",
+    "urban": "^0.3.2",
+    "ytdl-core": "^1.0.3",
+    "ytdl-core-discord": "^1.0.3"
+  },
+  "devDependencies": {
+    "babel-eslint": "^10.0.2",
+    "eslint": "^5.16.0",
+    "node-sass": "^4.13.0",
+    "nodemon": "^1.19.1",
+    "prettier": "^1.18.2"
+  }
+}
