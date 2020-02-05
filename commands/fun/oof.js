@@ -1,5 +1,6 @@
 const { Command } = require('discord.js-commando');
-const oof = '.assets/sounds/oof.mp3';
+const { autoleave } = require('../../config.json');
+const oof = "assets/sounds/oof.mp3";
 
 module.exports = class soundOOF extends Command {
   constructor(client) {
@@ -25,7 +26,7 @@ module.exports = class soundOOF extends Command {
 
     if (!voiceChannel) return message.say('Join a channel and try again');
 
-    if (message.guild.musicData.isPlaying === true)
+    if (message.guild.musicData.isPlaying == true)
       return message.channel.send('A song is running. Try again when the bot is not playing anything.');
 
     if (message.guild.ttsData.isTTSRunning == false) {
@@ -35,19 +36,19 @@ module.exports = class soundOOF extends Command {
         .then(connection => {
           const dispatcher = connection
             .play(oof)
-            .on('finish', () => {
+            .on('end', () => {
               message.guild.ttsData.isTTSRunning = false;
-              return message.guild.me.voice.channel.leave();
+              if (autoleave) {return voiceChannel.leave()};
             })
             .on('error', e => {
               message.say('Cannot speak :(');
               console.error(e);
-              return message.guild.me.voice.channel.leave();
+              if (autoleave) {return voiceChannel.leave()};
             });
         })
         .catch(e => {
           console.log(e);
-          return message.guild.me.voice.channel.leave();
+          if (autoleave) {return voiceChannel.leave()};
         });
     }
   }

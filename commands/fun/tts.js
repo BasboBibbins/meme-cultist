@@ -1,4 +1,5 @@
 const { Command } = require('discord.js-commando');
+const { autoleave } = require('../../config.json');
 
 module.exports = class ttsCommand extends Command {
   constructor(client) {
@@ -41,17 +42,17 @@ module.exports = class ttsCommand extends Command {
             )
             .on('finish', () => {
               message.guild.ttsData.isTTSRunning = false;
-              return message.guild.me.voice.channel.leave();
+              if (autoleave) {return message.guild.me.voice.channel.leave()};
             })
             .on('error', e => {
               message.say('Cannot speak :(');
               console.error(e);
-              return message.guild.me.voice.channel.leave();
+              if (autoleave) {return message.guild.me.voice.channel.leave()};
             });
         })
         .catch(e => {
           console.log(e);
-          return message.guild.me.voice.channel.leave();
+          if (autoleave) {return message.guild.me.voice.channel.leave()};
         });
     }
   }

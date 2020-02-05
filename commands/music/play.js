@@ -2,7 +2,7 @@ const { Command } = require('discord.js-commando');
 const { MessageEmbed } = require('discord.js');
 const Youtube = require('simple-youtube-api');
 const ytdl = require('ytdl-core');
-const { youtubeAPI } = require('../../config.json');
+const { youtubeAPI, autoleave } = require('../../config.json');
 const { version } = require('../../package.json');
 const youtube = new Youtube(youtubeAPI);
 
@@ -223,18 +223,19 @@ playSong(queue, message) {
           } else {
             message.guild.musicData.isPlaying = false;
             message.guild.musicData.nowPlaying = null;
-            return message.guild.me.voice.channel.leave();
+
+            if (autoleave) {return message.guild.me.voice.channel.leave()};
           }
         })
         .on('error', e => {
           message.say('Cannot play song');
           console.error(e);
-          return message.guild.me.voice.channel.leave();
+          if (autoleave) {return message.guild.me.voice.channel.leave()};
         });
     })
     .catch(e => {
       console.error(e);
-      return message.guild.me.voice.channel.leave();
+      if (autoleave) {return message.guild.me.voice.channel.leave()};
     });
 }
 

@@ -8,10 +8,10 @@ const { wrapText } = require('../../util/Canvas');
 module.exports = class MemeGenCommand extends Command {
 	constructor(client) {
 		super(client, {
-			name: 'meme',
+			name: 'memegen',
 			aliases: ['meme-gen', 'memeify'],
 			group: 'fun',
-			memberName: 'meme',
+			memberName: 'memegen',
 			description: 'Generate a meme from a provided image.',
 			throttling: {
 				usages: 1,

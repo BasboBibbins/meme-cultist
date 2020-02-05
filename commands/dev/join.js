@@ -1,7 +1,7 @@
 const { Command } = require('discord.js-commando');
 const { dev } = require('../../config.json');
 if (!dev) return;
-module.exports = class AyyCommand extends Command {
+module.exports = class joinCommand extends Command {
   constructor(client) {
     super(client, {
       name: 'join',
