@@ -1,5 +1,6 @@
 const { Command } = require('discord.js-commando');
-const quack = '.assets/sounds/quack.mp3';
+const { autoleave } = require('../../config.json');
+const quack = 'assets/sounds/quack.mp3';
 
 module.exports = class soundQuack extends Command {
   constructor(client) {
@@ -37,17 +38,17 @@ module.exports = class soundQuack extends Command {
             .play(quack)
             .on('finish', () => {
               message.guild.ttsData.isTTSRunning = false;
-              return message.guild.me.voice.channel.leave();
+              if (autoleave) {return voiceChannel.leave()};
             })
             .on('error', e => {
               message.say('Cannot speak :(');
               console.error(e);
-              return message.guild.me.voice.channel.leave();
+              if (autoleave) {return voiceChannel.leave()};
             });
         })
         .catch(e => {
           console.log(e);
-          return message.guild.me.voice.channel.leave();
+          if (autoleave) {return voiceChannel.leave()};
         });
     }
   }

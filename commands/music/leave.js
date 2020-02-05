@@ -8,7 +8,7 @@ module.exports = class LeaveCommand extends Command {
       group: 'music',
       memberName: 'leave',
       guildOnly: true,
-      description: 'Disconnects from the voice channel it is in.'
+      description: 'Disconnects from the channel the bot is currently in.'
     });
   }
 
@@ -16,16 +16,22 @@ module.exports = class LeaveCommand extends Command {
     var voiceChannel = message.member.voice.channel;
     if (!voiceChannel) return message.reply('Join a channel and try again dumbo.');
 
+    /*
     if (
       typeof message.guild.musicData.songDispatcher == 'undefined' ||
       message.guild.musicData.songDispatcher == null
     ) {
       return message.reply('How am I supposed to stop the song if no song is playing? :thinking:');
     }
+
     if (!message.guild.musicData.queue)
       return message.say('There are no songs in queue, therefore my job here is done.');
-    message.guild.musicData.songDispatcher.end();
-    message.guild.musicData.queue.length = 0;
+    */
+    if (message.guild.musicData.songDispatcher != null) {
+      message.guild.musicData.songDispatcher.end();
+      message.guild.musicData.queue.length = 0;
+    }
+    message.guild.me.voice.channel.leave();
     return;
   }
 };
