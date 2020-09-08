@@ -3,7 +3,7 @@ console.log('Meme Cultist, a bot by Basbo Bibbins.');
 const { CommandoClient } = require('discord.js-commando');
 const { Structures } = require('discord.js');
 const path = require('path');
-const { prefix, messageTimer, defaultRole, token, word_filter, idleTime, version, dev } = require('./config.json');
+const { prefix, messageTimer, defaultRole, token, word_filter, idleTime, version, dev, enable_word_filter, corona_mode } = require('./config.json');
 
 Structures.extend('Guild', Guild => {
   class MusicGuild extends Guild {
@@ -67,6 +67,15 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('message', message => {
+
+  if (corona_mode && !message.author.bot) {
+    message.channel.send("-------------SOCIAL DISTANCE LINE-------------");
+    message.channel.send("󠇰    󠇰    󠇰    󠇰    󠇰    󠇰");
+    message.channel.send("󠇰    󠇰    󠇰    󠇰    󠇰    󠇰");
+    message.channel.send("󠇰    󠇰    󠇰    󠇰    󠇰    󠇰");
+    message.channel.send("-----------END SOCIAL DISTANCE LINE-----------󠇰");
+  }
+
   const timer = (messageTimer * 1000);
   setTimeout(() => {
     if (message.author.bot) {
@@ -77,9 +86,9 @@ client.on('message', message => {
   for (var i = 0; i < word_filter.length; i++) {
     word_filter[i] = word_filter[i].toUpperCase()
     msg = message.content.toUpperCase();
-    if (msg.includes(word_filter[i])) {
+    if (enable_word_filter && msg.includes(word_filter[i])) {
       message.delete();
-      return message.channel.send("***[MESSAGE REMOVED BY PEOPLE'S REPUBLIC OF CHINA]***");
+      return message.channel.send("***\n[MESSAGE REMOVED BY PEOPLE'S REPUBLIC OF CHINA]\n[被中華人民共和國刪除的消息]***");
     }
   }
 })

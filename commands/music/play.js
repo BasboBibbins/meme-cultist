@@ -196,15 +196,11 @@ playSong(queue, message) {
   queue[0].voiceChannel
     .join()
     .then(connection => {
-      const dispatcher = connection
-        .play(
-          ytdl(queue[0].url, {
-            type: 'opus',
-            quality: 'highestaudio',
-            highWaterMark: 1024 * 1024 * 10
-          })
-        )
-        .on('start', () => {
+      const dispatcher = connection.play(ytdl(queue[0].url, {
+      	filter: 'audioonly',
+      	highWaterMark: 1 << 25,
+      	quality: 'highestaudio',
+      })).on('start', () => {
           message.guild.musicData.songDispatcher = dispatcher;
           const videoEmbed = new MessageEmbed()
             .setThumbnail(queue[0].thumbnail)
@@ -237,7 +233,7 @@ playSong(queue, message) {
       console.error(e);
       if (autoleave) {return message.guild.me.voice.channel.leave()};
     });
-}
+};
 
 formatDuration(durationObj) {
   const duration = `${durationObj.hours ? durationObj.hours + ':' : ''}${
