@@ -1,10 +1,12 @@
 {
-  "token": "",
-	"youtubeAPI": "",
+  "token": "your-token-here",
+  "youtubeAPI": "your-yt-api-key-here",
   "prefix": ">",
   "defaultRole"  : "Peasant",
-	"messageTimer": "0",
+  "messageTimer": "0",
   "dev" : false,
   "autoleave" : false,
+  "corona_mode" : false,
+  "enable_word_filter" : false,
   "word_filter" : ["Tiananmen Square Massacre", "Civil Rights", "Corona Virus", "Corona", "Massacre in Tiananment Square", "Free Tibet", "protests of 1989", "Anti-Rightist Struggle", "Anti Rightist Struggle", "Great Leap Forward", "Great Proletarian Cultural Revolution", "Human Rights", "Democratization", "Freedom", "Independence", "Multi-party system", "Multi party system", "Taiwan Formosa", "Tibet", "Dalai Lama", "Falun Dafa", "Xinjiang Uyghur Autonomous Region", "Winnie the Pooh", "Nobel Peace Prize", "Liu Xiaobo", "六四天安门事件", "天安门大屠杀", "反右派斗争", "大跃进政策", "文化大革命", "人权", "民运", "自由", "独立", "多党制", "台湾台湾", "中华民国", "西藏土伯特唐古特", "达赖喇嘛", "法轮功", "新疆维吾尔自治区", "诺贝尔和平奖", "刘暁波"]
 }
