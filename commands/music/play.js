@@ -5,6 +5,7 @@ const ytdl = require('ytdl-core');
 const { youtubeAPI, autoleave } = require('../../config.json');
 const { version } = require('../../package.json');
 const youtube = new Youtube(youtubeAPI);
+var lastSong;
 
 module.exports = class PlayCommand extends Command {
   constructor(client) {
@@ -201,6 +202,7 @@ playSong(queue, message) {
       	highWaterMark: 1 << 25,
       	quality: 'highestaudio',
       })).on('start', () => {
+          lastSong = queue[0];
           message.guild.musicData.songDispatcher = dispatcher;
           const videoEmbed = new MessageEmbed()
             .setThumbnail(queue[0].thumbnail)
@@ -209,18 +211,23 @@ playSong(queue, message) {
             .addField('Duration:', queue[0].duration)
             .setFooter(`Meme Cultist | Ver. ${version}`, 'https://i.imgur.com/fbZ9H1I.jpg')
           if (queue[1]) videoEmbed.addField('Next Song:', queue[1].title);
-          message.say(videoEmbed);
+          if (!message.guild.musicData.repeat) {message.say(videoEmbed);};
           message.guild.musicData.nowPlaying = queue[0];
           return queue.shift();
         })
         .on('finish', () => {
-          if (queue.length >= 1) {
+          if (message.guild.musicData.repeat == true) {
+            message.guild.musicData.queue.unshift(lastSong);
             return this.playSong(queue, message);
           } else {
-            message.guild.musicData.isPlaying = false;
-            message.guild.musicData.nowPlaying = null;
+            if (queue.length >= 1) {
+              return this.playSong(queue, message);
+            } else {
+              message.guild.musicData.isPlaying = false;
+              message.guild.musicData.nowPlaying = null;
 
-            if (autoleave) {return message.guild.me.voice.channel.leave()};
+              if (autoleave) {return message.guild.me.voice.channel.leave()};
+            }
           }
         })
         .on('error', e => {

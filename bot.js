@@ -13,7 +13,8 @@ Structures.extend('Guild', Guild => {
         queue: [],
         isPlaying: false,
         nowPlaying: null,
-        songDispatcher: null
+        songDispatcher: null,
+        repeat: false
       };
       this.ttsData = {
         isTTSRunning: false,
