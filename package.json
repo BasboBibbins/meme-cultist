@@ -1,6 +1,6 @@
 {
   "name": "meme-cultist",
-  "version": "2.9.15",
+  "version": "2.9.8",
   "description": "if cancer was real, this bot would have it.",
   "main": "bot.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "axios": "^0.19.2",
     "better-sqlite3": "^7.1.0",
     "booru": "^2.3.2",
-    "canvas": "^2.6.1",
+    "canvas": "github:Automattic/node-canvas#master",
     "cheerio": "^1.0.0-rc.3",
     "discord.js": "github:discordjs/discord.js#master",
     "discord.js-commando": "github:discordjs/Commando",
@@ -43,3 +43,4 @@
     "prettier": "^1.18.2"
   }
 }
+
