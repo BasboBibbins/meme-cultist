@@ -1,6 +1,6 @@
 {
   "name": "meme-cultist",
-  "version": "2.9.8",
+  "version": "2.9.15",
   "description": "if cancer was real, this bot would have it.",
   "main": "bot.js",
   "scripts": {
