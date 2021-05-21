@@ -59,10 +59,10 @@ client.once('ready', () => {
 });
 
 client.on('guildMemberAdd', async member => {
-  const role = member.guild.roles.find(r => r.name === defaultRole);
+  var role = member.guild.roles.cache.find(r => r.name === defaultRole);
   if (!role) return;
-  member.roles.add(role).catch(console.error);
-  const channel = member.guild.channels.find(c => c.name === 'welcome');
+  member.roles.add(role);
+  const channel = member.guild.channels.cache.find(c => c.name === 'welcome');
   if (!channel) return;
   channel.send(`**Welcome to the Meme Cult ${member} Now get out of my discord fucking normie.**`)
 });
@@ -92,6 +92,17 @@ client.on('message', message => {
       return message.channel.send("***\n[MESSAGE REMOVED BY PEOPLE'S REPUBLIC OF CHINA]\n[被中華人民共和國刪除的消息]***");
     }
   }
+
+  if (message.author.id == 168935894978527232 ||  message.author.id == 746508305240817794) { //|| message.author.id == 186560785319723008 || message.author.id == 624682904127012864
+    var rng = Math.floor(Math.random() * 5) // one in 10 chance
+    if (rng == 4) {
+      return message.channel.send("This is a reminder that "+`${message.author}`+" is cringe!");
+    }
+  }
 })
+
+client.on('error', e => {
+  console.error(e);
+});
 
 client.login(token);

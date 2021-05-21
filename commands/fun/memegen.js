@@ -1,15 +1,16 @@
+
 const { Command } = require('discord.js-commando');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const request = require('node-superfetch');
 const path = require('path');
 const { wrapText } = require('../../util/Canvas');
-//registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), { family: 'Impact' });
+registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), { family: 'Impact' });
 
 module.exports = class MemeGenCommand extends Command {
 	constructor(client) {
 		super(client, {
 			name: 'memegen',
-			aliases: ['meme-gen', 'memeify'],
+			aliases: ['meme-gen', 'memeify', 'mg'],
 			group: 'fun',
 			memberName: 'memegen',
 			description: 'Generate a meme from a provided image.',

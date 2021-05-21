@@ -2,11 +2,9 @@ const { Command } = require('discord.js-commando');
 const { MessageEmbed } = require('discord.js');
 const Youtube = require('simple-youtube-api');
 const ytdl = require('ytdl-core');
-const { youtubeAPI, autoleave, autoshuffle } = require('../../config.json');
+const { youtubeAPI, autoleave } = require('../../config.json');
 const { version } = require('../../package.json');
 const youtube = new Youtube(youtubeAPI);
-
-//const { betterMs } = require('../../util/betterMs');
 
 const Pagination = require('discord-paginationembed');
 
@@ -43,7 +41,7 @@ async run(message, {query}) {
     return message.say('Please try after the sound has stopped playing.');
   if (
     query.match(
-      /^(?!.*\?.*\bv=)https:\/\/www\.youtube\.com\/.*\?.*\blist=.*$/
+      /^(?!.*\?.*\bv=)https:\/\/www\.youtube\.com\/.*\?.*\bplaylist=.*$/
     )
   ) {
     try {
@@ -62,12 +60,12 @@ async run(message, {query}) {
           title,
           duration,
           thumbnail,
-          voiceChannel,
+          voiceChannel
         };
         message.guild.musicData.queue.push(song);
       }
       if (message.guild.musicData.isPlaying == false) {
-        message.guild.musicData.isPlaying = true;
+        message.guld.musicData.isPlaying = true;
         return this.playSong(message.guild.musicData.queue, message);
       } else if (message.guild.musicData.isPlaying == true) {
         return message.say(playlist.title+' has been added to the queue.');
@@ -110,38 +108,31 @@ async run(message, {query}) {
     }
   }
   try {
-    const videos = await youtube.searchVideos(query, 50);
-    const FieldsEmbed = new Pagination.FieldsEmbed()
-      .setArray(videos)
-      .setAuthorizedUsers([message.author.id])
-      .setChannel(message.channel)
-      .setElementsPerPage(5)
-      .setPageIndicator(true, 'hybrid')
-      .setTimeout(6000)
-      .setDeleteOnTimeout(true)
-      .setDisabledNavigationEmojis(['delete', 'jump'])
-      .formatField(
-        '# - Song',
-        t => 
-        `**${videos.indexOf(t)+1}** - [**${t.title}**](${t.url}) by ${t.channel.title}\n`
-      );
-
-    FieldsEmbed.embed
-      .setTitle('Search Results:')
-      .setDescription([
-        `Choose a song from the list below.`
-      ])    
+    const videos = await youtube.searchVideos(query, 10);
+    if (videos.length < 5) {
+      return message.say("I had trouble finding that video, be more specific; I'm meticulous but slower than most.");
+    }
+    const vidNameArr = [];
+    for (let i=0; i < videos.length; i++) {
+      vidNameArr.push((i+1)+': '+videos[i].title);
+    }
+    vidNameArr.push('exit');
+    const embed = new MessageEmbed()
+      .setColor('#e9f931')
+      .setTitle('Choose a song between 1 and 5')
+      .addField('Song 1', vidNameArr[0])
+      .addField('Song 2', vidNameArr[1])
+      .addField('Song 3', vidNameArr[2])
+      .addField('Song 4', vidNameArr[3])
+      .addField('Song 5', vidNameArr[4]) 
       .setFooter(`Meme Cultist | Ver. ${version}`, 'https://i.imgur.com/fbZ9H1I.jpg')
-      .setColor('#e9f931');
-      
-    FieldsEmbed.build();
-
-    var songEmbed = await message.channel.send(`Please select a song from the search results (1-50)`);
+    var songEmbed = await message.say({ embed });
     try {
       var response = await message.channel.awaitMessages(
-        msg => msg.author.id === message.author.id,
+        msg => (msg.content > 0 && msg.content < 11) || msg.content === 'exit',
         {
           max: 1,
+          maxProcessed: 1,
           time: 60000,
           errors: ['time']
         }
@@ -149,23 +140,25 @@ async run(message, {query}) {
       var videoIndex = parseInt(response.first().content);
     } catch (err) {
       console.error(err);
+      if (songEmbed) {
+        songEmbed.delete();
+      }
       return message.say(
-        'Enter a number between 1 and 50 or exit.'
+        'Enter a number between 1 and 10 or exit, dumbo.'
       );
     }
-    if (response.first().content < 0 && response.first().contentt > 51) return message.say('Enter a number between 1 and 50 or exit.');
+    if (response.first().content === 'exit') return songEmbed.delete();
     try {
       var video = await youtube.getVideoByID(videos[videoIndex - 1].id);
     } catch (err) {
       console.error(err);
       if (songEmbed) {
-        FieldsEmbed.setTimeout(0);
+        songEmbed.delete();
       }
       return message.say(
         'An error has occured. Did you spell something wrong?'
       );
     }
-    console.log('third part works');    
     const url = `https://www.youtube.com/watch?v=${video.raw.id}`;
     const title = video.title;
     let duration = this.formatDuration(video.duration);
@@ -181,14 +174,23 @@ async run(message, {query}) {
     message.guild.musicData.queue.push(song);
     if (message.guild.musicData.isPlaying == false) {
       message.guild.musicData.isPlaying = true;
+      if (songEmbed) {
+        songEmbed.delete();
+      }
       this.playSong(message.guild.musicData.queue, message);
     } else if (message.guild.musicData.isPlaying == true) {
+      if (songEmbed) {
+        songEmbed.delete();
+      }
       return message.say(`${song.title} added to queue`);
     }
   } catch (err) {
     console.error(err);
+    if (songEmbed) {
+      songEmbed.delete();
+    }
     return message.say(
-      '```js\n'+err+'```\nSee Console for More Details.'
+      'Shit broke. Contact the owner.'
     );
   }
 }
@@ -207,7 +209,7 @@ playSong(queue, message) {
           const videoEmbed = new MessageEmbed()
             .setThumbnail(queue[0].thumbnail)
             .setColor('#FF0000')
-            .addField('Now Playing:', `<:youtube:417745828439130123> [**${queue[0].title}**](${queue[0].url})`) 
+            .addField('Now Playing:', '<:youtube:417745828439130123> '+queue[0].title)
             .addField('Duration:', queue[0].duration)
             .setFooter(`Meme Cultist | Ver. ${version}`, 'https://i.imgur.com/fbZ9H1I.jpg')
           if (queue[1]) videoEmbed.addField('Next Song:', queue[1].title);
@@ -232,7 +234,7 @@ playSong(queue, message) {
           }
         })
         .on('error', e => {
-          message.say('Cannot Play Song\n```js\n'+err+'\nSee Console for More Details.```');
+          message.say('Cannot play song');
           console.error(e);
        	  message.guild.musicData.songDispatcher.end();
           message.guild.musicData.queue.length = 0;

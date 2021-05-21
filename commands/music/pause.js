@@ -4,10 +4,10 @@ module.exports = class PauseCommand extends Command {
   constructor(client) {
     super(client, {
       name: 'pause',
-      aliases: ['pause-song', 'hold', 'stop'],
+      aliases: ['resume', 'continue', 'stop', 'unpause'],
       memberName: 'pause',
       group: 'music',
-      description: 'Pause the current playing song',
+      description: 'Toggle pausing/unpausing the current playing song.',
       guildOnly: true
     });
   }
@@ -22,9 +22,15 @@ module.exports = class PauseCommand extends Command {
     ) {
       return message.say('There is no song playing right now!');
     }
-
-    message.say('Song paused :pause_button:');
-
-    message.guild.musicData.songDispatcher.pause();
+    //console.log(message.guild.musicData.isPlaying);
+    if (message.guild.musicData.isPlaying == true || message.guild.musicData.isPlaying == null) {
+      message.say(':pause_button: ***Song pause***');
+      message.guild.musicData.songDispatcher.pause();
+      message.guild.musicData.isPlaying = false;
+    } else {
+      message.say(':arrow_forward: ***Song resumed***');
+      message.guild.musicData.songDispatcher.resume();
+      message.guild.musicData.isPlaying = true;
+    }
   }
 };
