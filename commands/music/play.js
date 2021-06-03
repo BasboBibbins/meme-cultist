@@ -2,7 +2,8 @@ const { Command } = require('discord.js-commando');
 const { MessageEmbed } = require('discord.js');
 const Youtube = require('simple-youtube-api');
 const ytdl = require('ytdl-core');
-const { youtubeAPI, autoleave, autoshuffle } = require('../../config.json');
+const { autoleave, autoshuffle } = require('../../config.json');
+const { youtubeAPI } = require('../../keys.json');
 const { version } = require('../../package.json');
 const youtube = new Youtube(youtubeAPI);
 
@@ -165,7 +166,6 @@ async run(message, {query}) {
         'An error has occured. Did you spell something wrong?'
       );
     }
-    console.log('third part works');    
     const url = `https://www.youtube.com/watch?v=${video.raw.id}`;
     const title = video.title;
     let duration = this.formatDuration(video.duration);
@@ -232,7 +232,7 @@ playSong(queue, message) {
           }
         })
         .on('error', e => {
-          message.say('Cannot Play Song\n```js\n'+err+'\nSee Console for More Details.```');
+          message.say('Cannot Play Song\n```js\n'+e+'\nSee Console for More Details.```');
           console.error(e);
        	  message.guild.musicData.songDispatcher.end();
           message.guild.musicData.queue.length = 0;

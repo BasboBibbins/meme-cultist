@@ -1,6 +1,4 @@
 {
-  "token": "your-token-here",
-  "youtubeAPI": "your-yt-api-key-here",
   "prefix": ">",
   "defaultRole"  : "Peasant",
   "messageTimer": "0",

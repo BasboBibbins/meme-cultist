@@ -4,7 +4,7 @@
   "description": "if cancer was real, this bot would have it.",
   "main": "bot.js",
   "scripts": {
-    "start": "node .",
+    "start": "forever start bot.js",
     "pretest": "eslint --ignore-path .gitignore .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -12,15 +12,18 @@
   "license": "ISC",
   "dependencies": {
     "@discordjs/opus": "^0.3.2",
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "better-sqlite3": "^7.1.0",
     "booru": "^2.3.2",
     "canvas": "github:Automattic/node-canvas#master",
+    "cat-loggr": "^1.1.0",
     "cheerio": "^1.0.0-rc.3",
     "discord-paginationembed": "^2.1.0",
     "discord.js": "^12.5.1",
     "discord.js-commando": "github:discordjs/Commando",
+    "express": "^4.17.1",
     "ffmpeg-static": "^4.2.7",
+    "forever": "^3.0.4",
     "iso-639-1": "^2.1.4",
     "m3u8stream": "^0.6.5",
     "node-opus": "github:discordjs/opus",
@@ -35,7 +38,7 @@
     "simple-youtube-api": "^5.2.1",
     "sqlite": "^4.0.14",
     "urban": "^0.3.2",
-    "ytdl-core": "^4.1.1",
+    "ytdl-core": "^4.8.2",
     "ytdl-core-discord": "^1.2.4"
   },
   "devDependencies": {

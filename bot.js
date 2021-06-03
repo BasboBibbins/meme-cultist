@@ -1,9 +1,27 @@
-console.log('Meme Cultist, a bot by Basbo Bibbins.');
-
 const { CommandoClient } = require('discord.js-commando');
 const { Structures } = require('discord.js');
 const path = require('path');
-const { prefix, messageTimer, defaultRole, token, word_filter, idleTime, version, dev, enable_word_filter, corona_mode } = require('./config.json');
+const { prefix, messageTimer, defaultRole, word_filter, idleTime, version, dev, enable_word_filter, corona_mode } = require('./config.json');
+const { token } = require('./keys.json');
+const CatLoggr = require('cat-loggr');
+const logger = new CatLoggr().setLevel(process.env.COMMANDS_DEBUG === 'true' ? 'debug' : 'info');
+const express = require('express');
+const app = express();
+const port = 3000;
+
+logger.info('Meme Cultist, a bot by Basbo Bibbins.');
+
+app.get("/", (req, res)=> {
+	res.send('Hello World!')
+})
+
+app.get("/system/reboot", (req, res)=> {
+	process.exit(1);
+})
+
+app.listen(port, () => {
+  logger.info(`Web server is online at http://localhost:${port}`);
+})
 
 Structures.extend('Guild', Guild => {
   class MusicGuild extends Guild {
@@ -34,6 +52,13 @@ const client = new CommandoClient({
   owner: '139152443991654401'
 });
 
+client.on('debug', (message) => logger.log(message));
+client.on('warn', (message) => logger.warn(message));
+client.on('error', (error, message) => {
+  logger.error(error);
+  process.exit(1);
+});
+
 if (dev === true)  {
   client.registry.registerGroups([
     ['dev', 'Developer Commands']
@@ -54,7 +79,7 @@ client.registry
   .registerCommandsIn(path.join(__dirname, 'commands'));
 
 client.once('ready', () => {
-  console.log('Loading compree!');
+  logger.info('Loading compree!');
   client.user.setActivity('your music! '+prefix+'help', 'PLAYING');
 });
 
@@ -68,6 +93,10 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('message', message => {
+
+  if (!message.author.bot && message.content.startsWith(prefix)) {
+    logger.info(`${message.author.username}#${message.author.discriminator} (${message.author.id}) ran command ${message.content.substr(0,message.content.indexOf(' '))}`);
+  }
 
   if (corona_mode && !message.author.bot) {
     message.channel.send("-------------SOCIAL DISTANCE LINE-------------");
@@ -100,9 +129,5 @@ client.on('message', message => {
     }
   }
 })
-
-client.on('error', e => {
-  console.error(e);
-});
 
 client.login(token);
