@@ -79,7 +79,7 @@ module.exports = class HelpCommand extends Command {
         .addField('-=-=-=-=-=-=-=-', '**A bot by '+this.client.owners+'**\n[GitHub](https://github.com/BasboBibbins/meme-cultist) **|** [Trello](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)')
         .addField('-=-=-=-=-=-=-=-', `\nTo run a command in ${msg.guild ? msg.guild.name : 'any server'},\nuse ${Command.usage('command', msg.guild ? msg.guild.commandPrefix : null, this.client.user)}\nFor example, ${Command.usage('normies', msg.guild ? msg.guild.commandPrefix : null, this.client.user)}.`)
         .addField('List of Commands:', body)
-        .setFooter(`Ver. ${version} | ©2018-2020 Basbo#9817`, 'https://i.imgur.com/fbZ9H1I.jpg')
+        .setFooter(`Ver. ${version} | ©2018-2021 Basbo#9817`, 'https://i.imgur.com/fbZ9H1I.jpg')
       try {
         messages.push(await msg.direct({ embed }));
         if (msg.channel.type !== 'dm') messages.push(await msg.reply('Sent ;)'));
