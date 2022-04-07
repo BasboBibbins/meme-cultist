@@ -1,4 +1,4 @@
-const { Command } = require('@sapphire/framework');
+const { Command } = require('discord.js-commando');
 
 module.exports = class MagaCommand extends Command {
   constructor(client) {
@@ -17,7 +17,7 @@ module.exports = class MagaCommand extends Command {
       ]
     });
   }
-  async messageRun(message, { args }) {
+  async run(message, { args }) {
     var text = args;
     text = text.toUpperCase();
     text = text.replace(/[AEIU]/g, 'V');

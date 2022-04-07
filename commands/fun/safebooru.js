@@ -1,4 +1,4 @@
-const { Command } = require('@sapphire/framework');
+const { Command } = require('discord.js-commando');
 const { MessageEmbed } = require('discord.js');
 const booru = require('booru');
 const { version } = require('../../package.json');
@@ -26,7 +26,7 @@ module.exports = class SafeCommand extends Command {
       ]
     });
 }
-async messageRun(msg, {tags}) {
+async run(msg, {tags}) {
   var sb = tags.split(' ');
   try {
     booru.search('sb', sb, {limit: 1, random: true})

@@ -3,7 +3,7 @@ const { MessageEmbed } = require('discord.js');
 const Youtube = require('simple-youtube-api');
 const ytdl = require('ytdl-core');
 const { autoleave, autoshuffle } = require('../../config.json');
-const { youtubeAPI } = require('../../keys.json');
+const { youtubeAPI, cookies } = require('../../keys.json');
 const { version } = require('../../package.json');
 const youtube = new Youtube(youtubeAPI);
 
@@ -53,7 +53,7 @@ async run(message, {query}) {
       for (let i=0; i < videosObj.length; i++) {
         const video = await videosObj[i].fetch();
 
-        const url = 'https://www.youtube.com/watch?v='+video.raw.id;
+        const url = `https://www.youtube.com/watch?v=${video.raw.id}&bpctr=9999999999&has_verified=1`; // temporary workaround to play community restricted videos 
         const title = video.raw.snippet.title;
         let duration = this.formatDuration(video.duration);
         const thumbnail = video.thumbnails.high.url;
@@ -80,7 +80,7 @@ async run(message, {query}) {
   }
 
   if (query.match(/^(http(s)?:\/\/)?((w){3}.)?youtu(be|.be)?(\.com)?\/.+/)) {
-    const url = query;
+    const url = query+`&bpctr=9999999999&has_verified=1`; // temporary workaround to play community restricted videos
     try {
       query = query
         .replace(/(>|<)/gi, '')
@@ -107,7 +107,7 @@ async run(message, {query}) {
       }
     } catch (err) {
       console.error(err);
-      return message.say('Shit broke. Contact my owner.');
+      return message.say('Shit broke. Contact '+this.client.owners[0].username+'.');
     }
   }
   try {
@@ -118,7 +118,7 @@ async run(message, {query}) {
       .setChannel(message.channel)
       .setElementsPerPage(5)
       .setPageIndicator(true, 'hybrid')
-      .setTimeout(6000)
+      .setTimeout(60000)
       .setDeleteOnTimeout(true)
       .setDisabledNavigationEmojis(['delete', 'jump'])
       .formatField(
@@ -136,8 +136,6 @@ async run(message, {query}) {
       .setColor('#e9f931');
       
     FieldsEmbed.build();
-
-    var songEmbed = await message.channel.send(`Please select a song from the search results (1-50)`);
     try {
       var response = await message.channel.awaitMessages(
         msg => msg.author.id === message.author.id,
@@ -159,14 +157,14 @@ async run(message, {query}) {
       var video = await youtube.getVideoByID(videos[videoIndex - 1].id);
     } catch (err) {
       console.error(err);
-      if (songEmbed) {
+      if (FieldsEmbed) {
         FieldsEmbed.setTimeout(0);
       }
       return message.say(
         'An error has occured. Did you spell something wrong?'
       );
     }
-    const url = `https://www.youtube.com/watch?v=${video.raw.id}`;
+    const url = `https://www.youtube.com/watch?v=${video.raw.id}&bpctr=9999999999&has_verified=1`; // temporary workaround to play community restricted videos
     const title = video.title;
     let duration = this.formatDuration(video.duration);
     const thumbnail = video.thumbnails.high.url;
@@ -183,21 +181,30 @@ async run(message, {query}) {
       message.guild.musicData.isPlaying = true;
       this.playSong(message.guild.musicData.queue, message);
     } else if (message.guild.musicData.isPlaying == true) {
-      return message.say(`${song.title} added to queue`);
+      return message.say(`${song.title} has been added to queue`);
     }
   } catch (err) {
     console.error(err);
-    return message.say(
+    message.guild.musicData.isPlaying = false;
+    message.guild.musicData.queue.splice(0, 1);
+    message.guild.me.voice.channel.leave()
+    message.say(
       '```js\n'+err+'```\nSee Console for More Details.'
     );
   }
 }
 
 playSong(queue, message) {
+  const COOKIE = cookies;
   queue[0].voiceChannel
     .join()
     .then(connection => {
       const dispatcher = connection.play(ytdl(queue[0].url, {
+        requestOptions: {
+          headers: {
+            cookie: COOKIE,
+          }
+        },
       	filter: 'audioonly',
       	highWaterMark: 1 << 25,
       	quality: 'highestaudio',
@@ -232,10 +239,11 @@ playSong(queue, message) {
           }
         })
         .on('error', e => {
-          message.say('Cannot Play Song\n```js\n'+e+'\nSee Console for More Details.```');
           console.error(e);
-       	  message.guild.musicData.songDispatcher.end();
-          message.guild.musicData.queue.length = 0;
+          message.guild.musicData.isPlaying = false;
+          message.guild.musicData.queue.splice(0, 1);
+          message.guild.me.voice.channel.leave()
+          message.say('Cannot Play Song\n```js\n'+e+'\nSee Console for More Details.```');
         });
     })
     .catch(e => {
