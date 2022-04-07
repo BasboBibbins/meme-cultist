@@ -14,7 +14,7 @@ module.exports = class soundFBI extends Command {
       guildOnly: true,
       clientPermissions: ['SPEAK', 'CONNECT'],
       throttling: {
-        usages: 2,
+        usages: 1,
         duration: 10
       }
     });

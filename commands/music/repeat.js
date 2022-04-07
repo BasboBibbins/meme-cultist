@@ -8,7 +8,11 @@ module.exports = class RepeatSongCommand extends Command {
       group: 'music',
       alias: ['loop'], 
       description: 'Remove a specific song from queue',
-      guildOnly: true
+      guildOnly: true,
+      throttling: {
+        usages: 1,
+        duration: 5
+      },
     });
   }
   run(message, { songNumber }) {

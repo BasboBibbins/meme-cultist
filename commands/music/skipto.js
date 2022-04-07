@@ -9,6 +9,10 @@ module.exports = class SkipToCommand extends Command {
       description:
         'Skip to a specific song in the queue, provide the song number as an argument',
       guildOnly: true,
+      throttling: {
+        usages: 1,
+        duration: 5
+      },
       args: [
         {
           key: 'songNumber',

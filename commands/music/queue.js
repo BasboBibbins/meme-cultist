@@ -10,7 +10,11 @@ module.exports = class QueueCommand extends Command {
       group: 'music',
       memberName: 'queue',
       guildOnly: true,
-      description: 'Display the currently queued songs.'
+      description: 'Display the currently queued songs.',
+      throttling: {
+        usages: 1,
+        duration: 5
+      }
     });
   }
 

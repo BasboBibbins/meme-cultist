@@ -8,7 +8,11 @@ module.exports = class PauseCommand extends Command {
       memberName: 'pause',
       group: 'music',
       description: 'Toggle pausing/unpausing the current playing song.',
-      guildOnly: true
+      guildOnly: true,
+      throttling: {
+        usages: 1,
+        duration: 5
+      }
     });
   }
 

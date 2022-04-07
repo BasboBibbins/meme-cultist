@@ -14,8 +14,8 @@ module.exports = class soundQuack extends Command {
       guildOnly: true,
       clientPermissions: ['SPEAK', 'CONNECT'],
       throttling: {
-        usages: 2,
-        duration: 10
+        usages: 1,
+        duration: 2
       }
     });
   }

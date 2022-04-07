@@ -53,7 +53,11 @@ module.exports = class MemeCommand extends Command {
       aliases: ['getmeme'],
       memberName: 'meme',
       group: 'fun',
-      description: "Get a meme from a plethora of subreddits."
+      description: "Get a meme from a plethora of subreddits.",
+      throttling: {
+        usages: 1,
+        duration: 5
+      }
     });
   }
   run(message) {

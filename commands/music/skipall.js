@@ -8,7 +8,11 @@ module.exports = class SkipAllCommand extends Command {
       memberName: 'skipall',
       group: 'music',
       description: 'Skip all songs in queue.',
-      guildOnly: true
+      guildOnly: true,
+      throttling: {
+        usages: 1,
+        duration: 5
+      },
     });
   }
 

@@ -7,7 +7,11 @@ module.exports = class NormiesCommand extends Command {
       aliases: ['normie'],
       memberName: 'normies',
       group: 'fun',
-      description: "Get off my discord!"
+      description: "Get off my discord!",
+      throttling: {
+        usages: 1,
+        duration: 5
+      }
     });
   }
   run(message) {

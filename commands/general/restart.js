@@ -9,7 +9,12 @@ module.exports = class RestartCommand extends Command {
       aliases: ['reboot'],
       memberName: 'restart',
       group: 'general',
-      description: "Restarts the bot after a couple seconds."
+      description: "Restarts the bot after a couple seconds.",
+      clientPermissions: ['MANAGE_GUILD'],
+      throttling: {
+        usages: 1,
+        duration: 10
+      }
     });
   }
   run(message) {

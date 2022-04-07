@@ -9,8 +9,8 @@ module.exports = class eightBallCommand extends Command {
       group: 'fun',
       description: "Get life advice from the bot.",
       throttling: {
-        usages: 1,
-        duration: 5
+        usages: 3,
+        duration: 10
       },
       args: [
         {

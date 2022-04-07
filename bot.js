@@ -1,13 +1,23 @@
 const { CommandoClient } = require('discord.js-commando');
 const { Structures } = require('discord.js');
 const path = require('path');
-const { prefix, messageTimer, defaultRole, word_filter, idleTime, version, dev, enable_word_filter, corona_mode } = require('./config.json');
+const { prefix, 
+  messageTimer, 
+  defaultRole, 
+  word_filter, 
+  idleTime, 
+  version, 
+  dev, 
+  enable_word_filter, 
+  corona_mode,
+  cringemode
+ } = require('./config.json');
 const { token } = require('./keys.json');
 const CatLoggr = require('cat-loggr');
 const logger = new CatLoggr().setLevel(process.env.COMMANDS_DEBUG === 'true' ? 'debug' : 'info');
 const express = require('express');
 const app = express();
-const port = 3000;
+const port = 3001;
 
 logger.info('Meme Cultist, a bot by Basbo Bibbins.');
 
@@ -122,10 +132,12 @@ client.on('message', message => {
     }
   }
 
-  if (message.author.id == 168935894978527232 ||  message.author.id == 746508305240817794) { //|| message.author.id == 186560785319723008 || message.author.id == 624682904127012864
-    var rng = Math.floor(Math.random() * 5) // one in 10 chance
-    if (rng == 4) {
-      return message.channel.send("This is a reminder that "+`${message.author}`+" is cringe!");
+  if (cringemode) {
+    if (message.author.id == 168935894978527232 ||  message.author.id == 746508305240817794) { //|| message.author.id == 186560785319723008 || message.author.id == 624682904127012864
+      var rng = Math.floor(Math.random() * 5) // one in 10 chance
+      if (rng == 4) {
+        return message.channel.send("This is a reminder that "+`${message.author}`+" is cringe!");
+      }
     }
   }
 })

@@ -8,6 +8,10 @@ module.exports = class RemoveSongCommand extends Command {
       group: 'music',
       description: 'Remove a specific song from queue',
       guildOnly: true,
+      throttling: {
+        usages: 1,
+        duration: 5
+      },
       args: [
         {
           key: 'songNumber',

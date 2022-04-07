@@ -9,7 +9,11 @@ module.exports = class GelCommand extends Command {
       aliases: ['smug', ':smirk:'],
       memberName: 'smug',
       group: 'fun',
-      description: 'Get an image of a smug-ass anime girl.'
+      description: 'Get an image of a smug-ass anime girl.',
+      throttling: {
+        usages: 1,
+        duration: 5
+      }
     });
 }
 async run(msg) {

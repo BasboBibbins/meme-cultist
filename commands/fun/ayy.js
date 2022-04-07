@@ -6,7 +6,11 @@ module.exports = class AyyCommand extends Command {
       name: 'ayy',
       memberName: 'ayy',
       group: 'fun',
-      description: 'lmao'
+      description: 'lmao',
+      throttling: {
+        usages: 1,
+        duration: 5
+      }
     });
   }
   run(message) {
