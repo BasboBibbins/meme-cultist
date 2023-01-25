@@ -1,108 +1,95 @@
-console.log('Meme Cultist, a bot by Basbo Bibbins.');
+const dotenv = require("dotenv")
+const { REST } = require("@discordjs/rest")
+const { Routes } = require("discord-api-types/v9")
+const fs = require("fs")
+const { Player } = require("discord-player")
+const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
 
-const { CommandoClient } = require('discord.js-commando');
-const { Structures } = require('discord.js');
-const path = require('path');
-const { prefix, messageTimer, defaultRole, token, word_filter, idleTime, version, dev, enable_word_filter, corona_mode } = require('./config.json');
+dotenv.config()
+const TOKEN = process.env.TOKEN
 
-Structures.extend('Guild', Guild => {
-  class MusicGuild extends Guild {
-    constructor(client, data) {
-      super(client, data);
-      this.musicData = {
-        queue: [],
-        isPlaying: false,
-        nowPlaying: null,
-        songDispatcher: null,
-        repeat: false
-      };
-      this.ttsData = {
-        isTTSRunning: false,
-        ttsQueue: []
-      };
-      this.genData = {
-        idleTime: idleTime * 1000,
-        verNum: version
-      }
-    }
-  }
-  return MusicGuild;
-});
+const LOAD_SLASH = process.argv[2] == "load"
 
-const client = new CommandoClient({
-  commandPrefix: prefix,
-  owner: '139152443991654401'
-});
+const CLIENT_ID = "927767383484010527"
+const GUILD_ID = "412714213719670795"
 
-if (dev === true)  {
-  client.registry.registerGroups([
-    ['dev', 'Developer Commands']
-  ])
-}
-
-client.registry
-  .registerDefaultTypes()
-  .registerTypesIn(path.join(__dirname, 'types'))
-  .registerGroups([
-    ['general', 'General Commands'],
-    ['music', 'Music Commands'],
-    ['fun', 'Fun Commands'],
-    ['nsfw', 'NSFW Commands']
-  ])
-  //.registerDefaultGroups()
-  //.registerDefaultCommands()
-  .registerCommandsIn(path.join(__dirname, 'commands'));
-
-client.once('ready', () => {
-  console.log('Loading compree!');
-  client.user.setActivity('your music! '+prefix+'help', 'PLAYING');
-});
-
-client.on('guildMemberAdd', async member => {
-  var role = member.guild.roles.cache.find(r => r.name === defaultRole);
-  if (!role) return;
-  member.roles.add(role);
-  const channel = member.guild.channels.cache.find(c => c.name === 'welcome');
-  if (!channel) return;
-  channel.send(`**Welcome to the Meme Cult ${member} Now get out of my discord fucking normie.**`)
-});
-
-client.on('message', message => {
-
-  if (corona_mode && !message.author.bot) {
-    message.channel.send("-------------SOCIAL DISTANCE LINE-------------");
-    message.channel.send("󠇰    󠇰    󠇰    󠇰    󠇰    󠇰");
-    message.channel.send("󠇰    󠇰    󠇰    󠇰    󠇰    󠇰");
-    message.channel.send("󠇰    󠇰    󠇰    󠇰    󠇰    󠇰");
-    message.channel.send("-----------END SOCIAL DISTANCE LINE-----------󠇰");
-  }
-
-  const timer = (messageTimer * 1000);
-  setTimeout(() => {
-    if (message.author.bot) {
-      if (messageTimer <= 0) return;
-      message.delete()
-    }
-  }, timer)
-  for (var i = 0; i < word_filter.length; i++) {
-    word_filter[i] = word_filter[i].toUpperCase()
-    msg = message.content.toUpperCase();
-    if (enable_word_filter && msg.includes(word_filter[i])) {
-      message.delete();
-      return message.channel.send("***\n[MESSAGE REMOVED BY PEOPLE'S REPUBLIC OF CHINA]\n[被中華人民共和國刪除的消息]***");
-    }
-  }
-
-  if (message.author.id == 168935894978527232 ||  message.author.id == 746508305240817794) { //|| message.author.id == 186560785319723008 || message.author.id == 624682904127012864
-    var rng = Math.floor(Math.random() * 5) // one in 10 chance
-    if (rng == 4) {
-      return message.channel.send("This is a reminder that "+`${message.author}`+" is cringe!");
-    }
-  }
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates
+    ]
 })
 
-client.on('error', e => {
-  console.error(e);
-});
+client.slashcommands = new Collection()
+client.player = new Player(client, {
+    ytdlOptions: {
+        quality: "highestaudio",
+        highWaterMark: 1 << 25
+    }
+})
 
-client.login(token);
+let commands = []
+
+const walk = function(dir) {
+    let results = [];
+    const list = fs.readdirSync(dir);
+    list.forEach(function(file) {
+        file = dir + '/' + file;
+        file_type = file.split(".").pop();
+        file_name = file.split(/(\\|\/)/g).pop();
+        const stat = fs.statSync(file);
+        if (stat && stat.isDirectory()) { 
+            results = results.concat(walk(file));
+        } else { 
+            if (file_type == "js") results.push(file);
+        }
+    });
+    return results;
+}
+
+const slashFiles = walk('./commands');
+
+for (const file of slashFiles) {
+    const slashcmd = require(`${file}`);
+    client.slashcommands.set(slashcmd.data.name, slashcmd)
+    if (LOAD_SLASH) commands.push(slashcmd.data.toJSON())
+}
+
+if (LOAD_SLASH) {
+    const rest = new REST({ version: "9" }).setToken(TOKEN)
+    console.log("Deploying slash commands")
+    rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {body: commands})
+    .then(() => {
+        console.log("Successfully loaded")
+        process.exit(0)
+    })
+    .catch((err) => {
+        if (err){
+            console.log(err)
+            process.exit(1)
+        }
+    })
+}
+else {
+    client.on("ready", () => {
+        console.log(`Logged in as ${client.user.tag}`)
+    })
+    client.on(Events.InteractionCreate, async interaction => {
+        if (!interaction.isChatInputCommand()) return;
+    
+        const command = interaction.client.slashcommands.get(interaction.commandName);
+    
+        if (!command) {
+            console.error(`No command matching ${interaction.commandName} was found.`);
+            return;
+        }
+    
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+        }
+    });
+    client.login(TOKEN)
+}

@@ -1,15 +1,10 @@
-const { Command } = require('discord.js-commando');
+const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
 
-module.exports = class AyyCommand extends Command {
-  constructor(client) {
-    super(client, {
-      name: 'ayy',
-      memberName: 'ayy',
-      group: 'fun',
-      description: 'lmao'
-    });
-  }
-  run(message) {
-    message.reply('lmao :alien:');
-  }
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName("ayy")
+        .setDescription("lmao!"),
+    async execute(interaction) {
+        await interaction.reply('lmao! :alien:');
+    },
 };
