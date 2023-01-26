@@ -4,6 +4,7 @@ const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
+const { OpenAIApi, Configuration } = require("openai")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -11,12 +12,20 @@ const TOKEN = process.env.TOKEN
 const LOAD_SLASH = process.argv[2] == "load"
 
 const CLIENT_ID = "927767383484010527"
-const GUILD_ID = "412714213719670795"
+const GUILD_ID = "139152638414553088"
+
+const config = new Configuration({
+    apiKey: process.env.OPENAI_KEY
+})
+
+const openai = new OpenAIApi(config)
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
 })
 
@@ -71,11 +80,13 @@ if (LOAD_SLASH) {
     })
 }
 else {
-    client.on("ready", () => {
+    client.once(Events.ClientReady, () => {
         console.log(`Logged in as ${client.user.tag}`)
     })
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isChatInputCommand()) return;
+
+        if (!interaction.user.id == "139152443991654401") return;
     
         const command = interaction.client.slashcommands.get(interaction.commandName);
     
@@ -91,5 +102,46 @@ else {
             await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
         }
     });
+
+    const BOT_CHANNEL = "1067922000753991771"
+
+    const PAST_MESSAGES = 5
+
     client.login(TOKEN)
+
+    client.on(Events.MessageCreate, async (message) => {
+        if (message.author.bot) return
+        if (message.channel.id !== BOT_CHANNEL) return
+
+        message.channel.sendTyping()
+    
+        let messages = Array.from(await message.channel.messages.fetch({
+            limit: PAST_MESSAGES,
+            before: message.id
+        }))
+        messages = messages.map(m=>m[1])
+        messages.unshift(message)
+    
+        let users = [...new Set([...messages.map(m=> m.member.displayName), client.user.username])]
+    
+        let lastUser = users.pop()
+    
+        let prompt = `The following is a conversation between ${users.join(", ")}, and ${lastUser}. Joe is married to Bocchi the Rock, and Megumin from Konosuba.\n\n`
+    
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i]
+            prompt += `${m.member.displayName}: ${m.content}\n`
+        }
+        prompt += `${client.user.username}:`
+        console.log("prompt:", prompt)
+    
+        const response = await openai.createCompletion({
+            prompt,
+            model: "text-davinci-003",
+            max_tokens: 500
+        })
+    
+        console.log("response", response.data.choices[0].text)
+        await message.channel.send(response.data.choices[0].text)
+    })
 }
