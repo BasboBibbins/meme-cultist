@@ -84,22 +84,33 @@ else {
         console.log(`Logged in as ${client.user.tag}`)
     })
     client.on(Events.InteractionCreate, async interaction => {
-        if (!interaction.isChatInputCommand()) return;
+        if (interaction.isChatInputCommand()) {
+            const command = interaction.client.slashcommands.get(interaction.commandName);
+        
+            if (!command) {
+                console.error(`No command matching ${interaction.commandName} was found.`);
+                return;
+            }
+        
+            try {
+                await command.execute(interaction);
+            } catch (error) {
+                console.error(error);
+                await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+            }
+        } else if (interaction.isAutocomplete()) {
+            const command = interaction.client.slashcommands.get(interaction.commandName);
 
-        if (!interaction.user.id == "139152443991654401") return;
-    
-        const command = interaction.client.slashcommands.get(interaction.commandName);
-    
-        if (!command) {
-            console.error(`No command matching ${interaction.commandName} was found.`);
-            return;
-        }
-    
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+            if (!command) {
+                console.error(`No command matching ${interaction.commandName} was found.`);
+                return;
+            }
+
+            try {
+                await command.autocomplete(interaction);
+            } catch (error) {
+                console.error(error);
+            }
         }
     });
 
@@ -121,10 +132,10 @@ else {
         }))
         messages = messages.map(m=>m[1])
         messages.unshift(message)
+
+        console.log("messages: ", messages)
         
-        let users = [...new Set([...messages.map(m=>{
-            if(m.member){m.member.displayName}}
-        ), client.user.username])] 
+        let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
 
         let lastUser = users.pop()
     
@@ -132,7 +143,7 @@ else {
     
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i]
-            prompt += `${m.member.displayName}: ${m.content}\n`
+            prompt += `${m.author.username}: ${m.content}\n`
         }
         prompt += `${client.user.username}:`
         console.log("prompt:", prompt)
