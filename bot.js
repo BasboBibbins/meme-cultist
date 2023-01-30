@@ -85,20 +85,22 @@ else {
     })
     client.on(Events.InteractionCreate, async interaction => {
         if (interaction.isChatInputCommand()) {
-            const command = interaction.client.slashcommands.get(interaction.commandName);
-            message.channel.sendTyping()
-        
-            if (!command) {
-                console.error(`No command matching ${interaction.commandName} was found.`);
-                return;
-            }
-        
-            try {
-                await command.execute(interaction);
-            } catch (error) {
-                console.error(error);
-                await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
-            }
+            interaction.channel.sendTyping().then(async () => {
+                
+                const command = interaction.client.slashcommands.get(interaction.commandName);
+            
+                if (!command) {
+                    console.error(`No command matching ${interaction.commandName} was found.`);
+                    return;
+                }
+            
+                try {
+                    await command.execute(interaction);
+                } catch (error) {
+                    console.error(error);
+                    await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+                }
+            })
         } else if (interaction.isAutocomplete()) {
             const command = interaction.client.slashcommands.get(interaction.commandName);
 
@@ -123,37 +125,40 @@ else {
 
     client.on(Events.MessageCreate, async (message) => {
         if (message.author.bot) return
-        if (message.channel.id !== BOT_CHANNEL) return
 
-        message.channel.sendTyping()
+        if (message.content.startsWith(">")) {
+            //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use / instead of >")})
+        };
+
+        if (message.channel.id == BOT_CHANNEL){
+            let messages = Array.from(await message.channel.messages.fetch({
+                limit: PAST_MESSAGES,
+                before: message.id
+            }))
+            messages = messages.map(m=>m[1])
+            messages.unshift(message)
+            
+            let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
     
-        let messages = Array.from(await message.channel.messages.fetch({
-            limit: PAST_MESSAGES,
-            before: message.id
-        }))
-        messages = messages.map(m=>m[1])
-        messages.unshift(message)
+            let lastUser = users.pop()
         
-        let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
-
-        let lastUser = users.pop()
-    
-        let prompt = `The following is a conversation between ${users.join(", ")}, and ${lastUser}.\n\n`
-    
-        for (let i = messages.length - 1; i >= 0; i--) {
-            const m = messages[i]
-            prompt += `${m.author.username}: ${m.content}\n`
+            let prompt = `The following is a conversation between ${users.join(", ")}, and ${lastUser}.\n\n`
+        
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const m = messages[i]
+                prompt += `${m.author.username}: ${m.content}\n`
+            }
+            prompt += `${client.user.username}:`
+            console.log("prompt:", prompt)
+        
+            const response = await openai.createCompletion({
+                prompt,
+                model: "text-davinci-003",
+                max_tokens: 500
+            })
+        
+            console.log("response", response.data.choices[0].text)
+            await message.channel.send(response.data.choices[0].text)
         }
-        prompt += `${client.user.username}:`
-        console.log("prompt:", prompt)
-    
-        const response = await openai.createCompletion({
-            prompt,
-            model: "text-davinci-003",
-            max_tokens: 500
-        })
-    
-        console.log("response", response.data.choices[0].text)
-        await message.channel.send(response.data.choices[0].text)
     })
 }
