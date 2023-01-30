@@ -39,7 +39,6 @@ module.exports = {
             "You probably shouldn't rely on RNG for that."
           ]
           var rng = Math.floor(Math.random() * eightball.length)
-          await interaction.reply(`:8ball: _${interaction.user.username}_ asks: **${interaction.options.getString("question")}** :8ball:`)
-          await interaction.followUp(`:8ball: The magic 8ball says: **${eightball[rng]}** :8ball:`)
+          await interaction.reply(`:8ball: The magic 8ball says: **${eightball[rng]}** :8ball:`);
     },
 };
