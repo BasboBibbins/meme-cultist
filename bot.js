@@ -86,6 +86,7 @@ else {
     client.on(Events.InteractionCreate, async interaction => {
         if (interaction.isChatInputCommand()) {
             const command = interaction.client.slashcommands.get(interaction.commandName);
+            message.channel.sendTyping()
         
             if (!command) {
                 console.error(`No command matching ${interaction.commandName} was found.`);
@@ -132,8 +133,6 @@ else {
         }))
         messages = messages.map(m=>m[1])
         messages.unshift(message)
-
-        console.log("messages: ", messages)
         
         let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
 
