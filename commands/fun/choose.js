@@ -27,7 +27,8 @@ module.exports = {
             `I'm going to go with`,
             `:nerd: based on my calculations, it's`,
             `Number ${rng + 1} it is! `,
-            `make the choice for yourself loser! kidding, it's`
+            `make the choice for yourself loser! kidding, it's`,
+            `It came to me in a dream, it's`
         ]
         const promptrng = Math.floor(Math.random() * prompt.length);
         await interaction.reply(`${prompt[promptrng]} **${options[rng]}**`);

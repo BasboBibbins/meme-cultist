@@ -84,6 +84,7 @@ else {
         console.log(`Logged in as ${client.user.tag}`)
     })
     client.on(Events.InteractionCreate, async interaction => {
+        const role = "1068578222008176742"; 
         if (interaction.isChatInputCommand()) {
             interaction.channel.sendTyping().then(async () => {
                 
@@ -92,6 +93,11 @@ else {
                 if (!command) {
                     console.error(`No command matching ${interaction.commandName} was found.`);
                     return;
+                }
+
+                if (!interaction.member.roles.cache.has(role)){
+                    await interaction.reply({content: "You do not have the right, o' you do not have the right.", ephemeral: true})
+                    return
                 }
             
                 try {
@@ -131,34 +137,36 @@ else {
         };
 
         if (message.channel.id == BOT_CHANNEL){
-            let messages = Array.from(await message.channel.messages.fetch({
-                limit: PAST_MESSAGES,
-                before: message.id
-            }))
-            messages = messages.map(m=>m[1])
-            messages.unshift(message)
+            message.channel.sendTyping().then(async () => {
+                let messages = Array.from(await message.channel.messages.fetch({
+                    limit: PAST_MESSAGES,
+                    before: message.id
+                }))
+                messages = messages.map(m=>m[1])
+                messages.unshift(message)
+                
+                let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
+        
+                let lastUser = users.pop()
             
-            let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
-    
-            let lastUser = users.pop()
-        
-            let prompt = `The following is a conversation between ${users.join(", ")}, and ${lastUser}.\n\n`
-        
-            for (let i = messages.length - 1; i >= 0; i--) {
-                const m = messages[i]
-                prompt += `${m.author.username}: ${m.content}\n`
+                let prompt = `The following is a conversation between ${users.join(", ")}, and ${lastUser}.\n\n`
+            
+                for (let i = messages.length - 1; i >= 0; i--) {
+                    const m = messages[i]
+                    prompt += `${m.author.username}: ${m.content}\n`
+                }
+                prompt += `${client.user.username}:`
+                console.log("prompt:", prompt)
+            
+                const response = await openai.createCompletion({
+                    prompt,
+                    model: "text-davinci-003",
+                    max_tokens: 500
+                })
+            
+                console.log("response", response.data.choices[0].text)
+                await message.channel.send(response.data.choices[0].text)
             }
-            prompt += `${client.user.username}:`
-            console.log("prompt:", prompt)
-        
-            const response = await openai.createCompletion({
-                prompt,
-                model: "text-davinci-003",
-                max_tokens: 500
-            })
-        
-            console.log("response", response.data.choices[0].text)
-            await message.channel.send(response.data.choices[0].text)
-        }
+        )}
     })
 }
