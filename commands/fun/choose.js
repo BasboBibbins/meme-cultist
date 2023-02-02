@@ -9,7 +9,12 @@ module.exports = {
                 .setDescription('The options to choose from.')
                 .setRequired(true)),
     async execute(interaction) {
-        const options = interaction.options.getString('options').split(' ');
+        const options = interaction.options.getString('options');
+        if (options.contains(",")) {
+            const options = options.split(", ");
+        } else {
+            const options = options.split(" ");
+        }
         const rng = Math.floor(Math.random() * options.length);
         if (options.length < 2) return interaction.reply({content: "You need to provide at least two options!", ephemeral: true});
         const prompt = [
