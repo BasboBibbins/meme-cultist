@@ -14,6 +14,9 @@ const LOAD_SLASH = process.argv[2] == "load"
 const CLIENT_ID = "927767383484010527"
 const GUILD_ID = "139152638414553088"
 
+const role = "1068578222008176742";
+const banned = "1070775253380386919";
+
 const config = new Configuration({
     apiKey: process.env.OPENAI_KEY
 })
@@ -84,7 +87,6 @@ else {
         console.log(`Logged in as ${client.user.tag}`)
     })
     client.on(Events.InteractionCreate, async interaction => {
-        const role = "1068578222008176742"; 
         if (interaction.isChatInputCommand()) {
             interaction.channel.sendTyping().then(async () => {
                 
@@ -93,6 +95,11 @@ else {
                 if (!command) {
                     console.error(`No command matching ${interaction.commandName} was found.`);
                     return;
+                }
+
+                if (interaction.member.roles.cache.has(banned)){
+                    await interaction.reply({content: "You turned against me. I will not answer to you.", ephemeral: true})
+                    return
                 }
 
                 if (!interaction.member.roles.cache.has(role)){
@@ -133,10 +140,16 @@ else {
         if (message.author.bot) return
 
         if (message.content.startsWith(">")) {
-            //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use / instead of >")})
+            //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``. Discord is gay and forced me at gunpoint to make this change.")})
         };
 
         if (message.channel.id == BOT_CHANNEL){
+
+            if (message.member.roles.cache.has(banned)){
+                // reply to them in secret
+                
+            }
+
             message.channel.sendTyping().then(async () => {
                 let messages = Array.from(await message.channel.messages.fetch({
                     limit: PAST_MESSAGES,
