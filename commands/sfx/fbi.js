@@ -1,36 +1,34 @@
 const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
 const {joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, entersState, VoiceConnectionStatus} = require('@discordjs/voice');
-const fbi = 'assets/sfx/fbi.mp3';
+const fbi = createAudioResource('assets/sounds/fbi.mp3');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("fbi")
         .setDescription("Open up!"),
     async execute(interaction) {
-        // play the fbi sound effect
+        const channel = interaction.member.voice.channel;
+        if (!channel) return interaction.reply({content: "You must be in a voice channel to use this command.", ephemeral: true});
         const connection = joinVoiceChannel({
-            channelId: interaction.member.voice.channel.id,
-            guildId: interaction.guild.id,
-            adapterCreator: interaction.guild.voiceAdapterCreator,
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator
         });
         const player = createAudioPlayer();
-        const resource = createAudioResource(fbi);
-        player.play(resource);
+        player.play(fbi);
         connection.subscribe(player);
-
-        // wait for the sound effect to finish playing
+        await interaction.reply({content: "FBI OPEN UP!", ephemeral: true});
         try {
-            await entersState(player, AudioPlayerStatus.Idle, 5e3);
-            await interaction.reply({content: "🚨"}, {ephemeral: true});
+            await entersState(connection, VoiceConnectionStatus.Ready, 30e3);
+            await entersState(player, AudioPlayerStatus.Playing, 5e3);
         } catch (error) {
             console.error(error);
-            await interaction.reply({content: "Failed to play sound effect", ephemeral: true});
             connection.destroy();
+            return interaction.reply({content: "There was an error while playing the audio.", ephemeral: true});
         } finally {
-            await Promise.race([
-                entersState(connection, VoiceConnectionStatus.Destroyed, 5e3),
-                entersState(player, AudioPlayerStatus.Idle, 5e3),
-            ]);
+            await entersState(player, AudioPlayerStatus.Idle, 5e3);
+            player.stop();
+            connection.destroy();
         }
-    },
+    }
 };

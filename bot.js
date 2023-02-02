@@ -144,12 +144,6 @@ else {
         };
 
         if (message.channel.id == BOT_CHANNEL){
-
-            if (message.member.roles.cache.has(banned)){
-                // reply to them in secret
-                
-            }
-
             message.channel.sendTyping().then(async () => {
                 let messages = Array.from(await message.channel.messages.fetch({
                     limit: PAST_MESSAGES,
