@@ -74,6 +74,7 @@ module.exports = {
 
         await Booru.search(booru, tags, {limit: 1, random: true})
             .then(result => {
+                if (!result.length) return interaction.reply({content: "No results found for ``"+tags.join(", ")+"``.", ephemeral: true});
                 for (let post of result) { 
                     const getFavicon = (url) => {
                         const favicon = url.match(/^(?:https?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:\/\n?]+)/img);
