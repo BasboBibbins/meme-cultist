@@ -28,15 +28,15 @@ module.exports = {
                 .setRequired(false)),
 
     async execute(interaction) {
-        interaction.deferReply();
-        if (interaction.options.getAttachment('image') && interaction.options.getUser('user')) return interaction.editReply({content: "You can't use an image and a user at the same time!", ephemeral: true});
+        await interaction.deferReply();
+        if (interaction.options.getAttachment('image') && interaction.options.getUser('user')) return interaction.editReply({content: "You can't use an image and a user at the same time!", ephemeral: false});
         
         const top = interaction.options.getString('top').toUpperCase();
         const bottom = interaction.options.getString('bottom').toUpperCase();
         const image = interaction.options.getAttachment('image');
         const user = interaction.options.getUser('user') ? interaction.options.getUser('user') : interaction.user;
 
-        if (image && !image.name.endsWith('.png') && !image.name.endsWith('.jpg') && !image.name.endsWith('.jpeg')) return interaction.editReply({content: "The image must be a png, jpg, or jpeg!", ephemeral: true});
+        if (image && !image.name.endsWith('.png') && !image.name.endsWith('.jpg') && !image.name.endsWith('.jpeg')) return interaction.editReply({content: "The image must be a png, jpg, or jpeg!", ephemeral: false});
 
         const { body } = await request.get(image ? image.url : user.displayAvatarURL({extension: 'png', size: 1024}));
 
@@ -53,37 +53,36 @@ module.exports = {
         ctx.font = `${fontsize}px Impact`;
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
 
-        console.log(`\x1b[32m[INFO]\x1b[0m Generating top text.`)
+        ctx.textBaseline = 'top';
         const topLines = await wrapText(ctx, top, base.width-10);
-        if (!topLines) return interaction.editReply({content: "The top text is too long!", ephemeral: true});
+        if (!topLines) return interaction.editReply({content: "The top text is too long!", ephemeral: false});
         for (let i = 0; i < topLines.length; i++) {
             const textHeight = (i * fontsize) + (i * 10);
             ctx.strokeStyle = 'black';
-            ctx.lineWidth = 5;
+            ctx.lineWidth = Math.round(fontsize/10);
+            ctx.lineJoin = 'round';
             ctx.strokeText(topLines[i], base.width/2, textHeight);
             ctx.fillStyle = 'white';
             ctx.fillText(topLines[i], base.width/2, textHeight);
         }
 
-        console.log(`\x1b[32m[INFO]\x1b[0m Generating bottom text.`)
         const bottomLines = await wrapText(ctx, bottom, base.width-10);
-        if (!bottomLines) return interaction.editReply({content: "The bottom text is too long!", ephemeral: true});
+        if (!bottomLines) return interaction.editReply({content: "The bottom text is too long!", ephemeral: false});
         ctx.textBaseline = 'bottom';
-        const inital = base.height - (bottomLines.length * fontsize) - ((bottomLines.length - 1) * 10);
+        const inital = base.height - ((bottomLines.length - 1) * fontsize) - ((bottomLines.length - 1) * 10);
         for (let i = 0; i < bottomLines.length; i++) {
             const textHeight = inital + (i * fontsize) + (i * 10);
             ctx.strokeStyle = 'black';
-            ctx.lineWidth = 5;
+            ctx.lineWidth = Math.round(fontsize/10);
+            ctx.lineJoin = 'round';
             ctx.strokeText(bottomLines[i], base.width/2, textHeight);
             ctx.fillStyle = 'white';
             ctx.fillText(bottomLines[i], base.width/2, textHeight);
         }
 
-        console.log(`\x1b[32m[INFO]\x1b[0m Sending meme.`)
         const attachment = canvas.toBuffer('image/png');
-        if (Buffer.byteLength(attachment) > 8e+6) return interaction.editReply({content: "Resulting image was above 8MB.", ephemeral: true});
-        await interaction.editReply({files: [attachment], name: `memegen_${image ? image.name : user.username}.png`});
+        if (Buffer.byteLength(attachment) > 8e+6) return interaction.editReply({content: "Resulting image was above 8MB.", ephemeral: false});
+        await interaction.editReply({files: [{attachment: attachment, name: `memegen_${image ? image.name : user.username}.png`}]});
     },
 };
