@@ -13,6 +13,7 @@ module.exports = {
         text = text.toUpperCase();
         text = text.replace(/[AEIU]/g, 'V');
         text = text.replace(/O/g, 'Q');
+        text += '\n\n -Q';
         await interaction.reply(text);
     },
 };

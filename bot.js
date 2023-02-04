@@ -86,6 +86,16 @@ else {
     client.once(Events.ClientReady, () => {
         console.log(`Logged in as ${client.user.tag}`)
     })
+
+    client.on(Events.GuildMemberAdd, async member => {
+        var role = member.guild.roles.cache.find(role => role.name === "Peasant");
+        if (!role) return;
+        member.roles.add(role)
+        const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome');
+        if (!channel) return;
+        channel.send(`**Welcome to the Meme Cult ${member} Now get out of my discord fucking normie.**`);
+    })
+
     client.on(Events.InteractionCreate, async interaction => {
         if (interaction.isChatInputCommand()) {
             interaction.channel.sendTyping().then(async () => {
