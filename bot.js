@@ -5,17 +5,17 @@ const fs = require("fs")
 const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
 const { OpenAIApi, Configuration } = require("openai")
+const { QuickDB } = require("quick.db")
+const { initDB } = require("./dbInit")
+const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE } = require("./config.json")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
 
 const LOAD_SLASH = process.argv[2] == "load"
+const LOAD_DB = process.argv[2] == "dbinit"
 
-const CLIENT_ID = "927767383484010527"
-const GUILD_ID = "139152638414553088"
-
-const role = "1068578222008176742";
-const banned = "1070775253380386919";
+const banned = BANNED_ROLE;
 
 const config = new Configuration({
     apiKey: process.env.OPENAI_KEY
@@ -67,6 +67,11 @@ for (const file of slashFiles) {
     if (LOAD_SLASH) commands.push(slashcmd.data.toJSON())
 }
 
+if (LOAD_DB) {
+    initDB(client)
+}
+
+
 if (LOAD_SLASH) {
     const rest = new REST({ version: "9" }).setToken(TOKEN)
     console.log("Deploying slash commands")
@@ -88,7 +93,7 @@ else {
     })
 
     client.on(Events.GuildMemberAdd, async member => {
-        var role = member.guild.roles.cache.find(role => role.name === "Peasant");
+        var role = member.guild.roles.cache.find(role => role.name === DEFAULT_ROLE);
         if (!role) return;
         member.roles.add(role)
         const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome');
@@ -139,10 +144,6 @@ else {
             }
         }
     });
-
-    const BOT_CHANNEL = "1067922000753991771"
-
-    const PAST_MESSAGES = 5
 
     client.login(TOKEN)
 
