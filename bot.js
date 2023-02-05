@@ -28,7 +28,9 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences,
     ]
 })
 
@@ -67,11 +69,6 @@ for (const file of slashFiles) {
     if (LOAD_SLASH) commands.push(slashcmd.data.toJSON())
 }
 
-if (LOAD_DB) {
-    initDB(client)
-}
-
-
 if (LOAD_SLASH) {
     const rest = new REST({ version: "9" }).setToken(TOKEN)
     console.log("Deploying slash commands")
@@ -90,6 +87,9 @@ if (LOAD_SLASH) {
 else {
     client.once(Events.ClientReady, () => {
         console.log(`Logged in as ${client.user.tag}`)
+        if (LOAD_DB) {
+            initDB(client)
+        }
     })
 
     client.on(Events.GuildMemberAdd, async member => {
