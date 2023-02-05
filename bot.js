@@ -6,7 +6,7 @@ const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
 const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
-const { initDB } = require("./dbInit")
+const { initDB, addNewDBUser } = require("./database")
 const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE } = require("./config.json")
 
 dotenv.config()
@@ -86,10 +86,10 @@ if (LOAD_SLASH) {
 }
 else {
     client.once(Events.ClientReady, () => {
-        console.log(`Logged in as ${client.user.tag}`)
         if (LOAD_DB) {
             initDB(client)
         }
+        console.log(`\x1b[32m%s\x1b[0m`, `Logged in as ${client.user.tag}!`)
     })
 
     client.on(Events.GuildMemberAdd, async member => {
@@ -99,6 +99,7 @@ else {
         const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome');
         if (!channel) return;
         channel.send(`**Welcome to the Meme Cult ${member} Now get out of my discord fucking normie.**`);
+        addNewDBUser(member);
     })
 
     client.on(Events.InteractionCreate, async interaction => {

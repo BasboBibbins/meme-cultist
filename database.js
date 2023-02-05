@@ -41,12 +41,47 @@ module.exports = {
                     "stats": {
                         "begs": 0,
                         "dailies": 0,
-                        "weeklies": 0,
+                        "weeklies": 0, 
+                        "blackjack": 0,
+                        "slots": 0,
+                        "flip": 0,
+                        "largestBalance": 0,
+                        "largestWin": 0,
+                        "largestLoss": 0,
                     }
                 });
             }
         }
         console.log(`\x1b[32m[DB]\x1b[0m Database loaded. ${newUsers?newUsers:"No"} new users in database.`)
-        process.exit(0);
     },
+    addNewDBUser: async function(user) {
+        const dbUser = await db.get(user.id);
+        if (!dbUser) {
+            console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+            await db.set(user.id, {
+                "id": user.id,
+                "name": user.username+"#"+user.discriminator,
+                "balance": 0,
+                "bank": 0,
+                "inventory": [],
+                "cooldowns": {
+                    "beg": 0,
+                    "daily": 0,
+                    "weekly": 0,
+                },
+                "stats": {
+                    "begs": 0,
+                    "dailies": 0,
+                    "weeklies": 0, 
+                    "blackjack": 0,
+                    "slots": 0,
+                    "flip": 0,
+                    "largestBalance": 0,
+                    "largestWin": 0,
+                    "largestLoss": 0,
+                }
+            });
+        }
+    }
+
 }
