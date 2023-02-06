@@ -3,59 +3,58 @@ const { GUILD_ID } = require("./config.json");
 
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 
+async function getDefaultDB(user) {
+    return {
+        "id": user.id,
+        "name": user.username+"#"+user.discriminator,
+        "balance": 100,
+        "bank": 0,
+        "inventory": [],
+        "cooldowns": {
+            "daily": 0,
+            "weekly": 0,
+        },
+        "stats": {
+            "dailies": {
+                "claimed": 0,
+                "currentStreak": 0,
+                "longestStreak": 0,
+            },
+            "weeklies": {
+                "claimed": 0,
+                "currentStreak": 0,
+                "longestStreak": 0,
+            },
+            "blackjack": {
+                "wins": 0,
+                "losses": 0,
+                "ties": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+            },
+            "slots": {
+                "wins": 0,
+                "losses": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+            },
+            "flip": {
+                "wins": 0,
+                "losses": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+            },
+            "begs": {
+                "wins": 0,
+                "losses": 0,
+            },
+            "largestBalance": 0,
+            "largestWin": 0,
+            "largestLoss": 0
+        },
+    }
+}
 module.exports = {
-    // pass in a user as a parameter to get their database entry
-    getDefaultDB : async function(user) {
-        return {
-            "id": user.id,
-            "name": user.username+"#"+user.discriminator,
-            "balance": 0,
-            "bank": 0,
-            "inventory": [],
-            "cooldowns": {
-                "daily": 0,
-                "weekly": 0,
-            },
-            "stats": {
-                "dailies": {
-                    "claimed": 0,
-                    "currentStreak": 0,
-                    "longestStreak": 0,
-                },
-                "weeklies": {
-                    "claimed": 0,
-                    "currentStreak": 0,
-                    "longestStreak": 0,
-                },
-                "blackjack": {
-                    "wins": 0,
-                    "losses": 0,
-                    "ties": 0,
-                    "biggestWin": 0,
-                    "biggestLoss": 0,
-                },
-                "slots": {
-                    "wins": 0,
-                    "losses": 0,
-                    "biggestWin": 0,
-                    "biggestLoss": 0,
-                },
-                "flip": {
-                    "wins": 0,
-                    "losses": 0,
-                    "biggestWin": 0,
-                    "biggestLoss": 0,
-                },
-                "begs": {
-                    "wins": 0,
-                    "losses": 0,
-                },
-                "largestBalance": 0,
-                "largestWin": 0,
-                "largestLoss": 0
-            },
-        }
-    },
     initDB: async function(client) {
         const guild = client.guilds.cache.get(GUILD_ID);
 
@@ -70,23 +69,40 @@ module.exports = {
                 createdAt: member.user.createdAt,
             }
         });
+
         console.log(`\x1b[32m[DB]\x1b[0m Loading database...`)
         console.log(`\x1b[32m[DB]\x1b[0m Found ${users.length} users.`)
         let newUsers = 0;
+        let updatedUsers = 0;
         for (const user of users) {
             const dbUser = await db.get(user.id);
+            const defaultDB = await getDefaultDB(user);
             if (!dbUser) {
                 newUsers++;
-                await db.set(user.id, this.getDefaultDB(user));
+                await db.set(user.id, defaultDB);
                 console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+            } else {
+                let updated = false;
+                for (const [key, value] of Object.entries(defaultDB)) {
+                    if (!dbUser[key]) {
+                        dbUser[key] = value;
+                        updated = true;
+                    }
+                }
+                if (updated) {
+                    await db.set(user.id, dbUser);
+                    console.log(`\x1b[32m[DB]\x1b[0m Updated ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+                    updatedUsers++;
+                }
             }
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Database loaded. ${newUsers?newUsers:"No"} new users in database.`)
+        console.log(`\x1b[32m[DB]\x1b[0m Database loaded. ${newUsers?newUsers:"No"} new users in database. ${updatedUsers?updatedUsers:"No"} users updated.`)
     },
     addNewDBUser: async function(user) {
         const dbUser = await db.get(user.id);
+        const defaultDB = await getDefaultDB(user);
         if (!dbUser) {
-            await db.set(user.id, this.getDefaultDB(user));
+            await db.set(user.id, defaultDB);
         }
         console.log(`\x1b[32m[DB]\x1b[0m Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
     }
