@@ -4,54 +4,57 @@ const { GUILD_ID } = require("./config.json");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 
 module.exports = {
-    defaultDB : {
-        "id": user.id,
-        "name": user.username+"#"+user.discriminator,
-        "balance": 0,
-        "bank": 0,
-        "inventory": [],
-        "cooldowns": {
-            "daily": 0,
-            "weekly": 0,
-        },
-        "stats": {
-            "dailies": {
-                "claimed": 0,
-                "currentStreak": 0,
-                "longestStreak": 0,
+    // pass in a user as a parameter to get their database entry
+    getDefaultDB : async function(user) {
+        return {
+            "id": user.id,
+            "name": user.username+"#"+user.discriminator,
+            "balance": 0,
+            "bank": 0,
+            "inventory": [],
+            "cooldowns": {
+                "daily": 0,
+                "weekly": 0,
             },
-            "weeklies": {
-                "claimed": 0,
-                "currentStreak": 0,
-                "longestStreak": 0,
+            "stats": {
+                "dailies": {
+                    "claimed": 0,
+                    "currentStreak": 0,
+                    "longestStreak": 0,
+                },
+                "weeklies": {
+                    "claimed": 0,
+                    "currentStreak": 0,
+                    "longestStreak": 0,
+                },
+                "blackjack": {
+                    "wins": 0,
+                    "losses": 0,
+                    "ties": 0,
+                    "biggestWin": 0,
+                    "biggestLoss": 0,
+                },
+                "slots": {
+                    "wins": 0,
+                    "losses": 0,
+                    "biggestWin": 0,
+                    "biggestLoss": 0,
+                },
+                "flip": {
+                    "wins": 0,
+                    "losses": 0,
+                    "biggestWin": 0,
+                    "biggestLoss": 0,
+                },
+                "begs": {
+                    "wins": 0,
+                    "losses": 0,
+                },
+                "largestBalance": 0,
+                "largestWin": 0,
+                "largestLoss": 0
             },
-            "blackjack": {
-                "wins": 0,
-                "losses": 0,
-                "ties": 0,
-                "biggestWin": 0,
-                "biggestLoss": 0,
-            },
-            "slots": {
-                "wins": 0,
-                "losses": 0,
-                "biggestWin": 0,
-                "biggestLoss": 0,
-            },
-            "flip": {
-                "wins": 0,
-                "losses": 0,
-                "biggestWin": 0,
-                "biggestLoss": 0,
-            },
-            "begs": {
-                "wins": 0,
-                "losses": 0,
-            },
-            "largestBalance": 0,
-            "largestWin": 0,
-            "largestLoss": 0
-        },
+        }
     },
     initDB: async function(client) {
         const guild = client.guilds.cache.get(GUILD_ID);
@@ -74,7 +77,7 @@ module.exports = {
             const dbUser = await db.get(user.id);
             if (!dbUser) {
                 newUsers++;
-                await db.set(user.id, this.defaultDB);
+                await db.set(user.id, this.getDefaultDB(user));
                 console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
             }
         }
@@ -83,7 +86,7 @@ module.exports = {
     addNewDBUser: async function(user) {
         const dbUser = await db.get(user.id);
         if (!dbUser) {
-            await db.set(user.id, this.defaultDB);
+            await db.set(user.id, this.getDefaultDB(user));
         }
         console.log(`\x1b[32m[DB]\x1b[0m Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
     }
