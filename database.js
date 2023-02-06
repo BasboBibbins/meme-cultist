@@ -1,4 +1,3 @@
-const { disableValidators } = require("discord.js");
 const { QuickDB } = require("quick.db");
 const { GUILD_ID } = require("./config.json");
 
