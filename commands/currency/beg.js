@@ -39,8 +39,11 @@ module.exports = {
             await interaction.reply(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
             await db.add(`${interaction.user.id}.balance`, amount);
             await console.log(`\x1b[32m[INFO]\x1b[0m Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
+            await db.add(`${interaction.user.id}.begs.wins`, 1);
         } else {
             await interaction.reply(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
+            await db.add(`${interaction.user.id}.begs.losses`, 1);
         }
+        
     }
 };
