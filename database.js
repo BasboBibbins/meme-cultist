@@ -55,6 +55,9 @@ async function getDefaultDB(user) {
     }
 }
 module.exports = {
+    getDefaultDB: async function(user) {
+        return await getDefaultDB(user);
+        },
     initDB: async function(client) {
         const guild = client.guilds.cache.get(GUILD_ID);
 

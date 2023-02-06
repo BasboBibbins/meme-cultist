@@ -46,11 +46,17 @@ module.exports = {
         if (chance > 50) {
             await db.add(`${interaction.user.id}.balance`, bet);
             await interaction.reply(`Congratulations, you won **${bet}** ${CURRENCY_NAME}! You now have **${(dbUser.balance + bet)}** ${CURRENCY_NAME}.`);
-            await db.add(`${interaction.user.id}.flips`, 1);
+            await db.add(`${interaction.user.id}.flips.wins`, 1);
+            if (bet > dbUser.flips.biggestWin) {
+                await db.set(`${interaction.user.id}.flips.biggestWin`, bet);
+            }
         } else {
             await db.set(`${interaction.user.id}.balance`, dbUser.balance - bet);
             await interaction.reply(`You lose! I'll be taking **${bet}** ${CURRENCY_NAME} from you. You now have **${(dbUser.balance - bet)}** ${CURRENCY_NAME}.`);
-            await db.add(`${interaction.user.id}.flips`, 1);
+            await db.add(`${interaction.user.id}.flip.losses`, 1);
+            if (bet > dbUser.flips.biggestLoss) {
+                await db.set(`${interaction.user.id}.flips.biggestLoss`, bet);
+            }
         }
     }, 
 };
