@@ -7,7 +7,7 @@ const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
 const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE } = require("./config.json")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -118,7 +118,7 @@ else {
                     return
                 }
 
-                if (!interaction.member.roles.cache.has(role)){
+                if (TESTING_MODE && !interaction.member.roles.cache.has(TESTING_ROLE)){
                     await interaction.reply({content: "You do not have the right, o' you do not have the right.", ephemeral: true})
                     return
                 }

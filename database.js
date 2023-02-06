@@ -25,7 +25,6 @@ module.exports = {
         for (const user of users) {
             const dbUser = await db.get(user.id);
             if (!dbUser) {
-                console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
                 newUsers++;
                 await db.set(user.id, {
                     "id": user.id,
@@ -50,6 +49,7 @@ module.exports = {
                         "largestLoss": 0,
                     }
                 });
+                console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
             }
         }
         console.log(`\x1b[32m[DB]\x1b[0m Database loaded. ${newUsers?newUsers:"No"} new users in database.`)
@@ -57,7 +57,6 @@ module.exports = {
     addNewDBUser: async function(user) {
         const dbUser = await db.get(user.id);
         if (!dbUser) {
-            console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
             await db.set(user.id, {
                 "id": user.id,
                 "name": user.username+"#"+user.discriminator,
@@ -82,6 +81,7 @@ module.exports = {
                 }
             });
         }
+        console.log(`\x1b[32m[DB]\x1b[0m Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
     }
 
 }
