@@ -22,8 +22,6 @@ async function getDefaultDB(user) {
             },
             "weeklies": {
                 "claimed": 0,
-                "currentStreak": 0,
-                "longestStreak": 0,
             },
             "blackjack": {
                 "wins": 0,
