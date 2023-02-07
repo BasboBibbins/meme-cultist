@@ -1,4 +1,4 @@
-const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
+const {slashCommandBuilder, SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -9,11 +9,11 @@ module.exports = {
                 .setDescription('The options to choose from.')
                 .setRequired(true)),
     async execute(interaction) {
-        const options = interaction.options.getString('options');
-        if (options.contains(",")) {
-            const options = options.split(", ");
+        let options = interaction.options.getString('options');
+        if (options.includes(", ")) {
+            options = options.split(", ");
         } else {
-            const options = options.split(" ");
+            options = options.split(" ");
         }
         const rng = Math.floor(Math.random() * options.length);
         if (options.length < 2) return interaction.reply({content: "You need to provide at least two options!", ephemeral: true});
@@ -36,6 +36,11 @@ module.exports = {
             `It came to me in a dream, it's`
         ]
         const promptrng = Math.floor(Math.random() * prompt.length);
-        await interaction.reply(`${prompt[promptrng]} **${options[rng]}**`);
+        const embed = new EmbedBuilder()
+            .setAuthor({name: `${prompt[promptrng]} '${options[rng]}.'`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setColor(0x00FF00)
+            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`})
+            .setTimestamp();
+        await interaction.reply({embeds: [embed]});
     },
 };
