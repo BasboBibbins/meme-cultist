@@ -106,6 +106,45 @@ module.exports = {
             await db.set(user.id, defaultDB);
         }
         console.log(`\x1b[32m[DB]\x1b[0m Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+    },
+    deleteDBUser: async function(user) {
+        const dbUser = await db.get(user.id);
+        if (dbUser) {
+            await db.delete(user.id);
+        }
+        console.log(`\x1b[32m[DB]\x1b[0m Deleted ${user.username}#${user.discriminator} [${user.id}] from the database.`)
+    },
+    deleteDBValue: async function(user, value) {
+        const dbUser = await db.get(user.id);
+        if (dbUser) {
+            delete dbUser[value];
+            await db.set(user.id, dbUser);
+        }
+        console.log(`\x1b[32m[DB]\x1b[0m Deleted ${value} for ${user.username}#${user.discriminator} [${user.id}] from the database.`)
+    },
+    resetDBUser: async function(user) {
+        const dbUser = await db.get(user.id);
+        const defaultDB = await getDefaultDB(user);
+        if (dbUser) {
+            await db.set(user.id, defaultDB);
+        }
+        console.log(`\x1b[32m[DB]\x1b[0m Reset ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+    },
+    resetDBValue: async function(user, value) {
+        const dbUser = await db.get(user.id);
+        const defaultDB = await getDefaultDB(user);
+        if (dbUser) {
+            dbUser[value] = defaultDB[value];
+            await db.set(user.id, dbUser);
+        }
+        console.log(`\x1b[32m[DB]\x1b[0m Reset ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+    },
+    setDBValue: async function(user, value, newValue) {
+        const dbUser = await db.get(user.id);
+        if (dbUser) {
+            dbUser[value] = newValue;
+            await db.set(user.id, dbUser);
+        }
+        console.log(`\x1b[32m[DB]\x1b[0m Set ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
     }
-
 }

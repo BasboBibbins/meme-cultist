@@ -65,7 +65,7 @@ module.exports = {
         const dbUser = await db.get(user.id);
         if (!dbUser) {
             console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${user.username} (${user.id}), creating one...`)
-            await addNewDBUser(user.id);
+            await addNewDBUser(user);
         }
 
         switch (subcommand) {

@@ -15,29 +15,51 @@ module.exports = {
         const dbUser = await db.get(user.id);
         if (!dbUser) {
             console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${user.username} (${user.id}), creating one...`)
-            await addNewDBUser(user.id);
+            await addNewDBUser(user);
         }
-        const cooldown = 10000; // 8.64e+7 
+
+        const cooldown = 8.64e+7; // 24 hours
+        const db_currentStreak = `${user.id}.stats.dailies.currentStreak`;
+        const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
+
         if (dbUser.cooldowns.daily > Date.now()) {
             const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
-            return interaction.reply({content: `You have already claimed your daily ${CURRENCY_NAME}, please wait **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s** before claiming again.`, ephemeral: true});
+            const embed = new EmbedBuilder()
+                .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})
+                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
+                .setColor(0xFF0000)
+                .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                .setTimestamp();
+            return await interaction.reply({embeds: [embed]});
         }
 
-        const currentStreak = await db.get(`${user.id}.dailies.currentStreak`) || 0;
+        let streakprompt = ``;
+        if (Date.now() - dbUser.cooldowns.daily > cooldown) {
+            const currentStreak = await db.get(db_currentStreak);
+            if (currentStreak > 1) streakprompt = `\nYou missed a day, so your streak of **${currentStreak}** has been reset!`;
+            await db.set(db_currentStreak, 1);
+        } else {
+            await db.add(db_currentStreak, 1);
+        }
 
-        const bonus = currentStreak > 0?Math.floor(currentStreak * 10) + 1:0;
-        const amount = Math.floor(Math.random() * 100) + 1;
-        dbUser.balance += amount + bonus;
-        dbUser.cooldowns.daily = Date.now() + cooldown;
-        await db.set(user.id, dbUser);
+        let streak = await db.get(db_currentStreak);
+        streak = streak || 1;
+
+        if (streak > dbUser.stats.dailies.longestStreak) await db.set(db_longestStreak, streak);
+
+        const bonus = streak > 1?Math.floor(Math.random() * (streak * 10)) + 1:0;
+        const amount = Math.floor(Math.random() * 100) + 100;
+        await db.add(`${user.id}.balance`, amount + bonus);
+        await db.add(`${user.id}.stats.dailies.claimed`, 1);
+        await db.set(`${user.id}.cooldowns.daily`, Date.now() + cooldown);
+
         const embed = new EmbedBuilder()
             .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})
-            .setDescription(`${currentStreak > 0?`You have claimed your daily ${CURRENCY_NAME} for **${currentStreak}** days in a row!\n`:``} You have received **${(amount + bonus)}** ${CURRENCY_NAME}!`)
+            .setDescription(`You claimed your daily ${CURRENCY_NAME} and received **${(amount + bonus)}** ${CURRENCY_NAME}!${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
             .setColor(0x00FF00)
-            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`})
+            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
         await interaction.reply({embeds: [embed]});
-        await db.add(`${user.id}.dailies.currentStreak`, 1);
-        if (currentStreak > db.get(`${user.id}.dailies.longestStreak`)) await db.set(`${user.id}.dailies.longestStreak`, currentStreak);
+        console.log(`\x1b[32m[INFO]\x1b[0m ${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${amount + bonus} (${amount} + ${bonus}) ${CURRENCY_NAME}.\n\x1b[32m[INFO]\x1b[0m Current streak: ${streak} | Longest streak: ${await db.get(db_longestStreak)}`);
     },
 };
