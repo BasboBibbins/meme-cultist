@@ -54,9 +54,10 @@ module.exports = {
         hand.push(await this.dealCards());
         return hand;
     },
-    dealerChoice: async function (hand) {
-        let total = await getHandValue(hand);
-        if (total < 17) {
+    dealerChoice: async function (dealerHand, playerHand) {
+        let dealerTotal = await getHandValue(dealerHand);
+        let playerTotal = await getHandValue(playerHand);
+        if (dealerTotal < 17 && (dealerTotal < playerTotal)) {
             return "hit";
         }
         return "stand";
