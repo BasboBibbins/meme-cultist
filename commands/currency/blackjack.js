@@ -28,6 +28,8 @@ module.exports = {
         let bet = await parseBet(option, user.id);
         const dbUser = await db.get(user.id);
 
+        console.log(`\x1b[34m[INFO]\x1b[0m ${user.username}#${user.discriminator} (${user.id}) initialized a game of blackjack with a bet of ${bet} ${CURRENCY_NAME}.`)
+
         if (!dbUser) {
             await addNewDBUser(user.id);
             return interaction.reply({ content: `You don't have an account! Please use \`/daily\` to create one.`, ephemeral: true });
@@ -110,78 +112,64 @@ module.exports = {
                         embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                         await i.update({ embeds: [embed] });
                     }
-                } else if (i.customId === 'stand') {
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
-                    await i.update({ embeds: [embed], components: [] });
-                    if ((dealerTotal > playerTotal) || (dealerTotal == 21)) {
-                        console.log(`Dealer wins!`);
-                        collector.stop('lose');
-                    } 
-                    while (await dealerChoice(dealerCards) === 'hit') {
-                        console.log(`Dealer choice is hit.`);
-                        dealerCards = await bj.hit(dealerCards);
-                        dealerTotal = await bj.getHandValue(dealerCards);
-                        console.log(`Dealer: ${dealerCards.map(card => card.name).join(' ')} = ${dealerTotal}`);
-                        console.log(`status: ${await bj.checkHand(dealerCards)}`);
-                        embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
-                        await wait(1000);
-                    }
-                    if (await dealerChoice(dealerCards) === 'stand') {
-                        console.log(`Dealer choice is stand.`);
-                        if (dealerTotal > playerTotal) {
-                            collector.stop('lose');
-                        } else if (dealerTotal < playerTotal) {
-                            collector.stop('win');
-                        } else if (dealerTotal === playerTotal) {
-                            collector.stop('tie');
-                        }
-                    }
-                } else if (i.customId === 'double') {
-                    if (dbUser.balance >= bet) {
-                        await db.sub(`${user.id}.balance`, bet);
+                } else if (i.customId === 'stand' || i.customId === 'double') {
+                    if (i.customId === 'double') {
                         bet = bet * 2;
-                        embed.setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} (Double Down)` });
-                        await i.update({ embeds: [embed] });
+                        await db.sub(`${user.id}.balance`, bet / 2);
+                        
                         playerCards = await bj.hit(playerCards);
                         playerTotal = await bj.getHandValue(playerCards);
                         console.log(`${user.username}: ${playerCards.map(card => card.name).join(' ')} = ${playerTotal}`);
                         console.log(`status: ${await bj.checkHand(playerCards)}`);
                         if (await bj.checkHand(playerCards) !== 'safe') {
                             let reason = await bj.checkHand(playerCards);
-                            collector.stop(reason);
+                            return collector.stop(reason);
                         } else {
                             embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
-                            await i.update({ embeds: [embed], components: [] });
-                            if ((dealerTotal > playerTotal) || (dealerTotal == 21)) {
-                                console.log(`Dealer wins!`);
-                                collector.stop('lose');
-                            } 
-                            while (await dealerChoice(dealerCards) === 'hit') {
-                                console.log(`Dealer choice is hit.`);
-                                dealerCards = await bj.hit(dealerCards);
-                                dealerTotal = await bj.getHandValue(dealerCards);
-                                console.log(`Dealer: ${dealerCards.map(card => card.name).join(' ')} = ${dealerTotal}`);
-                                console.log(`status: ${await bj.checkHand(dealerCards)}`);
-                                embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
-                                await wait(1000);
-                            }
-                            if (await dealerChoice(dealerCards) === 'stand') {
-                                console.log(`Dealer choice is stand.`);
-                                if (dealerTotal > playerTotal) {
-                                    console.log(`Dealer wins!`);
-                                    collector.stop('lose');
-                                } else if (dealerTotal < playerTotal) {
-                                    console.log(`${user.username} wins!`);
-                                    collector.stop('win');
-                                } else if (dealerTotal === playerTotal) {
-                                    console.log(`It's a tie!`);
-                                    collector.stop('tie');
-                                }
-                            }
+                            await interaction.editReply({ embeds: [embed] });
+                            await wait(1000);
                         }
-                    } else {
-                        embed.setDescription(`You don't have enough ${CURRENCY_NAME} to double down!`);
-                        await i.update({ embeds: [embed] });
+                    }
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                    await interaction.editReply({ embeds: [embed], components: [] });
+                    await wait(1000);
+                    if ((dealerTotal > playerTotal) || (dealerTotal == 21)) {
+                        console.log(`Dealer wins!`);
+                        return collector.stop('lose');
+                    } 
+                    while (await dealerChoice(dealerCards) === 'hit' && (await bj.checkHand(dealerCards) === 'safe')) {
+                        console.log(`Dealer choice is hit.`);
+                        dealerCards = await bj.hit(dealerCards);
+                        dealerTotal = await bj.getHandValue(dealerCards);
+                        console.log(`Dealer: ${dealerCards.map(card => card.name).join(' ')} = ${dealerTotal}`);
+                        console.log(`status: ${await bj.checkHand(dealerCards)}`);
+                        embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                        await interaction.editReply({ embeds: [embed] });
+                        await wait(1000);
+                    }
+                    if (await bj.checkHand(dealerCards) !== 'safe') {
+                        let reason = await bj.checkHand(dealerCards);
+                        if (reason === 'bust') {
+                            console.log(`Dealer busts!`);
+                            return collector.stop('win');
+                        } else if (reason === 'blackjack') {
+                            console.log(`Dealer has blackjack!`);
+                            return collector.stop('lose');
+                        }
+                    }
+                    if (await dealerChoice(dealerCards) === 'stand') {
+                        console.log(`Dealer choice is stand.`);
+                        console.log(`Dealer: ${dealerCards.map(card => card.name).join(' | ')} = ${dealerTotal}\n${user.username}: ${playerCards.map(card => card.name).join(' | ')} = ${playerTotal}`);
+                        if (dealerTotal > playerTotal) {
+                            console.log(`Dealer wins!`);
+                            return collector.stop('lose');
+                        } else if (dealerTotal < playerTotal) {
+                            console.log(`${user.username} wins!`);
+                            return collector.stop('win');
+                        } else if (dealerTotal === playerTotal) {
+                            console.log(`It's a tie!`);
+                            return collector.stop('tie');
+                        }
                     }
                 } 
             });
@@ -191,7 +179,7 @@ module.exports = {
                     await db.add(`${user.id}.balance`, winnings);
                     await db.add(`${stats}.wins`, 1);
                     await db.add(`${stats}.blackjacks`, 1);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`Blackjack!`);
                     embed.setColor(0x00AE86);
                     await interaction.editReply({ embeds: [embed], components: [] });
@@ -200,7 +188,7 @@ module.exports = {
                     winnings = bet;
                     await db.add(`${user.id}.balance`, winnings);
                     await db.add(`${stats}.wins`, 1);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou win! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou win! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`You win!`);
                     embed.setColor(0x00AE86);
                     await interaction.editReply({ embeds: [embed], components: [] });
@@ -215,21 +203,21 @@ module.exports = {
                 }
                 else if (reason === 'bust') {
                     await db.add(`${stats}.losses`, 1);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`You busted!`);
                     embed.setColor(0xFF0000);
                     await interaction.editReply({ embeds: [embed], components: [] });
                 }
                 else if (reason === 'lose') {
                     await db.add(`${stats}.losses`, 1);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou lose! You lose **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou lose! You lose **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`You lose!`);
                     embed.setColor(0xFF0000);
                     await interaction.editReply({ embeds: [embed], components: [] });
                 }
                 else if (reason === 'time') {
                     await db.add(`${stats}.losses`, 1);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou didn't respond in time, so you forfeit your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou didn't respond in time, so you forfeit your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`Time's up! You forfeit.`);
                     embed.setColor(0xFF0000);
                     await interaction.editReply({ embeds: [embed], components: [] });
@@ -240,16 +228,16 @@ module.exports = {
             await db.add(`${user.id}.balance`, winnings);
             await db.add(`${stats}.wins`, 1);
             await db.add(`${stats}.blackjacks`, 1);
-            embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${bet * 1.5}** ${CURRENCY_NAME}!\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+            embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${bet * 1.5}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
             embed.setTitle(`Blackjack!`);
             embed.setColor(0x00AE86);
-            await interaction.editReply({ embeds: [embed], components: [] });
+            return await interaction.reply({ embeds: [embed], components: [] });
         } else if (await bj.checkHand(playerCards) === 'bust') {
             await db.add(`${stats}.losses`, 1);
-            embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${dbUser.balance}** ${CURRENCY_NAME}.`);
+            embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
             embed.setTitle(`You busted!`);
             embed.setColor(0xFF0000);
-            await interaction.editReply({ embeds: [embed], components: [] });
+            return await interaction.reply({ embeds: [embed], components: [] });
         }
     }
 }
