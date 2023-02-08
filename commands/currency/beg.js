@@ -30,6 +30,8 @@ module.exports = {
             `I'm not your personal ATM!`,
             `Yeah, I'm thinking it's over for you.`,
             `S T F U`,
+            `you don't have the right, O you don't have the right\ntherefore you don't have the right, O you don't have the right`,
+            
 
         ]
 

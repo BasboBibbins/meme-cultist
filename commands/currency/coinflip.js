@@ -1,4 +1,4 @@
-const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
+const {slashCommandBuilder, SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 
@@ -42,21 +42,32 @@ module.exports = {
 
         const chance = Math.floor(Math.random() * 100) + 1;
 
+        const embed = new EmbedBuilder()
+            .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setTitle('Slots Paytable')
+            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setTimestamp();
 
         if (chance > 50) {
+            embed.setColor(0x00FF00);
+            embed.setTitle('Congratulations!')
+            embed.setDescription(`You won **${bet}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet)}** ${CURRENCY_NAME}.`);
             await db.add(`${interaction.user.id}.balance`, bet);
-            await interaction.reply(`Congratulations, you won **${bet}** ${CURRENCY_NAME}! You now have **${(dbUser.balance + bet)}** ${CURRENCY_NAME}.`);
             await db.add(`${interaction.user.id}.stats.flip.wins`, 1);
             if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestWin`)) {
                 await db.set(`${interaction.user.id}.stats.flip.biggestWin`, bet);
             }
+            await interaction.reply({embeds: [embed]});
         } else {
-            await db.set(`${interaction.user.id}.balance`, dbUser.balance - bet);
-            await interaction.reply(`You lose! I'll be taking **${bet}** ${CURRENCY_NAME} from you. You now have **${(dbUser.balance - bet)}** ${CURRENCY_NAME}. ${bet > dbUser.balance ? `You're now broke!` : ''}`);
+            embed.setColor(0xFF0000);
+            embed.setTitle('You lose!')
+            embed.setDescription(`I'll be taking **${bet}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet)}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? `You're now broke!` : ''}`);
+            await db.sub(`${interaction.user.id}.balance`, bet);
             await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
             if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
                 await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);
             }
+            await interaction.reply({embeds: [embed]});
         }
     }, 
 };
