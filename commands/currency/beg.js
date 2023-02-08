@@ -1,4 +1,4 @@
-const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
+const { slashCommandBuilder, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 
@@ -11,7 +11,9 @@ module.exports = {
         .setName("beg")
         .setDescription(`Beg for ${CURRENCY_NAME}.`),
     async execute(interaction) {
+        const user = interaction.user;
         const dbUser = await db.get(interaction.user.id);
+        const stats = `${user.id}.stats.begs`;
         if (!dbUser) {
             console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
             await addNewDBUser(interaction.user.id);
@@ -27,22 +29,30 @@ module.exports = {
             `Get a job!`,
             `I'm not your personal ATM!`,
             `Yeah, I'm thinking it's over for you.`,
-            `S T F U`
+            `S T F U`,
+
         ]
 
         if (dbUser.balance > 0) {
             await interaction.reply(`You already have ${CURRENCY_NAME}!`);
             return;
         }
+
+        const embed = new EmbedBuilder()
+            .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setColor("RANDOM")
+            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setTimestamp();
+
         
         if (chance > 75) {
             await interaction.reply(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
-            await db.add(`${interaction.user.id}.balance`, amount);
+            await db.add(`${user.id}.balance`, amount);
             await console.log(`\x1b[32m[INFO]\x1b[0m Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
-            await db.add(`${interaction.user.id}.begs.wins`, 1);
+            await db.add(`${stats}.wins`, 1);
         } else {
             await interaction.reply(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
-            await db.add(`${interaction.user.id}.begs.losses`, 1);
+            await db.add(`${stats}.lossses`, 1);
         }
         
     }
