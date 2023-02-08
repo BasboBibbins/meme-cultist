@@ -124,6 +124,7 @@ else {
                 }
             
                 try {
+                    console.log(`\x1b[32m[INFO]\x1b[0m ${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     await command.execute(interaction);
                 } catch (error) {
                     console.error(error);
