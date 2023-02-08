@@ -52,7 +52,7 @@ module.exports = {
             }
         } else {
             await db.set(`${interaction.user.id}.balance`, dbUser.balance - bet);
-            await interaction.reply(`You lose! I'll be taking **${bet}** ${CURRENCY_NAME} from you. You now have **${(dbUser.balance - bet)}** ${CURRENCY_NAME}.`);
+            await interaction.reply(`You lose! I'll be taking **${bet}** ${CURRENCY_NAME} from you. You now have **${(dbUser.balance - bet)}** ${CURRENCY_NAME}. ${bet > dbUser.balance ? `You're now broke!` : ''}`);
             await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
             if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
                 await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);

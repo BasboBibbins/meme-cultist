@@ -143,6 +143,9 @@ module.exports = {
             winnings = winnings * (cherryCount);
             await db.add(`${user.id}.balance`, winnings);
             await db.add(`${user.id}.stats.slots.wins`, 1);
+            if (await db.get(`${user.id}.stats.slots.biggestWin`) < winnings) {
+                await db.set(`${user.id}.stats.slots.biggestWin`, winnings);
+            }
             slots.setColor(0x00FF00)
                 .setTimestamp()
                 .setTitle('You won!')
@@ -150,10 +153,13 @@ module.exports = {
             await interaction.editReply({ embeds: [slots] });
         } else {
             await db.add(`${user.id}.stats.slots.losses`, 1);
+            if (await db.get(`${user.id}.stats.slots.biggestLoss`) < bet) {
+                await db.set(`${user.id}.stats.slots.biggestLoss`, bet);
+            }
             slots.setColor(0xFF0000)
                 .setTitle('You lost!')
                 .setTimestamp()
-                .setDescription(`${desc}\n\nYou lost **${winnings}** ${CURRENCY_NAME}. \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}. ${await db.get(`${user.id}.balance`) < 0 ? `You are now broke!` : ''}`);
+                .setDescription(`${desc}\n\nYou lost **${winnings}** ${CURRENCY_NAME}. \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}. ${await db.get(`${user.id}.balance`) <= 0 ? `You are now broke!` : ''}`);
             await interaction.editReply({ embeds: [slots] });
         }
         console.log(`\x1b[32m[INFO]\x1b[0m ${user.username}#${user.discriminator} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
