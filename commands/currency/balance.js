@@ -1,4 +1,4 @@
-const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
+const {slashCommandBuilder, SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 
@@ -21,6 +21,22 @@ module.exports = {
             console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${user.username} (${user.id}), creating one...`)
             await addNewDBUser(user);
         }
-        await interaction.reply({content: `**${user.username}** has **${dbUser.balance}** ${CURRENCY_NAME} in their wallet and **${dbUser.bank}** ${CURRENCY_NAME} in their bank.`});
+        const fetchedUser = await user.fetch()
+        console.log(fetchedUser)
+        let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : "#FFFFFF";
+        
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `${user.username}'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(`${accentColor}`)
+            .addFields(
+                { name: "Wallet", value: `${dbUser.balance} ${CURRENCY_NAME}`, inline: true },
+                { name: "Bank", value: `${dbUser.bank} ${CURRENCY_NAME}`, inline: true },
+            )
+            .setTimestamp()
+            .setFooter( interaction.options.getUser('user') ? 
+                { text: `Requested by ${interaction.user.username}#${interaction.user.discriminator}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) } : 
+                { text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})}
+            );
+        await interaction.reply({embeds: [embed]});
     },
 };
