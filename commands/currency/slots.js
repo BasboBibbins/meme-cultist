@@ -88,8 +88,8 @@ module.exports = {
         await db.set(`${user.id}.balance`, await db.get(`${user.id}.balance`) - bet);
 
         const slots = new EmbedBuilder()
-            .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})            
-            .setColor(0xFFFF00)
+            .setAuthor({name: `${user.username+"#"+user.discriminator} | Slots`, iconURL: user.displayAvatarURL({dynamic: true})})            
+            .setColor(0x00AE86)
             .setTitle('Good luck!')
             .setDescription(`${slotsDefaultEmoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`)
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME}` })
