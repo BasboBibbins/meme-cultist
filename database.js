@@ -27,6 +27,7 @@ async function getDefaultDB(user) {
                 "wins": 0,
                 "losses": 0,
                 "ties": 0,
+                "blackjacks": 0,
                 "biggestWin": 0,
                 "biggestLoss": 0,
             },
