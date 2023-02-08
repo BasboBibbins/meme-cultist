@@ -40,19 +40,21 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-            .setColor("RANDOM")
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
-
-        
+            
         if (chance > 75) {
-            await interaction.reply(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
+            embed.setColor("#00ff00");
+            embed.setDescription(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
             await db.add(`${user.id}.balance`, amount);
             await console.log(`\x1b[32m[INFO]\x1b[0m Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
             await db.add(`${stats}.wins`, 1);
+            await interaction.reply({embeds: [embed]});
         } else {
-            await interaction.reply(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
+            embed.setColor("#ff0000");
+            embed.setDescription(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
             await db.add(`${stats}.lossses`, 1);
+            await interaction.reply({embeds: [embed]});
         }
         
     }
