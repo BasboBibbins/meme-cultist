@@ -33,6 +33,7 @@ async function getDefaultDB(user) {
             "slots": {
                 "wins": 0,
                 "losses": 0,
+                "jackpots": 0,
                 "biggestWin": 0,
                 "biggestLoss": 0,
             },
@@ -46,9 +47,7 @@ async function getDefaultDB(user) {
                 "wins": 0,
                 "losses": 0,
             },
-            "largestBalance": 0,
-            "largestWin": 0,
-            "largestLoss": 0
+            "largestBalance": 0
         },
     }
 }

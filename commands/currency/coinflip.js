@@ -35,7 +35,7 @@ module.exports = {
             await interaction.reply(`You must flip at least 1 ${CURRENCY_NAME}!`);
             return;
         }
-        if (bet > dbUser.balance) {
+        if (bet > await db.get(`${interaction.user.id}.balance`)) {
             await interaction.reply(`You don't have enough ${CURRENCY_NAME}!`);
             return;
         }
@@ -46,16 +46,16 @@ module.exports = {
         if (chance > 50) {
             await db.add(`${interaction.user.id}.balance`, bet);
             await interaction.reply(`Congratulations, you won **${bet}** ${CURRENCY_NAME}! You now have **${(dbUser.balance + bet)}** ${CURRENCY_NAME}.`);
-            await db.add(`${interaction.user.id}.flips.wins`, 1);
-            if (bet > dbUser.flips.biggestWin) {
-                await db.set(`${interaction.user.id}.flips.biggestWin`, bet);
+            await db.add(`${interaction.user.id}.stats.flip.wins`, 1);
+            if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestWin`)) {
+                await db.set(`${interaction.user.id}.stats.flip.biggestWin`, bet);
             }
         } else {
             await db.set(`${interaction.user.id}.balance`, dbUser.balance - bet);
             await interaction.reply(`You lose! I'll be taking **${bet}** ${CURRENCY_NAME} from you. You now have **${(dbUser.balance - bet)}** ${CURRENCY_NAME}.`);
-            await db.add(`${interaction.user.id}.flip.losses`, 1);
-            if (bet > dbUser.flips.biggestLoss) {
-                await db.set(`${interaction.user.id}.flips.biggestLoss`, bet);
+            await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
+            if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
+                await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);
             }
         }
     }, 
