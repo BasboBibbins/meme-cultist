@@ -6,7 +6,7 @@ module.exports = {
     parseBet: async function (bet, id) {
         const dbUser = await db.get(id);
         const balance = dbUser.balance;
-        if (bet == "all") {
+        if (bet == "all" || bet == "max" || bet == "maxbet") {
             return balance;
         }
         if (bet == "half") {
