@@ -8,6 +8,7 @@ const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
 const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID } = require("./config.json")
+const { trackStart, trackEnd } = require("./utils/musicPlayer")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -37,8 +38,16 @@ const client = new Client({
 client.slashcommands = new Collection()
 client.player = new Player(client, {
     ytdlOptions: {
+        filter: "audioonly",
         quality: "highestaudio",
-        highWaterMark: 1 << 25
+        highWaterMark: 1 << 25,
+        opusEncoded: true,
+        encoderArgs: ['-af', 'bass=g=10,dynaudnorm=f=200'],
+        requestOptions: {
+            headers: {
+                cookie: process.env.COOKIE
+            }
+        }
     }
 })
 
@@ -145,6 +154,15 @@ else {
                 console.error(error);
             }
         }
+    });
+
+    client.player.events.on("playerStart", (queue, track) => {
+        console.log(`\x1b[32m[INFO]\x1b[0m Now playing ${track.title} in ${queue.guild.name}!`);
+        trackStart(client, queue, track);
+    });
+    client.player.events.on("playerFinish", (queue, track) => {
+        console.log(`\x1b[32m[INFO]\x1b[0m Now playing ${track.title} in ${queue.guild.name}!`);
+        trackStart(client, queue, track);
     });
 
     client.login(TOKEN)
