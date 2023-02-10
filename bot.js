@@ -9,6 +9,7 @@ const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
 const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
+const { welcome, goodbye } = require("./utils/welcome")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -102,13 +103,17 @@ else {
     })
 
     client.on(Events.GuildMemberAdd, async member => {
-        var role = member.guild.roles.cache.find(role => role.name === DEFAULT_ROLE);
-        if (!role) return;
-        member.roles.add(role)
-        const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome');
-        if (!channel) return;
-        channel.send(`**Welcome to the Meme Cult ${member} Now get out of my discord fucking normie.**`);
-        addNewDBUser(member);
+        if (member.guild.id == GUILD_ID) {
+            await welcome(client, member);
+        }
+    })
+
+    client.on(Events.GuildMemberRemove, async member => {
+        console.log(`${member.guild.id} == ${GUILD_ID} = ${member.guild.id == GUILD_ID}`)
+        if (member.guild.id == GUILD_ID) {
+            console.log("Member left")
+            await goodbye(client, member);
+        }
     })
 
     client.on(Events.InteractionCreate, async interaction => {
@@ -167,43 +172,10 @@ else {
     client.login(TOKEN)
 
     client.on(Events.MessageCreate, async (message) => {
-        if (message.author.bot) return
+        if (message.author.bot) return;
 
         if (message.content.startsWith(">")) {
             //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``. Discord is gay and forced me at gunpoint to make this change.")})
         };
-
-        if (message.channel.id == BOT_CHANNEL){
-            message.channel.sendTyping().then(async () => {
-                let messages = Array.from(await message.channel.messages.fetch({
-                    limit: PAST_MESSAGES,
-                    before: message.id
-                }))
-                messages = messages.map(m=>m[1])
-                messages.unshift(message)
-                
-                let users = [...new Set([...messages.map(m=>{m.author.username}), client.user.username])] 
-        
-                let lastUser = users.pop()
-            
-                let prompt = `The following is a conversation between ${users.join(", ")}, and ${lastUser}.\n\n`
-            
-                for (let i = messages.length - 1; i >= 0; i--) {
-                    const m = messages[i]
-                    prompt += `${m.author.username}: ${m.content}\n`
-                }
-                prompt += `${client.user.username}:`
-                console.log("prompt:", prompt)
-            
-                const response = await openai.createCompletion({
-                    prompt,
-                    model: "text-davinci-003",
-                    max_tokens: 500
-                })
-            
-                console.log("response", response.data.choices[0].text)
-                await message.channel.send(response.data.choices[0].text)
-            }
-        )}
     })
 }
