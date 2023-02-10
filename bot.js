@@ -156,13 +156,12 @@ else {
         }
     });
 
-    client.player.events.on("playerStart", (queue, track) => {
+    client.player.events.on("playerStart", async (queue, track) => {
         console.log(`\x1b[32m[INFO]\x1b[0m Now playing ${track.title} in ${queue.guild.name}!`);
-        trackStart(client, queue, track);
+        await trackStart(client, queue, track);
     });
-    client.player.events.on("playerFinish", (queue, track) => {
-        console.log(`\x1b[32m[INFO]\x1b[0m Now playing ${track.title} in ${queue.guild.name}!`);
-        trackStart(client, queue, track);
+    client.player.events.on("playerFinish", async (queue, track) => {
+        console.log(`\x1b[32m[INFO]\x1b[0m Finished playing ${track.title} in ${queue.guild.name}!`);
     });
 
     client.login(TOKEN)

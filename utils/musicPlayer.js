@@ -6,7 +6,7 @@ module.exports = {
         //console.log(queue)
         //console.log(track)
         const time = track.duration.split(":").reverse().reduce((prev, curr, i) => prev + curr * Math.pow(60, i), 0) * 1000;    
-        const channel = queue.options.metadata.channel;
+        const channel = queue.metadata.channel;
         const requestedBy = queue.options.metadata.requestedBy;
         
         const row = new ActionRowBuilder()
@@ -35,9 +35,8 @@ module.exports = {
         .setColor(0x00AE86)
         .setFooter({ text: `Meme Cultist | Version ${require('../package.json').version}`, iconURL: client.user.displayAvatarURL({dynamic: true}) })
         .setTimestamp();
-
-        await channel.send({embeds: [player], components: [row]});
-
+            
+        let msg = await channel.send({embeds: [player], components: [row]});
 
         const filter = i => {
             console.log(`${i.member.voice.channelId} === ${queue.dispatcher.channel.id} = ${i.member.voice.channelId === queue.dispatcher.channel.id}`)
@@ -47,8 +46,6 @@ module.exports = {
     
         collector.on('collect', async i => {
             if (!filter) return; 
-            if (!i.isButton()) return;
-            await wait(1000);
             console.log(`${i.member.user.username} pressed ${i.customId}`);
             if (i.customId === "pause") {
                 console.log(queue.node.isPlaying())
@@ -59,14 +56,13 @@ module.exports = {
                     row.components[0].setLabel("Resume").setEmoji("▶️");
                     await i.update({embed: [player], components: [row]});
                 } else {
-                    console.log("resumed");
-                    await queue.node.resume();
-                    player.setTitle(`▶️ Song Resumed`);
-                    row.components[0].setLabel("Pause").setEmoji("⏸️");
-                    await i.update({embed: [player], components: [row]});
+                        console.log("resumed");
+                        await queue.node.resume();
+                        await msg.delete();
+                        return await collector.stop();
                 }
             } else if (i.customId === "skip") {
-                const success = queue.skip();
+                const success = queue.node.skip();
                 if (success) {
                     for (let i = 0; i < row.components.length; i++) {
                         row.components[i].setDisabled(true);
@@ -75,12 +71,13 @@ module.exports = {
                     await collector.stop();
                 }
             } else if (i.customId === "stop") {
-                queue.destroy();
-                for (let i = 0; i < row.components.length; i++) {
-                    row.components[i].setDisabled(true);
+                try {
+                    await queue.delete();
+                    await msg.delete();
+                    return await collector.stop();
+                } catch (e) {
+                    console.log(e);
                 }
-                await i.update({embed: [player], components: [row]});
-                await collector.stop();
             }
         });
     
