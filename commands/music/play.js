@@ -28,9 +28,14 @@ module.exports = {
         const song = interaction.options.getString("song");
         const queue = player.nodes.create(interaction.guild, {
             leaveOnEnd: true,
-            leaveOnStop: false,
+            leaveOnStop: true,
             repeatMode: 0,
             intialVolume: 100,
+            equalizer: [
+                { band: 0, gain: 0.25 },
+                { band: 1, gain: 0.25 },
+                { band: 2, gain: 0.25 }
+            ],
             metadata: {
                 channel: interaction.channel,
                 requestedBy: interaction.user
