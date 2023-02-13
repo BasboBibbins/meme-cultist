@@ -1,8 +1,12 @@
 const fs = require("fs");
 
 async function logToTxt(message, type) {
-    if (typeof message !== "string") message = JSON.stringify(message);
-    message = message.replace(/\x1b\[\d+m/g, "");
+    if (type == "error") {
+        message = message.stack || message;
+    } else if (typeof message !== "string") {
+        message = JSON.stringify(message);
+        message = message.replace(/\x1b\[\d+m/g, "");
+    }
     const date = new Date();
     const log = `[${date.toLocaleString()}] [${type.toUpperCase()}] ${message}\n`;
     const dir = `./logs/${date.toLocaleDateString("ja-JP").split("/")[0]}/${date.toLocaleDateString("ja-JP").split("/")[1]}`; // japan because format is yyyy/mm/dd, not a weeb!
@@ -56,7 +60,7 @@ module.exports = {
         logToTxt(message, "warn");
     },
     error: (message) => {
-        console.log(`\x1b[31m[ERROR]\x1b[0m ${message}`);
+        console.log(`\x1b[31m[ERROR]\x1b[0m ${message.stack || message}`);
         logToTxt(message, "error");
     }
 }

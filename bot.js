@@ -61,7 +61,8 @@ if (fs.existsSync("./db/users.sqlite")) {
 }
 
 process.on("unhandledRejection", (reason, p) => {
-    logger.error(`Unhandled Rejection at: Promise ${p} reason: ${reason}`);
+    logger.error(`Unhandled Promise Rejection! Reason: ${reason}`);
+    logger.error(p.catch((err) => logger.error(err)));
 })
 .on("uncaughtException", (err) => {
     logger.error(`Uncaught Exception: ${err}`);
@@ -184,9 +185,8 @@ else {
             }
         }
     });
-    client.player.events.on("audioTrackAdd", async (queue, track) => {
-        logger.log(`Added \x1b[30m${track.title}\x1b[0m to ${queue.guild.name}'s queue!`);
-        logger.log(`Current queue: \n${queue.tracks.map((track, i) => `${i + 1}. ${track.title} by ${track.author} - ${track.duration}`).join("\n")}`);
+    client.player.events.on("tracksAdd", async (queue, t) => {
+        logger.log(`${t.length > 1 ? `${t.length} tracks` : `${t[0].title}`} added to queue in ${queue.guild.name}!`);
     });
     client.player.events.on("playerStart", async (queue, track) => {
         logger.log(`Now playing ${track.title} in ${queue.guild.name}!`);
@@ -194,12 +194,15 @@ else {
     });
     client.player.events.on("playerFinish", async (queue, track) => {
         logger.log(`Finished playing ${track.title} in ${queue.guild.name}!`);
-        if (queue.isEmpty()) {
-            logger.log(`Queue is empty in ${queue.guild.name}!`);
-        }
+        await trackEnd(client, queue, track);
+    });
+    client.player.events.on("channelEmpty", async (queue) => {
+        logger.log(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
+        await queue.player.destroy();
     });
     client.player.events.on("error", async (queue, error) => {
         logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
+        logger.error(error.stack);
     });
 
     client.login(TOKEN)
