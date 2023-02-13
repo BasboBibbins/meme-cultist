@@ -81,7 +81,7 @@ module.exports = {
                         
                         return favicon ? `https://www.google.com/s2/favicons?domain=${favicon[0]}` : interaction.client.user.displayAvatarURL(); // search google cache for favicon. if none, use the bot's avatar.
                     }
-                    console.log(`\x1b[36m[Booru]\x1b[0m ${interaction.user.tag} (${interaction.user.id}) searched for \x1b[33m${tags.join(", ")}\x1b[0m on \x1b[33m${post.booru.site.domain}\x1b[0m.`)
+                    logger.log(`${interaction.user.tag} (${interaction.user.id}) searched for \x1b[33m${tags.join(", ")}\x1b[0m on \x1b[33m${post.booru.site.domain}\x1b[0m.`)
                     const embed = new EmbedBuilder()
                         .setColor(0x00AE86)
                         .setAuthor({name: post.booru.site.domain, iconURL: getFavicon(post.booru.site.domain), url: post.fileUrl})
@@ -100,7 +100,7 @@ module.exports = {
 
             })
             .catch(err => {
-                console.log(err);
+                logger.log(err);
                 interaction.reply({content: "An error occurred while searching for images.", ephemeral: true});
             }
         );
