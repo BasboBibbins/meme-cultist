@@ -5,6 +5,7 @@ const { QuickDB } = require('quick.db');
 const { addNewDBUser } = require('../database');
 const db = new QuickDB( { filePath: 'db/users.sqlite' });
 const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID } = require('../config.json');
+const logger = require('../utils/logger');
 
 async function ripGen(guildMember, prompt) {
     const victim = guildMember.user;

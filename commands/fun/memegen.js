@@ -4,7 +4,9 @@ const {registerFont} = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
 const request = require('node-superfetch');
 const path = require('path');
+const logger = require('../../utils/logger');
 registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), {family: 'Impact'});
+
 
 module.exports = {
     data: new SlashCommandBuilder()

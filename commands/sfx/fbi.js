@@ -1,6 +1,7 @@
 const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
 const {joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, entersState, VoiceConnectionStatus} = require('@discordjs/voice');
 const fbi = createAudioResource('assets/sounds/fbi.mp3');
+const logger = require("../../utils/logger");
 
 module.exports = {
     data: new SlashCommandBuilder()

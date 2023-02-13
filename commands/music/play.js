@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 const { QueryType, Player } = require('discord-player');
 const wait = require('util').promisify(setTimeout);
+const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -33,8 +34,8 @@ module.exports = {
             intialVolume: 100,
             equalizer: [
                 { band: 0, gain: 0.25 },
-                { band: 1, gain: 0.25 },
-                { band: 2, gain: 0.25 }
+                { band: 1, gain: 0.20 },
+                { band: 2, gain: 0.15 }
             ],
             metadata: {
                 channel: interaction.channel,

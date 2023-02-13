@@ -60,6 +60,13 @@ if (fs.existsSync("./db/users.sqlite")) {
     process.exit(1)
 }
 
+process.on("unhandledRejection", (reason, p) => {
+    logger.error(`Unhandled Rejection at: Promise ${p} reason: ${reason}`);
+})
+.on("uncaughtException", (err) => {
+    logger.error(`Uncaught Exception: ${err}`);
+    process.exit(1);
+})
 
 let commands = []
 
@@ -129,6 +136,11 @@ else {
     })
 
     client.on(Events.InteractionCreate, async interaction => {
+        if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
+            return await interaction.member.createDM().then(async dm => {
+                await dm.send(`You are banned from using Meme Cultist. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
+            })
+        }
         if (interaction.isChatInputCommand()) {
             interaction.channel.sendTyping().then(async () => {
                 
@@ -172,13 +184,22 @@ else {
             }
         }
     });
-
+    client.player.events.on("audioTrackAdd", async (queue, track) => {
+        logger.log(`Added \x1b[30m${track.title}\x1b[0m to ${queue.guild.name}'s queue!`);
+        logger.log(`Current queue: \n${queue.tracks.map((track, i) => `${i + 1}. ${track.title} by ${track.author} - ${track.duration}`).join("\n")}`);
+    });
     client.player.events.on("playerStart", async (queue, track) => {
         logger.log(`Now playing ${track.title} in ${queue.guild.name}!`);
         await trackStart(client, queue, track);
     });
     client.player.events.on("playerFinish", async (queue, track) => {
         logger.log(`Finished playing ${track.title} in ${queue.guild.name}!`);
+        if (queue.isEmpty()) {
+            logger.log(`Queue is empty in ${queue.guild.name}!`);
+        }
+    });
+    client.player.events.on("error", async (queue, error) => {
+        logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
     });
 
     client.login(TOKEN)
