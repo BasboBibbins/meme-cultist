@@ -3,8 +3,8 @@ const wait = require("util").promisify(setTimeout);
 
 module.exports = {
     trackStart: async (client, queue, track) => {
-        //console.log(queue)
-        //console.log(track)
+        //logger.log(queue)
+        //logger.log(track)
         const time = track.duration.split(":").reverse().reduce((prev, curr, i) => prev + curr * Math.pow(60, i), 0) * 1000;    
         const channel = queue.metadata.channel;
         const requestedBy = queue.options.metadata.requestedBy;
@@ -39,24 +39,24 @@ module.exports = {
         let msg = await channel.send({embeds: [player], components: [row]});
 
         const filter = i => {
-            console.log(`${i.member.voice.channelId} === ${queue.dispatcher.channel.id} = ${i.member.voice.channelId === queue.dispatcher.channel.id}`)
+            logger.log(`${i.member.voice.channelId} === ${queue.dispatcher.channel.id} = ${i.member.voice.channelId === queue.dispatcher.channel.id}`)
             return i.member.voice.channelId === queue.dispatcher.channel.id;
         }
         const collector = await channel.createMessageComponentCollector({ filter, time: time });
     
         collector.on('collect', async i => {
             if (!filter) return; 
-            console.log(`${i.member.user.username} pressed ${i.customId}`);
+            logger.log(`${i.member.user.username} pressed ${i.customId}`);
             if (i.customId === "pause") {
-                console.log(queue.node.isPlaying())
+                logger.log(queue.node.isPlaying())
                 if (queue.node.isPlaying()) {
-                    console.log("paused");
+                    logger.log("paused");
                     await queue.node.pause();
                     player.setTitle(`⏸️ Song Paused`);
                     row.components[0].setLabel("Resume").setEmoji("▶️");
                     await i.update({embed: [player], components: [row]});
                 } else {
-                        console.log("resumed");
+                        logger.log("resumed");
                         await queue.node.resume();
                         await msg.delete();
                         return await collector.stop();
@@ -76,13 +76,13 @@ module.exports = {
                     await msg.delete();
                     return await collector.stop();
                 } catch (e) {
-                    console.log(e);
+                    logger.log(e);
                 }
             }
         });
     
         collector.on('end', ( collected, reason ) => {
-            console.log(`Collected ${collected.size} interactions. Reason: ${reason}`);
+            logger.log(`Collected ${collected.size} interactions. Reason: ${reason}`);
         });
     }
 };

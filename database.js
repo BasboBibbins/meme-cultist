@@ -71,8 +71,8 @@ module.exports = {
             }
         });
 
-        console.log(`\x1b[32m[DB]\x1b[0m Loading database...`)
-        console.log(`\x1b[32m[DB]\x1b[0m Found ${users.length} users.`)
+        logger.log(`Loading database...`)
+        logger.log(`Found ${users.length} users.`)
         let newUsers = 0;
         let updatedUsers = 0;
         for (const user of users) {
@@ -81,7 +81,7 @@ module.exports = {
             if (!dbUser) {
                 newUsers++;
                 await db.set(user.id, defaultDB);
-                console.log(`\x1b[32m[DB]\x1b[0m Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+                logger.log(`Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
             } else {
                 let updated = false;
                 for (const [key, value] of Object.entries(defaultDB)) {
@@ -92,12 +92,12 @@ module.exports = {
                 }
                 if (updated) {
                     await db.set(user.id, dbUser);
-                    console.log(`\x1b[32m[DB]\x1b[0m Updated ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+                    logger.log(`Updated ${user.username}#${user.discriminator} [${user.id}] in the database.`)
                     updatedUsers++;
                 }
             }
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Database loaded. ${newUsers?newUsers:"No"} new users in database. ${updatedUsers?updatedUsers:"No"} users updated.`)
+        logger.log(`Database loaded. ${newUsers?newUsers:"No"} new users in database. ${updatedUsers?updatedUsers:"No"} users updated.`)
     },
     addNewDBUser: async function(user) {
         const dbUser = await db.get(user.id);
@@ -105,14 +105,14 @@ module.exports = {
         if (!dbUser) {
             await db.set(user.id, defaultDB);
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+        logger.log(`Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
     },
     deleteDBUser: async function(user) {
         const dbUser = await db.get(user.id);
         if (dbUser) {
             await db.delete(user.id);
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Deleted ${user.username}#${user.discriminator} [${user.id}] from the database.`)
+        logger.log(`Deleted ${user.username}#${user.discriminator} [${user.id}] from the database.`)
     },
     deleteDBValue: async function(user, value) {
         const dbUser = await db.get(user.id);
@@ -120,7 +120,7 @@ module.exports = {
             delete dbUser[value];
             await db.set(user.id, dbUser);
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Deleted ${value} for ${user.username}#${user.discriminator} [${user.id}] from the database.`)
+        logger.log(`Deleted ${value} for ${user.username}#${user.discriminator} [${user.id}] from the database.`)
     },
     resetDBUser: async function(user) {
         const dbUser = await db.get(user.id);
@@ -128,7 +128,7 @@ module.exports = {
         if (dbUser) {
             await db.set(user.id, defaultDB);
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Reset ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+        logger.log(`Reset ${user.username}#${user.discriminator} [${user.id}] in the database.`)
     },
     resetDBValue: async function(user, value) {
         const dbUser = await db.get(user.id);
@@ -137,7 +137,7 @@ module.exports = {
             dbUser[value] = defaultDB[value];
             await db.set(user.id, dbUser);
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Reset ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+        logger.log(`Reset ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
     },
     setDBValue: async function(user, value, newValue) {
         const dbUser = await db.get(user.id);
@@ -145,6 +145,6 @@ module.exports = {
             dbUser[value] = newValue;
             await db.set(user.id, dbUser);
         }
-        console.log(`\x1b[32m[DB]\x1b[0m Set ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+        logger.log(`Set ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
     }
 }

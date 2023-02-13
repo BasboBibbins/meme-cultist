@@ -22,7 +22,7 @@ module.exports = {
             await entersState(connection, VoiceConnectionStatus.Ready, 30e3);
             await entersState(player, AudioPlayerStatus.Playing, 5e3);
         } catch (error) {
-            console.error(error);
+            logger.error(error);
             connection.destroy();
             return interaction.reply({content: "There was an error while playing the audio.", ephemeral: true});
         } finally {

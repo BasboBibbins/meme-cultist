@@ -13,9 +13,9 @@ module.exports = {
         async execute(interaction) {
             const user = interaction.user;
             const dbUser = await db.get(user.id);
-            console.log(`\x1b[32m[INFO]\x1b[0m dbUser: ${dbUser} (type: ${typeof dbUser})`)
+            logger.log(`dbUser: ${dbUser} (type: ${typeof dbUser})`)
             if (!dbUser) {
-                console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${user.username} (${user.id}), creating one...`)
+                logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`)
                 await addNewDBUser(user);
             }
     
@@ -46,6 +46,6 @@ module.exports = {
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();
             await interaction.reply({embeds: [embed]});
-            console.log(`\x1b[32m[INFO]\x1b[0m ${user.username} (${user.id}) claimed their weekly ${CURRENCY_NAME} and received ${amount} ${CURRENCY_NAME}.`)
+            logger.log(`${user.username} (${user.id}) claimed their weekly ${CURRENCY_NAME} and received ${amount} ${CURRENCY_NAME}.`)
         }
 };

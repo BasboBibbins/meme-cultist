@@ -1,10 +1,9 @@
 const {slashCommandBuilder, SlashCommandBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
-
 const { addNewDBUser } = require("../../database");
-
 const { CURRENCY_NAME } = require("../../config.json");
+const logger = require("../../utils/logger");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -64,24 +63,24 @@ module.exports = {
 
         const dbUser = await db.get(user.id);
         if (!dbUser) {
-            console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${user.username} (${user.id}), creating one...`)
+            logger.log(`No database entry for user ${user.username} (${user.id}), creating one...`, "warn")
             await addNewDBUser(user);
         }
 
         switch (subcommand) {
             case 'add':
                 await db.set(`${user.id}.balance`, dbUser.balance + amount);
-                await console.log(`\x1b[32m[INFO]\x1b[0m Added ${amount} ${CURRENCY_NAME} to ${user.username} (${user.id})'s wallet.`);
+                await logger.log(`Added ${amount} ${CURRENCY_NAME} to ${user.username} (${user.id})'s wallet.`);
                 await interaction.reply({content: `Added **${amount}** ${CURRENCY_NAME} to **${user.username}**'s wallet.`, ephemeral: true});
                 break;
             case 'remove':
                 await db.set(`${user.id}.balance`, (dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount));
-                await console.log(`\x1b[32m[INFO]\x1b[0m Removed ${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet.`);
+                await logger.log(`Removed ${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet.`);
                 await interaction.reply({content: `Removed **${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)}** ${CURRENCY_NAME} from **${user.username}**'s wallet.`, ephemeral: true});
                 break;
             case 'set':
                 await db.set(`${user.id}.balance`, (amount < 0 ? 0 : amount));
-                await console.log(`\x1b[32m[INFO]\x1b[0m Set ${user.username} (${user.id})'s wallet to ${(amount < 0 ? 0 : amount)} ${CURRENCY_NAME}.`);
+                await logger.log(`Set ${user.username} (${user.id})'s wallet to ${(amount < 0 ? 0 : amount)} ${CURRENCY_NAME}.`);
                 await interaction.reply({content: `Set **${user.username}**'s wallet to **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME}.`, ephemeral: true});
                 break;
         }

@@ -7,9 +7,10 @@ const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
 const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
+const logger = require("./utils/logger")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -52,6 +53,14 @@ client.player = new Player(client, {
     }
 })
 
+if (fs.existsSync("./db/users.sqlite")) {
+    client.db = new QuickDB({ filePath: "./db/users.sqlite" })
+} else {
+    logger.log(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
+    process.exit(1)
+}
+
+
 let commands = []
 
 const walk = function(dir) {
@@ -81,15 +90,15 @@ for (const file of slashFiles) {
 
 if (LOAD_SLASH) {
     const rest = new REST({ version: "9" }).setToken(TOKEN)
-    console.log("Deploying slash commands")
+    logger.log(`Loading slash commands...`)
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {body: commands})
     .then(() => {
-        console.log("Successfully loaded")
+        logger.log(`Successfully reloaded application (/) commands.`)
         process.exit(0)
     })
     .catch((err) => {
         if (err){
-            console.log(err)
+            logger.log(err)
             process.exit(1)
         }
     })
@@ -99,8 +108,12 @@ else {
         if (LOAD_DB) {
             initDB(client)
         }
-        console.log(`\x1b[32m%s\x1b[0m`, `Logged in as ${client.user.tag}!`)
+        logger.log(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
     })
+
+    if (TESTING_MODE) client.on(Events.Debug, (info) => logger.debug(info));
+    client.on(Events.Warn, (info) => logger.warn(info));
+    client.on(Events.Error, (info) => logger.error(info));
 
     client.on(Events.GuildMemberAdd, async member => {
         if (member.guild.id == GUILD_ID) {
@@ -109,9 +122,8 @@ else {
     })
 
     client.on(Events.GuildMemberRemove, async member => {
-        console.log(`${member.guild.id} == ${GUILD_ID} = ${member.guild.id == GUILD_ID}`)
+        logger.log(`${member.guild.id} == ${GUILD_ID} = ${member.guild.id == GUILD_ID}`)
         if (member.guild.id == GUILD_ID) {
-            console.log("Member left")
             await goodbye(client, member);
         }
     })
@@ -123,7 +135,7 @@ else {
                 const command = interaction.client.slashcommands.get(interaction.commandName);
             
                 if (!command) {
-                    console.error(`No command matching ${interaction.commandName} was found.`);
+                    logger.error(`No command matching ${interaction.commandName} was found.`);
                     return;
                 }
 
@@ -138,10 +150,10 @@ else {
                 }
             
                 try {
-                    console.log(`\x1b[32m[INFO]\x1b[0m ${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
+                    logger.log(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     await command.execute(interaction);
                 } catch (error) {
-                    console.error(error);
+                    logger.error(error);
                     await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
                 }
             })
@@ -149,24 +161,24 @@ else {
             const command = interaction.client.slashcommands.get(interaction.commandName);
 
             if (!command) {
-                console.error(`No command matching ${interaction.commandName} was found.`);
+                logger.error(`No command matching ${interaction.commandName} was found.`);
                 return;
             }
 
             try {
                 await command.autocomplete(interaction);
             } catch (error) {
-                console.error(error);
+                logger.error(error);
             }
         }
     });
 
     client.player.events.on("playerStart", async (queue, track) => {
-        console.log(`\x1b[32m[INFO]\x1b[0m Now playing ${track.title} in ${queue.guild.name}!`);
+        logger.log(`Now playing ${track.title} in ${queue.guild.name}!`);
         await trackStart(client, queue, track);
     });
     client.player.events.on("playerFinish", async (queue, track) => {
-        console.log(`\x1b[32m[INFO]\x1b[0m Finished playing ${track.title} in ${queue.guild.name}!`);
+        logger.log(`Finished playing ${track.title} in ${queue.guild.name}!`);
     });
 
     client.login(TOKEN)
@@ -174,8 +186,8 @@ else {
     client.on(Events.MessageCreate, async (message) => {
         if (message.author.bot) return;
 
-        if (message.content.startsWith(">")) {
-            //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``. Discord is gay and forced me at gunpoint to make this change.")})
+        if (LEGACY_COMMANDS.some(cmd => message.content.startsWith(`>${cmd}`))) {
+            //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``.\nDiscord is gay and forced me at gunpoint to make this change.")})
         };
     })
 }

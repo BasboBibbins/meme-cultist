@@ -45,7 +45,7 @@ module.exports = {
         try {
             if (!queue.connection) await queue.connect(interaction.member.voice.channelId);
         } catch (error) {
-            console.error(error);
+            logger.error(error);
             embed.setTitle("Could not join voice channel!");
             embed.setDescription("I could not join your voice channel. Please make sure I have permission to join and speak in your voice channel.");
             return await interaction.editReply({embeds: [embed], ephemeral: true});
@@ -105,7 +105,7 @@ module.exports = {
                 if (!queue.isPlaying()) await queue.node.play(track);
             });
             collector.on("end", async (collected, reason) => {
-                console.log(`Collected ${collected.size} items, reason: ${reason}`)
+                logger.log(`Collected ${collected.size} items, reason: ${reason}`)
                 if (reason === "time") {
                     embed.setTitle("Request has timed out.").setDescription(`Request has timed out. Please try again.`);
                     await interaction.editReply({embed: [embed], components: [], ephemeral: true});

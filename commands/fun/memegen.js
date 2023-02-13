@@ -45,7 +45,7 @@ module.exports = {
         const canvas = Canvas.createCanvas(base.width, base.height);
         const ctx = canvas.getContext('2d');
 
-        console.log(`\x1b[32m[INFO]\x1b[0m Generating meme for ${interaction.user.tag} with ${image ? image.name : user.username}.png`)
+        logger.log(`Generating meme for ${interaction.user.tag} with ${image ? image.name : user.username}.png`)
         ctx.drawImage(base, 0, 0);
         
         const fontsize = Math.round(base.height/10);

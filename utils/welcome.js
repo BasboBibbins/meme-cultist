@@ -58,7 +58,7 @@ module.exports = {
         await channel.send({ embeds: [embed] });
 
         if (!dbUser) {
-            console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${member.user.username} (${member.user.id}), creating one...`)
+            logger.warn(`No database entry for user ${member.user.username} (${member.user.id}), creating one...`)
             await addNewDBUser(member.user);
         }
     },
@@ -72,24 +72,24 @@ module.exports = {
                 const executor = log.executor;
                 if (executor.id == client.user.id) return;
                 prompt = `kicked by ${executor.tag} for reason: ${log.reason}`
-                console.log(`\x1b[33m[WARN]\x1b[0m ${member.user.username} (${member.user.id}) was kicked by ${executor.tag} (${executor.id}) for reason: ${log.reason}`);
+                logger.warn(`${member.user.username} (${member.user.id}) was kicked by ${executor.tag} (${executor.id}) for reason: ${log.reason}`);
             } else if (log.action == 22) { // BAN
                 const executor = log.executor;
                 if (executor.id == client.user.id) return;
                 prompt = `banned by ${executor.tag} for reason: ${log.reason}`
-                console.log(`\x1b[33m[WARN]\x1b[0m ${member.user.username} (${member.user.id}) was banned by ${executor.tag} (${executor.id}) for reason: ${log.reason}`);
+                logger.warn(`${member.user.username} (${member.user.id}) was banned by ${executor.tag} (${executor.id}) for reason: ${log.reason}`);
             } else if (log.action == 21) { // PRUNE
                 const executor = log.executor;
                 if (executor.id == client.user.id) return;
                 prompt = `who the fuck are you?`
-                console.log(`\x1b[33m[WARN]\x1b[0m ${member.user.username} (${member.user.id}) was pruned by ${executor.tag} (${executor.id})`);
+                logger.warn(`${member.user.username} (${member.user.id}) was pruned by ${executor.tag} (${executor.id})`);
             } else {
-                console.log(`\x1b[33m[WARN]\x1b[0m ${member.user.username} (${member.user.id}) left the server`);
+                logger.warn(`${member.user.username} (${member.user.id}) left the server`);
                 prompt = `probably couldn't take the light amount of trolling.`
             }
             await module.exports.rip(client, member, prompt);
         } else {
-            console.log(`\x1b[33m[WARN]\x1b[0m ${member.user.username} (${member.user.id}) left the server`);
+            logger.warn(`${member.user.username} (${member.user.id}) left the server`);
             prompt = `probably couldn't take the light amount of trolling.`
             await module.exports.rip(client, member, prompt);
         }

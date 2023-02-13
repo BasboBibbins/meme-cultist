@@ -1,13 +1,11 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
-
 const { addNewDBUser, setDBValue } = require("../../database");
-
 const { CURRENCY_NAME } = require("../../config.json");
 const { parseBet } = require('../../utils/betparse');
-
 const wait = require('node:timers/promises').setTimeout;
+const logger = require("../../utils/logger");
 
 async function rng(min, max) {
     min = Math.ceil(min);
@@ -65,7 +63,7 @@ module.exports = {
         const bet = Number(await parseBet(option, user.id));
         const dbUser = await db.get(user.id);
         if (!dbUser) {
-            console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${user.username} (${user.id}), creating one...`)
+            logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`)
             await addNewDBUser(user);
         }
         if (isNaN(bet)) {
@@ -96,14 +94,14 @@ module.exports = {
             .setTimestamp();
 
         await interaction.reply({ embeds: [slots] });
-        console.log(`\x1b[32m[INFO]\x1b[0m ${user.username} (${user.id}) started a game of slots with a bet of ${bet} ${CURRENCY_NAME}.`)
+        logger.log(`${user.username} (${user.id}) started a game of slots with a bet of ${bet} ${CURRENCY_NAME}.`)
 
         const slot1 = await rng(0, slotsEmoji.length - 1);
         const slot2 = await rng(0, slotsEmoji.length - 1);
         const slot3 = await rng(0, slotsEmoji.length - 1);
 
         const slotResults = [slot1, slot2, slot3];
-        console.log(`\x1b[32m[INFO]\x1b[0m ${user.username} (${user.id}) rolled ${slotResults[0]}, ${slotResults[1]}, ${slotResults[2]}.`)
+        logger.log(`${user.username} (${user.id}) rolled ${slotResults[0]}, ${slotResults[1]}, ${slotResults[2]}.`)
         
         await wait(1000);
         slots.setDescription(`${slotsEmoji[slotResults[0]].emoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`);
@@ -162,6 +160,6 @@ module.exports = {
                 .setDescription(`${desc}\n\nYou lost **${winnings}** ${CURRENCY_NAME}. \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}. ${await db.get(`${user.id}.balance`) <= 0 ? `You are now broke!` : ''}`);
             await interaction.editReply({ embeds: [slots] });
         }
-        console.log(`\x1b[32m[INFO]\x1b[0m ${user.username}#${user.discriminator} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
+        logger.log(`${user.username}#${user.discriminator} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
     },
 };

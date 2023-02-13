@@ -1,10 +1,9 @@
 const { slashCommandBuilder, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
-
 const { addNewDBUser } = require("../../database");
-
 const { CURRENCY_NAME } = require("../../config.json");
+const logger = require("../../utils/logger");
 
 module.exports = { 
     data: new SlashCommandBuilder()
@@ -15,7 +14,7 @@ module.exports = {
         const dbUser = await db.get(interaction.user.id);
         const stats = `${user.id}.stats.begs`;
         if (!dbUser) {
-            console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
+            logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
             await addNewDBUser(interaction.user.id);
         }
         const amount = Math.floor(Math.random() * 100) + 1;
@@ -49,7 +48,7 @@ module.exports = {
             embed.setColor("#00ff00");
             embed.setDescription(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
             await db.add(`${user.id}.balance`, amount);
-            await console.log(`\x1b[32m[INFO]\x1b[0m Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
+            await logger.log(`Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
             await db.add(`${stats}.wins`, 1);
             await interaction.reply({embeds: [embed]});
         } else {

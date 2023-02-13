@@ -1,11 +1,10 @@
 const {slashCommandBuilder, SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
-
 const { addNewDBUser } = require("../../database");
-
 const { CURRENCY_NAME } = require("../../config.json");
 const { parseBet } = require('../../utils/betparse');
+const logger = require("../../utils/logger");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,7 +19,7 @@ module.exports = {
         const bet = await parseBet(option, interaction.user.id);
         const dbUser = await db.get(interaction.user.id);
         if (!dbUser) {
-            console.log(`\x1b[33m[WARN]\x1b[0m No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
+            logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
             await addNewDBUser(interaction.user.id);
         }
         if (isNaN(bet)) {
