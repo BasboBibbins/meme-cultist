@@ -33,9 +33,9 @@ module.exports = {
             repeatMode: 0,
             intialVolume: 100,
             equalizer: [
-                { band: 0, gain: 0.25 },
-                { band: 1, gain: 0.20 },
-                { band: 2, gain: 0.15 }
+                { band: 0, gain: 0.15 },
+                { band: 1, gain: 0.10 },
+                { band: 2, gain: 0.05 }
             ],
             metadata: {
                 channel: interaction.channel,
@@ -60,15 +60,28 @@ module.exports = {
         }
 
         if (song.startsWith("http")) {
-            const track = results.tracks[0];
-            if (queue.metadata) {
-                embed.setTitle("Added to queue");
-                embed.setDescription(`[${track.title}](${track.url})`);
-                embed.setThumbnail(track.thumbnail);
-                await interaction.editReply({embeds: [embed], ephemeral: true});
+            if (results.playlist.type == "playlist" || results.playlist.type == "album") {
+                const playlist = results.playlist;
+                console.log(playlist.author)
+                if (queue.metadata) {
+                    embed.setTitle(`Added ${results.playlist.type} to queue!`);
+                    embed.setDescription(`[${playlist.title}](${playlist.url})\nBy **${playlist.author.name}** | ${playlist.tracks.length} songs`);
+                    embed.setThumbnail(playlist.thumbnail.url);
+                    await interaction.editReply({embeds: [embed], ephemeral: true});
+                }
+                await queue.addTrack(playlist);
+                if (!queue.isPlaying()) await queue.node.play();
+            } else {
+                const track = results.tracks[0];
+                if (queue.metadata) {
+                    embed.setTitle("Added to queue!");
+                    embed.setDescription(`[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ``}`);
+                    embed.setThumbnail(track.thumbnail);
+                    await interaction.editReply({embeds: [embed], ephemeral: true});
+                }
+                await queue.addTrack(track);
+                if (!queue.isPlaying()) await queue.node.play();
             }
-            await queue.addTrack(track);
-            if (!queue.isPlaying()) await queue.node.play(track);
         } else {
             embed.setTitle("Multiple results found!");
             embed.setDescription(`Please select a song from the menu below.`);
@@ -96,8 +109,8 @@ module.exports = {
                 }
                 const track = results.tracks[parseInt(i.values[0])];
                 if (queue.metadata) {
-                    embed.setTitle("Added to queue");
-                    embed.setDescription(`[${track.title}](${track.url})`);
+                    embed.setTitle("Added to queue!");
+                    embed.setDescription(`[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ``}`);
                     embed.setThumbnail(track.thumbnail);
                     await interaction.editReply({embeds: [embed], components: [], ephemeral: true});
                     await collector.stop("success");
