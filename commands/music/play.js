@@ -60,17 +60,18 @@ module.exports = {
         }
 
         if (song.startsWith("http")) {
-            if (results.playlist.type == "playlist" || results.playlist.type == "album") {
-                const playlist = results.playlist;
-                console.log(playlist.author)
-                if (queue.metadata) {
-                    embed.setTitle(`Added ${results.playlist.type} to queue!`);
-                    embed.setDescription(`[${playlist.title}](${playlist.url})\nBy **${playlist.author.name}** | ${playlist.tracks.length} songs`);
-                    embed.setThumbnail(playlist.thumbnail.url);
-                    await interaction.editReply({embeds: [embed], ephemeral: true});
-                }
-                await queue.addTrack(playlist);
-                if (!queue.isPlaying()) await queue.node.play();
+            if (results.playlist) {
+                if (results.playlist.type == "playlist" || results.playlist.type == "album") {
+                    const playlist = results.playlist;
+                    if (queue.metadata) {
+                        embed.setTitle(`Added ${results.playlist.type} to queue!`);
+                        embed.setDescription(`[${playlist.title}](${playlist.url})\nBy **${playlist.author.name}** | ${playlist.tracks.length} songs`);
+                        embed.setThumbnail(playlist.thumbnail.url);
+                        await interaction.editReply({embeds: [embed], ephemeral: true});
+                    }
+                    await queue.addTrack(playlist);
+                    if (!queue.isPlaying()) await queue.node.play();
+                } 
             } else {
                 const track = results.tracks[0];
                 if (queue.metadata) {
@@ -82,6 +83,8 @@ module.exports = {
                 await queue.addTrack(track);
                 if (!queue.isPlaying()) await queue.node.play();
             }
+            await wait(10000);
+            await interaction.deleteReply();
         } else {
             embed.setTitle("Multiple results found!");
             embed.setDescription(`Please select a song from the menu below.`);
@@ -125,7 +128,7 @@ module.exports = {
                     await interaction.editReply({embed: [embed], components: [], ephemeral: true});
                 }
                 if (reason === "success") {
-                    await wait(10000);
+                    await wait(10000); 
                     await interaction.deleteReply();
                 }
             });
