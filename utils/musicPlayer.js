@@ -7,8 +7,6 @@ let msg = null;
 module.exports = {
     trackStart: async (client, queue, track) => {
         if (msg != null) return; // Prevents multiple messages from being sent
-        //console.log(queue)
-        //console.log(track)
         const channel = queue.metadata.channel;
         const requestedBy = queue.options.metadata.requestedBy;
         
@@ -31,10 +29,14 @@ module.exports = {
                 .setEmoji("⏹️"),
         );
         const desc = `[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ``}`;
+        const currentQueue = {};
+        queue.tracks.map((track, index) => {
+            currentQueue[index] = track;
+        });
         const player = new EmbedBuilder()
         .setTitle(`🎧 Now Playing ${queue.dispatcher.channel.name ? `in ${queue.dispatcher.channel.name}` : ""}`)
         .setAuthor({ name: `Requested by ${requestedBy.username}`, iconURL: requestedBy.displayAvatarURL({dynamic: true}) })
-        .setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${queue.tracks.length > 0 ? `Up Next: [${queue.tracks[0].title}](${queue.tracks[0].url})\n By **${queue.tracks[0].author}**` : ``}`)
+        .setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ``}`)
         .setThumbnail(track.thumbnail)
         .setColor(0x00AE86)
         .setFooter({ text: `Meme Cultist | Version ${require('../package.json').version}`, iconURL: client.user.displayAvatarURL({dynamic: true}) })
@@ -44,7 +46,7 @@ module.exports = {
 
         const interval = setInterval(async () => {
             if (!queue.node.isPlaying() || queue.node.isPaused() || track.isStream) return clearInterval(interval);
-            player.setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}${queue.tracks.length > 0 ? `\n\n Up Next: [${queue.tracks[0].title}](${queue.tracks[0].url})\n By **${queue.tracks[0].author}**` : ``}`)
+            player.setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}${Object.keys(currentQueue).length > 0 ? `\n\nUp Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ``}`);
             await msg.edit({embeds: [player], components: [row]});
         }, 1000);
 
@@ -61,25 +63,9 @@ module.exports = {
                 row.components[0].setLabel(queue.node.isPaused() ? "Resume" : "Pause").setEmoji(queue.node.isPaused() ? "▶️" : "⏸️");
                 row.components[1].setDisabled(queue.node.isPaused());
                 await i.update({embeds: [player], components: [row]});
-                /*
-                if (!queue.node.isPaused()) {
-                    logger.log("paused");
-                    await queue.node.pause();
-                    await collector.resetTimer({ time: 300000 }); // 5 minutes to respond
-                    player.setTitle(`⏸️ Song Paused`);
-                    row.components[0].setLabel("Resume").setEmoji("▶️");
-                    row.components[1].setDisabled(true);
-                    await i.update({embed: [player], components: [row]});
-                } else {
-                    logger.log("resumed");
-                    await queue.node.resume();
-                    await msg.delete();
-                    return await collector.stop();
-                }
-                */
             } else if (i.customId === "skip") {
                 try {
-                    if (!queue.node.isPlaying() || queue.node.isPaused()) {
+                    if (queue.node.isPaused()) {
                         // TODO: fix the bot creating two message when the user tries to skip while paused
                         return await i.reply({ content: `Unpause before trying to skip. Too lazy to fix this bug for now.`, ephemeral: true });
                     }
