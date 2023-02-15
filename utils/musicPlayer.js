@@ -29,7 +29,7 @@ module.exports = {
                 .setEmoji("⏹️"),
         );
         const desc = `[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ``}`;
-        const currentQueue = {};
+        let currentQueue = {};
         queue.tracks.map((track, index) => {
             currentQueue[index] = track;
         });
@@ -45,6 +45,10 @@ module.exports = {
         msg = await channel.send({embeds: [player], components: [row]});
 
         const interval = setInterval(async () => {
+            currentQueue = {};
+            queue.tracks.map((track, index) => {
+                currentQueue[index] = track;
+            });
             if (!queue.node.isPlaying() || queue.node.isPaused() || track.isStream) return clearInterval(interval);
             player.setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}${Object.keys(currentQueue).length > 0 ? `\n\nUp Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ``}`);
             await msg.edit({embeds: [player], components: [row]});

@@ -58,7 +58,7 @@ module.exports = {
             embed.setDescription(`No results found for ${song}`);
             await interaction.editReply({embeds: [embed], ephemeral: true});
         }
-
+        
         if (song.startsWith("http")) {
             if (results.playlist) {
                 if (results.playlist.type == "playlist" || results.playlist.type == "album") {
@@ -66,7 +66,7 @@ module.exports = {
                     if (queue.metadata) {
                         embed.setTitle(`Added ${results.playlist.type} to queue!`);
                         embed.setDescription(`[${playlist.title}](${playlist.url})\nBy **${playlist.author.name}** | ${playlist.tracks.length} songs`);
-                        embed.setThumbnail(playlist.thumbnail.url);
+                        embed.setThumbnail(playlist.thumbnail.url || playlist.thumbnail);
                         await interaction.editReply({embeds: [embed], ephemeral: true});
                     }
                     await queue.addTrack(playlist);
