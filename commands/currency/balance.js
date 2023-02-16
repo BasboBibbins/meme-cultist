@@ -21,7 +21,6 @@ module.exports = {
             await addNewDBUser(user);
         }
         const fetchedUser = await user.fetch()
-        logger.log(fetchedUser)
         let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : "#FFFFFF";
         
         const embed = new EmbedBuilder()

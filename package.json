@@ -21,6 +21,7 @@
     "booru": "^2.6.3",
     "canvas": "^2.11.0",
     "cat-loggr": "^1.2.2",
+    "dayjs": "^1.11.7",
     "discord-player": "^6.0.0-dev.2",
     "discord.js": "^14.7.1",
     "dotenv": "^16.0.3",

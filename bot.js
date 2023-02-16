@@ -10,6 +10,7 @@ const { initDB, addNewDBUser } = require("./database")
 const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
+const moment = require("dayjs")
 const logger = require("./utils/logger")
 
 dotenv.config()
@@ -53,8 +54,9 @@ client.player = new Player(client, {
     }
 })
 
+let db = null;
 if (fs.existsSync("./db/users.sqlite")) {
-    client.db = new QuickDB({ filePath: "./db/users.sqlite" })
+    db = new QuickDB({ filePath: "./db/users.sqlite" })
 } else {
     logger.log(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
     process.exit(1)
@@ -66,6 +68,7 @@ process.on("unhandledRejection", (reason, p) => {
 })
 .on("uncaughtException", (err) => {
     logger.error(`Uncaught Exception: ${err}`);
+    logger.error(err.stack);
     process.exit(1);
 })
 
@@ -163,8 +166,29 @@ else {
                 }
             
                 try {
-                    logger.log(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     await command.execute(interaction);
+                    logger.log(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
+                    if (db) {
+                        if (await db.get(`${interaction.user.id}.stats.commands.dailyReset`) != moment().format("YYYY-MM-DD")) {
+                            await db.set(`${interaction.user.id}.stats.commands.dailyReset`, moment().format("YYYY-MM-DD"))
+                            await db.set(`${interaction.user.id}.stats.commands.daily`, {})
+                        }
+                        if (await db.get(`${interaction.user.id}.stats.commands.monthlyReset`) != moment().format("YYYY-MM")) {
+                            await db.set(`${interaction.user.id}.stats.commands.monthlyReset`, moment().format("YYYY-MM"))
+                            await db.set(`${interaction.user.id}.stats.commands.monthly`, {})
+                        }
+                        if (await db.get(`${interaction.user.id}.stats.commands.yearlyReset`) != moment().format("YYYY")) {
+                            await db.set(`${interaction.user.id}.stats.commands.yearlyReset`, moment().format("YYYY"))
+                            await db.set(`${interaction.user.id}.stats.commands.yearly`, {})
+                        }
+                        
+                        // add to the command counts
+                        await db.add(`${interaction.user.id}.stats.commands.daily.${interaction.commandName}`, 1)
+                        await db.add(`${interaction.user.id}.stats.commands.monthly.${interaction.commandName}`, 1)
+                        await db.add(`${interaction.user.id}.stats.commands.yearly.${interaction.commandName}`, 1)
+                        await db.add(`${interaction.user.id}.stats.commands.total.${interaction.commandName}`, 1)
+                    }
+
                 } catch (error) {
                     logger.error(error);
                     await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });

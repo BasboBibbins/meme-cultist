@@ -15,6 +15,15 @@ async function getDefaultDB(user) {
             "weekly": 0,
         },
         "stats": {
+            "commands": {
+                "dailyReset": 0,
+                "monthlyReset": 0,
+                "yearlyReset": 0,
+                "daily": {},
+                "monthly": {},
+                "yearly": {},
+                "total": 0,
+            },
             "dailies": {
                 "claimed": 0,
                 "currentStreak": 0,

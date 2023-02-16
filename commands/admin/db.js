@@ -3,6 +3,7 @@ const { QuickDB } = require("quick.db");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue } = require("../../database");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const logger = require("../../utils/logger");
+const wait = require('util').promisify(setTimeout);
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -71,37 +72,40 @@ module.exports = {
         const key = interaction.options.getString('key');
         const value = interaction.options.getString('value');
 
+        interaction.deferReply({ephemeral: true});
+        await wait (1000);
         switch (subcommand) {
             case 'add':
                 if (key && value) {
                     await setDBValue(user, key, value);
-                    await interaction.reply({content: `Added database entry for user ${user.username} (${user.id}) for key \`${key}\` with value \`${value}\`.`, ephemeral: true});
+                    await interaction.editReply({content: `Added database entry for user ${user.username} (${user.id}) for key \`${key}\` with value \`${value}\`.`, ephemeral: true});
                     logger.log(`Added database entry for user ${user.username} (${user.id}) for key \`${key}\` with value \`${value}\`.`, 'info');
                 } else {
                     await addNewDBUser(user);
-                    await interaction.reply({content: `Added database entry for user ${user.username} (${user.id}).`, ephemeral: true});
+                    await interaction.editReply({content: `Added database entry for user ${user.username} (${user.id}).`, ephemeral: true});
                     logger.log(`Added database entry for user ${user.username} (${user.id}).`, 'info');
                 }
                 break;
             case 'delete':
                 if (key) {
                     await deleteDBValue(user, key);
-                    await interaction.reply({content: `Deleted database entry for user ${user.username} (${user.id}) for key \`${key}\`.`, ephemeral: true});
+                    await interaction.editReply({content: `Deleted database entry for user ${user.username} (${user.id}) for key \`${key}\`.`, ephemeral: true});
                     logger.log(`Deleted database entry for user ${user.username} (${user.id}) for key \`${key}\`.`, 'info');
                 } else {
                     await deleteDBUser(user);
-                    await interaction.reply({content: `Deleted database entry for user ${user.username} (${user.id}).`, ephemeral: true});
+                    await interaction.editReply({content: `Deleted database entry for user ${user.username} (${user.id}).`, ephemeral: true});
                     logger.log(`Deleted database entry for user ${user.username} (${user.id}).`, 'info');
                 }
                 break;
             case 'set':
                 await setDBValue(user, key, value);
-                await interaction.reply({content: `Set database entry for user ${user.username} (${user.id}) for key \`${key}\` to \`${value}\`.`, ephemeral: true});
+                await interaction.editReply({content: `Set database entry for user ${user.username} (${user.id}) for key \`${key}\` to \`${value}\`.`, ephemeral: true});
                 logger.log(`Set database entry for user ${user.username} (${user.id}) for key \`${key}\` to \`${value}\`.`, 'info');
                 break;
             case 'reset':
-                await deleteDBValue(user);
-                await interaction.reply({content: `Reset database entry for user ${user.username} (${user.id}) to the default.`, ephemeral: true});
+                await deleteDBUser(user);
+                await addNewDBUser(user);
+                await interaction.editReply({content: `Reset database entry for user ${user.username} (${user.id}) to the default.`, ephemeral: true});
                 logger.log(`Reset database entry for user ${user.username} (${user.id}) to the default.`, 'info');
                 break;
         }
