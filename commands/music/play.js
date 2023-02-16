@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
-const { QueryType, Player } = require('discord-player');
 const wait = require('util').promisify(setTimeout);
 const logger = require('../../utils/logger');
 
@@ -58,7 +57,7 @@ module.exports = {
             embed.setDescription(`No results found for ${song}`);
             await interaction.editReply({embeds: [embed], ephemeral: true});
         }
-        
+
         if (song.startsWith("http")) {
             if (results.playlist) {
                 if (results.playlist.type == "playlist" || results.playlist.type == "album") {
