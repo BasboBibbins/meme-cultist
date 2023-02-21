@@ -14,7 +14,11 @@ module.exports = {
             option.setName('user')
                 .setDescription('The user to check the stats of.')
                 .setRequired(false)),
-    async execute(interaction) {
+    async execute(interaction, page = 1) {
+        let msg = null;
+        if (msg === null) {
+            msg = await interaction.defer
+        }
         const user = interaction.options.getUser('user') || interaction.user;
         const dbUser = await db.get(user.id);
         if (!dbUser) {
@@ -29,30 +33,61 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Requested by ${interaction.user.username}#${interaction.user.discriminator}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`${user.username}'s Stats`)
-            .setDescription(`Page 1 of 4`)
             .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
-            .setColor(`${accentColor}`)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-            .setTimestamp();
+            .setColor(`${accentColor}`);
         
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
                     .setCustomId('previous')
                     .setLabel('Previous')
-                    .setStyle(ButtonStyle.Primary),
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(true),
                 new ButtonBuilder()
                     .setCustomId('next')
                     .setLabel('Next')
                     .setStyle(ButtonStyle.Primary),
             );
-        
-        embed.addFields(
-            { name: "General", value: `**Username:** ${user.username}#${user.discriminator}`, inline: false },
-            { name: "Creation Date", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: false },
-            { name: "Join Date", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: false },
-        )
-        await interaction.reply({embeds: [embed], components: [row]});
-        await interaction.followUp({content: `\`\`\`json\n${JSON.stringify(stats, null, 4)}\`\`\``, ephemeral: true});
+        switch (page) {
+            case 1:
+                embed.setFields(
+                    { name: "General", value: `**Username:** ${user.username}#${user.discriminator}\n`, inline: false },
+                    { name: "Creation Date", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: true },
+                    { name: "Join Date", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: true },
+                );
+                embed.setFooter({ text: `Page 1/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+                break;
+            case 2:
+                embed.setFooter({ text: `Page 2/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+                break;
+            case 3:
+                embed.setFooter({ text: `Page 3/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+                break;
+            case 4:
+                embed.setFooter({ text: `Page 4/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+                break;
+        }
+        msg = await interaction.editReply({embeds: [embed], components: [row]});
+        const filter = i => i.customId === 'previous' || i.customId === 'next';
+        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 15000 });
+
+        collector.on('collect', async i => {
+            if (i.customId === 'previous') {
+                page--;
+                if (page === 1) {
+                    i.message.components[0].components[0].setDisabled(true);
+                }
+                logger.debug(`Page: ${page}`);
+                return await module.exports.execute(interaction, page);
+            } else if (i.customId === 'next') {
+                page++;
+                if (page === 4) {
+                    i.message.components[0].components[1].setDisabled(true);
+                }
+                logger.debug(`Page: ${page}`);
+                return await module.exports.execute(interaction, page);
+            }
+            await i.deferUpdate();
+        });
     },
 };
