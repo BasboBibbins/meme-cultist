@@ -97,7 +97,7 @@ module.exports = {
     },
 
     rip: async function (client, member, prompt) {
-        const channel = member.guild.channels.cache.find(ch => ch.name === 'rip');
+        const channel = RIP_CHANNEL_ID || member.guild.channels.cache.find(ch => ch.name === 'rip');
         if (!channel) return;
         const titles = [
             `cya ${member.user.username}`,
