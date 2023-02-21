@@ -2,7 +2,6 @@ const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butto
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const { addNewDBUser } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.json");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 
@@ -29,7 +28,6 @@ module.exports = {
         let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : randomHexColor();
 
         const stats = await db.get(user.id);
-        // make an embed for each stat category. page 1 is general, page 2 is currency, page 3 is social, page 4 is misc
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Requested by ${interaction.user.username}#${interaction.user.discriminator}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`${user.username}'s Stats`)

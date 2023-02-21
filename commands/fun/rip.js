@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const { rip } = require("../../utils/welcome");
 const { RIP_CHANNEL } = require("../../config.json");
 

@@ -1,4 +1,4 @@
-const { slashCommandBuilder, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const { addNewDBUser } = require("../../database");

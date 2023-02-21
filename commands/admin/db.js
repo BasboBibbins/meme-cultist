@@ -1,4 +1,4 @@
-const {SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder} = require('discord.js');
+const {SlashCommandBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue } = require("../../database");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });

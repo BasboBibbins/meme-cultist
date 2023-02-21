@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const wait = require('util').promisify(setTimeout);
-const logger = require('../../utils/logger');
 const { queueString } = require('../../utils/musicPlayer');
 
 module.exports = {
