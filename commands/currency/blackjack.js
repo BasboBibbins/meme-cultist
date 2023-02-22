@@ -179,6 +179,7 @@ module.exports = {
                 } 
             });
             collector.on('end', async (collected, reason) => {
+                logger.log(`Collected ${collected.size} items, reason: ${reason}`)
                 if (reason === 'blackjack') {
                     winnings += (bet * 1.5);
                     await db.add(`${user.id}.balance`, winnings);
