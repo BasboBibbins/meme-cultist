@@ -70,7 +70,6 @@ module.exports = {
         const collector = interaction.channel.createMessageComponentCollector({ filter, time: 15000 });
 
         collector.on('collect', async i => {
-            logger.log(`Collected ${collected.size} items, reason: ${reason}`)
             if (i.customId === 'previous') {
                 page--;
                 if (page === 1) {
