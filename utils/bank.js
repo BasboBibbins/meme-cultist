@@ -1,15 +1,16 @@
 const { QuickDB } = require('quick.db');
 const db = new QuickDB({ filePath: './db/users.sqlite' });
 const logger = require('./logger');
+const { INTEREST_RATE } = require('../config.json');
 
 module.exports = {
     interest: async function () {
         const users = await db.all();
         for (const user of users) {
             if (user.value.bank > 0) {
-                const interest = Math.round(user.value.bank / 100);
+                const interest = Math.round(user.value.bank * (INTEREST_RATE / 100));
                 await db.add(`${user.id}.bank`, interest);
-                logger.info(`Interest added to ${user.value.name}'s account: ${interest}`);
+                logger.info(`Interest added to ${user.value.name} (${user.id}). Interest: ${interest}`);
             }
         }
     },

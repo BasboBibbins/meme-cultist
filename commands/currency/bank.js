@@ -2,7 +2,7 @@ const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const { addNewDBUser } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.json");
+const { CURRENCY_NAME, INTEREST_RATE } = require("../../config.json");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 const wait = require('util').promisify(setTimeout);
@@ -11,7 +11,7 @@ const { deposit, withdraw, parseAmount } = require('../../utils/bank');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("bank")
-        .setDescription(`Withdraw or deposit ${CURRENCY_NAME} from your bank.`)
+        .setDescription(`Withdraw or deposit ${CURRENCY_NAME} from your bank. Gains interest and protects from robbers!`)
         .addSubcommand(subcommand =>
             subcommand
                 .setName("deposit")

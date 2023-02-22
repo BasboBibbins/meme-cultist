@@ -17,6 +17,7 @@
     "PAST_MESSAGES": 5,
 
     "CURRENCY_NAME": "koku",
+    "INTEREST_RATE": 1,
     
     "LEGACY_COMMANDS": [
         "help",
