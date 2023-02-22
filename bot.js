@@ -10,8 +10,10 @@ const { initDB, addNewDBUser } = require("./database")
 const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
+const { interest } = require("./utils/bank")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
+const schedule = require("node-schedule")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -36,6 +38,11 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences,
     ]
+})
+
+const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
+    logger.info(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`)
+    await interest(client)
 })
 
 client.slashcommands = new Collection()
@@ -181,13 +188,23 @@ else {
                             await db.set(`${interaction.user.id}.stats.commands.yearly`, {})
                         }
                         
-                        // add to the command counts
                         await db.add(`${interaction.user.id}.stats.commands.daily.${interaction.commandName}`, 1)
                         await db.add(`${interaction.user.id}.stats.commands.monthly.${interaction.commandName}`, 1)
                         await db.add(`${interaction.user.id}.stats.commands.yearly.${interaction.commandName}`, 1)
                         await db.add(`${interaction.user.id}.stats.commands.total.${interaction.commandName}`, 1)
-                    }
 
+                        let balance = await db.get(`${interaction.user.id}.balance`)
+                        let largestBalance = await db.get(`${interaction.user.id}.stats.largestBalance`)
+                        if (balance > largestBalance) {
+                            await db.set(`${interaction.user.id}.stats.largestBalance`, balance)
+                        }
+
+                        let bank = await db.get(`${interaction.user.id}.bank`)
+                        let largestBank = await db.get(`${interaction.user.id}.stats.largestBank`)
+                        if (bank > largestBank) {
+                            await db.set(`${interaction.user.id}.stats.largestBank`, bank)
+                        }
+                    }
                 } catch (error) {
                     logger.error(error);
                     await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });

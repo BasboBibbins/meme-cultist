@@ -175,9 +175,9 @@ module.exports = {
 
         if (interaction.options.getBoolean('details')) {
             const chunks = []; // trim message to <2000 characters
-            const data = JSON.stringify(dbUser, null, 2);
-            for (let i = 0; i < data.length; i += 1990) {
-                chunks.push(data.substring(i, i + 1990));
+            const data = JSON.stringify(dbUser, null, 4);
+            for (let i = 0; i < data.length; i += 1900) {
+                chunks.push(data.substring(i, i + 1900));
             }
             for (let i = 0; i < chunks.length; i++) {
                 await interaction.user.send(`\`\`\`json\n${chunks[i]}\`\`\``);

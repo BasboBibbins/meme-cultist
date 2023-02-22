@@ -42,6 +42,6 @@ module.exports = {
             const betSplit = bet.split("^");
             return Math.pow(betSplit[0], betSplit[1]);
         }
-        return bet;
+        return Number(bet);
     }
 }

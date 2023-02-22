@@ -57,7 +57,8 @@ async function getDefaultDB(user) {
                 "wins": 0,
                 "losses": 0,
             },
-            "largestBalance": 0
+            "largestBalance": 0,
+            "largestBank": 0,
         },
     }
 }
