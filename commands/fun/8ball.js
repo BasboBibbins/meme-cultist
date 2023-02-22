@@ -1,4 +1,5 @@
 const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
+const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -43,7 +44,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setAuthor({name: question, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setDescription(`The magic 8ball says... **${eightball[rng]}**`)
-            .setColor(0x00FF00)
+            .setColor(randomHexColor())
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
         await interaction.reply({embeds: [embed]});

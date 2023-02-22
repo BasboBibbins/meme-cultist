@@ -7,6 +7,7 @@ const { parseBet } = require('../../utils/betparse');
 const wait = require('node:timers/promises').setTimeout;
 const bj = require('../../utils/blackjack');
 const logger = require("../../utils/logger");
+const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -79,7 +80,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${user.username}#${user.discriminator}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
-            .setColor(0x00AE86)
+            .setColor(randomHexColor())
             .setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n\`${playerCards[0].char}\` \`${playerCards[1].char}\``)
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME}` })
             .setTimestamp();

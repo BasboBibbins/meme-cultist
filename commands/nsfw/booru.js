@@ -1,6 +1,7 @@
 const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const Booru = require('booru');
 const logger = require("../../utils/logger");
+const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -83,7 +84,7 @@ module.exports = {
                     }
                     logger.log(`${interaction.user.tag} (${interaction.user.id}) searched for \x1b[33m${tags.join(", ")}\x1b[0m on \x1b[33m${post.booru.site.domain}\x1b[0m.`)
                     const embed = new EmbedBuilder()
-                        .setColor(0x00AE86)
+                        .setColor(randomHexColor())
                         .setAuthor({name: post.booru.site.domain, iconURL: getFavicon(post.booru.site.domain), url: post.fileUrl})
                         .setDescription("```\n"+post.tags.join(", ")+"```")
                         .setImage(post.fileUrl)

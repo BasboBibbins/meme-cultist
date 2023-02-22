@@ -6,7 +6,7 @@ const request = require('node-superfetch');
 const path = require('path');
 const logger = require('../../utils/logger');
 registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), {family: 'Impact'});
-
+const wait = require('util').promisify(setTimeout);
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -15,11 +15,11 @@ module.exports = {
         .addStringOption(option =>
             option.setName('top')
                 .setDescription('The top text.')
-                .setRequired(true))
+                .setRequired(false))
         .addStringOption(option =>
             option.setName('bottom')
                 .setDescription('The bottom text.')
-                .setRequired(true))
+                .setRequired(false))
         .addAttachmentOption(option =>
             option.setName('image')
                 .setDescription('Use an image for your meme.')
@@ -35,6 +35,11 @@ module.exports = {
         
         const top = interaction.options.getString('top').toUpperCase();
         const bottom = interaction.options.getString('bottom').toUpperCase();
+        if (!top && !bottom) {
+            await interaction.editReply({content: "You need to provide some text!", ephemeral: false});
+            return await wait(5000).then(() => interaction.deleteReply());
+        }
+
         const image = interaction.options.getAttachment('image');
         const user = interaction.options.getUser('user') ? interaction.options.getUser('user') : interaction.user;
 

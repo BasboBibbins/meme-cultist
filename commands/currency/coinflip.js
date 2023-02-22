@@ -43,7 +43,6 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-            .setTitle('Slots Paytable')
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
 

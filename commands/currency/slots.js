@@ -6,6 +6,7 @@ const { CURRENCY_NAME } = require("../../config.json");
 const { parseBet } = require('../../utils/betparse');
 const wait = require('node:timers/promises').setTimeout;
 const logger = require("../../utils/logger");
+const { randomHexColor } = require('../../utils/randomcolor');
 
 async function rng(min, max) {
     min = Math.ceil(min);
@@ -39,7 +40,7 @@ module.exports = {
         if (option === 'paytable') {
             const paytable = new EmbedBuilder()
                 .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-                .setColor(0xFFFF00)
+                .setColor(randomHexColor())
                 .setTitle('Slots Paytable')
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();
@@ -87,7 +88,7 @@ module.exports = {
 
         const slots = new EmbedBuilder()
             .setAuthor({name: `${user.username+"#"+user.discriminator} | Slots`, iconURL: user.displayAvatarURL({dynamic: true})})            
-            .setColor(0x00AE86)
+            .setColor(randomHexColor())
             .setTitle('Good luck!')
             .setDescription(`${slotsDefaultEmoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`)
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME}` })

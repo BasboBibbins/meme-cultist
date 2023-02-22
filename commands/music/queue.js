@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const wait = require('util').promisify(setTimeout);
 const { queueString } = require('../../utils/musicPlayer');
 const logger = require('../../utils/logger');
+const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -25,7 +26,7 @@ module.exports = {
     async execute(interaction) {
         const player = interaction.client.player;
         const embed = new EmbedBuilder()
-        .setColor(0x00AE86)
+        .setColor(randomHexColor())
         .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
         .setTimestamp();
 

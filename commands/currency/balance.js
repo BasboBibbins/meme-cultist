@@ -4,6 +4,7 @@ const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const { addNewDBUser } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
 const logger = require("../../utils/logger");
+const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -21,7 +22,7 @@ module.exports = {
             await addNewDBUser(user);
         }
         const fetchedUser = await user.fetch()
-        let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : "#FFFFFF";
+        let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : randomHexColor();
         
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${user.username}'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
