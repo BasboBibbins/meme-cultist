@@ -22,6 +22,7 @@ async function ripGen(guildMember, prompt) {
     let promptLines = prompt.match(/.{1,40}(\s|$)|\S+?(\s|$)/g); 
     if (!promptLines.includes("\n") && !promptLines.includes(" ")) promptLines = prompt.match(/.{1,40}/g); 
     for (let i = 0; i < promptLines.length; i++) {
+        if (promptLines[i].endsWith(" ")) promptLines[i] = promptLines[i].slice(0, -1);
         ripLines = buffer - ((promptLines[i].length+2)/2);
         rip += `\n${'-'.repeat(ripLines)} ${promptLines[i]} ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
     }
@@ -41,7 +42,7 @@ module.exports = {
         return await ripGen(victim, prompt);
     },
     welcome: async function (client, member) {
-        const channel = WELCOME_CHANNEL_ID || member.guild.channels.cache.find(ch => ch.name === 'welcome');
+        const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome');
         if (!channel) return;
 
         const dbUser = await db.get(member.user.id);
@@ -97,7 +98,7 @@ module.exports = {
     },
 
     rip: async function (client, member, prompt) {
-        const channel = RIP_CHANNEL_ID || member.guild.channels.cache.find(ch => ch.name === 'rip');
+        const channel = member.guild.channels.cache.find(ch => ch.name === 'rip');
         if (!channel) return;
         const titles = [
             `cya ${member.user.username}`,
@@ -112,11 +113,11 @@ module.exports = {
             `RIP ${member.user.username}, you were kinda cringe tho`,
             `it's over. ${member.user.username} is dead`,
             `🦀 ${member.user.username} is dead 🦀`,
-            `${member.user.username} is dead. long live ${member.user.username}`,
+            `${member.user.username} is dead. long live ${member.user.username}!`,
             `RIP ${member.user.username}, you were a good person`,
             `Press F to pay respects to ${member.user.username}`,
             `☠️ ${member.user.username} is dead ☠️`,
-            `ripperoni pepperoni ${member.user.username}oni`,
+            `ripperoni pepperoni ${member.user.username}-eroni`,
             `${member.user.username} just got crit piped`,
             `erm... ${member.user.username} isn't dead. he just left the server 🤓`,
             `that's fucked up. ${member.user.username} just died. based?`,
@@ -128,7 +129,17 @@ module.exports = {
             `${member.user.username} did too much lean.`,
             `${member.user.username} "died suddenly"`,
             `${member.user.username} is dead, not big surprise!`,
-            `${member.user.username} is dead, many such cases!`
+            `${member.user.username} is dead, many such cases!`,
+            `${member.user.username} is dead, not a big loss for ${member.guild.name}!`,
+            `${member.user.username} didn't thank his doctor`,
+            `i can't believe ${member.user.username} is dead`,
+            `${member.user.username}? ${member.user.username}?! ${member.user.username.toUpperCase()}!!!!`,
+            `the west has fallen. ${member.user.username} is dead`,
+            `${member.user.username} got caught trolling`,
+            `${member.guild.name} is now ${member.user.username} free`,
+            `RIP ${member.user.username}, billions will die for this.`,
+            `see you on the flip side ${member.user.username}`,
+            `back to former hell ${member.user.username}`,
         ]
         const embed = new EmbedBuilder()
             .setColor(0xFF0000)
