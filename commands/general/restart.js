@@ -1,4 +1,5 @@
 const {EmbedBuilder, SlashCommandBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle} = require('discord.js');
+const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -47,6 +48,7 @@ module.exports = {
         });
         
         collector.on('end', async (collected, reason) => {
+            logger.log(`Restart collector has ended. Collected ${collected.size} interactions. Reason: ${reason}`)
             if (reason === "time") {
                 await interaction.editReply({content: "Restart cancelled due to inactivity.", components: [], ephemeral: true});
             }

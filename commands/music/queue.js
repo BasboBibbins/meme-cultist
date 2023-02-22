@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const wait = require('util').promisify(setTimeout);
 const { queueString } = require('../../utils/musicPlayer');
+const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -81,7 +82,7 @@ module.exports = {
                     }
                 });
                 collector.on("end", async (collected, reason) => {
-                    logger.log(`Collected ${collected.size} items, reason: ${reason}`)
+                    logger.log(`Clear command collector has ended. Collected ${collected.size} items, reason: ${reason}`)
                     if (reason === "time") {
                         embed.setTitle(`Queue clear timed out!`);
                         embed.setDescription(`The queue clear has timed out.`);
@@ -117,6 +118,7 @@ module.exports = {
                         embed.setTitle(`New queue:`)
                         embed.setDescription(`${queueString(tracks)}`);
                         let msg = await interaction.channel.send({embeds: [embed]});
+                        collector2.stop();
                         await wait(30000).then(() => {
                             msg.delete();
                         });
@@ -128,11 +130,12 @@ module.exports = {
                     }
                 });
                 collector2.on("end", async (collected, reason) => {
-                    logger.log(`Collected ${collected.size} items, reason: ${reason}`)
+                    logger.log(`Shuffle command collector has ended. Collected ${collected.size} items, reason: ${reason}`)
                     if (reason === "time") {
                         embed.setTitle(`Request timed out!`);
                         embed.setDescription(`The request to shuffle the queue has timed out.`);
                         await interaction.editReply({embeds: [embed], components: []});
+                        collector2.stop();
                         await wait(30000).then(() => interaction.deleteReply());
                     }
                 });

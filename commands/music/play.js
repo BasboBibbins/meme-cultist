@@ -121,7 +121,7 @@ module.exports = {
                 if (!queue.isPlaying()) await queue.node.play(track);
             });
             collector.on("end", async (collected, reason) => {
-                logger.log(`Collected ${collected.size} items, reason: ${reason}`)
+                logger.log(`Play command collector ended. Collected ${collected.size} interactions. Reason: ${reason}`)
                 if (reason === "time") {
                     embed.setTitle("Request has timed out.").setDescription(`Request has timed out. Please try again.`);
                     await interaction.editReply({embed: [embed], components: [], ephemeral: true});

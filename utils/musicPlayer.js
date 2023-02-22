@@ -74,7 +74,7 @@ module.exports = {
                         return await i.reply({ content: `Unpause before trying to skip. Too lazy to fix this bug for now.`, ephemeral: true });
                     }
                     await queue.node.skip();
-                    if (msg != null) await msg.delete();
+                    if (msg) await msg.delete();
                     await collector.stop();
                 } catch (e) {
                     logger.error(e);
@@ -82,7 +82,7 @@ module.exports = {
             } else if (i.customId === "stop") {
                 try {
                     await queue.delete();
-                    if (msg != null) await msg.delete();
+                    if (msg) await msg.delete();
                     return await collector.stop();
                 } catch (e) {
                     logger.error(e);
@@ -98,18 +98,18 @@ module.exports = {
                     wait(30000).then(async () => {
                         if (queue.node.isPaused()) {
                             await queue.delete();
-                            if (msg != null) msg.delete();
+                            if (msg) msg.delete();
                             if (reply) await reply.delete();
                         } else {
                             if (reply) await reply.delete();
                         }
                     });
                 } 
-            } 
+            }
+            clearInterval(interval);
         });
     },
     trackEnd: async (client, queue, track) => {
-        if (msg != null) msg.delete();
         msg = null;
     },
     queueString: (tracks) => {
