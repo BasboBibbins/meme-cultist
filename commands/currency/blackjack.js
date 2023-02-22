@@ -87,10 +87,10 @@ module.exports = {
         let winnings = Number(bet);
         if (await bj.checkHand(playerCards) === 'safe') {
             await db.sub(`${user.id}.balance`, bet);
-            await interaction.reply({ embeds: [embed], components: [buttonRow] });
+            let msg = await interaction.reply({ embeds: [embed], components: [buttonRow] });
 
             const filter = i => i.user.id === user.id;
-            const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
+            const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
     
             collector.on('collect', async i => {
                 if (i.customId !== 'double') {

@@ -171,7 +171,8 @@ module.exports = {
         let page = 1;
         msg = await interaction.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
         const filter = i => i.customId === 'previous' || i.customId === 'next';
-        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
+        const collector = await msg.createMessageComponentCollector({ filter, time: 60000 });
+
         if (interaction.options.getBoolean('details')) {
             const chunks = []; // trim message to <2000 characters
             const data = JSON.stringify(dbUser, null, 2);
@@ -192,7 +193,7 @@ module.exports = {
                 }
                 row.components[1].setDisabled(false);
                 collector.resetTimer();
-                i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
+                i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
             } else if (i.customId === 'next') {
                 page++;
                 if (page === 4) {
@@ -200,7 +201,7 @@ module.exports = {
                 }
                 row.components[0].setDisabled(false);
                 collector.resetTimer();
-                i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
+                i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
             }
         });
 

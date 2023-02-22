@@ -46,6 +46,7 @@ module.exports = {
         if (!channel) return;
 
         const dbUser = await db.get(member.user.id);
+        logger.info(`${dbUser ? ``: `New user `}${member.user.username} (${member.user.id}) has ${dbUser ? `re`:``}joined ${member.guild.name}!`);
 
         member.roles.add(member.guild.roles.cache.find(role => role.name === DEFAULT_ROLE));
         const fetchedUser = await member.user.fetch();  

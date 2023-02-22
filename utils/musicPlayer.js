@@ -55,7 +55,7 @@ module.exports = {
         }, 1000);
 
         const filter = i => i.member.voice.channelId === queue.dispatcher.channel.id;
-        const collector = await channel.createMessageComponentCollector({ filter, time: (track.durationMS - queue.node.getTrackPosition()) });
+        const collector = await msg.createMessageComponentCollector({ filter, time: (track.durationMS - queue.node.getTrackPosition()) });
     
         collector.on('collect', async i => {
             if (!filter) return await i.reply({ content: `Join the bot's channel to use these buttons!`, ephemeral: true }); 

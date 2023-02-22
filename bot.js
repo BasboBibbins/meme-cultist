@@ -133,7 +133,6 @@ else {
     })
 
     client.on(Events.GuildMemberRemove, async member => {
-        logger.log(`${member.guild.id} == ${GUILD_ID} = ${member.guild.id == GUILD_ID}`)
         if (member.guild.id == GUILD_ID) {
             await goodbye(client, member);
         }
