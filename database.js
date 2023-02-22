@@ -13,6 +13,7 @@ async function getDefaultDB(user) {
         "cooldowns": {
             "daily": 0,
             "weekly": 0,
+            "rob": 0,
         },
         "stats": {
             "commands": {
