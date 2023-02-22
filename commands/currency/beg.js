@@ -54,7 +54,7 @@ module.exports = {
         } else {
             embed.setColor("#ff0000");
             embed.setDescription(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
-            await db.add(`${stats}.lossses`, 1);
+            await db.add(`${stats}.losses`, 1);
             await interaction.reply({embeds: [embed]});
         }
         

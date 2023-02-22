@@ -149,11 +149,17 @@ module.exports = {
         logger.log(`Reset ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
     },
     setDBValue: async function(user, value, newValue) {
-        const dbUser = await db.get(user.id);
-        if (dbUser) {
-            dbUser[value] = newValue;
-            await db.set(user.id, dbUser);
+        const type = typeof newValue;
+        if (type === "string") {
+            if (!isNaN(newValue)) {
+                newValue = Number(newValue);
+            }
+        } else if (type === "object") {
+            if (Array.isArray(newValue)) {
+                newValue = newValue;
+            }
         }
+        await db.set(`${user.id}.${value}`, newValue);
         logger.log(`Set ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
     }
 }
