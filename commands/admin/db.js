@@ -1,4 +1,4 @@
-const {SlashCommandBuilder} = require('discord.js');
+const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue } = require("../../database");
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
@@ -62,15 +62,26 @@ module.exports = {
                         .setDescription('The user to reset all data from the database.')
                         .setRequired(true))),
     async execute(interaction) {
-        if (!interaction.member.permissions.has('ADMINISTRATOR')) {
-            await interaction.reply({content: `You do not have permission to use this command.`, ephemeral: true});
-            return;
-        }
-
         const subcommand = interaction.options.getSubcommand();
         const user = interaction.options.getUser('user');
         const key = interaction.options.getString('key');
         const value = interaction.options.getString('value');
+
+        const error_embed = new EmbedBuilder()
+            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(0xFF0000)
+            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
+        if (!interaction.member.permissions.has('ADMINISTRATOR')) {
+            error_embed.setDescription(`You do not have permission to use this command.`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
+        }
+
+        if (user.bot) {
+            error_embed.setDescription(`You cannot use this command on a bot.`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
+        }
 
         interaction.deferReply({ephemeral: true});
         await wait (1000);
