@@ -32,7 +32,7 @@ module.exports = {
             `you don't have the right, O you don't have the right\ntherefore you don't have the right, O you don't have the right`,
         ]
 
-        if (dbUser.balance > 0) {
+        if (dbUser.balance > 0 || dbUser.bank > 0) {
             await interaction.reply(`You already have ${CURRENCY_NAME}!`);
             return;
         }
