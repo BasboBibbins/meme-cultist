@@ -17,19 +17,31 @@ module.exports = {
         const victim = interaction.options.getUser("user");
         const user = interaction.user;
         const dbUser = await db.get(victim.id);
+
+        const error_embed = new EmbedBuilder()
+            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(0xFF0000)
+            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+        
         if (!dbUser) {
             logger.log(`No database entry for user ${victim.username} (${victim.id}), creating one...`, "warn")
             await addNewDBUser(victim);
         }
         
+        if (victim.bot) {
+            error_embed.setDescription(`You can't rob a bot!`);
+            return await interaction.reply({ embeds: [error_embed], ephemeral: true });
+        }
+
         if (victim.id === user.id) {
-            await interaction.reply("You can't rob yourself!");
-            return;
+            error_embed.setDescription(`You can't rob yourself!`);
+            return await interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
 
         if (dbUser.balance < 1) {
-            await interaction.reply("This user doesn't have any money in their wallet!");
-            return;
+            error_embed.setDescription(`This user doesn't have any ${CURRENCY_NAME} to rob!`);
+            return await interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
 
         const amount = Math.floor(Math.random() * dbUser.balance) + 1;
