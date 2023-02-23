@@ -251,7 +251,15 @@ else {
         if (message.author.bot) return;
 
         if (LEGACY_COMMANDS.some(cmd => message.content.startsWith(`>${cmd}`))) {
-            message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``.\nDiscord is gay and forced me at gunpoint to make this change.")}).finally(() => {message.delete()})
+            const wait = require('util').promisify(setTimeout);
+            let reply;
+            message.channel.sendTyping().then(async () => {
+                reply = await message.reply({content: `This bot is now slash commands only. Please use \`/\` instead of \`>\`.\nDiscord is stupid and forced me at gunpoint to make this change.`, ephemeral: true})
+            })
+            return await wait(15000).then(async () => {
+                await reply.delete()
+                await message.delete()
+            })
         };
     })
 }
