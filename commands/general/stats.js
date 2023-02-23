@@ -156,6 +156,9 @@ module.exports = {
             await addNewDBUser(user);
         }
 
+        const error_embed = new EmbedBuilder()
+            
+
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()

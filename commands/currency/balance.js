@@ -21,6 +21,17 @@ module.exports = {
             logger.log(`No database entry for user ${user.username} (${user.id}), creating one...`, "warn")
             await addNewDBUser(user);
         }
+        const error_embed = new EmbedBuilder()
+            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(0xFF0000)
+            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
+        if (user.bot) {
+            error_embed.setDescription(`**${user.username}** is a bot, and therefore cannot have a balance.`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
+        }
+
         const fetchedUser = await user.fetch()
         let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : randomHexColor();
         

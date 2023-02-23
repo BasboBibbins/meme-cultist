@@ -32,6 +32,10 @@ module.exports = {
             logger.log(`No database entry for user ${receiver.username} (${receiver.id}), creating one...`, "warn")
             await addNewDBUser(receiver);
         }
+        if (receiver.bot) {
+            ephemeral_embed.setDescription(`You can't give ${CURRENCY_NAME} to a bot!`);
+            return await interaction.reply({ embeds: [ephemeral_embed], ephemeral: true });
+        }
         if (sender.id === receiver.id) {
             ephemeral_embed.setDescription(`You can't give ${CURRENCY_NAME} to yourself!`);
             return await interaction.reply({ embeds: [ephemeral_embed], ephemeral: true });
