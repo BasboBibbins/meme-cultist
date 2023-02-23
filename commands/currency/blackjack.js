@@ -81,7 +81,7 @@ module.exports = {
             .setAuthor({ name: `${user.username}#${user.discriminator}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
             .setColor(randomHexColor())
-            .setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n\`${playerCards[0].char}\` \`${playerCards[1].char}\``)
+            .setDescription(`**Dealer:**\n\`${dealerCards[0].value}\` \`??\`\n\n**${user.username}:**\n\`${playerCards[0].char}\` \`${playerCards[1].char}\``)
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME}` })
             .setTimestamp();
 
@@ -106,7 +106,7 @@ module.exports = {
                         let reason = await bj.checkHand(playerCards);
                         collector.stop(reason);
                     } else {
-                        embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                        embed.setDescription(`**Dealer:**\n\`${dealerCards[0].value}\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                         await i.update({ embeds: [embed] });
                     }
                 } else if (i.customId === 'stand' || i.customId === 'double') {
@@ -122,7 +122,7 @@ module.exports = {
                             let reason = await bj.checkHand(playerCards);
                             return collector.stop(reason);
                         } else {
-                            embed.setDescription(`**Dealer:**\n\`??\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].value}\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                             await interaction.editReply({ embeds: [embed] });
                             await wait(1000);
                         }
