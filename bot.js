@@ -41,7 +41,7 @@ const client = new Client({
 })
 
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
-    logger.info(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`)
+    logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`)
     await interest(client)
 })
 
@@ -65,7 +65,7 @@ let db = null;
 if (fs.existsSync("./db/users.sqlite")) {
     db = new QuickDB({ filePath: "./db/users.sqlite" })
 } else {
-    logger.log(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
+    logger.error(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
     process.exit(1)
 }
 
@@ -108,15 +108,15 @@ for (const file of slashFiles) {
 
 if (LOAD_SLASH) {
     const rest = new REST({ version: "9" }).setToken(TOKEN)
-    logger.log(`Loading slash commands...`)
+    logger.info(`Loading slash commands...`)
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {body: commands})
     .then(() => {
-        logger.log(`Successfully reloaded application (/) commands.`)
+        logger.info(`Successfully reloaded application (/) commands.`)
         process.exit(0)
     })
     .catch((err) => {
         if (err){
-            logger.log(err)
+            logger.error(err)
             process.exit(1)
         }
     })
@@ -126,7 +126,7 @@ else {
         if (LOAD_DB) {
             initDB(client)
         }
-        logger.log(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
     })
 
     if (TESTING_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -173,7 +173,7 @@ else {
             
                 try {
                     await command.execute(interaction);
-                    logger.log(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
+                    logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     if (db) {
                         if (await db.get(`${interaction.user.id}.stats.commands.dailyReset`) != moment().format("YYYY-MM-DD")) {
                             await db.set(`${interaction.user.id}.stats.commands.dailyReset`, moment().format("YYYY-MM-DD"))
@@ -237,7 +237,7 @@ else {
         await trackEnd(client, queue, track);
     });
     client.player.events.on("channelEmpty", async (queue) => {
-        logger.log(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
+        logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
         await queue.player.destroy();
     });
     client.player.events.on("error", async (queue, error) => {
@@ -251,7 +251,7 @@ else {
         if (message.author.bot) return;
 
         if (LEGACY_COMMANDS.some(cmd => message.content.startsWith(`>${cmd}`))) {
-            //message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``.\nDiscord is gay and forced me at gunpoint to make this change.")})
+            message.channel.sendTyping().then(() => {message.channel.send("This bot is now slash commands only. Please use ``/`` instead of ``>``.\nDiscord is gay and forced me at gunpoint to make this change.")}).finally(() => {message.delete()})
         };
     })
 }

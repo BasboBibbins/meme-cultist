@@ -25,7 +25,7 @@ module.exports = {
             .setTimestamp();
         
         if (!dbUser) {
-            logger.log(`No database entry for user ${victim.username} (${victim.id}), creating one...`, "warn")
+            logger.warn(`No database entry for user ${victim.username} (${victim.id}), creating one...`, "warn")
             await addNewDBUser(victim);
         }
         

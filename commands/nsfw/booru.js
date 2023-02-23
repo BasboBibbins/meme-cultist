@@ -101,7 +101,7 @@ module.exports = {
 
             })
             .catch(err => {
-                logger.log(err);
+                logger.error(err);
                 interaction.reply({content: "An error occurred while searching for images.", ephemeral: true});
             }
         );

@@ -48,7 +48,7 @@ module.exports = {
         });
         
         collector.on('end', async (collected, reason) => {
-            logger.log(`Restart collector has ended. Collected ${collected.size} interactions. Reason: ${reason}`)
+            logger.debug(`Restart collector has ended. Collected ${collected.size} interactions. Reason: ${reason}`)
             if (reason === "time") {
                 await interaction.editReply({content: "Restart cancelled due to inactivity.", components: [], ephemeral: true});
             }

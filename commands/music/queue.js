@@ -83,7 +83,7 @@ module.exports = {
                     }
                 });
                 collector.on("end", async (collected, reason) => {
-                    logger.log(`Clear command collector has ended. Collected ${collected.size} items, reason: ${reason}`)
+                    logger.debug(`Clear command collector has ended. Collected ${collected.size} items, reason: ${reason}`)
                     if (reason === "time") {
                         embed.setTitle(`Queue clear timed out!`);
                         embed.setDescription(`The queue clear has timed out.`);
@@ -131,7 +131,7 @@ module.exports = {
                     }
                 });
                 collector2.on("end", async (collected, reason) => {
-                    logger.log(`Shuffle command collector has ended. Collected ${collected.size} items, reason: ${reason}`)
+                    logger.debug(`Shuffle command collector has ended. Collected ${collected.size} items, reason: ${reason}`)
                     if (reason === "time") {
                         embed.setTitle(`Request timed out!`);
                         embed.setDescription(`The request to shuffle the queue has timed out.`);

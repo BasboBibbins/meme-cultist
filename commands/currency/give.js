@@ -25,11 +25,11 @@ module.exports = {
             .setColor(0xFF0000)
             .setTimestamp();
         if (!dbSender) {
-            logger.log(`No database entry for user ${sender.username} (${sender.id}), creating one...`, "warn")
+            logger.warn(`No database entry for user ${sender.username} (${sender.id}), creating one...`, "warn")
             await addNewDBUser(sender);
         }
         if (!dbReceiver) {
-            logger.log(`No database entry for user ${receiver.username} (${receiver.id}), creating one...`, "warn")
+            logger.warn(`No database entry for user ${receiver.username} (${receiver.id}), creating one...`, "warn")
             await addNewDBUser(receiver);
         }
         if (receiver.bot) {

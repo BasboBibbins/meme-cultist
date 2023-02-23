@@ -76,24 +76,24 @@ module.exports = {
                 const executor = log.executor;
                 if (executor.id == client.user.id) return;
                 prompt = `kicked by ${executor.tag} ${log.reason ? `for reason: ${log.reason}` : ``}`
-                logger.warn(`${member.user.username} (${member.user.id}) was kicked by ${executor.tag} (${executor.id}) ${log.reason ? `for reason: ${log.reason}` : ``}.`);
+                logger.info(`${member.user.username} (${member.user.id}) was kicked by ${executor.tag} (${executor.id}) ${log.reason ? `for reason: ${log.reason}` : ``}.`);
             } else if (log.action == 22) { // BAN
                 const executor = log.executor;
                 if (executor.id == client.user.id) return;
                 prompt = `banned by ${executor.tag} ${log.reason ? `for reason: ${log.reason}` : ``}`
-                logger.warn(`${member.user.username} (${member.user.id}) was banned by ${executor.tag} (${executor.id}) ${log.reason ? `for reason: ${log.reason}` : ``}.`);
+                logger.info(`${member.user.username} (${member.user.id}) was banned by ${executor.tag} (${executor.id}) ${log.reason ? `for reason: ${log.reason}` : ``}.`);
             } else if (log.action == 21) { // PRUNE
                 const executor = log.executor;
                 if (executor.id == client.user.id) return;
                 prompt = `who the fuck are you?`
-                logger.warn(`${member.user.username} (${member.user.id}) was pruned by ${executor.tag} (${executor.id}).`);
+                logger.info(`${member.user.username} (${member.user.id}) was pruned by ${executor.tag} (${executor.id}).`);
             } else {
-                logger.warn(`${member.user.username} (${member.user.id}) left the server.`);
+                logger.info(`${member.user.username} (${member.user.id}) left the server.`);
                 prompt = `probably couldn't take the light amount of trolling.`
             }
             await module.exports.rip(client, member, prompt);
         } else {
-            logger.warn(`${member.user.username} (${member.user.id}) left the server`);
+            logger.info(`${member.user.username} (${member.user.id}) left the server`);
             prompt = `probably couldn't take the light amount of trolling.`
             await module.exports.rip(client, member, prompt);
         }

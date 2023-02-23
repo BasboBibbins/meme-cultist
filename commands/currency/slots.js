@@ -102,7 +102,7 @@ module.exports = {
         const slot3 = await rng(0, slotsEmoji.length - 1);
 
         const slotResults = [slot1, slot2, slot3];
-        logger.log(`${user.username} (${user.id}) rolled ${slotResults[0]}, ${slotResults[1]}, ${slotResults[2]}.`)
+        logger.debug(`${user.username} (${user.id}) rolled ${slotResults[0]}, ${slotResults[1]}, ${slotResults[2]}.`)
         
         await wait(1000);
         slots.setDescription(`${slotsEmoji[slotResults[0]].emoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`);
@@ -161,6 +161,6 @@ module.exports = {
                 .setDescription(`${desc}\n\nYou lost **${winnings}** ${CURRENCY_NAME}. \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}. ${await db.get(`${user.id}.balance`) <= 0 ? `You are now broke!` : ''}`);
             await interaction.editReply({ embeds: [slots] });
         }
-        logger.log(`${user.username}#${user.discriminator} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
+        logger.debug(`${user.username}#${user.discriminator} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
     },
 };

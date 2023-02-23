@@ -10,7 +10,7 @@ module.exports = {
             if (user.value.bank > 0) {
                 const interest = Math.round(user.value.bank * (INTEREST_RATE / 100));
                 await db.add(`${user.id}.bank`, interest);
-                logger.info(`Interest added to ${user.value.name} (${user.id}). Interest: ${interest}`);
+                logger.debug(`Interest added to ${user.value.name} (${user.id}). Interest: ${interest}`);
             }
         }
     },

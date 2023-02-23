@@ -72,7 +72,7 @@ module.exports = {
             embed.setColor("#00ff00");
             embed.setDescription(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
             await db.add(`${user.id}.balance`, amount);
-            await logger.log(`Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
+            await logger.info(`Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
             await db.add(`${stats}.wins`, 1);
             await interaction.reply({embeds: [embed]});
         } else {

@@ -59,6 +59,7 @@ module.exports = {
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
         await interaction.reply({embeds: [embed]});
-        logger.log(`${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${amount + bonus} (${amount} + ${bonus}) ${CURRENCY_NAME}.\n\x1b[32m[INFO]\x1b[0m Current streak: ${streak} | Longest streak: ${await db.get(db_longestStreak)}`);
+        logger.log(`${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${amount + bonus} (${amount} + ${bonus}) ${CURRENCY_NAME}.`);
+        logger.debug(`Current streak: ${streak} | Longest streak: ${dbUser.stats.dailies.longestStreak} | Total claimed: ${dbUser.stats.dailies.claimed}`)
     },
 };

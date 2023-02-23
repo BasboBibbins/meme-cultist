@@ -59,7 +59,7 @@ module.exports = {
     
         collector.on('collect', async i => {
             if (!filter) return await i.reply({ content: `Join the bot's channel to use these buttons!`, ephemeral: true }); 
-            logger.log(`${i.member.user.username} pressed ${i.customId}`);
+            logger.debug(`${i.member.user.username} pressed ${i.customId}`);
             if (i.customId === "pause") {
                 queue.node.isPaused() ? await queue.node.resume() : await queue.node.pause();
                 await collector.resetTimer({ time: 300000 }); // 5 minutes to respond
@@ -91,7 +91,7 @@ module.exports = {
         });
     
         collector.on('end', ( collected, reason ) => {
-            logger.log(`Collected ${collected.size} interactions. Reason: ${reason}`);
+            logger.debug(`Collected ${collected.size} interactions. Reason: ${reason}`);
             if (reason === "time") {
                 if (queue.node.isPaused()) {
                     const reply = msg.reply(`Are you still there? Music will be stopped in 30 seconds if you don't respond.`);

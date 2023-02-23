@@ -39,7 +39,7 @@ module.exports = {
         const amount = await parseAmount(option, user.id, subcommand);
         const dbUser = await db.get(user.id);
         if (!dbUser) {
-            logger.log(`No database entry for user ${user.username} (${user.id}), creating one...`, "warn")
+            logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`, "warn")
             await addNewDBUser(user);
         }
         
