@@ -30,10 +30,36 @@ module.exports = {
             `Yeah, I'm thinking it's over for you.`,
             `S T F U`,
             `you don't have the right, O you don't have the right\ntherefore you don't have the right, O you don't have the right`,
+            `You're pathetic.`,
+            `You're just gonna lose it all in the casino anyway.`,
+            `You're not getting any ${CURRENCY_NAME} from me.`,
+            `i saw ${user.username} begging for ${CURRENCY_NAME} on discord, what a loser`,
+            `really? you're begging for ${CURRENCY_NAME}?`,
+            `you might as well give up`,
+            `how about you get a job instead?`,
+            `stop begging for ${CURRENCY_NAME} and get a job`,
+            `maybe if you weren't so lazy you'd have ${CURRENCY_NAME} already`,
+            `bro, you're not getting any ${CURRENCY_NAME} from me`,
+            `if you're gonna beg for ${CURRENCY_NAME} at least do it in a more convincing way`,
+            `if you stop begging for ${CURRENCY_NAME}, maybe i'll give you some later`,
+            `shut the FREAK up dude`,
+            `begging for ${CURRENCY_NAME} in ${interaction.guild.name}? good luck with that`,
+            `you'll get no ${CURRENCY_NAME} from me`,
+            `dude stop let me go`,
+            `nerd emoji this man`,
+            `begging for ${CURRENCY_NAME} in ${new Date().getFullYear()}? what a loser`,
+            `try again on a different day`,
+            `come back when you're not so pathetic`,
+            `yea i'll give you ${CURRENCY_NAME}, come back on ${Math.floor(Math.random() * 12) + 1}/${Math.floor(Math.random() * 31) + 1}/${new Date().getFullYear()+Math.floor(Math.random() * 10) + 1}`,
+            `you're not getting any ${CURRENCY_NAME} from me today`,
+            `you'll get ${CURRENCY_NAME} from me when you decide to grow up`,
+            `don't make me get a janny to ban you`,
+            `final warning, stop begging for ${CURRENCY_NAME} or i WILL call a janny`,
+            `he does it for free folks`,
         ]
 
         if (dbUser.balance > 0 || dbUser.bank > 0) {
-            await interaction.reply(`You already have ${CURRENCY_NAME}!`);
+            await interaction.reply(`You already have ${CURRENCY_NAME}${dbUser.balance < 0 && dbUser.bank > 0 ? ` in your bank`:``}!`);
             return;
         }
 
