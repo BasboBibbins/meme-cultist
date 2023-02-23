@@ -6,6 +6,7 @@ const { addNewDBUser } = require('../database');
 const db = new QuickDB( { filePath: 'db/users.sqlite' });
 const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID } = require('../config.json');
 const logger = require('../utils/logger');
+const { randomHexColor } = require('./randomcolor');
 
 async function ripGen(guildMember, prompt) {
     const victim = guildMember.user;
@@ -143,7 +144,7 @@ module.exports = {
             `back to former hell ${member.user.username}`,
         ]
         const embed = new EmbedBuilder()
-            .setColor(0xFF0000)
+            .setColor(randomHexColor())
             .setTitle(titles[Math.floor(Math.random() * titles.length)])
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(await ripGen(member, prompt))
