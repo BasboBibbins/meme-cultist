@@ -55,7 +55,7 @@ module.exports = {
             `you'll get ${CURRENCY_NAME} from me when you decide to grow up`,
             `don't make me get a janny to ban you`,
             `final warning, stop begging for ${CURRENCY_NAME} or i WILL call a janny`,
-            `he does it for free folks`,
+            `${user.username} does it for free folks`,
         ]
 
         if (dbUser.balance > 0 || dbUser.bank > 0) {
