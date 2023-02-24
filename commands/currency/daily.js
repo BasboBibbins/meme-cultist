@@ -46,7 +46,7 @@ module.exports = {
 
         if (streak > dbUser.stats.dailies.longestStreak) await db.set(db_longestStreak, streak);
 
-        const bonus = streak > 1?Math.floor(Math.random() * (streak * 10)) + 1:0;
+        const bonus = streak > 1?Math.floor(Math.random() * (streak * 10)) + streak:0;
         const amount = Math.floor(Math.random() * 100) + 100;
         await db.add(`${user.id}.balance`, amount + bonus);
         await db.add(`${user.id}.stats.dailies.claimed`, 1);
