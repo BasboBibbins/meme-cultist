@@ -1,6 +1,7 @@
 const { EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../utils/logger");
+const { randomHexColor } = require("./randomcolor");
 
 let msg = null; 
 
@@ -38,7 +39,7 @@ module.exports = {
         .setAuthor({ name: `Requested by ${requestedBy.username}`, iconURL: requestedBy.displayAvatarURL({dynamic: true}) })
         .setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ``}`)
         .setThumbnail(track.thumbnail)
-        .setColor(0x00AE86)
+        .setColor(randomHexColor())
         .setFooter({ text: `Meme Cultist | Version ${require('../package.json').version}`, iconURL: client.user.displayAvatarURL({dynamic: true}) })
         .setTimestamp();
 

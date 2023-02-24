@@ -58,7 +58,7 @@ module.exports = {
             embed.setDescription(`No results found for ${song}`);
             await interaction.editReply({embeds: [embed], ephemeral: true});
         }
-
+        logger.debug(results);
         if (song.startsWith("http")) {
             if (results.playlist) {
                 if (results.playlist.type == "playlist" || results.playlist.type == "album") {
@@ -119,7 +119,7 @@ module.exports = {
                     await collector.stop("success");
                 }
                 await queue.addTrack(track);
-                if (!queue.isPlaying()) await queue.node.play(track);
+                if (!queue.isPlaying()) await queue.node.play();
             });
             collector.on("end", async (collected, reason) => {
                 logger.debug(`Play command collector ended. Collected ${collected.size} interactions. Reason: ${reason}`)
