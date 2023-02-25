@@ -39,7 +39,7 @@ module.exports = {
                     },
                     {
                         name: "Links",
-                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[Support Server](https://discord.gg/C3cMvwP)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)`,
+                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[Support Server](https://discord.gg/C3cMvwP)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)\n[Trello Board](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)`,
                         inline: false
                     },
                     {
