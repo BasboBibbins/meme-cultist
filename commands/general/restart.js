@@ -6,8 +6,6 @@ module.exports = {
         .setName("restart")
         .setDescription("[ADMIN] Restart the bot."),
     async execute(interaction) {
-
-        // if user is not an admin, return
         if (!interaction.member.permissions.has("ADMINISTRATOR")) {
             return await interaction.reply({content: "You do not have permission to use this command.", ephemeral: true});
         }

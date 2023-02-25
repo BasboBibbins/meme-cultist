@@ -63,7 +63,6 @@ async function generateStatsEmbed(page, interaction, user) {
             break;
         case 2:
             // Command Stats
-            // add up total value of all keys in stats.commands.total
             embed.setTitle(`${user.username}'s Command Stats`)
             let daily = await db.get(`${user.id}.stats.commands.daily`);
             let monthly = await db.get(`${user.id}.stats.commands.monthly`);
