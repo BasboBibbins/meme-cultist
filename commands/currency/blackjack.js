@@ -27,18 +27,28 @@ module.exports = {
 
         logger.log(`${user.username}#${user.discriminator} (${user.id}) initialized a game of blackjack with a bet of ${bet} ${CURRENCY_NAME}.`)
 
+        const error_embed = new EmbedBuilder()
+            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(0xFF0000)
+            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
         if (!dbUser) {
             await addNewDBUser(user.id);
-            return interaction.reply({ content: `You don't have an account! Please use \`/daily\` to create one.`, ephemeral: true });
+            error_embed.setDescription(`You don't have an account! Please try using the \`daily\` command and then try again.`);
+            return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
         if (bet > dbUser.balance) {
-            return interaction.reply({ content: `You don't have enough ${CURRENCY_NAME}!`, ephemeral: true });
+            error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+            return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
         if (bet < 1) {
-            return interaction.reply({ content: `You can't bet less than 1 ${CURRENCY_NAME}!`, ephemeral: true });
+            error_embed.setDescription(`You must bet at least 1 ${CURRENCY_NAME}!`);
+            return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
         if (bet % 1 !== 0) {
-            return interaction.reply({ content: `You must bet a whole number of ${CURRENCY_NAME}!`, ephemeral: true });
+            error_embed.setDescription(`You must bet in whole numbers!`);
+            return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
 
         const buttonRow = new ActionRowBuilder()

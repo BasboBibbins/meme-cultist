@@ -22,21 +22,28 @@ module.exports = {
             logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
             await addNewDBUser(interaction.user.id);
         }
+
+        const error_embed = new EmbedBuilder()
+            .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setColor(0xFF0000)
+            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setTimestamp();
+
         if (isNaN(bet)) {
-            await interaction.reply(`You must flip a number of ${CURRENCY_NAME}!`);
-            return;
+            error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
         if (bet % 1 != 0) {
-            await interaction.reply(`You must flip a whole number of ${CURRENCY_NAME}!`);
-            return;
+            error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
         if (bet < 1) {
-            await interaction.reply(`You must flip at least 1 ${CURRENCY_NAME}!`);
-            return;
+            error_embed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
         if (bet > await db.get(`${interaction.user.id}.balance`)) {
-            await interaction.reply(`You don't have enough ${CURRENCY_NAME}!`);
-            return;
+            error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
 
         const chance = Math.floor(Math.random() * 100) + 1;

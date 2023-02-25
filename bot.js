@@ -20,6 +20,8 @@ const TOKEN = process.env.TOKEN
 
 const LOAD_SLASH = process.argv[2] == "load"
 const LOAD_DB = process.argv[2] == "dbinit"
+const DELETE_SLASH = process.argv[2] == "delete"
+const DELETE_SLASH_ID = process.argv[3]
 
 const banned = BANNED_ROLE;
 
@@ -106,8 +108,38 @@ for (const file of slashFiles) {
     if (LOAD_SLASH) commands.push(slashcmd.data.toJSON())
 }
 
-if (LOAD_SLASH) {
-    const rest = new REST({ version: "9" }).setToken(TOKEN)
+if (DELETE_SLASH) {
+    const rest = new REST({ version: "10" }).setToken(TOKEN)
+    if (DELETE_SLASH_ID) {
+        logger.info(`Deleting slash command with ID \x1b[33m${DELETE_SLASH_ID}\x1b[0m...`)
+        rest.delete(Routes.applicationCommand(CLIENT_ID, DELETE_SLASH_ID))
+        .then(() => {
+            logger.info(`Successfully deleted application (/) command with ID \x1b[33m${DELETE_SLASH_ID}\x1b[0m.`)
+            process.exit(0)
+        })
+        .catch((err) => {
+            if (err){
+                logger.error(err)
+                process.exit(1)
+            }
+        })
+    } else {
+        logger.info(`Deleting all slash commands...`)
+        client.slashcommands.set([]);
+        rest.put(Routes.applicationCommands(CLIENT_ID), {body: []})
+        .then(() => {
+            logger.info(`Successfully deleted all application (/) commands.`)
+            process.exit(0)
+        })
+        .catch((err) => {
+            if (err){
+                logger.error(err)
+                process.exit(1)
+            }
+        })
+    }
+} else if (LOAD_SLASH) {
+    const rest = new REST({ version: "10" }).setToken(TOKEN)
     logger.info(`Loading slash commands...`)
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {body: commands})
     .then(() => {
@@ -120,8 +152,7 @@ if (LOAD_SLASH) {
             process.exit(1)
         }
     })
-}
-else {
+} else {
     client.once(Events.ClientReady, () => {
         if (LOAD_DB) {
             initDB(client)

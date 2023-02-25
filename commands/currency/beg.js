@@ -58,15 +58,16 @@ module.exports = {
             `${user.username} does it for free folks`,
         ]
 
-        if (dbUser.balance > 0 || dbUser.bank > 0) {
-            await interaction.reply(`You already have ${CURRENCY_NAME}${dbUser.balance < 0 && dbUser.bank > 0 ? ` in your bank`:``}!`);
-            return;
-        }
-
         const embed = new EmbedBuilder()
             .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
+
+        if (dbUser.balance > 0 || dbUser.bank > 0) {
+            embed.setColor("#ff0000");
+            embed.setDescription(`You already have ${CURRENCY_NAME}${dbUser.balance < 0 && dbUser.bank > 0 ? ` in your bank`:``}!`);
+            return await interaction.reply({embeds: [embed], ephemeral: true});
+        }
             
         if (chance > 75) {
             embed.setColor("#00ff00");

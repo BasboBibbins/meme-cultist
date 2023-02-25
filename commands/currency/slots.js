@@ -67,21 +67,27 @@ module.exports = {
             logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`)
             await addNewDBUser(user);
         }
+        const error_embed = new EmbedBuilder()
+            .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setColor(0xFF0000)
+            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setTimestamp();
+
         if (isNaN(bet)) {
-            await interaction.reply({content: `You need to specify a valid bet amount!`, ephemeral: true});
-            return;
+            error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
         if (bet % 1 != 0) {
-            await interaction.reply({content: `You must bet a whole number of ${CURRENCY_NAME}`, ephemeral: true});
-            return;
+            error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
         if (bet < 1) {
-            await interaction.reply({content: `You must bet at least 1 ${CURRENCY_NAME}`, ephemeral: true});
-            return;
+            error_embed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
-        if (bet > await db.get(`${user.id}.balance`)) {
-            await interaction.reply({content: `You don't have enough ${CURRENCY_NAME} to bet that much!`, ephemeral: true});
-            return;
+        if (bet > await db.get(`${interaction.user.id}.balance`)) {
+            error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+            return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
 
         await db.set(`${user.id}.balance`, await db.get(`${user.id}.balance`) - bet);
