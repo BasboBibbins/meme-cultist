@@ -12,7 +12,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('add')
-                .setDescription(`Add ${CURRENCY_NAME} to a user.`)
+                .setDescription(`[ADMIN] Add ${CURRENCY_NAME} to a user.`)
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to add Koku to.')
@@ -24,7 +24,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('remove')
-                .setDescription(`Remove ${CURRENCY_NAME} from a user.`)
+                .setDescription(`[ADMIN] Remove ${CURRENCY_NAME} from a user.`)
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to remove Koku from.')
@@ -36,7 +36,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('set')
-                .setDescription(`Set ${CURRENCY_NAME} for a user.`)
+                .setDescription(`[ADMIN] Set ${CURRENCY_NAME} for a user.`)
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to set Koku for.')
@@ -46,7 +46,6 @@ module.exports = {
                         .setDescription('The amount of Koku to set.')
                         .setRequired(true))),
     async execute(interaction) {
-        // Check if the user is an admin
         if (!interaction.member.permissions.has('ADMINISTRATOR')) {
             await interaction.reply({content: `You do not have permission to use this command.`, ephemeral: true});
             return;

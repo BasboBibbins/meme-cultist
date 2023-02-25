@@ -12,7 +12,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('add')
-                .setDescription('Add a new database entry.')
+                .setDescription('[ADMIN] Add a new database entry.')
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to add to the database.')
@@ -28,7 +28,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('delete')
-                .setDescription('Delete a database entry.')
+                .setDescription('[ADMIN] Delete a database entry.')
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to delete from the database.')
@@ -40,7 +40,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('set')
-                .setDescription('Set a database entry.')
+                .setDescription('[ADMIN] Set a database entry.')
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to set the database entry for.')
@@ -56,7 +56,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('reset')
-                .setDescription('Reset a database entry.')
+                .setDescription('[ADMIN] Reset a database entry.')
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to reset all data from the database.')
