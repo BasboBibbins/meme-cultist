@@ -1,6 +1,6 @@
 const { QuickDB } = require("quick.db");
 
-const db = new QuickDB({ filePath: "./db/users.sqlite" });
+const db = new QuickDB({ filePath: `./db/users.sqlite` });
 
 module.exports = {
     parseBet: async function (bet, id) {

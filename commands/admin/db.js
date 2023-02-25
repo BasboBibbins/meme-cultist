@@ -1,7 +1,7 @@
 const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue } = require("../../database");
-const db = new QuickDB({ filePath: "./db/users.sqlite" });
+const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("../../utils/logger");
 const wait = require('util').promisify(setTimeout);
 

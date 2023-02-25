@@ -64,8 +64,8 @@ client.player = new Player(client, {
 })
 
 let db = null;
-if (fs.existsSync("./db/users.sqlite")) {
-    db = new QuickDB({ filePath: "./db/users.sqlite" })
+if (fs.existsSync(`./db/users.sqlite`)) {
+    db = new QuickDB({ filePath: `./db/users.sqlite` })
 } else {
     logger.error(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
     process.exit(1)
