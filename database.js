@@ -7,8 +7,8 @@ async function getDefaultDB(user) {
     return {
         "id": user.id,
         "name": user.username+"#"+user.discriminator,
-        "balance": 100,
-        "bank": 0,
+        "balance": 0,
+        "bank": 100,
         "inventory": [],
         "cooldowns": {
             "daily": 0,

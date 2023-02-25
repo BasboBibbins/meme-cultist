@@ -35,13 +35,13 @@ module.exports = {
             }
 
             const amount = Math.floor(Math.random() * 500) + 500;
-            await db.add(`${user.id}.balance`, amount);
+            await db.add(`${user.id}.bank`, amount);
             await db.add(`${user.id}.stats.weeklies.claimed`, 1);
             await db.set(`${user.id}.cooldowns.weekly`, Date.now() + cooldown);
 
             const embed = new EmbedBuilder()
                 .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})
-                .setDescription(`You have claimed your weekly ${CURRENCY_NAME}! You have received **${amount}** ${CURRENCY_NAME}.`)
+                .setDescription(`You have claimed your weekly ${CURRENCY_NAME}! **${amount}** ${CURRENCY_NAME} has been added to your bank.`)
                 .setColor(0x00FF00)
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();

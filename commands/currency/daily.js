@@ -48,13 +48,13 @@ module.exports = {
 
         const bonus = streak > 1?Math.floor(Math.random() * (streak * 10)) + streak:0;
         const amount = Math.floor(Math.random() * 100) + 100;
-        await db.add(`${user.id}.balance`, amount + bonus);
+        await db.add(`${user.id}.bank`, amount + bonus);
         await db.add(`${user.id}.stats.dailies.claimed`, 1);
         await db.set(`${user.id}.cooldowns.daily`, Date.now() + cooldown);
 
         const embed = new EmbedBuilder()
             .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})
-            .setDescription(`You claimed your daily ${CURRENCY_NAME} and received **${(amount + bonus)}** ${CURRENCY_NAME}!${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
+            .setDescription(`You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus)}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
             .setColor(0x00FF00)
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
