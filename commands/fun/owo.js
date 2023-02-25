@@ -16,6 +16,7 @@ module.exports = {
         text = text.replace(/N([aeiou])/g, 'Ny$1');
         text = text.replace(/N([AEIOU])/g, 'NY$1');
         text = text.replace(/ove/g, 'uv');
+        text = text.replace(/\./g, ` ${Array.from({length: Math.floor(Math.random() * 5) + 1}, () => '~ OwO').join(' ')} `);
         text = text.replace(/!+/g, ` ${Array.from({length: Math.floor(Math.random() * 5) + 1}, () => 'OwO').join(' ')} `);
         text = text.replace(/\?+/g, ` ${Array.from({length: Math.floor(Math.random() * 5) + 1}, () => 'OwO').join(' ')} `);
         await interaction.reply(text);
