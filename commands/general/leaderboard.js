@@ -41,6 +41,7 @@ module.exports = {
         .setName("leaderboard")
         .setDescription(`View the top 10 users in the server!`),
     async execute(interaction) {
+        await interaction.deferReply();
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Requested by ${interaction.user.username}#${interaction.user.discriminator}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
@@ -48,23 +49,21 @@ module.exports = {
             .setTimestamp();
 
                     
-        const current = await getCurrentTopUsers()
-        const allTime = await getAllTimeTopUsers()
-
-        console.log(current.map(user => `${user.id} - ${user.value.bank}`).join(", "))
+        const current = await getCurrentTopUsers();
+        const allTime = await getAllTimeTopUsers();
+        await wait (500); // Wait for the database to update
         
         embed.setTitle(`Leaderboard for ${interaction.guild.name}`);
         embed.addFields(
             { name: "Current Top 10 Banks", value: current.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.bank} ${CURRENCY_NAME}`).join("\n"), inline: true },
             { name: "All Time Top 10 Banks", value: allTime.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.stats.largestBank} ${CURRENCY_NAME}`).join("\n"), inline: true }
         );
-        await interaction.reply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [embed] });
         await wait(60000).then(async () => {
             interaction.deleteReply();
         }).catch((err) => {
             logger.error(`Failed to delete reply for command ${interaction.commandName}`);
             logger.error(err);
-            interaction.deleteReply();
         });
     }
 };

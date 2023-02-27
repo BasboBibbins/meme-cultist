@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBui
 const { randomHexColor } = require('../../utils/randomcolor');
 const { OWNER_ID } = require('../../config.json');
 const explanations = require('../../utils/explanations');
+const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
