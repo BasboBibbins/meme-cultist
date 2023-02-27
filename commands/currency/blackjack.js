@@ -192,7 +192,7 @@ module.exports = {
             collector.on('end', async (collected, reason) => {
                 logger.debug(`Blackjack collector ended. Collected ${collected.size} interactions. Reason: ${reason}`);
                 if (reason === 'blackjack') {
-                    winnings += (bet * 1.5);
+                    winnings += Math.ceil(bet * 1.5);
                     await db.add(`${user.id}.balance`, winnings);
                     await db.add(`${stats}.wins`, 1);
                     await db.add(`${stats}.blackjacks`, 1);
@@ -238,7 +238,7 @@ module.exports = {
                 }
             });
         } else if (await bj.checkHand(playerCards) === 'blackjack') {
-            winnings = (bet * 1.5);
+            winnings = Math.ceil(bet * 1.5);
             await db.add(`${user.id}.balance`, winnings);
             await db.add(`${stats}.wins`, 1);
             await db.add(`${stats}.blackjacks`, 1);
