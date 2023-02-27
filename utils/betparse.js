@@ -20,23 +20,23 @@ module.exports = {
         }
         if (bet.includes("/")) {
             const betSplit = bet.split("/");
-            return betSplit[0] / betSplit[1];
+            return Math.floor(betSplit[0] / betSplit[1]);
         }
         if (bet.includes("*")) {
             const betSplit = bet.split("*");
-            return betSplit[0] * betSplit[1];
+            return Math.floor(betSplit[0] * betSplit[1]);
         }
         if (bet.includes("+")) {
             const betSplit = bet.split("+");
-            return betSplit[0] + betSplit[1];
+            return Math.floor(betSplit[0] + betSplit[1])
         }
         if (bet.includes("-")) {
             const betSplit = bet.split("-");
-            return betSplit[0] - betSplit[1];
+            return Math.floor(betSplit[0] - betSplit[1]);
         }
         if (bet.includes("%")) {
             const betSplit = bet.split("%");
-            return betSplit[0] * betSplit[1] / 100;
+            return Math.floor(betSplit[0] * (betSplit[1] / 100));
         }
         if (bet.includes("^")) {
             const betSplit = bet.split("^");
