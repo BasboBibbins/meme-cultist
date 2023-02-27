@@ -81,8 +81,9 @@ module.exports = {
                 await i.editReply({embeds: [embed]});
             });
             collector.on('end', async (collected, reason) => {
+                logger.debug(`/help Collector ended with reason: ${reason}. Collected ${collected.size} items.`);
                 if (reason === 'time') {
-                    await msg.edit({components: []});
+                    await msg.delete();
                 }
             });
             return;
