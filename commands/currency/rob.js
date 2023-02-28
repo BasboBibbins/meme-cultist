@@ -46,7 +46,7 @@ module.exports = {
 
         const amount = Math.floor(Math.random() * dbUser.balance) + 1;
         const chance = Math.floor(Math.random() * 100) + 1;
-        const cooldown = 60000;
+        const cooldown = 60000 * 5;
 
         if (await db.get(`${user.id}.cooldowns.rob`) > Date.now()) {
             const timeLeft = new Date(dbUser.cooldowns.rob - Date.now());

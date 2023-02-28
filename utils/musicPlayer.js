@@ -6,11 +6,12 @@ const { randomHexColor } = require("./randomcolor");
 let msg = null; 
 
 module.exports = {
+    currentTrack: null,
     trackStart: async (client, queue, track) => {
         if (msg != null) return; // Prevents multiple messages from being sent
         const channel = queue.metadata.channel;
         const requestedBy = queue.options.metadata.requestedBy;
-        
+        module.exports.currentTrack = track;
         const row = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
@@ -112,6 +113,7 @@ module.exports = {
     },
     trackEnd: async (client, queue, track) => {
         msg = null;
+        module.exports.currentTrack = null;
     },
     queueString: (tracks) => {
         let result = tracks.map((track, i) => `**${i + 1}.** [${track.title}](${track.url}) by **${track.author}** - ${track.duration}`).join("\n");
