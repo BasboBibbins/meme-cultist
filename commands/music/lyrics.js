@@ -21,12 +21,14 @@ module.exports = {
             .setTimestamp();
         
         const currentTrack = require('../../utils/musicPlayer').currentTrack;
-
-        const song = interaction.options.getString('song') || currentTrack.title.includes(' - ') ? `${currentTrack.title.split(' - ')[1]} ${currentTrack.title.split(' - ')[0]}` : `${currentTrack.title} ${currentTrack.author}`;
-        console.log(song);
+        let song = interaction.options.getString('song');
         if (!song) {
-            embed.setDescription(`There is no song playing! Please try again when a song is playing, otherwise use \`/lyrics <song>\` to get a song's lyrics.`); 
-            return await interaction.editReply({ embeds: [embed] });
+            if (currentTrack) {
+                song = currentTrack.title.includes(' - ') ? `${currentTrack.title.split(' - ')[1]} ${currentTrack.title.split(' - ')[0]}` : `${currentTrack.title} ${currentTrack.author}`;
+            } else {
+                embed.setDescription(`There is no song playing! Please try again when a song is playing, otherwise use \`/lyrics <song>\` to get a song's lyrics.`); 
+                return await interaction.editReply({ embeds: [embed] });
+            }
         }
 
         await lyricsClient
