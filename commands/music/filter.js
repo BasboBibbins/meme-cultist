@@ -65,5 +65,5 @@ module.exports = {
             embed.setDescription(`🎶 The **${filter}** filter has been ${queue.filters.ffmpeg.isEnabled(filter) ? 'enabled' : 'disabled'}`);
         }
         return await interaction.reply({ embeds: [embed] });
-    }
+    } 
 }
