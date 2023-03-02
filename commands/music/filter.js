@@ -13,7 +13,7 @@ module.exports = {
 
     async autocomplete(interaction) {
         const focusedValue = interaction.options.getFocused();
-        const filters = [
+        let filters = [
             '8d',
             'bassboost',
             'chorus',
@@ -41,9 +41,10 @@ module.exports = {
             'treble',
             'tremolo',
             'vaporwave',
-            'vibrato'
+            'vibrato',
+            'clear'
         ];
-        const filtered = filters.filter(filter => filter.toLowerCase().startsWith(focusedValue.toLowerCase()));
+        const filtered = filters.filter(filter => filter.toLowerCase().startsWith(focusedValue.toLowerCase())).slice(0, 25);
         await interaction.respond(
             filtered.map(filter => ({ name: filter, value: filter }))
         );
@@ -61,8 +62,16 @@ module.exports = {
         if (!queue) {
             embed.setDescription('There is no music playing!');
         } else {
-            await queue.filters.ffmpeg.toggle([filter]); // TODO: fix bot skipping song when filter is enabled
-            embed.setDescription(`🎶 The **${filter}** filter has been ${queue.filters.ffmpeg.isEnabled(filter) ? 'enabled' : 'disabled'}`);
+            if (filter === 'clear') {
+                let enabled = queue.filters.ffmpeg.getFiltersEnabled();
+                for (let i = 0; i < enabled.length; i++) {
+                    await queue.filters.ffmpeg.toggle([enabled[i]]);
+                }
+                embed.setDescription('🎶 All filters have been cleared');
+            } else {
+                await queue.filters.ffmpeg.toggle([filter]); // TODO: fix bot skipping song when filter is enabled
+                embed.setDescription(`🎶 The **${filter}** filter has been ${queue.filters.ffmpeg.isEnabled(filter) ? 'enabled' : 'disabled'}`);
+            }
         }
         return await interaction.reply({ embeds: [embed] });
     } 
