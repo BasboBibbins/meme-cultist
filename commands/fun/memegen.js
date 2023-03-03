@@ -1,7 +1,9 @@
-const {SlashCommandBuilder} = require('discord.js');
+const {SlashCommandBuilder, AttachmentBuilder} = require('discord.js');
 const Canvas = require('canvas');
-const {registerFont} = require('canvas');
+const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
+const GIFEncoder = require('gif-encoder');
+const { parseGIF, decompressFrames } = require('gifuct-js');
 const request = require('node-superfetch');
 const path = require('path');
 const logger = require('../../utils/logger');
@@ -30,66 +32,134 @@ module.exports = {
                 .setRequired(false)),
 
     async execute(interaction) {
+        let image = interaction.options.getAttachment('image')
+        const user = interaction.options.getUser('user') || interaction.user;
+
+        if (image) {
+            if (!image.contentType || !image.contentType.startsWith('image')) {
+                return interaction.reply({content: 'Please provide a valid image.', ephemeral: true});
+            }
+        } else {
+            // create an attachment from the user's avatar
+            image = {
+                url: user.displayAvatarURL({extension: 'png', size: 1024}),
+                name: `${user.username}.png`,
+                contentType: 'image/png'
+            }
+        }
+
+        const imageResponse = await fetch(image.url);
+        if (!imageResponse.body) {
+            return interaction.reply({content: 'Unable to download attachment.', ephemeral: true});
+        }
+
         await interaction.deferReply();
-        if (interaction.options.getAttachment('image') && interaction.options.getUser('user')) return interaction.editReply({content: "You can't use an image and a user at the same time!", ephemeral: false});
-        
-        const top = interaction.options.getString('top').toUpperCase();
-        const bottom = interaction.options.getString('bottom').toUpperCase();
-        if (!top && !bottom) {
-            await interaction.editReply({content: "You need to provide some text!", ephemeral: false});
-            return await wait(5000).then(() => interaction.deleteReply());
+
+        let imageName = image.name ? image.name.slice(0, image.name.lastIndexOf('.')) : `${new Date().getTime()}`;
+
+        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+
+        let topText = interaction.options.getString('top');
+        let bottomText = interaction.options.getString('bottom');
+
+        const drawMemeGenText = async (type, ctx, text, x, y, maxWidth, fontSize, fontColor) => {
+            ctx.font = `${fontSize}px Impact`;
+            ctx.fillStyle = fontColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            const lines = await wrapText(ctx, text, maxWidth);
+            if (lines) {
+                for (let i = 0; i < lines.length; i++) {
+                    logger.debug(`Drawing text: ${lines[i]}`);
+                    let textHeight = y;
+                    if (type === "top") {
+                        textHeight = (i * fontSize) + (i * 10);
+                    } else if (type === "bottom") {
+                        textHeight = (ctx.canvas.height - (lines.length * fontSize) - ((lines.length - 1) * 10)) + (i * fontSize) + (i * 10) - 10;
+                    }
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = Math.round(fontSize/10);
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(lines[i], x, textHeight);
+                    ctx.fillStyle = fontColor;
+                    ctx.fillText(lines[i], x, textHeight);
+                }
+            }
+        };
+
+        const drawMemeGen = async (ctx) => {
+            const canvas = ctx.canvas;
+            const fontSize = Math.round(canvas.width / 10)
+            const fontColor = '#ffffff';
+            const maxWidth = canvas.width - 20;
+            const x = canvas.width / 2;
+            const y = 10;
+            if (topText) {
+                await drawMemeGenText("top", ctx, topText.toUpperCase(), x, y, maxWidth, fontSize, fontColor);
+            }
+
+            if (bottomText) {
+                await drawMemeGenText("bottom", ctx, bottomText.toUpperCase(), x, (canvas.height - fontSize) - y, maxWidth, fontSize, fontColor);
+            }
+        };
+
+        let attachment = AttachmentBuilder;
+        const gif = image.contentType.endsWith('gif');
+
+        if (!gif) {
+            const drawableImage = await loadImage(imageBuffer);
+            const canvas = createCanvas(drawableImage.width, drawableImage.height);
+            const ctx = canvas.getContext('2d');
+
+            ctx.drawImage(drawableImage, 0, 0);
+            await drawMemeGen(ctx);
+
+            attachment = new AttachmentBuilder(canvas.createPNGStream())
+                .setName(`${imageName}.png`);
+        } else {
+            const gif = parseGIF(imageBuffer);
+            const frames = decompressFrames(gif, true);
+
+            const tempCanvas = Canvas.createCanvas(frames[0].dims.width, frames[0].dims.height);
+            const tempCtx = tempCanvas.getContext('2d');
+            const gifCanvas = Canvas.createCanvas(tempCanvas.width, tempCanvas.height);
+            const gifCtx = gifCanvas.getContext('2d');
+
+            const encoder = new GIFEncoder(tempCanvas.width, tempCanvas.height);
+            encoder.setDelay(gif.frames[0].delay);
+            encoder.setRepeat(0);
+            encoder.setDispose(1);
+            encoder.writeHeader();
+
+            const buffChunks = [];
+            encoder.on('data', chunk => buffChunks.push(chunk));
+            
+            let frameData = undefined;
+            for (const frame of frames) {
+                if (!frameData || frame.dims.width !== tempCanvas.width || frame.dims.height !== tempCanvas.height) {
+                    tempCanvas.width = frame.dims.width;
+                    tempCanvas.height = frame.dims.height;
+                    frameData = tempCtx.createImageData(frame.dims.width, frame.dims.height);
+                }
+                frameData.data.set(frame.patch);
+                tempCtx.putImageData(frameData, 0, 0);
+                gifCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
+                await drawMemeGen(gifCtx, topText, bottomText);
+
+                encoder.setDelay(frame.delay);
+                encoder.addFrame(gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data);
+            }
+            encoder.finish();
+            const output = Buffer.concat(buffChunks);
+
+            if (output.length > 8e+6) {
+                return interaction.editReply({content: 'The generated GIF is too large to send.', ephemeral: true});
+            }
+
+            attachment = new AttachmentBuilder(output)
+                .setName(`${imageName}.gif`)
+                
         }
-
-        const image = interaction.options.getAttachment('image');
-        const user = interaction.options.getUser('user') ? interaction.options.getUser('user') : interaction.user;
-
-        if (image && !image.name.endsWith('.png') && !image.name.endsWith('.jpg') && !image.name.endsWith('.jpeg')) return interaction.editReply({content: "The image must be a png, jpg, or jpeg!", ephemeral: false});
-
-        const { body } = await request.get(image ? image.url : user.displayAvatarURL({extension: 'png', size: 1024}));
-
-        
-        const base = await Canvas.loadImage(body);
-        const canvas = Canvas.createCanvas(base.width, base.height);
-        const ctx = canvas.getContext('2d');
-
-        logger.log(`Generating meme for ${interaction.user.tag} with ${image ? image.name : user.username}.png`)
-        ctx.drawImage(base, 0, 0);
-        
-        const fontsize = Math.round(base.height/10);
-
-        ctx.font = `${fontsize}px Impact`;
-        ctx.fillStyle = 'white';
-        ctx.textAlign = 'center';
-
-        ctx.textBaseline = 'top';
-        const topLines = await wrapText(ctx, top, base.width-10);
-        if (!topLines) return interaction.editReply({content: "The top text is too long!", ephemeral: false});
-        for (let i = 0; i < topLines.length; i++) {
-            const textHeight = (i * fontsize) + (i * 10);
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = Math.round(fontsize/10);
-            ctx.lineJoin = 'round';
-            ctx.strokeText(topLines[i], base.width/2, textHeight);
-            ctx.fillStyle = 'white';
-            ctx.fillText(topLines[i], base.width/2, textHeight);
-        }
-
-        const bottomLines = await wrapText(ctx, bottom, base.width-10);
-        if (!bottomLines) return interaction.editReply({content: "The bottom text is too long!", ephemeral: false});
-        ctx.textBaseline = 'bottom';
-        const inital = base.height - ((bottomLines.length - 1) * fontsize) - ((bottomLines.length - 1) * 10);
-        for (let i = 0; i < bottomLines.length; i++) {
-            const textHeight = inital + (i * fontsize) + (i * 10);
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = Math.round(fontsize/10);
-            ctx.lineJoin = 'round';
-            ctx.strokeText(bottomLines[i], base.width/2, textHeight);
-            ctx.fillStyle = 'white';
-            ctx.fillText(bottomLines[i], base.width/2, textHeight);
-        }
-
-        const attachment = canvas.toBuffer('image/png');
-        if (Buffer.byteLength(attachment) > 8e+6) return interaction.editReply({content: "Resulting image was above 8MB.", ephemeral: false});
-        await interaction.editReply({files: [{attachment: attachment, name: `memegen_${image ? image.name : user.username}.png`}]});
+        return interaction.editReply({files: [attachment]});
     },
 };
