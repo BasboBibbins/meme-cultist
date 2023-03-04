@@ -1,34 +1,30 @@
-const {SlashCommandBuilder, AttachmentBuilder} = require('discord.js');
-const Canvas = require('canvas');
-const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
+const { AttachmentBuilder, CommandInteraction, SlashCommandBuilder } = require('discord.js');
+const { CanvasRenderingContext2D, createCanvas, ImageData, loadImage } = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
 const GIFEncoder = require('gif-encoder');
 const { parseGIF, decompressFrames } = require('gifuct-js');
-const path = require('path');
 const logger = require('../../utils/logger');
-registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), {family: 'Impact'});
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName("memegen")
-        .setDescription("Generate a meme from a template.")
-        .addStringOption(option =>
-            option.setName('top')
-                .setDescription('The top text.')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('bottom')
-                .setDescription('The bottom text.')
-                .setRequired(false))
+        .setName('speechbubble')
+        .setDescription('Totally own someone with a speech bubble img/gif.')
         .addAttachmentOption(option =>
             option.setName('image')
-                .setDescription('Use an image for your meme.')
+                .setDescription('Use an image for your speech bubble.')
                 .setRequired(false))
         .addUserOption(option =>
             option.setName('user')
-                .setDescription(`Use a user's avatar for your meme.`)
+                .setDescription(`Use a user's avatar for your speech bubble.`)
+                .setRequired(false))
+        .addNumberOption(option =>
+            option.setName('x')
+                .setDescription('The x position of the speech bubble. (%)')
+                .setRequired(false))
+        .addNumberOption(option =>
+            option.setName('y')
+                .setDescription('The y position of the speech bubble. (%)')
                 .setRequired(false)),
-
     async execute(interaction) {
         let image = interaction.options.getAttachment('image')
         const user = interaction.options.getUser('user') || interaction.user;
@@ -56,48 +52,30 @@ module.exports = {
 
         const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-        let topText = interaction.options.getString('top');
-        let bottomText = interaction.options.getString('bottom');
+        let xTip = interaction.options.getNumber('x');
+        let yTip = interaction.options.getNumber('y');
 
-        const drawMemeGenText = async (type, ctx, text, x, y, maxWidth, fontSize, fontColor) => {
-            ctx.font = `${fontSize}px Impact`;
-            ctx.fillStyle = fontColor;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            const lines = await wrapText(ctx, text, maxWidth);
-            if (lines) {
-                for (let i = 0; i < lines.length; i++) {
-                    logger.debug(`Drawing text: ${lines[i]}`);
-                    let textHeight = y;
-                    if (type === "top") {
-                        textHeight = (i * fontSize) + (i * 10);
-                    } else if (type === "bottom") {
-                        textHeight = (ctx.canvas.height - (lines.length * fontSize) - ((lines.length - 1) * 10)) + (i * fontSize) + (i * 10) - 10;
-                    }
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = Math.round(fontSize/10);
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(lines[i], x, textHeight);
-                    ctx.fillStyle = fontColor;
-                    ctx.fillText(lines[i], x, textHeight);
-                }
+        const drawSpeechBubble = (ctx, width, height, fillColor) => {
+            ctx.save();
+            ctx.beginPath();
+            const semiMajorAxis = width / 1.9;
+            const semiMajorSquared = Math.pow(semiMajorAxis, 2);
+            const semiMinorAxis = height / 6;
+            const semiMinorSquared = Math.pow(semiMinorAxis, 2);
+            ctx.ellipse(width / 2, 0, semiMajorAxis, semiMinorAxis, 0, 0, 2 * Math.PI);
+            ctx.moveTo(width / 2, semiMinorAxis-15);
+            ctx.lineTo(xTip ? (xTip / 100) * width : semiMajorAxis, yTip ? (yTip / 100) * height : height / 3);
+            const xEnd = width / 2.5;
+            const yEnd = Math.sqrt(semiMinorSquared - (Math.pow(xEnd, 2) / semiMinorSquared) / semiMajorSquared);
+            ctx.lineTo(xEnd, yEnd);
+            ctx.clip();
+            if (fillColor) {
+                ctx.fillStyle = fillColor;
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                ctx.clearRect(0, 0, width, height);
             }
-        };
-
-        const drawMemeGen = async (ctx) => {
-            const canvas = ctx.canvas;
-            const fontSize = Math.round(canvas.width / 10)
-            const fontColor = '#ffffff';
-            const maxWidth = canvas.width - 20;
-            const x = canvas.width / 2;
-            const y = 10;
-            if (topText) {
-                await drawMemeGenText("top", ctx, topText.toUpperCase(), x, y, maxWidth, fontSize, fontColor);
-            }
-
-            if (bottomText) {
-                await drawMemeGenText("bottom", ctx, bottomText.toUpperCase(), x, (canvas.height - fontSize) - y, maxWidth, fontSize, fontColor);
-            }
+            ctx.restore();
         };
 
         let attachment = AttachmentBuilder;
@@ -109,21 +87,20 @@ module.exports = {
             const ctx = canvas.getContext('2d');
 
             ctx.drawImage(drawableImage, 0, 0);
-            await drawMemeGen(ctx);
+            await drawSpeechBubble(ctx, canvas.width, canvas.height);
 
             attachment = new AttachmentBuilder(canvas.createPNGStream())
-                .setName(`${imageName}-memegen.png`);
+                .setName(`${imageName}-speechbubble.png`);
         } else {
             const gif = parseGIF(imageBuffer);
             const frames = decompressFrames(gif, true);
 
-            const tempCanvas = Canvas.createCanvas(frames[0].dims.width, frames[0].dims.height);
+            const tempCanvas = createCanvas(frames[0].dims.width, frames[0].dims.height);
             const tempCtx = tempCanvas.getContext('2d');
-            const gifCanvas = Canvas.createCanvas(tempCanvas.width, tempCanvas.height);
+            const gifCanvas = createCanvas(tempCanvas.width, tempCanvas.height);
             const gifCtx = gifCanvas.getContext('2d');
 
             const encoder = new GIFEncoder(tempCanvas.width, tempCanvas.height);
-            encoder.setDelay(gif.frames[0].delay);
             encoder.setRepeat(0);
             encoder.setDispose(1);
             encoder.writeHeader();
@@ -141,7 +118,7 @@ module.exports = {
                 frameData.data.set(frame.patch);
                 tempCtx.putImageData(frameData, 0, 0);
                 gifCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
-                await drawMemeGen(gifCtx, topText, bottomText);
+                await drawSpeechBubble(gifCtx, frame.dims.width, frame.dims.height, '#313338'); // #313338 is the default Discord dark mode background color
 
                 encoder.setDelay(frame.delay);
                 encoder.addFrame(gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data);
@@ -154,9 +131,10 @@ module.exports = {
             }
 
             attachment = new AttachmentBuilder(output)
-                .setName(`${imageName}-memegen.gif`)
+                .setName(`${imageName}-speechbubble.gif`)
                 
         }
         return interaction.editReply({files: [attachment]});
     },
 };
+
