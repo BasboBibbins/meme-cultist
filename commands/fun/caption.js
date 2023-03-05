@@ -4,22 +4,19 @@ const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
 const GIFEncoder = require('gif-encoder');
 const { parseGIF, decompressFrames } = require('gifuct-js');
-const path = require('path');
 const logger = require('../../utils/logger');
-registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), {family: 'Impact'});
+const path = require('path');
+registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'FuturaCondensedExtraBold.ttf'), {family: 'FuturaCondensedExtraBold'});
+
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName("memegen")
-        .setDescription("Generate a meme from a template.")
+        .setName("caption")
+        .setDescription("Caption an image.")
         .addStringOption(option =>
-            option.setName('top')
-                .setDescription('The top text.')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('bottom')
-                .setDescription('The bottom text.')
-                .setRequired(false))
+            option.setName('text')
+                .setDescription('The text to caption.')
+                .setRequired(true)) 
         .addAttachmentOption(option =>
             option.setName('image')
                 .setDescription('Use an image for your meme.')
@@ -28,9 +25,8 @@ module.exports = {
             option.setName('user')
                 .setDescription(`Use a user's avatar for your meme.`)
                 .setRequired(false)),
-
     async execute(interaction) {
-        let image = interaction.options.getAttachment('image')
+        let image = interaction.options.getAttachment('image');
         const user = interaction.options.getUser('user') || interaction.user;
 
         if (image) {
@@ -56,62 +52,42 @@ module.exports = {
 
         const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-        let topText = interaction.options.getString('top');
-        let bottomText = interaction.options.getString('bottom');
+        let text = interaction.options.getString('text');
 
-        const drawMemeGenText = async (type, ctx, text, x, y, maxWidth, fontSize, fontColor) => {
-            ctx.font = `${fontSize}px Impact`;
-            ctx.fillStyle = fontColor;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            const lines = await wrapText(ctx, text, maxWidth);
-            if (lines) {
-                for (let i = 0; i < lines.length; i++) {
-                    let textHeight = y;
-                    if (type === "top") {
-                        textHeight = (i * fontSize) + (i * 10);
-                    } else if (type === "bottom") {
-                        textHeight = (ctx.canvas.height - (lines.length * fontSize) - ((lines.length - 1) * 10)) + (i * fontSize) + (i * 10) - 10;
-                    }
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = Math.round(fontSize/10);
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(lines[i], x, textHeight);
-                    ctx.fillStyle = fontColor;
-                    ctx.fillText(lines[i], x, textHeight);
-                }
-            }
-        };
+        const drawCaption = async (image, text, width, height, fontSize) => {
+            // black text on white background above the image
+            const canvas = createCanvas(width, height);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-        const drawMemeGen = async (ctx) => {
-            const canvas = ctx.canvas;
-            const fontSize = Math.round(canvas.width / 10)
-            const fontColor = '#ffffff';
-            const maxWidth = canvas.width - 20;
-            const x = canvas.width / 2;
-            const y = 10;
-            if (topText) {
-                await drawMemeGenText("top", ctx, topText.toUpperCase(), x, y, maxWidth, fontSize, fontColor);
-            }
+            const lines = await wrapText(ctx, text, (canvas.width - 20));
+            const textHeight = (lines.length * (fontSize * 1.5));
+            const tempCanvas = createCanvas(canvas.width, canvas.height + textHeight);
+            const tempCtx = tempCanvas.getContext('2d');
 
-            if (bottomText) {
-                await drawMemeGenText("bottom", ctx, bottomText.toUpperCase(), x, (canvas.height - fontSize) - y, maxWidth, fontSize, fontColor);
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tempCtx.drawImage(canvas, 0, textHeight, canvas.width, canvas.height);
+            tempCtx.fillStyle = 'black';
+            tempCtx.font = `${fontSize}px FuturaCondensedExtraBold`;
+            tempCtx.textAlign = 'center';
+            tempCtx.textBaseline = 'top';
+            for (let i = 0; i < lines.length; i++) {
+                tempCtx.fillText(lines[i], tempCanvas.width / 2, 10 + i * fontSize);
             }
-        };
+            return tempCtx;
+        }
 
         let attachment = AttachmentBuilder;
         const gif = image.contentType.endsWith('gif');
 
         if (!gif) {
             const drawableImage = await loadImage(imageBuffer);
-            const canvas = createCanvas(drawableImage.width, drawableImage.height);
-            const ctx = canvas.getContext('2d');
-
-            ctx.drawImage(drawableImage, 0, 0);
-            await drawMemeGen(ctx);
+            const ctx = await drawCaption(drawableImage, text, drawableImage.width, drawableImage.height, drawableImage.width / 10);
+            const canvas = ctx.canvas;
 
             attachment = new AttachmentBuilder(canvas.createPNGStream())
-                .setName(`${imageName}-memegen.png`);
+                .setName(`${imageName}-caption.png`);
         } else {
             const gif = parseGIF(imageBuffer);
             const frames = decompressFrames(gif, true);
@@ -139,8 +115,9 @@ module.exports = {
                 }
                 frameData.data.set(frame.patch);
                 tempCtx.putImageData(frameData, 0, 0);
-                gifCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
-                await drawMemeGen(gifCtx);
+                const drawableImage = await loadImage(tempCanvas.toBuffer());
+                const ctx = await drawCaption(drawableImage, text, drawableImage.width, drawableImage.height, drawableImage.width / 10);
+                
 
                 encoder.setDelay(frame.delay);
                 encoder.addFrame(gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data);
@@ -153,9 +130,9 @@ module.exports = {
             }
 
             attachment = new AttachmentBuilder(output)
-                .setName(`${imageName}-memegen.gif`)
+                .setName(`${imageName}-caption.gif`)
                 
         }
         return interaction.editReply({files: [attachment]});
-    },
-};
+    }
+}
