@@ -1,25 +1,22 @@
-const {SlashCommandBuilder, AttachmentBuilder} = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const Canvas = require('canvas');
 const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
 const GIFEncoder = require('gif-encoder');
 const { parseGIF, decompressFrames } = require('gifuct-js');
-const path = require('path');
 const logger = require('../../utils/logger');
-registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'Impact.ttf'), {family: 'Impact'});
+const path = require('path');
+registerFont(path.join(__dirname, '..', '..', 'assets', 'fonts', 'FuturaCondensedExtraBold.ttf'), {family: 'FuturaCondensedExtraBold'});
+
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName("memegen")
-        .setDescription("Generate a meme from a template.")
+        .setName("caption")
+        .setDescription("Caption an image.")
         .addStringOption(option =>
-            option.setName('top')
-                .setDescription('The top text.')
-                .setRequired(false))
-        .addStringOption(option =>
-            option.setName('bottom')
-                .setDescription('The bottom text.')
-                .setRequired(false))
+            option.setName('text')
+                .setDescription('The text to caption.')
+                .setRequired(true)) 
         .addAttachmentOption(option =>
             option.setName('image')
                 .setDescription('Use an image for your meme.')
@@ -28,9 +25,8 @@ module.exports = {
             option.setName('user')
                 .setDescription(`Use a user's avatar for your meme.`)
                 .setRequired(false)),
-
     async execute(interaction) {
-        let image = interaction.options.getAttachment('image')
+        let image = interaction.options.getAttachment('image');
         const user = interaction.options.getUser('user') || interaction.user;
 
         if (image) {
@@ -56,67 +52,58 @@ module.exports = {
 
         const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-        let topText = interaction.options.getString('top');
-        let bottomText = interaction.options.getString('bottom');
+        let text = interaction.options.getString('text');
 
-        const drawMemeGenText = async (type, ctx, text, x, y, maxWidth, fontSize, fontColor) => {
-            ctx.font = `${fontSize}px Impact`;
-            ctx.fillStyle = fontColor;
+        const getLines = async (text, fontSize, maxWidth) => {
+            const tempCanvas = createCanvas(1, 1);
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.font = `${fontSize}px FuturaCondensedExtraBold`;
+            return await wrapText(tempCtx, text, maxWidth);
+        }
+
+        const getTextHeight = async (width) => {
+            const fontSize = Math.floor(width / 10);
+            const lines = await getLines(text, fontSize, width * 0.9);
+            return Math.floor((lines.length * fontSize) + ((lines.length) * 10) + (fontSize / 2));
+        }
+
+        const drawCaption = async (ctx) => {
+            const fontSize = Math.floor(ctx.canvas.width / 10);
+            const lines = await getLines(text, fontSize, ctx.canvas.width * 0.9);
+            const textHeight = await getTextHeight(ctx.canvas.width);
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, ctx.canvas.width, textHeight);
+            ctx.fillStyle = '#000001' // to prevent transparency
+            ctx.font = `${fontSize}px FuturaCondensedExtraBold`;
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            const lines = await wrapText(ctx, text, maxWidth);
-            if (lines) {
-                for (let i = 0; i < lines.length; i++) {
-                    let textHeight = y;
-                    if (type === "top") {
-                        textHeight = (i * fontSize) + (i * 10);
-                    } else if (type === "bottom") {
-                        textHeight = (ctx.canvas.height - (lines.length * fontSize) - ((lines.length - 1) * 10)) + (i * fontSize) + (i * 10) - 10;
-                    }
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = Math.round(fontSize/10);
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(lines[i], x, textHeight);
-                    ctx.fillStyle = fontColor;
-                    ctx.fillText(lines[i], x, textHeight);
-                }
+            ctx.textBaseline = 'middle';
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], ctx.canvas.width / 2, (fontSize * 0.75) + (i * fontSize) + (i * 10));
             }
-        };
-
-        const drawMemeGen = async (ctx) => {
-            const canvas = ctx.canvas;
-            const fontSize = Math.round(canvas.width / 10)
-            const fontColor = '#ffffff';
-            const maxWidth = canvas.width - 20;
-            const x = canvas.width / 2;
-            const y = 10;
-            if (topText) {
-                await drawMemeGenText("top", ctx, topText.toUpperCase(), x, y, maxWidth, fontSize, fontColor);
-            }
-
-            if (bottomText) {
-                await drawMemeGenText("bottom", ctx, bottomText.toUpperCase(), x, (canvas.height - fontSize) - y, maxWidth, fontSize, fontColor);
-            }
-        };
+        }
 
         let attachment = AttachmentBuilder;
         const gif = image.contentType.endsWith('gif');
 
         if (!gif) {
             const drawableImage = await loadImage(imageBuffer);
-            const canvas = createCanvas(drawableImage.width, drawableImage.height);
+            const textHeight = await getTextHeight(drawableImage.width);
+            const canvas = Canvas.createCanvas(drawableImage.width, drawableImage.height + textHeight);
             const ctx = canvas.getContext('2d');
 
-            ctx.drawImage(drawableImage, 0, 0);
-            await drawMemeGen(ctx);
+            await drawCaption(ctx).then(() => {
+                ctx.drawImage(drawableImage, 0, textHeight);
+            });
 
             attachment = new AttachmentBuilder(canvas.createPNGStream())
-                .setName(`${imageName}-memegen.png`);
+                .setName(`${imageName}_caption.png`)
         } else {
             const gif = parseGIF(imageBuffer);
             const frames = decompressFrames(gif, true);
 
-            const tempCanvas = Canvas.createCanvas(frames[0].dims.width, frames[0].dims.height);
+            const textHeight = await getTextHeight(frames[0].dims.width);
+            const tempCanvas = Canvas.createCanvas(frames[0].dims.width, frames[0].dims.height + textHeight);
             const tempCtx = tempCanvas.getContext('2d');
             const gifCanvas = Canvas.createCanvas(tempCanvas.width, tempCanvas.height);
             const gifCtx = gifCanvas.getContext('2d');
@@ -124,8 +111,9 @@ module.exports = {
             const encoder = new GIFEncoder(tempCanvas.width, tempCanvas.height);
             encoder.setDelay(gif.frames[0].delay);
             encoder.setRepeat(0);
-            encoder.setDispose(1);
             encoder.writeHeader();
+            encoder.setDispose(2);
+            encoder.setTransparent();
 
             const buffChunks = [];
             encoder.on('data', chunk => buffChunks.push(chunk));
@@ -139,9 +127,11 @@ module.exports = {
                 }
                 frameData.data.set(frame.patch);
                 tempCtx.putImageData(frameData, 0, 0);
-                gifCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
-                await drawMemeGen(gifCtx);
+                gifCtx.clearRect(0, textHeight, gifCanvas.width, gifCanvas.height - textHeight)
+                gifCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top + textHeight);
 
+                await drawCaption(gifCtx);
+                
                 encoder.setDelay(frame.delay);
                 encoder.addFrame(gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data);
             }
@@ -149,13 +139,20 @@ module.exports = {
             const output = Buffer.concat(buffChunks);
 
             if (output.length > 8e+6) {
-                return interaction.editReply({content: 'The generated GIF is too large to send.', ephemeral: true});
+                const embed = new EmbedBuilder()
+                    .setTitle('Error')
+                    .setDescription('The resulting GIF is too large to send.')
+                    .setColor(0xff0000)
+                    .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                    .setTimestamp();
+                return interaction.editReply({embeds: [embed]});
+
             }
 
             attachment = new AttachmentBuilder(output)
-                .setName(`${imageName}-memegen.gif`)
+                .setName(`${imageName}-caption.gif`)
                 
         }
         return interaction.editReply({files: [attachment]});
-    },
-};
+    }
+}

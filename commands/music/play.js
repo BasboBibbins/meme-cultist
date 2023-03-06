@@ -29,7 +29,11 @@ module.exports = {
         const song = interaction.options.getString("song");
         const queue = player.nodes.create(interaction.guild, {
             leaveOnEnd: true,
+            leaveOnEndCooldown: 60000,
             leaveOnStop: true,
+            leaveOnEmpty: true,
+            leaveOnEmptyCooldown: 300000,
+            skipOnNoStream: true,
             repeatMode: 0,
             intialVolume: 100,
             equalizer: [

@@ -1,9 +1,14 @@
+const logger = require('./Logger');
 
 module.exports = class CanvasUtil {
 	static wrapText(ctx, text, maxWidth) {
 		return new Promise(resolve => {
 			if (ctx.measureText(text).width < maxWidth) return resolve([text]);
-			if (ctx.measureText('W').width > maxWidth) return resolve(null);
+			if (ctx.measureText('W').width > maxWidth) {
+				logger.error(`wrapText: The maxWidth is too small for the text to be split!`);
+				return resolve(null);
+			}
+			logger.debug(`Text: ${text}, maxWidth: ${maxWidth}, measureText: ${ctx.measureText(text).width}`);
 			const words = text.split(' ');
 			const lines = [];
 			let line = '';
@@ -27,6 +32,7 @@ module.exports = class CanvasUtil {
 				}
 				if (words.length === 0) lines.push(line.trim());
 			}
+			logger.debug(`Lines: ${lines}`);
 			return resolve(lines);
 		});
 	}
