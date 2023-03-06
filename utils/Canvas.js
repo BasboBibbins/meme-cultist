@@ -1,4 +1,4 @@
-const logger = require('./Logger');
+const logger = require('./logger');
 
 module.exports = class CanvasUtil {
 	static wrapText(ctx, text, maxWidth) {
