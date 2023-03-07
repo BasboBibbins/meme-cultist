@@ -25,7 +25,7 @@ module.exports = {
         let bet = Number(await parseBet(option, user.id));
         const dbUser = await db.get(user.id);
 
-        logger.log(`${user.username}#${user.discriminator} (${user.id}) initialized a game of blackjack with a bet of ${bet} ${CURRENCY_NAME}.`)
+        logger.info(`${user.username}#${user.discriminator} (${user.id}) initialized a game of blackjack with a bet of ${bet} ${CURRENCY_NAME}.`)
 
         const error_embed = new EmbedBuilder()
             .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
