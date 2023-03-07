@@ -83,7 +83,7 @@ module.exports = {
             After you are done discarding, you will be given your final hand and you will be paid out based on the paytable.
             You can see the paytable by using \`/poker paytable\`.
             `,
-        notes: `
+        note: `
             1. Aces are high, and straights can wrap around. Aces can be used as a high or low card, and straights can wrap around.
             2. Jacks or Better is the minimum hand to win. Pair of Jacks or Better pays 1:1.
             3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.

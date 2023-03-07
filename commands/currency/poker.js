@@ -20,6 +20,38 @@ module.exports = {
         const option = interaction.options.getString('bet');
         const stats = `${user.id}.stats.poker`;
 
+        if (option === 'paytable') {
+            const paytable = new EmbedBuilder()
+                .setAuthor({ name: interaction.user.username + "#" + interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+                .setColor(randomHexColor())
+                .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .setTimestamp()
+                .setTitle('Poker Paytable');
+            paytable.addFields(
+                { name: 'Hand', value: `
+                    **Royal Flush** 
+                    Straight Flush
+                    Four of a Kind
+                    Full House
+                    Flush
+                    Straight
+                    Three of a Kind
+                    Two Pair
+                    Jacks or Better`, inline: true },
+                { name: 'Payout', value: `
+                    **250x**
+                    50x
+                    25x
+                    9x
+                    6x
+                    4x
+                    3x
+                    2x
+                    1x`, inline: true }
+            );
+            return interaction.reply({ embeds: [paytable], ephemeral: true });
+        }
+
         let bet = Number(await parseBet(option, user.id));
         const dbUser = await db.get(user.id);
 
