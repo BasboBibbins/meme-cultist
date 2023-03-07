@@ -92,7 +92,7 @@ module.exports = {
             .setTitle(`Good luck!`)
             .setColor(randomHexColor())
             .setDescription(`**Dealer:**\n\`${dealerCards[0].value}\` \`??\`\n\n**${user.username}:**\n\`${playerCards[0].char}\` \`${playerCards[1].char}\``)
-            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME}` })
+            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         let winnings = Number(bet);

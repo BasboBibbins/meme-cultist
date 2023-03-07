@@ -128,7 +128,20 @@ async function generateStatsEmbed(page, interaction, user) {
                     *Success Rate:* **${await getWinPercentage("begs", user)}%**`,
                     inline: true 
                 },
+                { name: " ", value: " ", inline: false}, // buffer for inline fields
             );
+            if (await db.get(`${user.id}.stats.poker`)) {
+                embed.addFields(
+                    { name: "Poker", value: `
+                        *Games Played:* **${await getTotalGamesPlayed("poker", user)}**
+                        *Win Rate:* **${await getWinPercentage("poker", user)}%**
+                        *Royal Flushes:* **${await db.get(`${user.id}.stats.poker.royals`)}**
+                        *Biggest Win:* **${await db.get(`${user.id}.stats.poker.biggestWin`)}**
+                        *Biggest Loss:* **${await db.get(`${user.id}.stats.poker.biggestLoss`)}**`,
+                        inline: true
+                    },
+                );
+            }
             break;
     }
     return embed;
