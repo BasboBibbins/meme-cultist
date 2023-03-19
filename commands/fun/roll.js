@@ -26,6 +26,6 @@ module.exports = {
         .setColor(randomHexColor())
         .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
-        await interaction.reply({ embeds: [embed] });
+        await interaction.reply({ embeds: [embed], fetchReply: true});
     },
 };
