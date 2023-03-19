@@ -74,6 +74,23 @@ module.exports = {
             3. Getting a single cherry will return your bet. Two cherries will return 2x your bet. Three cherries will return 5x your bet.
             4. The jackpot is 100x your bet. The bot will also @everyone if you win the jackpot.`
     },
+    poker: {
+        name: "Poker",
+        description: `
+            Poker is a card game where the goal is to get the best hand possible. This bot uses video poker rules.
+            You will be dealt 5 cards and you can choose to keep or discard any number of cards.
+            You can then choose to keep or discard any number of cards again. You can keep all 5 cards if you want as well.
+            After you are done discarding, you will be given your final hand and you will be paid out based on the paytable.
+            You can see the paytable by using \`/poker paytable\`.
+            `,
+        note: `
+            1. Aces are high, and straights can wrap around. Aces can be used as a high or low card, and straights can wrap around.
+            2. Jacks or Better is the minimum hand to win. Pair of Jacks or Better pays 1:1.
+            3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.
+            4. If you take too long to make a decision, you will be timed out and lose your bet.
+            5. Since the probability of getting a good hand is low, the payouts are high. Try small bets at first to get a feel for the game.
+            6. The chance of getting a royal flush is 1 in 649,740. It pays 250:1. The bot will also @everyone if you win a royal flush.`
+    },
     music: {
         name: "Music",
         description: `
@@ -83,7 +100,10 @@ module.exports = {
             The bot currently supports YouTube, SoundCloud, Spotify, Vimeo, Apple Music, and direct links to audio files.
             You can request direct links to songs or playlists by using \`/play [url]\`. You can also search for songs via Youtube by using \`/play [search query]\`.
             
-            The queue can be shuffled by using \`/queue shuffle\`. You can also clear the queue by using \`/queue clear\`.`,
+            The queue can be shuffled by using \`/queue shuffle\`. You can also clear the queue by using \`/queue clear\`.
+            
+            Filters can also be applied to the music. You can see the list of filters by using \`/filter\`.
+            You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.`,
         example: `
             \`/play https://www.youtube.com/watch?v=dQw4w9WgXcQ\`
             \`/play never gonna give you up\`
@@ -92,6 +112,7 @@ module.exports = {
             \`/play https://music.apple.com/us/album/never-gonna-give-you-up/1558533900?i=1558534271\``,
         note: `
             The bot will leave your voice channel after the queue is empty. You can also make it leave by pressing the stop button.
-            Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.`
+            Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.
+            Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.`,
     },
 }

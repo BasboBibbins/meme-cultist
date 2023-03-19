@@ -97,7 +97,7 @@ module.exports = {
             .setColor(randomHexColor())
             .setTitle('Good luck!')
             .setDescription(`${slotsDefaultEmoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`)
-            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME}` })
+            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         await interaction.reply({ embeds: [slots] });

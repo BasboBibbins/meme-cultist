@@ -3,7 +3,7 @@ const { REST } = require("@discordjs/rest")
 const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player } = require("discord-player")
-const { GatewayIntentBits, Events, Client, Collection } = require("discord.js")
+const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
@@ -254,6 +254,18 @@ if (DELETE_SLASH) {
             } catch (error) {
                 logger.error(error);
             }
+        } else if (interaction.type === InteractionType.ModalSubmit) {
+            logger.info(`${interaction.user.tag} submitted a modal in #${interaction.channel.name} in ${interaction.guild.name}.`);
+            await interaction.deferReply({ ephemeral: true }).then(async () => {
+                if (TESTING_MODE) {
+                    await interaction.editReply({ content: "Your modal has been submitted!", ephemeral: true })
+                } else {
+                    await interaction.deleteReply();
+                }
+            }).catch(async error => {
+                logger.error(error)
+                await interaction.editReply({ content: "There was an error submitting your request!", ephemeral: true })
+            })
         }
     });
     client.player.events.on("tracksAdd", async (queue, t) => {
