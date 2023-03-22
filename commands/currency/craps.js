@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
@@ -55,36 +55,56 @@ module.exports = {
             error_embed.setDescription(`You must bet in whole numbers!`);
             return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
+
+        const modal = new ModalBuilder()
+            .setCustomId('pre-roll')
+            .setTitle('Craps')
+
+        const input = new TextInputBuilder()
+            .setCustomId('pre-roll-input')
+            .setLabel('Prediction')
+            .setPlaceholder('What do you think the total will be?')
+            .setMinLength(1)
+            .setMaxLength(7) // hard + input
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        const row = new ActionRowBuilder().addComponents(input);
+
+        modal.addComponents(row);
         
-        let msg = await interaction.deferReply();
-        const dice = [await roll(6, 1), await roll(6, 1)];
-
-        const diceImage = await drawDice(dice[0], dice[1]);
-
-        const embed = new EmbedBuilder()
-        .setAuthor({ name: user.username, iconURL: user.displayAvatarURL({ dynamic: true }) })
-        .setColor(randomHexColor())
-        .setImage(`attachment://roll.png`)
-        .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-
-        logger.debug(dice.join(', '));
+        await interaction.showModal(modal);
         
-        if (dice[0] === 1 && dice[1] === 1) {
-            embed.setDescription(`You rolled a **2** and lost **${bet}** ${CURRENCY_NAME}!`);
-            return await interaction.editReply({ embeds: [embed], files: [diceImage], fetchReply: true });
-        } else if (dice[0] === 6 && dice[1] === 6) {
-            embed.setDescription(`You rolled a **12** and won **${bet * 7}** ${CURRENCY_NAME}!`);
-            return await interaction.editReply({ embeds: [embed], files: [diceImage], fetchReply: true });
-        } else if (dice[0] + dice[1] === 7 || dice[0] + dice[1] === 11) {
-            embed.setDescription(`You rolled a **${dice[0] + dice[1]}** and won **${bet}** ${CURRENCY_NAME}!`);
-            return await interaction.editReply({ embeds: [embed], files: [diceImage], fetchReply: true });
-        } else if (dice[0] + dice[1] === 2 || dice[0] + dice[1] === 3 || dice[0] + dice[1] === 12) {
-            embed.setDescription(`You rolled a **${dice[0] + dice[1]}** and lost **${bet}** ${CURRENCY_NAME}!`);
-            return await interaction.editReply({ embeds: [embed], files: [diceImage], fetchReply: true });
-        } else {
-            embed.setDescription(`You rolled a **${dice[0] + dice[1]}**. Roll again to win or lose!`);
-            return await interaction.editReply({ embeds: [embed], files: [diceImage], fetchReply: true });
+        const submitted = await interaction.awaitModalSubmit({ filter: (i) => i.user.id === interaction.user.id, time: 30000 })
+            .catch(error => {
+                logger.error(error)
+                return null;
+            });
+
+        if (submitted) {
+            const prediction = submitted.fields.getTextInputValue('pre-roll-input');
+            if (prediction.toLowerCase().includes('hard') || prediction.toLowerCase().includes('soft')) {
+                logger.debug(`prediction: ${prediction} type: ${typeof prediction}`);
+            }
+
+            logger.debug(`prediction: ${prediction} type: ${typeof prediction}`);
+
+            const dice = [await roll(6, 1), await roll(6, 1)];
+
+            const diceImage = await drawDice(dice[0], dice[1]);
+    
+            const embed = new EmbedBuilder()
+            .setAuthor({ name: user.username, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(randomHexColor())
+            .setImage(`attachment://roll.png`)
+            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+    
+            let msg = await interaction.editReply({ embeds: [embed], files: [diceImage], fetchReply: true });
+    
+            logger.debug(dice.join(', '));
+
+
         }
     }
 };
