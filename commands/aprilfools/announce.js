@@ -15,7 +15,29 @@ module.exports = {
                 .setDescription('The message to send.')
                 .setRequired(true)),
     async execute(interaction) {
+        const user = interaction.user;
         const message = interaction.options.getString('message');
+        const cost = 1000;
+
+        const dbUser = await db.get(interaction.user.id);
+        if (!dbUser) {
+            logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`, "warn")
+            await addNewDBUser(interaction.user);
+        }
+
+        const error_embed = new EmbedBuilder()
+            .setAuthor({ name: interaction.user.username + "#" + interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setColor(0xFF0000)
+            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
+        if (dbUser.balance < cost) {
+            error_embed.setDescription(`You do not have enough ${CURRENCY_NAME} to make an announcement. You need ${cost} ${CURRENCY_NAME}, but you only have ${dbUser.balance} ${CURRENCY_NAME}.`);
+            return await interaction.reply({embeds: [error_embed]});
+        }
+
+        await db.subtract(interaction.user.id, cost);
+
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${interaction.user.username} has an annoucement to make!`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
