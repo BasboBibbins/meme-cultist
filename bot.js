@@ -7,7 +7,7 @@ const { GatewayIntentBits, Events, Client, Collection, InteractionType } = requi
 const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_MODE, TESTING_ROLE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_ROLE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
@@ -20,6 +20,7 @@ const TOKEN = process.env.TOKEN
 
 const LOAD_SLASH = process.argv[2] == "load"
 const LOAD_DB = process.argv[2] == "dbinit"
+const TESTING_MODE = process.argv[2] == "debug"
 const DELETE_SLASH = process.argv[2] == "delete"
 const DELETE_SLASH_ID = process.argv[3]
 
