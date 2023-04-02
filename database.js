@@ -87,6 +87,7 @@ module.exports = {
         let newUsers = 0;
         let updatedUsers = 0;
         for (const user of users) {
+            if (user.id === client.user.id) continue;
             const dbUser = await db.get(user.id);
             const defaultDB = await getDefaultDB(user);
             if (!dbUser) {

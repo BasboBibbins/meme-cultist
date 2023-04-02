@@ -46,13 +46,14 @@ module.exports = {
 
         const amount = Math.floor(Math.random() * dbUser.balance) + 1;
         const chance = Math.floor(Math.random() * 100) + 1;
-        const cooldown = 60000;
+        const cooldown = 60000 * 5;
 
         if (await db.get(`${user.id}.cooldowns.rob`) > Date.now()) {
-            const timeLeft = new Date(dbUser.cooldowns.rob - Date.now());
+            const timeLeft = new Date(await db.get(`${user.id}.cooldowns.rob`) - Date.now());
+            logger.debug(`current date: ${Date.now()} | cooldown: ${await db.get(`${user.id}.cooldowns.rob`) - Date.now()} | timeLeft: ${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s`);
             const embed = new EmbedBuilder()
                 .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setDescription(`You have already attempted to rob someone recently! You can rob again in **${timeLeft.getUTCSeconds() ? timeLeft.getUTCSeconds() : `60`}s**.`)
+                .setDescription(`You have already attempted to rob someone recently! You can rob again in **${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s**.`)
                 .setColor(0xFF0000)
                 .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();

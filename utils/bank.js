@@ -32,27 +32,27 @@ module.exports = {
         }
         if (amount.includes("/")) {
             const betSplit = amount.split("/");
-            return betSplit[0] / betSplit[1];
+            return Math.floor(betSplit[0] / betSplit[1]);
         }
         if (amount.includes("*")) {
             const betSplit = amount.split("*");
-            return betSplit[0] * betSplit[1];
+            return Math.floor(betSplit[0] * betSplit[1]);
         }
         if (amount.includes("+")) {
             const betSplit = amount.split("+");
-            return betSplit[0] + betSplit[1];
+            return Math.floor(betSplit[0] + betSplit[1]);
         }
         if (amount.includes("-")) {
             const betSplit = amount.split("-");
-            return betSplit[0] - betSplit[1];
+            return Math.floor(betSplit[0] - betSplit[1]);
         }
         if (amount.includes("%")) {
             const betSplit = amount.split("%");
-            return betSplit[0] * betSplit[1] / 100;
+            return Math.floor(betSplit[0] * (betSplit[1] / 100));
         }
         if (amount.includes("^")) {
             const betSplit = amount.split("^");
-            return Math.pow(betSplit[0], betSplit[1]);
+            return Math.floor(betSplit[0] ** betSplit[1]);
         }
         return Number(amount);
     },
@@ -63,5 +63,27 @@ module.exports = {
     withdraw: async function (id, amount) {
         await db.sub(`${id}.bank`, amount);
         await db.add(`${id}.balance`, amount);
+    },
+    getCurrentTopUsers: async () => {
+        const users = await db.all();
+        for (const user of users) {
+            const bank = await db.get(`${user.id}.bank`);
+            user.value.bank = bank;
+        }
+        const topUsers = users.sort((a, b) => b.value.bank - a.value.bank).slice(0, 10);
+        return topUsers;
+    },
+    getAllTimeTopUsers: async () => {
+        const users = await db.all();
+        for (const user of users) {
+            const largestBank = await db.get(`${user.id}.stats.largestBank`);
+            const bank = await db.get(`${user.id}.bank`);
+            if (bank > largestBank) {
+                await db.set(`${user.id}.stats.largestBank`, bank);
+            }
+            user.value.stats.largestBank = largestBank;
+        }
+        const topUsers = users.sort((a, b) => b.value.stats.largestBank - a.value.stats.largestBank).slice(0, 10);
+        return topUsers;
     }
 };

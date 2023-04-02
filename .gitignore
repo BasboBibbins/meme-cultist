@@ -4,3 +4,4 @@
 *.log
 *.txt
 /logs
+config.json

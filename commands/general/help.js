@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBui
 const { randomHexColor } = require('../../utils/randomcolor');
 const { OWNER_ID } = require('../../config.json');
 const explanations = require('../../utils/explanations');
+const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -81,8 +82,9 @@ module.exports = {
                 await i.editReply({embeds: [embed]});
             });
             collector.on('end', async (collected, reason) => {
+                logger.debug(`/help Collector ended with reason: ${reason}. Collected ${collected.size} items.`);
                 if (reason === 'time') {
-                    await msg.edit({components: []});
+                    await msg.delete();
                 }
             });
             return;
