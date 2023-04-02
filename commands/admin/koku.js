@@ -4,6 +4,8 @@ const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
 const logger = require("../../utils/logger");
+const { EmbedBuilder } = require('@discordjs/builders');
+const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -66,21 +68,51 @@ module.exports = {
             await addNewDBUser(user);
         }
 
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `${user.username}'s ${CURRENCY_NAME} balance updated.`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+            .setColor(randomHexColor())
+            .setTimestamp()
+            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+
         switch (subcommand) {
             case 'add':
-                await db.set(`${user.id}.balance`, dbUser.balance + amount);
-                logger.log(`Added ${amount} ${CURRENCY_NAME} to ${user.username} (${user.id})'s wallet.`);
-                await interaction.reply({content: `Added **${amount}** ${CURRENCY_NAME} to **${user.username}**'s wallet.`, ephemeral: true});
+                await db.set(`${user.id}.bank`, dbUser.bank + amount);
+                logger.log(`Added ${amount} ${CURRENCY_NAME} to ${user.username} (${user.id})'s bank.`);
+                embed.setDescription(`Added **${amount}** ${CURRENCY_NAME} to **${user.username}**'s bank.`);
+                await interaction.reply({embeds: [embed], ephemeral: true});
+                user.send({embeds: [new EmbedBuilder()
+                    .setAuthor({ name: `${interaction.user.username} has added ${amount} ${CURRENCY_NAME} to your account in ${interaction.guild.name}!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+                    .setDescription(`You now have **${dbUser.bank + amount}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
+                    .setColor(randomHexColor())
+                    .setTimestamp()
+                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                ]});
                 break;
             case 'remove':
-                await db.set(`${user.id}.balance`, (dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount));
-                logger.log(`Removed ${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet.`);
-                await interaction.reply({content: `Removed **${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)}** ${CURRENCY_NAME} from **${user.username}**'s wallet.`, ephemeral: true});
+                await db.set(`${user.id}.bank`, (dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount));
+                logger.log(`Removed ${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s bank.`);
+                embed.setDescription(`Removed **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} from **${user.username}**'s bank.`);
+                await interaction.reply({embeds: [embed], ephemeral: true});
+                user.send({embeds: [new EmbedBuilder()
+                    .setAuthor({ name: `${interaction.user.username} has removed ${amount} ${CURRENCY_NAME} from your account in ${interaction.guild.name}!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+                    .setDescription(`You now have **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
+                    .setColor(randomHexColor())
+                    .setTimestamp()
+                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                ]});
                 break;
             case 'set':
-                await db.set(`${user.id}.balance`, (amount < 0 ? 0 : amount));
-                logger.log(`Set ${user.username} (${user.id})'s wallet to ${(amount < 0 ? 0 : amount)} ${CURRENCY_NAME}.`);
-                await interaction.reply({content: `Set **${user.username}**'s wallet to **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME}.`, ephemeral: true});
+                await db.set(`${user.id}.bank`, (amount < 0 ? 0 : amount));
+                logger.log(`Set ${user.username} (${user.id})'s bank to ${(amount < 0 ? 0 : amount)} ${CURRENCY_NAME}.`);
+                embed.setDescription(`Set **${user.username}**'s bank to **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME}.`);
+                await interaction.reply({embeds: [embed], ephemeral: true});
+                user.send({embeds: [new EmbedBuilder()
+                    .setAuthor({ name: `${interaction.user.username} has set your bank to ${amount} ${CURRENCY_NAME} in ${interaction.guild.name}!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+                    .setDescription(`You now have **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
+                    .setColor(randomHexColor())
+                    .setTimestamp()
+                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                ]});
                 break;
         }
     },
