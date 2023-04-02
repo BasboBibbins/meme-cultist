@@ -23,7 +23,7 @@
     "cat-loggr": "^1.2.2",
     "dayjs": "^1.11.7",
     "discord-player": "^6.0.0-dev.5",
-    "discord.js": "^14.7.1",
+    "discord.js": "^14.9.0",
     "dotenv": "^16.0.3",
     "fs": "0.0.1-security",
     "gif-encoder": "^0.7.2",
