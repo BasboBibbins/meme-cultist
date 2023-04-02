@@ -1,5 +1,4 @@
 const fs = require("fs");
-const { TESTING_MODE } = require("../config.json");
 
 async function logToTxt(message, type) {
     if (type == "error") {
@@ -53,10 +52,8 @@ module.exports = {
         logToTxt(message, "info");
     },
     debug: (message) => {
-        if (TESTING_MODE) {
-            console.log(`\x1b[36m[DEBUG]\x1b[0m ${message}`);
-            logToTxt(message, "debug");
-        }
+        console.log(`\x1b[36m[DEBUG]\x1b[0m ${message}`);
+        logToTxt(message, "debug");
     },
     warn: (message) => {
         console.log(`\x1b[33m[WARN]\x1b[0m ${message}`);
