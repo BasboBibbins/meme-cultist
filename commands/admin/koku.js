@@ -1,10 +1,9 @@
-const {SlashCommandBuilder} = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
 const logger = require("../../utils/logger");
-const { EmbedBuilder } = require('@discordjs/builders');
 const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
@@ -81,7 +80,8 @@ module.exports = {
                 embed.setDescription(`Added **${amount}** ${CURRENCY_NAME} to **${user.username}**'s bank.`);
                 await interaction.reply({embeds: [embed], ephemeral: true});
                 user.send({embeds: [new EmbedBuilder()
-                    .setAuthor({ name: `${interaction.user.username} has added ${amount} ${CURRENCY_NAME} to your account in ${interaction.guild.name}!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+                    .setAuthor({ name: `${interaction.user.username} has added ${amount} ${CURRENCY_NAME} to your account in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({dynamic: true}) })
+                    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))
                     .setDescription(`You now have **${dbUser.bank + amount}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
                     .setColor(randomHexColor())
                     .setTimestamp()
@@ -94,7 +94,8 @@ module.exports = {
                 embed.setDescription(`Removed **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} from **${user.username}**'s bank.`);
                 await interaction.reply({embeds: [embed], ephemeral: true});
                 user.send({embeds: [new EmbedBuilder()
-                    .setAuthor({ name: `${interaction.user.username} has removed ${amount} ${CURRENCY_NAME} from your account in ${interaction.guild.name}!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+                    .setAuthor({ name: `${interaction.user.username} has removed ${amount} ${CURRENCY_NAME} from your account in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({dynamic: true}) })
+                    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))
                     .setDescription(`You now have **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
                     .setColor(randomHexColor())
                     .setTimestamp()
@@ -107,7 +108,8 @@ module.exports = {
                 embed.setDescription(`Set **${user.username}**'s bank to **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME}.`);
                 await interaction.reply({embeds: [embed], ephemeral: true});
                 user.send({embeds: [new EmbedBuilder()
-                    .setAuthor({ name: `${interaction.user.username} has set your bank to ${amount} ${CURRENCY_NAME} in ${interaction.guild.name}!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
+                    .setAuthor({ name: `${interaction.user.username} has set your bank to ${amount} ${CURRENCY_NAME} in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({dynamic: true}) })
+                    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))
                     .setDescription(`You now have **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
                     .setColor(randomHexColor())
                     .setTimestamp()
