@@ -68,17 +68,17 @@ module.exports = {
 
         switch (subcommand) {
             case 'add':
-                await db.set(`${user.id}.balance`, dbUser.balance + amount);
+                await db.set(`${user.id}.bank`, dbUser.bank + amount);
                 logger.log(`Added ${amount} ${CURRENCY_NAME} to ${user.username} (${user.id})'s wallet.`);
                 await interaction.reply({content: `Added **${amount}** ${CURRENCY_NAME} to **${user.username}**'s wallet.`, ephemeral: true});
                 break;
             case 'remove':
-                await db.set(`${user.id}.balance`, (dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount));
-                logger.log(`Removed ${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet.`);
-                await interaction.reply({content: `Removed **${(dbUser.balance - amount) < 0 ? 0 : (dbUser.balance - amount)}** ${CURRENCY_NAME} from **${user.username}**'s wallet.`, ephemeral: true});
+                await db.set(`${user.id}.bank`, (dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount));
+                logger.log(`Removed ${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet.`);
+                await interaction.reply({content: `Removed **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} from **${user.username}**'s wallet.`, ephemeral: true});
                 break;
             case 'set':
-                await db.set(`${user.id}.balance`, (amount < 0 ? 0 : amount));
+                await db.set(`${user.id}.bank`, (amount < 0 ? 0 : amount));
                 logger.log(`Set ${user.username} (${user.id})'s wallet to ${(amount < 0 ? 0 : amount)} ${CURRENCY_NAME}.`);
                 await interaction.reply({content: `Set **${user.username}**'s wallet to **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME}.`, ephemeral: true});
                 break;
