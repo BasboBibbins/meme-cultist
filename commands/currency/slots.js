@@ -25,7 +25,7 @@ module.exports = {
     async execute(interaction) {
         const user = interaction.user;
         const option = interaction.options.getString('bet');
-        const slotsDefaultEmoji = '<a:slots:1072722137506390056>';
+        const slotsDefaultEmoji = '<a:slots:1250275896007589962>';
         const slotsEmoji = [
             { emoji: ':apple:', multiplier: 2 },
             { emoji: ':tangerine:', multiplier: 2 },
@@ -33,8 +33,8 @@ module.exports = {
             { emoji: ':grapes:', multiplier: 3 },
             { emoji: ':cherries:', multiplier: 5 },
             { emoji: ':bell:', multiplier: 10 },
-            { emoji: '<:bar:413457783321657396>', multiplier: 15 },
-            { emoji: '<:luckyseven:413457793019019264>', multiplier: 100 },
+            { emoji: '<:bar:1250276984576020530>', multiplier: 15 },
+            { emoji: '<:luckyseven:1250277002737619064>', multiplier: 100 },
         ];
 
         if (option === 'paytable') {
