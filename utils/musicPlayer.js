@@ -37,7 +37,7 @@ module.exports = {
         });
         const player = new EmbedBuilder()
         .setTitle(`🎧 Now Playing ${queue.dispatcher.channel.name ? `in ${queue.dispatcher.channel.name}` : ""}`)
-        .setAuthor({ name: `Requested by ${requestedBy.username}`, iconURL: requestedBy.displayAvatarURL({dynamic: true}) })
+        .setAuthor({ name: `Requested by ${requestedBy.displayName}`, iconURL: requestedBy.displayAvatarURL({dynamic: true}) })
         .setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ``}`)
         .setThumbnail(track.thumbnail)
         .setColor(randomHexColor())
@@ -61,7 +61,7 @@ module.exports = {
     
         collector.on('collect', async i => {
             if (!filter) return await i.reply({ content: `Join the bot's channel to use these buttons!`, ephemeral: true }); 
-            logger.debug(`${i.member.user.username} pressed ${i.customId}`);
+            logger.debug(`${i.member.user.displayName} pressed ${i.customId}`);
             if (i.customId === "pause") {
                 queue.node.isPaused() ? await queue.node.resume() : await queue.node.pause();
                 await collector.resetTimer({ time: 300000 }); // 5 minutes to respond

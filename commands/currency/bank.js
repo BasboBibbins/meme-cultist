@@ -49,7 +49,7 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: `${user.username}'s Bank`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `${user.displayName}'s Bank`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(`${accentColor}`)
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) });
 

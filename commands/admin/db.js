@@ -68,7 +68,7 @@ module.exports = {
         const value = interaction.options.getString('value');
 
         const error_embed = new EmbedBuilder()
-            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();

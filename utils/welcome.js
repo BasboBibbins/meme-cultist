@@ -4,7 +4,7 @@ const { DEFAULT_ROLE, RULES_CHANNEL_ID } = require('../config.json');
 const { QuickDB } = require('quick.db');
 const { addNewDBUser } = require('../database');
 const db = new QuickDB( { filePath: 'db/users.sqlite' });
-const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID } = require('../config.json');
+const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID, WELCOME_CHANNEL_NAME, RIP_CHANNEL_NAME } = require('../config.json');
 const logger = require('../utils/logger');
 const { randomHexColor } = require('./randomcolor');
 
@@ -12,8 +12,8 @@ async function ripGen(guildMember, prompt) {
     const victim = guildMember.user;
     const buffer = 25;
     let rip = `\`\`\`\n-=-=-=-=-=-=-=-=-=-=- R I P -=-=-=-=-=-=-=-=-=-=-\n`;
-    let ripLines = buffer - (((victim.username.length + 5) + 2)/2);
-    rip += `\n${'-'.repeat(ripLines)} ${victim.username}#${victim.discriminator} ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
+    let ripLines = buffer - (((victim.displayName.length + 5) + 2)/2);
+    rip += `\n${'-'.repeat(ripLines)} ${victim.displayName} ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
     let joinedAt = guildMember.joinedAt || `??/??/20XX`;
     let joinDate = new Date(joinedAt);
     let leaveDate = new Date();
@@ -43,7 +43,7 @@ module.exports = {
         return await ripGen(victim, prompt);
     },
     welcome: async function (client, member) {
-        const channel = member.guild.channels.cache.find(ch => ch.name === 'welcome');
+        const channel = WELCOME_CHANNEL_NAME ? member.guild.channels.cache.find(ch => ch.name === WELCOME_CHANNEL_NAME) : member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
         if (!channel) return;
 
         const dbUser = await db.get(member.user.id);
@@ -54,7 +54,7 @@ module.exports = {
         let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : "#FFFFFF";
         const embed = new EmbedBuilder()
             .setColor(`${accentColor}`)
-            .setTitle(`Welcome ${dbUser ? `back`:``} to ${member.guild.name}, ${member.user.username}!`)
+            .setTitle(`Welcome${dbUser ? ` back`:``} to ${member.guild.name}, ${member.user.displayName}!`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(`Welcome ${dbUser ? `back`:``} to ${member.guild.name} <@${member.id}>! Now **GET THE FUCK OUT OF MY DISCORD NORMIE!!!!**\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, as they are heavily enforced! *Our janitors do it for free!*`)
             .setFooter({ text: `Meme Cultist | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
@@ -100,48 +100,51 @@ module.exports = {
     },
 
     rip: async function (client, member, prompt) {
-        const channel = member.guild.channels.cache.find(ch => ch.name === 'rip');
+        const channel = RIP_CHANNEL_NAME ? member.guild.channels.cache.find(ch => ch.name === RIP_CHANNEL_NAME) : member.guild.channels.cache.get(RIP_CHANNEL_ID);
         if (!channel) return;
         const titles = [
-            `cya ${member.user.username}`,
-            `RIP THAT BOZO ${member.user.username.toUpperCase()} #PACKWATCH `,
-            `${member.user.username} is fucking dead`,
-            `Here lies: ${member.user.username}`,
-            `rest in piss ${member.user.username}`,
-            `rest in peace ${member.user.username}`,
-            `rip ${member.user.username}`,
-            `RIP ${member.user.username}, you (won't) be missed`,
-            `it's a shame ${member.user.username} had to die`,
-            `RIP ${member.user.username}, you were kinda cringe tho`,
-            `it's over. ${member.user.username} is dead`,
-            `🦀 ${member.user.username} is dead 🦀`,
-            `${member.user.username} is dead. long live ${member.user.username}!`,
-            `RIP ${member.user.username}, you were a good person`,
-            `Press F to pay respects to ${member.user.username}`,
-            `☠️ ${member.user.username} is dead ☠️`,
-            `ripperoni pepperoni ${member.user.username}-eroni`,
-            `${member.user.username} just got crit piped`,
-            `erm... ${member.user.username} isn't dead. he just left the server 🤓`,
-            `that's fucked up. ${member.user.username} just died. based?`,
-            `i didn't see who died, but i'm pretty sure it was ${member.user.username}`,
-            `my honest reaction to ${member.user.username} dying: 🤷‍♂️`,
-            `see you in hell ${member.user.username}`,
-            `${member.user.username} is dead. see you in space cowboy`,
-            `${member.user.username}'s death was fact-check by real American patriots.`,
-            `${member.user.username} did too much lean.`,
-            `${member.user.username} "died suddenly"`,
-            `${member.user.username} is dead, not big surprise!`,
-            `${member.user.username} is dead, many such cases!`,
-            `${member.user.username} is dead, not a big loss for ${member.guild.name}!`,
-            `${member.user.username} didn't thank his doctor`,
-            `i can't believe ${member.user.username} is dead`,
-            `${member.user.username}? ${member.user.username}?! ${member.user.username.toUpperCase()}!!!!`,
-            `the west has fallen. ${member.user.username} is dead`,
-            `${member.user.username} got caught trolling`,
-            `${member.guild.name} is now ${member.user.username} free`,
-            `RIP ${member.user.username}, billions will die for this.`,
-            `see you on the flip side ${member.user.username}`,
-            `back to former hell ${member.user.username}`,
+            `cya ${member.user.displayName}`,
+            `RIP THAT BOZO ${member.user.displayName.toUpperCase()} #PACKWATCH `,
+            `${member.user.displayName} is fucking dead`,
+            `Here lies: ${member.user.displayName}`,
+            `rest in piss ${member.user.displayName}`,
+            `rest in peace ${member.user.displayName}`,
+            `rip ${member.user.displayName}`,
+            `RIP ${member.user.displayName}, you (won't) be missed`,
+            `it's a shame ${member.user.displayName} had to die`,
+            `RIP ${member.user.displayName}, you were kinda cringe tho`,
+            `it's over. ${member.user.displayName} is dead`,
+            `🦀 ${member.user.displayName} is dead 🦀`,
+            `${member.user.displayName} is dead. long live ${member.user.displayName}!`,
+            `RIP ${member.user.displayName}, you were a good person`,
+            `Press F to pay respects to ${member.user.displayName}`,
+            `☠️ ${member.user.displayName} is dead ☠️`,
+            `ripperoni pepperoni ${member.user.displayName}-eroni`,
+            `${member.user.displayName} just got crit piped`,
+            `erm... ${member.user.displayName} isn't dead. he just left the server 🤓`,
+            `that's fucked up. ${member.user.displayName} just died. based?`,
+            `i didn't see who died, but i'm pretty sure it was ${member.user.displayName}`,
+            `my honest reaction to ${member.user.displayName} dying: 🤷‍♂️`,
+            `see you in hell ${member.user.displayName}`,
+            `${member.user.displayName} is dead. see you in space cowboy`,
+            `${member.user.displayName}'s death was fact-check by real American patriots.`,
+            `${member.user.displayName} did too much lean.`,
+            `${member.user.displayName} "died suddenly"`,
+            `${member.user.displayName} is dead, not big surprise!`,
+            `${member.user.displayName} is dead, many such cases!`,
+            `${member.user.displayName} is dead, not a big loss for ${member.guild.name}!`,
+            `${member.user.displayName} didn't thank his doctor`,
+            `i can't believe ${member.user.displayName} is dead`,
+            `${member.user.displayName}? ${member.user.displayName}?! ${member.user.displayName.toUpperCase()}!!!!`,
+            `the west has fallen. ${member.user.displayName} is dead`,
+            `${member.user.displayName} got caught trolling`,
+            `${member.guild.name} is now ${member.user.displayName}-free`,
+            `RIP ${member.user.displayName}, billions will die for this.`,
+            `see you on the flip side ${member.user.displayName}`,
+            `back to former hell ${member.user.displayName}`,
+            `back to maxwell's trannies ${member.user.displayName}`,
+            `I think maxwell's is more your speed, ${member.user.displayName}`,
+            `${member.user.displayName}? literally who?`,
         ]
         const embed = new EmbedBuilder()
             .setColor(randomHexColor())

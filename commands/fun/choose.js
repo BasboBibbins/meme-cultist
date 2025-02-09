@@ -29,7 +29,7 @@ module.exports = {
             `Let's go with`,
             `It's gonna have to be`,
             `Personally, I perfer`,
-            `I rigged the answer for ${interaction.user.username} to be:`,
+            `I rigged the answer for ${interaction.user.displayName} to be:`,
             `I'm going to go with`,
             `:nerd: based on my calculations, it's`,
             `Number ${rng + 1} it is! `,

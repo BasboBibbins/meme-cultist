@@ -21,7 +21,7 @@ module.exports = {
         const number = interaction.options.getInteger('number') || 1;
         
         const embed = new EmbedBuilder()
-        .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+        .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
         .setDescription(`${number > 1 ? `You rolled **${number} ${dice}**-sided dice and got:` : `You rolled a **${dice}**-sided die and got:`}\n**${await roll(dice, number)}**`)
         .setColor(randomHexColor())
         .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })

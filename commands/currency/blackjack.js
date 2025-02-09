@@ -25,10 +25,10 @@ module.exports = {
         let bet = Number(await parseBet(option, user.id));
         const dbUser = await db.get(user.id);
 
-        logger.info(`${user.username}#${user.discriminator} (${user.id}) initialized a game of blackjack with a bet of ${bet} ${CURRENCY_NAME}.`)
+        logger.info(`${user.username}(${user.id}) initialized a game of blackjack with a bet of ${bet} ${CURRENCY_NAME}.`)
 
         const error_embed = new EmbedBuilder()
-            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
@@ -91,7 +91,7 @@ module.exports = {
         logger.debug(`${user.username}: ${playerCards[0].name} ${playerCards[1].name} = ${playerCards[0].value + playerCards[1].value}`);
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: `${user.username}#${user.discriminator}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
             .setColor(randomHexColor())
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
@@ -100,7 +100,7 @@ module.exports = {
         let winnings = Number(bet);
         if (await bj.checkHand(playerCards) === 'safe') {
             await db.sub(`${user.id}.balance`, bet);
-            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.username}:**\n\`${playerCards[0].char}\` \`${playerCards[1].char}\``)
+            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.displayName}:**\n\`${playerCards[0].char}\` \`${playerCards[1].char}\``)
             let msg = await interaction.editReply({ embeds: [embed], components: [buttonRow] });
 
             const filter = i => i.user.id === user.id;
@@ -119,7 +119,7 @@ module.exports = {
                         let reason = await bj.checkHand(playerCards);
                         collector.stop(reason);
                     } else {
-                        embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                        embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                         await i.update({ embeds: [embed] });
                     }
                 } else if (i.customId === 'stand' || i.customId === 'double') {
@@ -135,12 +135,12 @@ module.exports = {
                             let reason = await bj.checkHand(playerCards);
                             return collector.stop(reason);
                         } else {
-                            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                             await interaction.editReply({ embeds: [embed] });
                             await wait(1000);
                         }
                     }
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                     await interaction.editReply({ embeds: [embed], components: [] });
                     await wait(1000);
                     if ((dealerTotal > playerTotal) || (dealerTotal == 21)) {
@@ -155,7 +155,7 @@ module.exports = {
                         dealerTotal = await bj.getHandValue(dealerCards);
                         logger.debug(`Dealer: ${dealerCards.map(card => card.name).join(' ')} = ${dealerTotal}`);
                         logger.debug(`status: ${await bj.checkHand(dealerCards)}`);
-                        embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
+                        embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}`);
                         await interaction.editReply({ embeds: [embed] });
                         await wait(1000);
                     }
@@ -182,7 +182,7 @@ module.exports = {
                             return collector.stop('lose');
                         } else if (dealerTotal < playerTotal) {
                             logger.debug(`${user.username} wins!`);
-                            embed.setTitle(`${user.username} wins!`);
+                            embed.setTitle(`${user.displayName} wins!`);
                             return collector.stop('win');
                         } else if (dealerTotal === playerTotal) {
                             logger.debug(`It's a tie!`);
@@ -200,7 +200,7 @@ module.exports = {
                     await db.add(`${stats}.wins`, 1);
                     await db.add(`${stats}.blackjacks`, 1);
                     if (winnings > await db.get(`${stats}.blackjack.biggestWin`)) await db.set(`${stats}.blackjack.biggestWin`, winnings);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`Blackjack!`);
                     embed.setColor(0x00AE86);
                     await interaction.editReply({ embeds: [embed], components: [] });
@@ -210,21 +210,21 @@ module.exports = {
                     await db.add(`${user.id}.balance`, winnings);
                     await db.add(`${stats}.wins`, 1);
                     if (winnings > await db.get(`${stats}.blackjack.biggestWin`)) await db.set(`${stats}.blackjack.biggestWin`, winnings);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setColor(0x00AE86);
                     await interaction.editReply({ embeds: [embed], components: [] });
                 }
                 else if (reason == 'tie') {
                     await db.add(`${user.id}.balance`, bet);
                     await db.add(`${stats}.ties`, 1);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nIt's a tie! You get your bet back.\nYour balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nIt's a tie! You get your bet back.\nYour balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setColor(0xFFFF00);
                     await interaction.editReply({ embeds: [embed], components: [] });
                 }
                 else if (reason === 'bust') {
                     await db.add(`${stats}.losses`, 1);
                     if (bet > await db.get(`${stats}.blackjack.biggestLoss`)) await db.set(`${stats}.blackjack.biggestLoss`, bet);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`You busted!`);
                     embed.setColor(0xFF0000);
                     await interaction.editReply({ embeds: [embed], components: [] });
@@ -232,14 +232,14 @@ module.exports = {
                 else if (reason === 'lose') {
                     await db.add(`${stats}.losses`, 1);
                     if (bet > await db.get(`${stats}.blackjack.biggestLoss`)) await db.set(`${stats}.blackjack.biggestLoss`, bet);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou lose **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou lose **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setColor(0xFF0000);
                     await interaction.editReply({ embeds: [embed], components: [] });
                 }
                 else if (reason === 'time') {
                     await db.add(`${stats}.losses`, 1);
                     if (bet > await db.get(`${stats}.blackjack.biggestLoss`)) await db.set(`${stats}.blackjack.biggestLoss`, bet);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou didn't respond in time, so you forfeit your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou didn't respond in time, so you forfeit your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                     embed.setTitle(`Time's up! You forfeit.`);
                     embed.setColor(0xFF0000);
                     await interaction.editReply({ embeds: [embed], components: [] });
@@ -251,14 +251,14 @@ module.exports = {
             await db.add(`${stats}.wins`, 1);
             await db.add(`${stats}.blackjacks`, 1);
             if (winnings > await db.get(`${stats}.blackjack.biggestWin`)) await db.set(`${stats}.blackjack.biggestWin`, winnings);
-            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${bet * 1.5}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${bet * 1.5}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
             embed.setTitle(`Blackjack!`);
             embed.setColor(0x00AE86);
             return await interaction.reply({ embeds: [embed], components: [] });
         } else if (await bj.checkHand(playerCards) === 'bust') {
             await db.add(`${stats}.losses`, 1);
             if (bet > await db.get(`${stats}.blackjack.biggestLoss`)) await db.set(`${stats}.blackjack.biggestLoss`, bet);
-            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.username}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+            embed.setDescription(`**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n**${user.displayName}:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou busted! You lose your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
             embed.setTitle(`You busted!`);
             embed.setColor(0xFF0000);
             return await interaction.reply({ embeds: [embed], components: [] });

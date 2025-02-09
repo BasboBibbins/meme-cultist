@@ -39,7 +39,7 @@ module.exports = {
 
         if (option === 'paytable') {
             const paytable = new EmbedBuilder()
-                .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+                .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
                 .setColor(randomHexColor())
                 .setTitle('Slots Paytable')
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
@@ -68,7 +68,7 @@ module.exports = {
             await addNewDBUser(user);
         }
         const error_embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.username+"#"+interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setColor(0xFF0000)
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
@@ -93,7 +93,7 @@ module.exports = {
         await db.set(`${user.id}.balance`, await db.get(`${user.id}.balance`) - bet);
 
         const slots = new EmbedBuilder()
-            .setAuthor({name: `${user.username+"#"+user.discriminator} | Slots`, iconURL: user.displayAvatarURL({dynamic: true})})            
+            .setAuthor({name: `${user.displayName} | Slots`, iconURL: user.displayAvatarURL({dynamic: true})})            
             .setColor(randomHexColor())
             .setTitle('Good luck!')
             .setDescription(`${slotsDefaultEmoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`)
@@ -135,7 +135,7 @@ module.exports = {
                 await db.add(`${user.id}.stats.slots.wins`, 1);
                 await db.add(`${user.id}.stats.slots.jackpots`, 1);
                 await interaction.editReply({ embeds: [slots] });
-                await interaction.followUp({ content: `@everyone **${user.username}** just won the jackpot! Congratulations!`, allowedMentions: { parse: ['everyone'] }});
+                await interaction.followUp({ content: `@everyone **${user.displayName}** just won the jackpot! Congratulations!`, allowedMentions: { parse: ['everyone'] }});
             } else {
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${user.id}.stats.slots.wins`, 1);
@@ -167,6 +167,6 @@ module.exports = {
                 .setDescription(`${desc}\n\nYou lost **${winnings}** ${CURRENCY_NAME}. \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}. ${await db.get(`${user.id}.balance`) <= 0 ? `You are now broke!` : ''}`);
             await interaction.editReply({ embeds: [slots] });
         }
-        logger.debug(`${user.username}#${user.discriminator} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
+        logger.debug(`${user.username} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
     },
 };

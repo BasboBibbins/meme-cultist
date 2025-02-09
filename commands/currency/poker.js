@@ -22,7 +22,7 @@ module.exports = {
 
         if (option === 'paytable') {
             const paytable = new EmbedBuilder()
-                .setAuthor({ name: interaction.user.username + "#" + interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+                .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
                 .setColor(randomHexColor())
                 .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp()
@@ -59,10 +59,10 @@ module.exports = {
             db.set(stats, { wins: 0, losses: 0, royals: 0, biggestWin: 0, biggestLoss: 0 });
         }
         
-        logger.log(`${user.username}#${user.discriminator} (${user.id}) initialized a game of poker with a bet of ${bet} ${CURRENCY_NAME}.`);
+        logger.log(`${user.username} (${user.id}) initialized a game of poker with a bet of ${bet} ${CURRENCY_NAME}.`);
         
         const error_embed = new EmbedBuilder()
-            .setAuthor({ name: user.username + "#" + user.discriminator, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
@@ -89,7 +89,7 @@ module.exports = {
         await db.sub(`${user.id}.balance`, bet);
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: user.username, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
             .setColor(randomHexColor())
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
@@ -251,7 +251,7 @@ module.exports = {
                     .setTitle(`You got a Royal Flush!`)
                     .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
                 await interaction.editReply({ components: [], embeds: [embed] });
-                await interaction.followUp({ content: `@everyone **${user.username}** just got a royal flush! Congratulations!`, allowedMentions: { parse: ['everyone'] }});
+                await interaction.followUp({ content: `@everyone **${user.displayName}** just got a royal flush! Congratulations!`, allowedMentions: { parse: ['everyone'] }});
                 return;
             } else if (reason === 'Straight Flush') {
                 winnings = Math.ceil(bet * 50);

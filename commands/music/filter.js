@@ -54,7 +54,7 @@ module.exports = {
         const queue = interaction.client.player.nodes.get(interaction.guild.id);
 
         const embed = new EmbedBuilder()
-            .setAuthor({ name: interaction.user.username + '#' + interaction.user.discriminator, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
