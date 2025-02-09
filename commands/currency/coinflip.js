@@ -24,7 +24,7 @@ module.exports = {
         }
 
         const error_embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setColor(0xFF0000)
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
@@ -49,7 +49,7 @@ module.exports = {
         const chance = Math.floor(Math.random() * 100) + 1;
 
         const embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
 

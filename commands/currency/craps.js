@@ -34,7 +34,7 @@ module.exports = {
             logger.info(`User ${user.username} is playing craps with a bet of ${bet} ${CURRENCY_NAME}.`);
 
             const error_embed = new EmbedBuilder()
-                .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+                .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
                 .setColor(0xFF0000)
                 .setTitle('Error')
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
@@ -64,7 +64,7 @@ module.exports = {
             const diceImage = await drawDice(dice[0], dice[1]);
 
             const embed = new EmbedBuilder()
-            .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
             .setImage(`attachment://roll.png`)
             .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
@@ -90,7 +90,7 @@ module.exports = {
             }
         } else {
             const error_embed = new EmbedBuilder()
-                .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+                .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
                 .setColor(0xFF0000)
                 .setTitle('Error')
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})

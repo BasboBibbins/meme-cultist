@@ -14,7 +14,7 @@ module.exports = {
 
         const user = interaction.user;
         const embed = new EmbedBuilder()
-            .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `${user.displayName }`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
             .addFields(
                 { name: "Uptime", value: `${days} days, ${hours} hours, ${minutes} minutes, ${seconds} seconds`, inline: true },

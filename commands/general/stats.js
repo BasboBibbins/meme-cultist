@@ -47,15 +47,15 @@ async function generateStatsEmbed(page, interaction, user) {
         .setTimestamp();
     
     if (user !== interaction.user) {
-        embed.setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+        embed.setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
     }
-    embed.setFooter({ text: `${user.displayName}'s Stats | Page ${page}/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+    embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
     switch (page) {
         case 1:
             // General Stats
-            embed.setTitle(`${user.displayName}'s General Stats`)
+            embed.setTitle(`${user.displayName }'s General Stats`)
             embed.setFields(
-                { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName}`, inline: false },
+                { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName }`, inline: false },
                 { name: "Creation Date", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: true },
                 { name: "Join Date", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: true },
                 { name: "Roles", value: `${fetchedUser.roles.cache.map(role => role.toString()).join(' ')}`, inline: false },
@@ -63,7 +63,7 @@ async function generateStatsEmbed(page, interaction, user) {
             break;
         case 2:
             // Command Stats
-            embed.setTitle(`${user.displayName}'s Command Stats`)
+            embed.setTitle(`${user.displayName }'s Command Stats`)
             let daily = await db.get(`${user.id}.stats.commands.daily`);
             let monthly = await db.get(`${user.id}.stats.commands.monthly`);
             let yearly = await db.get(`${user.id}.stats.commands.yearly`);
@@ -78,7 +78,7 @@ async function generateStatsEmbed(page, interaction, user) {
             break;
         case 3:
             // Currency Stats
-            embed.setTitle(`${user.displayName}'s Currency Stats`)
+            embed.setTitle(`${user.displayName }'s Currency Stats`)
             embed.setFields(
                 { name: "Current Balance", value: `${stats.balance} ${CURRENCY_NAME}`, inline: true },
                 { name: "Bank Balance", value: `${stats.bank} ${CURRENCY_NAME}`, inline: true },
@@ -97,7 +97,7 @@ async function generateStatsEmbed(page, interaction, user) {
             break;
         case 4:
             // Game Stats
-            embed.setTitle(`${user.displayName}'s Game Stats`)
+            embed.setTitle(`${user.displayName }'s Game Stats`)
             embed.setFields(
                 { name: "Blackjack" , value: `
                     *Games Played:* **${await getTotalGamesPlayed("blackjack", user)}**

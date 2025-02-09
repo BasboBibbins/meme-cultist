@@ -24,7 +24,7 @@ module.exports = {
         if (dbUser.cooldowns.daily > Date.now()) {
             const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
             const embed = new EmbedBuilder()
-                .setAuthor({name: user.displayName, iconURL: user.displayAvatarURL({dynamic: true})})
+                .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
                 .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
                 .setColor(0xFF0000)
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
@@ -53,7 +53,7 @@ module.exports = {
         await db.set(`${user.id}.cooldowns.daily`, Date.now() + cooldown);
 
         const embed = new EmbedBuilder()
-            .setAuthor({name: user.displayName, iconURL: user.displayAvatarURL({dynamic: true})})
+            .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
             .setDescription(`You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus)}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
             .setColor(0x00FF00)
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})

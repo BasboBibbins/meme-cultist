@@ -17,7 +17,7 @@ module.exports = {
   async execute(interaction) {
     const image = interaction.options.getAttachment('image');
     const user = interaction.options.getUser('user') || interaction.user;
-    const title = interaction.options.getString('title') || interaction.user.displayName;
+    const title = interaction.options.getString('title') || interaction.user.displayName ;
     let accentColor = user.hexAccentColor ? user.hexAccentColor : randomHexColor();
 
     const embed = new EmbedBuilder()

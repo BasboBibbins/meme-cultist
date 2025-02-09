@@ -34,7 +34,7 @@ module.exports = {
             `You're pathetic.`,
             `You're just gonna lose it all in the casino anyway.`,
             `You're not getting any ${CURRENCY_NAME} from me.`,
-            `i saw ${user.displayName} begging for ${CURRENCY_NAME} on discord, what a loser`,
+            `i saw ${user.displayName } begging for ${CURRENCY_NAME} on discord, what a loser`,
             `really? you're begging for ${CURRENCY_NAME}?`,
             `you might as well give up`,
             `how about you get a job instead?`,
@@ -56,11 +56,11 @@ module.exports = {
             `you'll get ${CURRENCY_NAME} from me when you decide to grow up`,
             `don't make me get a janny to ban you`,
             `final warning, stop begging for ${CURRENCY_NAME} or i WILL call a janny`,
-            `${user.displayName} does it for free folks`,
+            `${user.displayName } does it for free folks`,
         ]
 
         const embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+            .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
 

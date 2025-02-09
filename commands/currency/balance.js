@@ -22,13 +22,13 @@ module.exports = {
             await addNewDBUser(user);
         }
         const error_embed = new EmbedBuilder()
-            .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         if (user.bot) {
-            error_embed.setDescription(`**${user.displayName}** is a bot, and therefore cannot have a balance.`);
+            error_embed.setDescription(`**${user.displayName }** is a bot, and therefore cannot have a balance.`);
             return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
 
@@ -36,7 +36,7 @@ module.exports = {
         let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : randomHexColor();
         
         const embed = new EmbedBuilder()
-            .setAuthor({ name: `${user.displayName}'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `${user.displayName }'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(`${accentColor}`)
             .addFields(
                 { name: "Wallet", value: `${dbUser.balance} ${CURRENCY_NAME}`, inline: true },
@@ -44,7 +44,7 @@ module.exports = {
             )
             .setTimestamp()
             .setFooter( interaction.options.getUser('user') ? 
-                { text: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) } : 
+                { text: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) } : 
                 { text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})}
             );
         await interaction.reply({embeds: [embed]});
