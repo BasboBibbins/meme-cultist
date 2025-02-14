@@ -23,7 +23,11 @@ async function createDYLM(imageBuffer, bowBuffer, textBuffer, bowX, bowY) {
 
   ctx.drawImage(background, 0, 0);
   ctx.drawImage(bow, bowX, bowY, bowWidth, bowHeight);
-  ctx.drawImage(text, 0, 0, textWidth, textHeight);
+
+  const textX = (background.width - textWidth) / 2; // prevent text from going off the screen
+  const textY = background.height - textHeight;
+
+  ctx.drawImage(text, textX, textY, textWidth, textHeight);
 
   return canvas.toBuffer();
 }
