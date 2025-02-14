@@ -33,7 +33,7 @@ module.exports = {
         const rate_prompt = rate_prompts[Math.floor(Math.random() * rate_prompts.length)];
             
         const embed = new EmbedBuilder()
-            .setAuthor({ name: `Requested by ${interaction.user.username}#${interaction.user.discriminator}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
             .setDescription(rate_prompt)
             .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })

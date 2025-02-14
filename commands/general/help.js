@@ -30,7 +30,7 @@ module.exports = {
                 .addFields(
                     { 
                         name: "General Information", 
-                        value: `**${interaction.client.user.username}** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to DM <@${OWNER_ID}>!`,
+                        value: `**${interaction.client.user.displayName }** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to DM <@${OWNER_ID}>!`,
                         inline: false 
                     },
                     {

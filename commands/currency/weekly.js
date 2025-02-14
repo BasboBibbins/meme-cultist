@@ -26,7 +26,7 @@ module.exports = {
                 const oneDay = 8.64e+7;
                 const getDays = Math.floor(timeLeft / oneDay);
                 const embed = new EmbedBuilder()
-                    .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})
+                    .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
                     .setDescription(`You have already claimed your weekly ${CURRENCY_NAME}! You can claim again in **${getDays}d ${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
                     .setColor(0xFF0000)
                     .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
@@ -40,7 +40,7 @@ module.exports = {
             await db.set(`${user.id}.cooldowns.weekly`, Date.now() + cooldown);
 
             const embed = new EmbedBuilder()
-                .setAuthor({name: user.username+"#"+user.discriminator, iconURL: user.displayAvatarURL({dynamic: true})})
+                .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
                 .setDescription(`You have claimed your weekly ${CURRENCY_NAME}! **${amount}** ${CURRENCY_NAME} has been added to your bank.`)
                 .setColor(0x00FF00)
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})

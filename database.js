@@ -6,7 +6,7 @@ const logger = require("./utils/logger");
 async function getDefaultDB(user) {
     return {
         "id": user.id,
-        "name": user.username+"#"+user.discriminator,
+        "name": user.username,
         "balance": 0,
         "bank": 100,
         "inventory": [],
@@ -93,7 +93,7 @@ module.exports = {
             if (!dbUser) {
                 newUsers++;
                 await db.set(user.id, defaultDB);
-                logger.log(`Adding ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+                logger.log(`Adding ${user.username} [${user.id}] to the database.`)
             } else {
                 let updated = false;
                 for (const [key, value] of Object.entries(defaultDB)) {
@@ -104,7 +104,7 @@ module.exports = {
                 }
                 if (updated) {
                     await db.set(user.id, dbUser);
-                    logger.log(`Updated ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+                    logger.log(`Updated ${user.username} [${user.id}] in the database.`)
                     updatedUsers++;
                 }
             }
@@ -117,14 +117,14 @@ module.exports = {
         if (!dbUser) {
             await db.set(user.id, defaultDB);
         }
-        logger.log(`Added ${user.username}#${user.discriminator} [${user.id}] to the database.`)
+        logger.log(`Added ${user.username} [${user.id}] to the database.`)
     },
     deleteDBUser: async function(user) {
         const dbUser = await db.get(user.id);
         if (dbUser) {
             await db.delete(user.id);
         }
-        logger.log(`Deleted ${user.username}#${user.discriminator} [${user.id}] from the database.`)
+        logger.log(`Deleted ${user.username} [${user.id}] from the database.`)
     },
     deleteDBValue: async function(user, value) {
         const dbUser = await db.get(user.id);
@@ -132,7 +132,7 @@ module.exports = {
             delete dbUser[value];
             await db.set(user.id, dbUser);
         }
-        logger.log(`Deleted ${value} for ${user.username}#${user.discriminator} [${user.id}] from the database.`)
+        logger.log(`Deleted ${value} for ${user.username} [${user.id}] from the database.`)
     },
     resetDBUser: async function(user) {
         const dbUser = await db.get(user.id);
@@ -140,7 +140,7 @@ module.exports = {
         if (dbUser) {
             await db.set(user.id, defaultDB);
         }
-        logger.log(`Reset ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+        logger.log(`Reset ${user.username} [${user.id}] in the database.`)
     },
     resetDBValue: async function(user, value) {
         const dbUser = await db.get(user.id);
@@ -149,7 +149,7 @@ module.exports = {
             dbUser[value] = defaultDB[value];
             await db.set(user.id, dbUser);
         }
-        logger.log(`Reset ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+        logger.log(`Reset ${value} for ${user.username} [${user.id}] in the database.`)
     },
     setDBValue: async function(user, value, newValue) {
         const type = typeof newValue;
@@ -163,6 +163,6 @@ module.exports = {
             }
         }
         await db.set(`${user.id}.${value}`, newValue);
-        logger.log(`Set ${value} for ${user.username}#${user.discriminator} [${user.id}] in the database.`)
+        logger.log(`Set ${value} for ${user.username}} [${user.id}] in the database.`)
     }
 }

@@ -57,7 +57,7 @@ module.exports = {
     dealerChoice: async function (dealerHand, playerHand) {
         let dealerTotal = await getHandValue(dealerHand);
         let playerTotal = await getHandValue(playerHand);
-        if (dealerTotal < 17 || (dealerTotal < playerTotal)) {
+        if (dealerTotal < 17 && (dealerTotal < playerTotal)) {
             return "hit";
         }
         return "stand";

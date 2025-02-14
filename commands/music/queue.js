@@ -115,7 +115,7 @@ module.exports = {
                         tracks.shuffle();
                         interaction.deleteReply();
 
-                        embed.setAuthor({ name: `${interaction.user.username} has shuffled the queue!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) });
+                        embed.setAuthor({ name: `${interaction.user.displayName } has shuffled the queue!`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) });
                         embed.setTitle(`New queue:`)
                         embed.setDescription(`${queueString(tracks)}`);
                         let msg = await interaction.channel.send({embeds: [embed]});
