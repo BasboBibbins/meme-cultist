@@ -66,7 +66,7 @@ async function getDefaultDB(user) {
 module.exports = {
     getDefaultDB: async function(user) {
         return await getDefaultDB(user);
-        },
+    },
     initDB: async function(client) {
         const guild = client.guilds.cache.get(GUILD_ID);
 
@@ -164,5 +164,29 @@ module.exports = {
         }
         await db.set(`${user.id}.${value}`, newValue);
         logger.log(`Set ${value} for ${user.username}} [${user.id}] in the database.`)
-    }
+    },
+    cleanDB: async function(client) {
+        const guild = client.guilds.cache.get(GUILD_ID);
+        const users = guild.members.cache.map(member => {
+            return {
+                id: member.id,
+                username: member.user.username,
+            }
+        });
+        const dbUsers = await db.all();
+        let deletedUsers = []
+        for (const dbUser of dbUsers) {
+            const user = users.find(user => user.id === dbUser.id);
+            if (!user) {
+                await db.delete(dbUser.id);
+                deletedUsers.push(dbUser.value);
+            }
+        }
+        if (deletedUsers.length === 0) {
+            logger.log(`No users to delete.`)
+            return [];
+        }
+        logger.log(`Cleaned the database. Deleted ${deletedUsers.length} users.`)
+        return deletedUsers;
+    },
 }
