@@ -59,11 +59,5 @@ module.exports = {
             { name: "All Time Top 10 Banks", value: allTime.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.stats.largestBank} ${CURRENCY_NAME}`).join("\n"), inline: true }
         );
         await interaction.editReply({ embeds: [embed] });
-        await wait(60000).then(async () => {
-            interaction.deleteReply();
-        }).catch((err) => {
-            logger.error(`Failed to delete reply for command ${interaction.commandName}`);
-            logger.error(err);
-        });
     }
 };
