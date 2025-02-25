@@ -4,17 +4,18 @@ const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { CURRENCY_NAME } = require('../config.json');
 const { randomHexColor } = require('./randomcolor');
 const wait = require('node:timers/promises').setTimeout;
+const logger = require('../utils/logger');
 
 const slotsDefaultEmoji = '<a:slots:1250275896007589962>';
 const slotsEmoji = [
-  { emoji: ':apple:', multiplier: 5 },
-  { emoji: ':tangerine:', multiplier: 10 },
-  { emoji: ':lemon:', multiplier: 20 },
-  { emoji: ':grapes:', multiplier: 30 },
-  { emoji: ':cherries:', multiplier: 50 },
-  { emoji: ':bell:', multiplier: 100 },
-  { emoji: '<:bar:1250276984576020530>', multiplier: 200 },
-  { emoji: '<:luckyseven:1250277002737619064>', multiplier: 500 },
+  { emoji: ':apple:', multiplier: 5, name: 'apples' },
+  { emoji: ':tangerine:', multiplier: 10, name: 'oranges' },
+  { emoji: ':lemon:', multiplier: 20, name: 'lemons' },
+  { emoji: ':grapes:', multiplier: 30, name: 'grapes' },
+  { emoji: ':cherries:', multiplier: 50, name: 'cherries' },
+  { emoji: ':bell:', multiplier: 100, name: 'bell' },
+  { emoji: '<:bar:1250276984576020530>', multiplier: 200, name: 'bars' },
+  { emoji: '<:luckyseven:1250277002737619064>', multiplier: 500, name: 'sevens' },
 ];
 
 async function rng(min, max) {
@@ -51,6 +52,8 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
   const actualBet = freePlay ? 100 : bet;
   const freeSpinsLeft = freePlay ? 4 - freePlaySpin : 0;
 
+  logger.debug(`Initializing slots with ${actualBet} ${CURRENCY_NAME} ${freePlay ? `(FREE PLAY ${freeSpinsLeft+1}/5) ` : ''}for ${user.displayName}`);
+
   const slots = new EmbedBuilder()
     .setAuthor({ name: `${user.displayName} | Slots`, iconURL: user.displayAvatarURL({ dynamic: true }) })
     .setColor(randomHexColor())
@@ -70,6 +73,7 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
   const slot3 = await rng(0, slotsEmoji.length - 1);
 
   const slotResults = [slot1, slot2, slot3];
+  logger.debug(`Slot results: ${slotsEmoji[slot1].name} | ${slotsEmoji[slot2].name} | ${slotsEmoji[slot3].name}`);
 
   await wait(1000);
   slots.setDescription(`${slotsEmoji[slotResults[0]].emoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`);
@@ -87,6 +91,7 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
   let desc = `${slotsEmoji[slotResults[0]].emoji} ${slotsEmoji[slotResults[1]].emoji} ${slotsEmoji[slotResults[2]].emoji}`;
   if (slotResults[0] === slotResults[1] && slotResults[1] === slotResults[2]) {
     winnings = winnings + (actualBet * slotsEmoji[slotResults[0]].multiplier);
+    logger.debug(`Player won ${winnings} ${CURRENCY_NAME} with 3 ${slotsEmoji[slotResults[0]].name}`);
     slots.setColor(0x00FF00);
     slots.setTimestamp();
     if (slotResults[0] === 7 && slotResults[1] === 7 && slotResults[2] === 7) {
@@ -107,6 +112,7 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
   } else if (slotResults.includes(4)) {
     const cherryCount = slotResults.filter(x => x === 4).length;
     winnings = winnings * (cherryCount);
+    logger.debug(`Player won ${winnings} ${CURRENCY_NAME} with ${cherryCount} cherr${cherryCount > 1 ? 'ies' : 'y'}`);
     await db.add(`${user.id}.balance`, winnings);
     await db.add(`${user.id}.stats.slots.wins`, 1);
     if (await db.get(`${user.id}.stats.slots.biggestWin`) < winnings) {
@@ -125,6 +131,7 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
         .setDescription(`${desc}\n\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.${freePlay ? `\n\nFree spins left: ${freeSpinsLeft}` : ''}`);
       await interaction.editReply({ embeds: [slots] });
     } else {
+      logger.debug(`Player lost ${actualBet} ${CURRENCY_NAME}`);
       await db.add(`${user.id}.stats.slots.losses`, 1);
       if (await db.get(`${user.id}.stats.slots.biggestLoss`) < actualBet) {
         await db.set(`${user.id}.stats.slots.biggestLoss`, actualBet);
