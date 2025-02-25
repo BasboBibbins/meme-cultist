@@ -144,7 +144,7 @@ if (DELETE_SLASH) {
     logger.info(`Loading slash commands...`)
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {body: commands})
     .then(() => {
-        logger.info(`Successfully reloaded application (/) commands.`)
+        logger.info(`Successfully reloaded ${commands.length} application (/) commands.`)
         process.exit(0)
     })
     .catch((err) => {
