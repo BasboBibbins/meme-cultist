@@ -14,6 +14,7 @@ async function getDefaultDB(user) {
             "daily": 0,
             "weekly": 0,
             "rob": 0,
+            "freespins": 0,
         },
         "stats": {
             "commands": {

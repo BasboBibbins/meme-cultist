@@ -4,169 +4,93 @@ const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
 const { parseBet } = require('../../utils/betparse');
-const wait = require('node:timers/promises').setTimeout;
+const { generatePaytable, playSlots } = require('../../utils/slots');
 const logger = require("../../utils/logger");
-const { randomHexColor } = require('../../utils/randomcolor');
-
-async function rng(min, max) {
-    min = Math.ceil(min);
-    max = Math.floor(max);
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("slots")
-        .setDescription(`Play a game of slots for ${CURRENCY_NAME}. Use \`/slots paytable\` to see the paytable.`)
-        .addStringOption(option =>
-            option.setName('bet')
-                .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
-                .setRequired(true)),
+        .setDescription(`Play a game of slots for ${CURRENCY_NAME}.`)
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('bet')
+                .setDescription(`Bet an amount of ${CURRENCY_NAME} on slots.`)
+                .addStringOption(option =>
+                    option.setName('amount')
+                        .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
+                        .setRequired(true)))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('paytable')
+                .setDescription(`View the paytable for the slots.`))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('daily')
+                .setDescription(`Use your daily free spins.`)),
     async execute(interaction) {
         const user = interaction.user;
-        const option = interaction.options.getString('bet');
-        const slotsDefaultEmoji = '<a:slots:1250275896007589962>';
-        const slotsEmoji = [
-            { emoji: ':apple:', multiplier: 2 },
-            { emoji: ':tangerine:', multiplier: 2 },
-            { emoji: ':lemon:', multiplier: 2 },
-            { emoji: ':grapes:', multiplier: 3 },
-            { emoji: ':cherries:', multiplier: 5 },
-            { emoji: ':bell:', multiplier: 10 },
-            { emoji: '<:bar:1250276984576020530>', multiplier: 15 },
-            { emoji: '<:luckyseven:1250277002737619064>', multiplier: 100 },
-        ];
-
-        if (option === 'paytable') {
-            const paytable = new EmbedBuilder()
-                .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-                .setColor(randomHexColor())
-                .setTitle('Slots Paytable')
-                .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-                .setTimestamp();
-            let paytableEmoji = '', paytableMultiplier = '';
-            let slotEmojiReverse = slotsEmoji.reverse();
-            for (const slot of slotEmojiReverse) {
-                paytableEmoji += `${slot.emoji} ${slot.emoji} ${slot.emoji}\n`;
-                paytableMultiplier += `${slot.multiplier}x \n`;
-            }
-            paytableEmoji+= `:cherries: :cherries:\n:cherries:\n`;
-            paytableMultiplier+= `2x\n1x\n`;
-
-            paytable.addFields(
-                { name: 'Emoji', value: paytableEmoji, inline: true },
-                { name: 'Multiplier', value: paytableMultiplier, inline: true }
-            );
-            await interaction.reply({ embeds: [paytable] });
-            return;
-        }
-
-        const bet = Number(await parseBet(option, user.id));
+        const option = interaction.options.getSubcommand();
         const dbUser = await db.get(user.id);
         if (!dbUser) {
-            logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`)
+            logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
             await addNewDBUser(user);
         }
-        const error_embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-            .setColor(0xFF0000)
-            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-            .setTimestamp();
 
-        if (isNaN(bet)) {
-            error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
+        switch (option) {
+            case 'paytable':
+                await generatePaytable(interaction);
+                break;
+
+            case 'daily':
+                const cooldown = 8.64e+7; // 24 hours
+                if (dbUser.cooldowns.freespins > Date.now()) {
+                    const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
+                    const embed = new EmbedBuilder()
+                        .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                        .setDescription(`You have already used your daily free spins! You can use them again in **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
+                        .setColor(0xFF0000)
+                        .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                        .setTimestamp();
+                } else {
+                    logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
+                    await db.set(`${user.id}.cooldowns.freespins`, Date.now() + cooldown);
+                    await playSlots(interaction, 0, user);
+                }
+                break;
+
+            case 'bet':
+                const bet = Number(await parseBet(interaction.options.getString('amount'), user.id));
+
+                const error_embed = new EmbedBuilder()
+                    .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+                    .setColor(0xFF0000)
+                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setTimestamp();
+
+                if (isNaN(bet)) {
+                    error_embed.setDescription(`You must bet a number of ${CURRENCY_NAME}!`);
+                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
+                    break;
+                }
+                if (bet % 1 !== 0) {
+                    error_embed.setDescription(`You must bet a whole number of ${CURRENCY_NAME}!`);
+                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
+                    break;
+                }
+                if (bet < 1) {
+                    error_embed.setDescription(`You must bet at least 1 ${CURRENCY_NAME}!`);
+                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
+                    break;
+                }
+                if (bet > await db.get(`${interaction.user.id}.balance`)) {
+                    error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
+                    break;
+                }
+
+                await db.set(`${user.id}.balance`, await db.get(`${user.id}.balance`) - bet);
+                await playSlots(interaction, bet, user);
+                break;
         }
-        if (bet % 1 != 0) {
-            error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
-        if (bet < 1) {
-            error_embed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
-        if (bet > await db.get(`${interaction.user.id}.balance`)) {
-            error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
-
-        await db.set(`${user.id}.balance`, await db.get(`${user.id}.balance`) - bet);
-
-        const slots = new EmbedBuilder()
-            .setAuthor({name: `${user.displayName } | Slots`, iconURL: user.displayAvatarURL({dynamic: true})})            
-            .setColor(randomHexColor())
-            .setTitle('Good luck!')
-            .setDescription(`${slotsDefaultEmoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`)
-            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-            .setTimestamp();
-
-        await interaction.reply({ embeds: [slots] });
-        logger.log(`${user.username} (${user.id}) started a game of slots with a bet of ${bet} ${CURRENCY_NAME}.`)
-
-        const slot1 = await rng(0, slotsEmoji.length - 1);
-        const slot2 = await rng(0, slotsEmoji.length - 1);
-        const slot3 = await rng(0, slotsEmoji.length - 1);
-
-        const slotResults = [slot1, slot2, slot3];
-        logger.debug(`${user.username} (${user.id}) rolled ${slotResults[0]}, ${slotResults[1]}, ${slotResults[2]}.`)
-        
-        await wait(1000);
-        slots.setDescription(`${slotsEmoji[slotResults[0]].emoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`);
-        await interaction.editReply({ embeds: [slots] });
-        
-        await wait(1000);
-        slots.setDescription(`${slotsEmoji[slotResults[0]].emoji} ${slotsEmoji[slotResults[1]].emoji} ${slotsDefaultEmoji}`);
-        await interaction.editReply({ embeds: [slots] });
-        
-        await wait(1000);
-        slots.setDescription(`${slotsEmoji[slotResults[0]].emoji} ${slotsEmoji[slotResults[1]].emoji} ${slotsEmoji[slotResults[2]].emoji}`);
-        await interaction.editReply({ embeds: [slots] });
-
-        let winnings = bet;
-        let desc = `${slotsEmoji[slotResults[0]].emoji} ${slotsEmoji[slotResults[1]].emoji} ${slotsEmoji[slotResults[2]].emoji}`;
-        if (slotResults[0] === slotResults[1] && slotResults[1] === slotResults[2]) {
-            winnings = winnings + (bet * slotsEmoji[slotResults[0]].multiplier);
-            slots.setColor(0x00FF00);
-            slots.setTimestamp();
-            if (slotResults[0] === 7 && slotResults[1] === 7 && slotResults[2] === 7) {
-                slots.setTitle('JACKPOT!!!');
-                slots.setDescription(`${desc}\n\nYou won **${winnings}** ${CURRENCY_NAME}! \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${user.id}.stats.slots.wins`, 1);
-                await db.add(`${user.id}.stats.slots.jackpots`, 1);
-                await interaction.editReply({ embeds: [slots] });
-                await interaction.followUp({ content: `@everyone **${user.displayName }** just won the jackpot! Congratulations!`, allowedMentions: { parse: ['everyone'] }});
-            } else {
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${user.id}.stats.slots.wins`, 1);
-                slots.setTitle('You won!');
-                slots.setDescription(`${desc}\n\nYou won **${winnings}** ${CURRENCY_NAME}! \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ embeds: [slots] });
-            }
-        } else if (slotResults.includes(4)) {
-            const cherryCount = slotResults.filter(x => x === 4).length;
-            winnings = winnings * (cherryCount);
-            await db.add(`${user.id}.balance`, winnings);
-            await db.add(`${user.id}.stats.slots.wins`, 1);
-            if (await db.get(`${user.id}.stats.slots.biggestWin`) < winnings) {
-                await db.set(`${user.id}.stats.slots.biggestWin`, winnings);
-            }
-            slots.setColor(0x00FF00)
-                .setTimestamp()
-                .setTitle('You won!')
-                .setDescription(`${desc}\n\nYou won **${winnings}** ${CURRENCY_NAME}! \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-            await interaction.editReply({ embeds: [slots] });
-        } else {
-            await db.add(`${user.id}.stats.slots.losses`, 1);
-            if (await db.get(`${user.id}.stats.slots.biggestLoss`) < bet) {
-                await db.set(`${user.id}.stats.slots.biggestLoss`, bet);
-            }
-            slots.setColor(0xFF0000)
-                .setTitle('You lost!')
-                .setTimestamp()
-                .setDescription(`${desc}\n\nYou lost **${winnings}** ${CURRENCY_NAME}. \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}. ${await db.get(`${user.id}.balance`) <= 0 ? `You are now broke!` : ''}`);
-            await interaction.editReply({ embeds: [slots] });
-        }
-        logger.debug(`${user.username} (${user.id}) bet ${bet} ${CURRENCY_NAME} and won ${(winnings - bet)} ${CURRENCY_NAME} on slots.`);
     },
 };
