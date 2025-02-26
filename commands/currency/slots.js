@@ -44,7 +44,7 @@ module.exports = {
             case 'daily':
                 const cooldown = 8.64e+7; // 24 hours
                 if (dbUser.cooldowns.freespins > Date.now()) {
-                    const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
+                    const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
                     logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${timeLeft.getUTCHours()}:${timeLeft.getUTCMinutes()}:${timeLeft.getUTCSeconds()}`)
                     const embed = new EmbedBuilder()
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
