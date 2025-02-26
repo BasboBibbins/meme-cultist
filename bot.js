@@ -180,7 +180,7 @@ if (DELETE_SLASH) {
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
             return await interaction.member.createDM().then(async dm => {
-                await dm.send(`You are banned from using Meme Cultist. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
+                await dm.send(`You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
             })
         }
         if (interaction.isChatInputCommand()) {
@@ -194,7 +194,7 @@ if (DELETE_SLASH) {
                 }
 
                 if (TESTING_MODE && !interaction.member.roles.cache.has(TESTING_ROLE)){
-                    await interaction.reply({content: `The new Meme Cultist is currently in beta! Contact <@${OWNER_ID}> for access!`, ephemeral: true})
+                    await interaction.reply({content: `The new ${interaction.client.user.username} is currently in beta! Contact <@${OWNER_ID}> for access!`, ephemeral: true})
                     return
                 }
 

@@ -61,7 +61,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
 
         if (dbUser.balance > 0 || dbUser.bank > 0) {

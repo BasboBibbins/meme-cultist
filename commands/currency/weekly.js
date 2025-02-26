@@ -27,7 +27,7 @@ module.exports = {
                     .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
                     .setDescription(`You have already claimed your weekly ${CURRENCY_NAME}! You can claim again in **${await formatTimeLeft(timeLeft)}**.`)
                     .setColor(0xFF0000)
-                    .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                    .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                     .setTimestamp();
                 return await interaction.reply({embeds: [embed]});
             }
@@ -41,7 +41,7 @@ module.exports = {
                 .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
                 .setDescription(`You have claimed your weekly ${CURRENCY_NAME}! **${amount}** ${CURRENCY_NAME} has been added to your bank.`)
                 .setColor(0x00FF00)
-                .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();
             await interaction.reply({embeds: [embed]});
             logger.log(`${user.username} (${user.id}) claimed their weekly ${CURRENCY_NAME} and received ${amount} ${CURRENCY_NAME}.`)

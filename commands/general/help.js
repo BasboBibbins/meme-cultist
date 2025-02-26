@@ -26,7 +26,7 @@ module.exports = {
         const commandName = interaction.options.getString('command');
         if (!commandName) {
             const embed = new EmbedBuilder()
-                .setAuthor({ name: `Meme Cultist Help`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .setAuthor({ name: `${interaction.client.user.username} Help`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .addFields(
                     { 
                         name: "General Information", 
@@ -50,7 +50,7 @@ module.exports = {
                     }
                 )
                 .setColor(randomHexColor())
-                .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+                .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
                 .setTimestamp();
 
             const row = new ActionRowBuilder()
@@ -77,7 +77,7 @@ module.exports = {
                     .setAuthor({ name: explanation.name, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                     .setDescription(`**Explanation:** ${explanation.description}\n\n${explanation.rules ? `**Rules:** ${explanation.rules}\n\n` : ''}${explanation.example ? `**Example:** ${explanation.example}\n\n` : ''}${explanation.note ? `**Note:** ${explanation.note}\n\n` : ''}`)
                     .setColor(randomHexColor())
-                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
                     .setTimestamp();
                 await i.editReply({embeds: [embed]});
             });
@@ -107,7 +107,7 @@ module.exports = {
                 })
             )
             .setColor(randomHexColor())
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
             .setTimestamp();
         await interaction.reply({embeds: [embed], ephemeral: true});
     },

@@ -74,7 +74,7 @@ module.exports = {
         const error_embed = new EmbedBuilder()
             .setAuthor({ name: user.username , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         if (!interaction.member.permissions.has('ADMINISTRATOR')) {

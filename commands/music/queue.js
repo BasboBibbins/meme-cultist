@@ -27,7 +27,7 @@ module.exports = {
         const player = interaction.client.player;
         const embed = new EmbedBuilder()
         .setColor(randomHexColor())
-        .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
         .setTimestamp();
 
         if (!interaction.member.voice.channelId) {

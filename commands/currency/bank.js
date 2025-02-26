@@ -51,7 +51,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${user.displayName }'s Bank`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(`${accentColor}`)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) });
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) });
 
         if (isNaN(amount) || (amount < 1)) {
             embed.setDescription(`Please enter a valid amount of ${CURRENCY_NAME} to ${subcommand}!`);

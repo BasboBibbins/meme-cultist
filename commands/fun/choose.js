@@ -40,7 +40,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setAuthor({name: `${prompt[promptrng]} '${options[rng]}.'`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setColor(randomHexColor())
-            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`})
+            .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`})
             .setTimestamp();
         await interaction.reply({embeds: [embed]});
     },

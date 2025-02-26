@@ -57,7 +57,7 @@ module.exports = {
             .setTitle(`Welcome${dbUser ? ` back`:``} to ${member.guild.name}, ${member.user.displayName }!`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(`Welcome ${dbUser ? `back`:``} to ${member.guild.name} <@${member.id}>! Now **GET THE FUCK OUT OF MY DISCORD NORMIE!!!!**\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, as they are heavily enforced! *Our janitors do it for free!*`)
-            .setFooter({ text: `Meme Cultist | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         await channel.send({ embeds: [embed] });
 
@@ -151,7 +151,7 @@ module.exports = {
             .setTitle(titles[Math.floor(Math.random() * titles.length)])
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(await ripGen(member, prompt))
-            .setFooter({ text: `Meme Cultist | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         await channel.send({ embeds: [embed] });
     }

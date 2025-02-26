@@ -25,7 +25,7 @@ module.exports = {
       .setColor(accentColor)
       .setImage(image.url)
       .setTimestamp()
-      .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+      .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
     await interaction.reply({ embeds: [embed] });
   }   
 }

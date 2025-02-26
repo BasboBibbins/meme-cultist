@@ -51,7 +51,7 @@ module.exports = {
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
                         .setDescription(`You have already used your daily free spins! You can use them again in **${await formatTimeLeft(timeLeft)}**.`)
                         .setColor(0xFF0000)
-                        .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                         .setTimestamp();
                     return await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
@@ -67,7 +67,7 @@ module.exports = {
                 const error_embed = new EmbedBuilder()
                     .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
                     .setColor(0xFF0000)
-                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                     .setTimestamp();
 
                 if (isNaN(bet)) {

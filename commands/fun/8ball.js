@@ -45,7 +45,7 @@ module.exports = {
             .setAuthor({name: question, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
             .setDescription(`The magic 8ball says... **${eightball[rng]}**`)
             .setColor(randomHexColor())
-            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
         await interaction.reply({embeds: [embed]});
     },

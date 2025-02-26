@@ -143,7 +143,7 @@ module.exports = {
                     .setTitle('Error')
                     .setDescription('The resulting GIF is too large to send.')
                     .setColor(0xff0000)
-                    .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                    .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                     .setTimestamp();
                 return interaction.editReply({embeds: [embed]});
 

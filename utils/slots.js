@@ -29,7 +29,7 @@ async function generatePaytable(interaction) {
     .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
     .setColor(randomHexColor())
     .setTitle('Slots Paytable')
-    .setFooter({ text: `Meme Cultist | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
     .setTimestamp();
   let paytableEmoji = '', paytableMultiplier = '';
   let slotEmojiReverse = slotsEmoji.reverse();
@@ -59,7 +59,7 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
     .setColor(randomHexColor())
     .setTitle('Good luck!')
     .setDescription(`${slotsDefaultEmoji} ${slotsDefaultEmoji} ${slotsDefaultEmoji}`)
-    .setFooter({ text: `Bet: ${actualBet} ${CURRENCY_NAME} ${freePlay ? `(FREE SPIN ${freePlaySpin+1}/5)` : ''} | Meme Cultist | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+    .setFooter({ text: `Bet: ${actualBet} ${CURRENCY_NAME} ${freePlay ? `(FREE SPIN ${freePlaySpin+1}/5)` : ''} | ${interaction.client.user.username} | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
     .setTimestamp();
 
   if (freePlaySpin === 0) {

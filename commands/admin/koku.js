@@ -71,7 +71,7 @@ module.exports = {
             .setAuthor({ name: `${user.username}'s ${CURRENCY_NAME} balance updated.`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
             .setColor(randomHexColor())
             .setTimestamp()
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
 
         switch (subcommand) {
             case 'add':
@@ -85,7 +85,7 @@ module.exports = {
                     .setDescription(`You now have **${dbUser.bank + amount}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
                     .setColor(randomHexColor())
                     .setTimestamp()
-                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 ]});
                 break;
             case 'remove':
@@ -99,7 +99,7 @@ module.exports = {
                     .setDescription(`You now have **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
                     .setColor(randomHexColor())
                     .setTimestamp()
-                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 ]});
                 break;
             case 'set':
@@ -113,7 +113,7 @@ module.exports = {
                     .setDescription(`You now have **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
                     .setColor(randomHexColor())
                     .setTimestamp()
-                    .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 ]});
                 break;
         }

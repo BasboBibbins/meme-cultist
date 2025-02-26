@@ -21,7 +21,7 @@ module.exports = {
         const dbReceiver = await db.get(receiver.id);
         const ephemeral_embed = new EmbedBuilder()
             .setAuthor({ name: `Error!`, iconURL: sender.displayAvatarURL({ dynamic: true }) })
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
             .setTimestamp();
         if (!dbSender) {
@@ -61,7 +61,7 @@ module.exports = {
             .setThumbnail(sender.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(`You now have **${dbReceiver.balance + amount}** ${CURRENCY_NAME} in your wallet!`)
             .setColor(randomHexColor())
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         await receiver.send({ embeds: [dm_embed] });
     }

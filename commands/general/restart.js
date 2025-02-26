@@ -14,7 +14,7 @@ module.exports = {
             .setTitle(":warning: WARNING :warning:")
             .setDescription("Are you sure you want to restart the bot? This will cause the bot to go offline for a few seconds.")
             .setColor(0x00AE86)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
             .setTimestamp();
         const row = new ActionRowBuilder()
             .addComponents(
