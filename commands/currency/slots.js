@@ -51,6 +51,7 @@ module.exports = {
                         .setColor(0xFF0000)
                         .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                         .setTimestamp();
+                    await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
                     logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
                     await db.set(`${user.id}.cooldowns.freespins`, Date.now() + cooldown);
