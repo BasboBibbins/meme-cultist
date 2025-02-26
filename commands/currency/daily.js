@@ -26,7 +26,7 @@ module.exports = {
             const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
             const embed = new EmbedBuilder()
                 .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${formatTimeLeft(timeLeft)}**.`)
+                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${await formatTimeLeft(timeLeft)}**.`)
                 .setColor(0xFF0000)
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();

@@ -46,10 +46,10 @@ module.exports = {
                 const cooldown = 8.64e+7; // 24 hours
                 if (dbUser.cooldowns.freespins > Date.now()) {
                     const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
-                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${formatTimeLeft(timeLeft)}`)
+                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${await formatTimeLeft(timeLeft)}`)
                     const embed = new EmbedBuilder()
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                        .setDescription(`You have already used your daily free spins! You can use them again in **${formatTimeLeft(timeLeft)}**.`)
+                        .setDescription(`You have already used your daily free spins! You can use them again in **${await formatTimeLeft(timeLeft)}**.`)
                         .setColor(0xFF0000)
                         .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                         .setTimestamp();
