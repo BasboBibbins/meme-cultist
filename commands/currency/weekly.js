@@ -3,7 +3,7 @@ const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
-
+const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
 module.exports = {
@@ -23,11 +23,9 @@ module.exports = {
     
             if (dbUser.cooldowns.weekly > Date.now()) {
                 const timeLeft = new Date(dbUser.cooldowns.weekly - Date.now());
-                const oneDay = 8.64e+7;
-                const getDays = Math.floor(timeLeft / oneDay);
                 const embed = new EmbedBuilder()
                     .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                    .setDescription(`You have already claimed your weekly ${CURRENCY_NAME}! You can claim again in **${getDays}d ${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
+                    .setDescription(`You have already claimed your weekly ${CURRENCY_NAME}! You can claim again in **${formatTimeLeft(timeLeft)}**.`)
                     .setColor(0xFF0000)
                     .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                     .setTimestamp();

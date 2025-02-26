@@ -5,6 +5,7 @@ const { addNewDBUser, setDBValue } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
+const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
 module.exports = {
@@ -45,14 +46,14 @@ module.exports = {
                 const cooldown = 8.64e+7; // 24 hours
                 if (dbUser.cooldowns.freespins > Date.now()) {
                     const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
-                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${timeLeft.getUTCHours()}:${timeLeft.getUTCMinutes()}:${timeLeft.getUTCSeconds()}`)
+                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${formatTimeLeft(timeLeft)}`)
                     const embed = new EmbedBuilder()
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                        .setDescription(`You have already used your daily free spins! You can use them again in **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
+                        .setDescription(`You have already used your daily free spins! You can use them again in **${formatTimeLeft(timeLeft)}**.`)
                         .setColor(0xFF0000)
                         .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                         .setTimestamp();
-                    await interaction.reply({ embeds: [embed], ephemeral: true });
+                    return await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
                     logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
                     await db.set(`${user.id}.cooldowns.freespins`, Date.now() + cooldown);

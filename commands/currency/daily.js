@@ -3,6 +3,7 @@ const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
+const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
 module.exports = {
@@ -25,7 +26,7 @@ module.exports = {
             const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
             const embed = new EmbedBuilder()
                 .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
+                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${formatTimeLeft(timeLeft)}**.`)
                 .setColor(0xFF0000)
                 .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();
