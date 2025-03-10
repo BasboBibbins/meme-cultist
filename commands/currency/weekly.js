@@ -13,7 +13,7 @@ module.exports = {
         async execute(interaction) {
             const user = interaction.user;
             const dbUser = await db.get(user.id);
-            logger.log(`dbUser: ${dbUser} (type: ${typeof dbUser})`)
+            logger.debug(`dbUser: ${dbUser} (type: ${typeof dbUser})`)
             if (!dbUser) {
                 logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`)
                 await addNewDBUser(user);
