@@ -6,7 +6,7 @@ const logger = require("./utils/logger");
 async function getDefaultDB(user) {
     return {
         "id": user.id,
-        "name": user.username,
+        "name": user.username+"#"+user.discriminator,
         "balance": 0,
         "bank": 100,
         "inventory": [],
