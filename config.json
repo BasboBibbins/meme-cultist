@@ -13,6 +13,7 @@
     "RIP_CHANNEL_NAME": "rip",
 
     "APRILFOOLS_ROLE": "Fwen",
+    "APRIL_FOOLS_MODE": true,
 
     "TESTING_ROLE": "1068578222008176742",
     "TESTING_MODE": false,

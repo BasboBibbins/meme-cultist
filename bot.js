@@ -6,7 +6,7 @@ const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, BANNED_ROLE, DEFAULT_ROLE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
@@ -154,6 +154,10 @@ if (DELETE_SLASH) {
             initDB(client)
         }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        if (APRIL_FOOLS_MODE) {
+            logger.info(`April Fools mode is enabled!`);
+            require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID));
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
