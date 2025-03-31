@@ -6,11 +6,11 @@ const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
-const { handleBotMessage } = require("./utils/openai")
+const { handleBotMessage, runLocalModel } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
@@ -157,6 +157,10 @@ if (DELETE_SLASH) {
         if (APRIL_FOOLS_MODE) {
             logger.info(`April Fools mode is enabled!`);
             require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID));
+        }
+        if (CHATBOT_LOCAL) {
+            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
+            runLocalModel();
         }
     })
 

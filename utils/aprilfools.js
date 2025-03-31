@@ -34,7 +34,7 @@ module.exports = {
     }
     logger.debug(`Added ${prankRole.name} role to ${members.size} members.`);
 
-    this.hideChannels(guild);
+    this.hideChannels(guild, prankRole);
 
     // Announce April Fools mode
     const prompt = `# ⚠️ ATTENTION MEMBERS OF ${guild.name.toUpperCase()} ⚠️\n\n` +
@@ -82,10 +82,9 @@ module.exports = {
 
     logger.debug(`Created phantom channel #${fakeChannel.name}`);
   },
-  hideChannels: async (guild) => {
-    const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
-    if (!prankRole) {
-      logger.error('April fools role not found');
+  hideChannels: async (guild, role) => {
+    if (!role) {
+      logger.error('Role not found');
       return;
     }
 
@@ -103,17 +102,17 @@ module.exports = {
     // ensure excluded channels are visible in the first place
     const showExcludedChannels = guild.channels.cache.filter(channel => excludedChannels.includes(channel.name));
     for (const channel of showExcludedChannels.values()) {
-      await channel.permissionOverwrites.edit(prankRole, { ViewChannel: true }).catch(() => {});
+      await channel.permissionOverwrites.edit(role, { ViewChannel: true }).catch(() => {});
     }
     
     const channels = guild.channels.cache.filter(channel =>
       channel.type === 0 && // Only text channels
       !excludedChannels.includes(channel.name) // Exclude specified channels
     );
-    logger.debug(`Hiding ${channels.size} channels from ${prankRole.name} role`);
+    logger.debug(`Hiding ${channels.size} channels from ${role.name} role`);
 
     for (const channel of channels.values()) {
-      await channel.permissionOverwrites.edit(prankRole, { ViewChannel: false }).catch(() => {});
+      await channel.permissionOverwrites.edit(role, { ViewChannel: false }).catch(() => {});
       logger.debug(`Sucessfully hid channel #${channel.name}`);
     }
 
@@ -123,7 +122,7 @@ module.exports = {
       logger.debug(`Revealing ${selectedChannels.size} channels: #${selectedChannels.map(channel => channel.name).join(', #')}`);
 
       for (const channel of selectedChannels) {
-        await channel.permissionOverwrites.edit(prankRole, { ViewChannel: true }).catch(() => {});
+        await channel.permissionOverwrites.edit(role, { ViewChannel: true }).catch(() => {});
       }
     };
 
@@ -245,7 +244,7 @@ module.exports = {
 
     // Hide channels, 10 minute interval
     setInterval(() => {
-      this.hideChannels(guild);
+      this.hideChannels(guild, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE));
     }, 10 * 60 * 1000);
 
     // Phantom kick, 30 minute interval

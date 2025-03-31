@@ -13,12 +13,13 @@
     "RIP_CHANNEL_NAME": "rip",
 
     "APRILFOOLS_ROLE": "Fwen",
-    "APRIL_FOOLS_MODE": true,
+    "APRIL_FOOLS_MODE": false,
 
     "TESTING_ROLE": "1068578222008176742",
     "TESTING_MODE": false,
 
     "CHATBOT_ENABLED": true,
+    "CHATBOT_LOCAL": false,
     "CHATBOT_CHANNEL": "1348809709666177065",
     "PAST_MESSAGES": 5,
 
