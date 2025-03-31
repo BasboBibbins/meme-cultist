@@ -88,13 +88,25 @@ module.exports = {
       return;
     }
 
-    const excludedChannels = [
-      'is-of-happenings',
-      'rip',
-      'rules',
-      'welcome',
-      'janitor-closet'
-    ];
+    const exlucdedCategory = [
+      'News',
+      'Voice Channels',
+      'janny zone',
+      'archive'
+    ]
+
+    const excludedChannels = [];
+
+    exlucdedCategory.forEach(category => {
+      // Filter channels by category name and add to excludedChannels
+      const categoryChannels = guild.channels.cache.filter(channel => channel.parent && channel.parent.name === category);
+      if (categoryChannels.size) {
+        categoryChannels.forEach(channel => excludedChannels.push(channel.name));
+        logger.debug(`Excluding channels in category: ${category}`);
+      }
+    });
+    logger.debug(`Excluded channels: ${excludedChannels.join(', ')}`);
+    
     excludedChannels.push(...fakeChannels
       .filter(channel => guild.channels.cache.some(c => c.name === channel))
     );
