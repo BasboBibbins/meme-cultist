@@ -60,7 +60,7 @@ async function runLocalModel() {
   });
 }
 
-async function handleBotMessage(client, message, key) {
+async function handleBotMessage(client, message, key, customPrompt = null) {
   const configuration = new Configuration({
     apiKey: key,
     basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
@@ -91,20 +91,23 @@ async function handleBotMessage(client, message, key) {
     logger.debug(messages);
     let users = [...new Set([...messages.map(m => m.member.displayName), client.user.username])];
     let lastUser = users.pop();
-    let prompt = `You're a chatbot named ${client.user.displayName} speaking to ${users.join(", ")}, and ${lastUser}. When speaking, avoid starting your messages with your name unless it's necessary for clarity. Continue the conversation naturally and focus on engaging with the user.\n\n`;
+    let prompt = customPrompt || `You're a user named ${client.user.displayName} (<@1348760795932000338>) in a chat room with ${users.join(", ")}, and ${lastUser}. When speaking, avoid starting your messages with your name unless it's necessary for clarity. Chime into the conversation using similar language and focus on engaging with everyone.\n\n`;
 
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      prompt += `${m.member.displayName}: ${m.content}\n`;
+    if (!customPrompt) {
+      // get history if no prompt
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        prompt += `${m.member.displayName}: ${m.content}\n`;
+      }
     }
+
     logger.debug(`Generated Deepseek prompt: ${prompt}`);
     logger.debug(`Estimated token count: ${estimateTokenCount(prompt)}`);
 
     const completion = await openai.createChatCompletion({
-      "model": "deepseek-r1",
+      "model": "deepseek-chat",
       "messages": [
-          { "role": "system", "content": "You are a helpful assistant." },
-          { "role": "user", "content": "Tell me a joke." }
+          { "role": "user", "content": prompt }
       ]
     });
     logger.info(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);

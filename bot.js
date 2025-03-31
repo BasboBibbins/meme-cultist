@@ -309,9 +309,16 @@ if (DELETE_SLASH) {
             })
         };
 
-        if (message.channel.id == CHATBOT_CHANNEL && CHATBOT_ENABLED) {
+        if (message.channel.id == CHATBOT_CHANNEL && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
             logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}.`);
             await handleBotMessage(client, message, OPENAI_API_KEY);
+        } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
+            const randomChance = Math.random();
+            const isMentioned = message.mentions.has(client.user); // Check if the bot was mentioned in the message
+            if (randomChance < 0.2 || isMentioned) { // 20% chance to respond or if mentioned
+                logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}. (April Fools)`);
+                await handleBotMessage(client, message, OPENAI_API_KEY); 
+            } 
         }
     })
 }
