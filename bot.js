@@ -156,7 +156,7 @@ if (DELETE_SLASH) {
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
         if (APRIL_FOOLS_MODE) {
             logger.info(`April Fools mode is enabled!`);
-            require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID));
+            require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);
         }
         if (CHATBOT_LOCAL) {
             logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 

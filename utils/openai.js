@@ -60,7 +60,7 @@ async function runLocalModel() {
   });
 }
 
-async function handleBotMessage(client, message, key, customPrompt = null) {
+async function handleBotMessage(client, message, key, customPrompt = null, channelId = null) {
   const configuration = new Configuration({
     apiKey: key,
     basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
@@ -69,12 +69,18 @@ async function handleBotMessage(client, message, key, customPrompt = null) {
   logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
   const openai = new OpenAIApi(configuration);
 
+  const channel = channelId ? client.channels.cache.get(channelId) : message.channel;
+  if (!channel) {
+    logger.error(`Channel not found: ${channelId || channel.id}`);
+    return;
+  }
+
   let typing = true;
 
   // typing indicator while generating response
   const sendTyping = async () => {
     while (typing) {
-      message.channel.sendTyping();
+      channel.sendTyping();
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
   };
@@ -82,24 +88,32 @@ async function handleBotMessage(client, message, key, customPrompt = null) {
   sendTyping();
 
   try {
-    let messages = Array.from(await message.channel.messages.fetch({
-      limit: PAST_MESSAGES - 1,
-      before: message.id
-    }));
-    messages = messages.map(m => m[1]);
-    messages.unshift(message);
-    logger.debug(messages);
-    let users = [...new Set([...messages.map(m => m.member.displayName), client.user.username])];
-    let lastUser = users.pop();
-    let prompt = customPrompt || `You're a user named ${client.user.displayName} (<@1348760795932000338>) in a chat room with ${users.join(", ")}, and ${lastUser}. When speaking, avoid starting your messages with your name unless it's necessary for clarity. Chime into the conversation using similar language and focus on engaging with everyone.\n\n`;
+    let prompt = "";
 
-    if (!customPrompt) {
-      // get history if no prompt
+    if (!customPrompt && message && client) {
+      let messages = Array.from(await channel.messages.fetch({
+        limit: PAST_MESSAGES - 1,
+        before: message.id
+      }));
+      messages = messages.map(m => m[1]);
+      messages.unshift(message);
+      logger.debug(messages);
+      let users = [...new Set([...messages.map(m => m.member.displayName), client.user.username])];
+      let lastUser = users.pop();
+      prompt = `You're a user named ${client.user.displayName} (<@1348760795932000338>) in a chat room with ${users.join(", ")}, and ${lastUser}. When speaking, avoid starting your messages with your name unless it's necessary for clarity. Chime into the conversation using similar language and focus on engaging with everyone.\n\n`;
       for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i];
         prompt += `${m.member.displayName}: ${m.content}\n`;
       }
+    } else if (customPrompt) {
+      prompt = customPrompt;
+      logger.debug(`Using custom prompt: ${prompt}`);
+    } else {
+      // Fallback to a default prompt if no messages or custom prompt provided
+      logger.debug("No messages found, using fallback prompt.");
+      prompt = `You are a helpful assistant.\n`;
     }
+
 
     logger.debug(`Generated Deepseek prompt: ${prompt}`);
     logger.debug(`Estimated token count: ${estimateTokenCount(prompt)}`);
@@ -112,9 +126,9 @@ async function handleBotMessage(client, message, key, customPrompt = null) {
     });
     logger.info(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
     logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
-    message.channel.send(completion.data.choices[0].message.content);
+    channel.send(completion.data.choices[0].message.content);
   } catch (error) {
-    message.channel.send("I'm sorry, I couldn't generate a response.");
+    channel.send("I'm sorry, I couldn't generate a response.");
     logger.error(`Error generating response: ${error.message}`);
     if (error.response) {
       logger.error(`Response data: ${JSON.stringify(error.response.data)}`);

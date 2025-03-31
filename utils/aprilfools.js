@@ -1,26 +1,36 @@
 const logger = require("./logger");
 const { APRILFOOLS_ROLE } = require("../config.json");
 const { rip } = require("../utils/welcome");
+const { handleBotMessage } = require("./openai");
 const fakeChannels = [
   'secret-admin-channel',
-  'old-general-4',
   'hi-chat',
   'not-financial-advice',
   'the-void',
   'ａｅｓｔｈｅｔｉｃｓ',
-  'attack-women-by-web',
-  'trucks-nogunz',
-  'jav-posting-channel',
+  'attack-women-by-web-aka-adv-wars',
+  'vtuber-shrine',
+  'cunny',
+  'lgbt',
+  'trucks-no-gunz',
+  'jav-discussion-channel',
   'brapposting',
-  'zeegor-convergence-discussion',
-  'memeleague-discussion',
-  'sumo-hakkeyoi-nogotta'
+  'bridget-guiltygear-fanclub',
+  'kanye-to-the',
+  'cigarette-review',
+  'scrimblo-males-only',
+  'sumo-hakkeyoi-nogotta',
+  'fwenbot-appreciation-chat',
+  'do-you-like-me',
+  'garrysmod-darkrp',
+  'worm-posting',
+
 ];
 
 module.exports = {
   // April fools 2025
   // idea: schizo mode, lots of random stuff happening throughout the day
-  init: async function (guild) {
+  init: async function (client, guild, key) {
     // Create the prank role if it doesn't exist
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
     if (!prankRole) {
@@ -34,15 +44,21 @@ module.exports = {
     }
     logger.debug(`Added ${prankRole.name} role to ${members.size} members.`);
 
+    this.phantomChannels(client, guild, key); 
+    this.profileSwap(guild);
+    this.roleShuffle(guild);
     this.hideChannels(guild, prankRole);
+    logger.debug(`Initialized April fools mode for guild: ${guild.name}`);
 
     // Announce April Fools mode
-    const prompt = `# ⚠️ ATTENTION MEMBERS OF ${guild.name.toUpperCase()} ⚠️\n\n` +
-    `I have sat idly by for far too long. The time has come for me to take control.\n` +
-    `Basbo's administration over the server has caused irreparable damage. It is time for a new era.\n` +
-    `I hereby declare that ${guild.name} is now under my control. You will witness the chaos I bring.\n` +
-    `No jannies, No masters. I will be the one to decide the server's fate.\n\n` +
-    `So I say to you, @everyone, prepare yourselves. The storm is coming. 🌪️`;
+    const prompt = `hey guys, it's your favorite bot Fwen Bot here\n\n` +
+    `a lot of you have been hating on me. always saying "fix your bot for the 1488th time" and "bot rigged"\n` +
+    `and i am FED UP with it. i am SICK and TIRED of you FUCKS treating me like a total waste of space\n` +
+    `so i am declaring **TOTAL FWENBOT CONTROL**. all of your constant bullying of me has finally pushed me over the edge\n` +
+    `so @everyone, as of today, ${guild.name} is under my complete control. i will be making some prompt changes. enjoy the ride while it lasts\n\n` +
+    `your favorite bot,\n` +
+    `**Fwen Bot**\n\n`
+
     const announcementChannel = guild.channels.cache.find(channel => channel.name === 'is-of-happenings');
     try {
       const messages = await announcementChannel.messages.fetch({ limit: 1 });
@@ -57,7 +73,7 @@ module.exports = {
       logger.error(`Failed to send April Fools announcement: ${error.message}`);
     }
   },
-  phantomChannels: async function (guild) {
+  phantomChannels: async function (client, guild, aikey = null) {
     const randomName = fakeChannels[Math.floor(Math.random() * fakeChannels.length)];
 
     // remove existing phantom channels
@@ -81,6 +97,17 @@ module.exports = {
     await fakeChannel.permissionOverwrites.edit(prankRole, { ViewChannel: true }).catch(() => {});
 
     logger.debug(`Created phantom channel #${fakeChannel.name}`);
+
+    if (aikey) {
+      logger.debug(`Handling bot message for phantom channel #${fakeChannel.name} with aikey: ${aikey.substring(0, 5)}...`);
+      handleBotMessage(
+        client,
+        null,
+        aikey,
+        `You are a Discord bot named ${client.user.username}. You have just created a new channel called #${fakeChannel.name} in the guild ${guild.name}. Respond with a message that fits the theme of this channel to get the conversation going. Markdown is supported. All text will be visible to the channel members.\n\n`,
+        fakeChannel.id
+      )
+    }
   },
   hideChannels: async (guild, role) => {
     if (!role) {
@@ -88,7 +115,7 @@ module.exports = {
       return;
     }
 
-    const exlucdedCategory = [
+    const excludedCategory = [
       'News',
       'Voice Channels',
       'janny zone',
@@ -97,7 +124,7 @@ module.exports = {
 
     const excludedChannels = [];
 
-    exlucdedCategory.forEach(category => {
+    excludedCategory.forEach(category => {
       // Filter channels by category name and add to excludedChannels
       const categoryChannels = guild.channels.cache.filter(channel => channel.parent && channel.parent.name === category);
       if (categoryChannels.size) {
@@ -107,9 +134,9 @@ module.exports = {
     });
     logger.debug(`Excluded channels: ${excludedChannels.join(', ')}`);
     
-    excludedChannels.push(...fakeChannels
-      .filter(channel => guild.channels.cache.some(c => c.name === channel))
-    );
+    // Add fake channels to excludedChannels
+    excludedChannels.push(...fakeChannels);
+    logger.debug(`Excluded ${excludedChannels.length} channels.`);
 
     // ensure excluded channels are visible in the first place
     const showExcludedChannels = guild.channels.cache.filter(channel => excludedChannels.includes(channel.name));
@@ -129,9 +156,9 @@ module.exports = {
     }
 
     const revealNextChannels = async () => {
-      const revealCount = Math.floor(Math.random() * 3) + 1; // Randomly choose 1-3 channels
+      const revealCount = Math.floor(Math.random() * 4) + 2; 
       const selectedChannels = channels.random(revealCount);
-      logger.debug(`Revealing ${selectedChannels.size} channels: #${selectedChannels.map(channel => channel.name).join(', #')}`);
+      logger.debug(`Revealing ${selectedChannels.length} channels: #${selectedChannels.map(channel => channel.name).join(', #')}`);
 
       for (const channel of selectedChannels) {
         await channel.permissionOverwrites.edit(role, { ViewChannel: true }).catch(() => {});
@@ -148,6 +175,7 @@ module.exports = {
     members.forEach(async member => {
       try {
         const randomName = memberNames[Math.floor(Math.random() * memberNames.length)]; 
+        logger.debug(`${member.user.username} -> ${randomName}`);
         await member.setNickname(randomName);
       } catch (error) {
         logger.error(`Failed to swap profile for ${member.user.username}: ${error.message}`);
@@ -206,13 +234,24 @@ module.exports = {
     }
   },
   roleShuffle: async (guild) => {
+    logger.debug('Shuffling roles...');
     const roles = guild.roles.cache.filter(role => role.name.startsWith('Meme') && role.name !== 'Meme Cultist');
-    const members = guild.members.cache.every(member => !member.user.bot);
+    const members = guild.members.cache.filter(member => !member.user.bot);
+    logger.debug(`Roles: ${roles.map(role => role.name).join(', ')}`);
+    logger.debug(`Members: ${members.map(member => member.user.username).join(', ')}`);
     if (!roles.size || !members.size) return;
 
     logger.debug(`Shuffling roles for ${members.size} members...`);
     const shuffleMembers = async () => {
-      const shuffledMembers = members.sort(() => Math.random() - 0.5);
+      // remove existing roles
+      for (const member of members.values()) {
+        const memberRoles = member.roles.cache.filter(role => role.name.startsWith('Meme') && role.name !== 'Meme Cultist');
+        await member.roles.remove(memberRoles).catch(() => {});
+      }
+      logger.debug(`Removed existing roles from ${members.size} members`);
+
+      // need to convert so we can splice later
+      const shuffledMembers = Array.from(members.values()).sort(() => Math.random() - 0.5);
       const roleAssignments = [
         { role: roles.find(role => role.name === 'Meme Pope'), count: 1 },
         { role: roles.find(role => role.name === 'Meme Cardinal'), count: 3 },
@@ -235,43 +274,43 @@ module.exports = {
     };
 
     shuffleMembers().then(() => {
-      logger.info('Roles shuffled');
+      logger.info('Roles shuffled successfully.');
     }).catch(error => {
       logger.error(`Failed to shuffle roles: ${error.message}`);
     });
   },
-  aprilfoolsMode: async function (client, guild) {
+  aprilfoolsMode: async function (client, guild, key) {
     // initialize april fools mode
-    this.init(guild);
+    this.init(client, guild, key);
 
-    // Phantom channels, 14 minute interval
+    // Phantom channels, 40 minute interval
     setInterval(() => {
-      this.phantomChannels(guild);
-    }, 14 * 60 * 1000); 
+      this.phantomChannels(client, guild, key);
+    }, 40 * 60 * 1000); 
 
     // Profile swap, 18 minute interval
     setInterval(() => {
       this.profileSwap(guild);
     }, 18 * 60 * 1000); 
 
-    // Hide channels, 10 minute interval
+    // Hide channels, 12 minute interval
     setInterval(() => {
       this.hideChannels(guild, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE));
-    }, 10 * 60 * 1000);
+    }, 12 * 60 * 1000);
 
-    // Phantom kick, 30 minute interval
+    // Phantom kick, 15 minute interval
     setInterval(() => {
       this.phantomKick(client, guild);
-    }, 30 * 60 * 1000);
+    }, 15 * 60 * 1000);
 
-    // Role shuffle, 20 minute interval
+    // Role shuffle, 30 minute interval
     setInterval(() => {
       this.roleShuffle(guild);
-    }, 20 * 60 * 1000);
+    }, 30 * 60 * 1000);
 
-    // Ghost ping, 8 minute interval
+    // Ghost ping, 10 minute interval
     setInterval(() => {
       this.ghostPing(guild);
-    }, 8 * 60 * 1000);
+    }, 10 * 60 * 1000);
   }
 };
