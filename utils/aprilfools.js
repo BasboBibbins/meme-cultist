@@ -167,18 +167,49 @@ module.exports = {
   profileSwap: async function (guild) { 
     const members = guild.members.cache.filter(member => !member.user.bot);
     let memberNames = members.map(member => member.displayName);
-      
+    const additionalMembers = [
+      `Bad Boss from MGSV:TPP`,
+      `Kirbstar`,
+      `12:00AM Burial`,
+      `Syria's #1 Feetpreciator`,
+      `Meme Cultist`,
+      `6'8 285IQ pot banger`,
+      `M大きいD.`,
+      `Subway`,
+      `Agent Big J. FBI`,
+      `Real 302 William Player`,
+      `Handsome!!!`,
+      `therapist of children`
+    ];
+
+    // find "Basbo" and replace with random AdditionalMember
+    const basboIndex = memberNames.findIndex(name => name.toLowerCase() === "basbo");
+
+    if (basboIndex !== -1) {
+      const randomAdditionalMember = additionalMembers[Math.floor(Math.random() * additionalMembers.length)];
+      memberNames[basboIndex] = randomAdditionalMember;
+      logger.debug(`Replaced Basbo with ${randomAdditionalMember}`);
+    }
+
+    console.log(memberNames);
     logger.debug(`Swapping profiles for ${members.size} members...`);
-    let shuffledNames = shuffleArray([...memberNames]);
-    members.forEach(async member => {
+    
+    const shuffledNames = shuffleArray([...memberNames]);
+  
+    console.log(shuffledNames);
+
+    let nameIndex = 0;
+    
+    for (const member of members.values()) {
       try {
-        const newName = shuffledNames.pop();
+        const newName = shuffledNames[nameIndex];
         await member.setNickname(newName).catch(() => {});
         logger.debug(`Swapped profile for ${member.user.username}: ${member.displayName} -> ${newName}`);
+        nameIndex = (nameIndex + 1) % shuffledNames.length; // Loop back to start if needed
       } catch (error) {
         logger.error(`Failed to swap profile for ${member.user.username}: ${error.message}`);
       }
-    });
+    }
   },
   ghostPing: async (guild) => {
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
