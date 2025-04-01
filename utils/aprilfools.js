@@ -2,6 +2,7 @@ const logger = require("./logger");
 const { APRILFOOLS_ROLE } = require("../config.json");
 const { rip } = require("../utils/welcome");
 const { handleBotMessage } = require("./openai");
+const shuffleArray = require("./misc");
 const fakeChannels = [
   'secret-admin-channel',
   'hi-chat',
@@ -165,19 +166,19 @@ module.exports = {
   },  
   profileSwap: async function (guild) { 
     const members = guild.members.cache.filter(member => !member.user.bot);
-    const memberNames = members.map(member => member.displayName);
-
+    let memberNames = members.map(member => member.displayName);
+      
     logger.debug(`Swapping profiles for ${members.size} members...`);
+    let shuffledNames = shuffleArray([...memberNames]);
     members.forEach(async member => {
       try {
-        const randomName = memberNames[Math.floor(Math.random() * memberNames.length)]; 
-        logger.debug(`${member.user.username} -> ${randomName}`);
-        await member.setNickname(randomName);
+        const newName = shuffledNames.pop();
+        await member.setNickname(newName).catch(() => {});
+        logger.debug(`Swapped profile for ${member.user.username}: ${member.displayName} -> ${newName}`);
       } catch (error) {
         logger.error(`Failed to swap profile for ${member.user.username}: ${error.message}`);
       }
     });
-    logger.debug('Profiles swapped');
   },
   ghostPing: async (guild) => {
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
@@ -298,7 +299,7 @@ module.exports = {
 
     const i = [ // in minutes
       { name: "Phantom Channels", interval: 60 },
-      { name: "Profile Swap",     interval: 18 },
+      { name: "Profile Swap",     interval: 1 },
       { name: "Hide Channels",    interval: 24 },
       { name: "Phantom Kick",     interval: 18 },
       { name: "Role Shuffle",     interval: 45 },
