@@ -100,11 +100,12 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       logger.debug(messages);
       let users = [...new Set([...messages.map(m => m.member.displayName), client.user.username])];
       let lastUser = users.pop();
-      prompt = `You're a user named ${client.user.displayName} (<@1348760795932000338>) in a chat room with ${users.join(", ")}, and ${lastUser}. When speaking, avoid starting your messages with your name unless it's necessary for clarity. Chime into the conversation using similar language and focus on engaging with everyone.\n\n`;
+      prompt = `You're a user named ${client.user.displayName} (<@1348760795932000338>) in a Discord text channel called #${message.channel.name} in the server ${message.guild.name}. You are joined by ${users.join(", ")}, and ${lastUser}. Keep in mind all users can see all text within your response. Chime into the following conversation using similar language and focus on engaging with everyone:\n\n`;
       for (let i = messages.length - 1; i >= 0; i--) {
         const m = messages[i];
         prompt += `${m.member.displayName}: ${m.content}\n`;
       }
+      prompt += `${client.user.displayName}: `;
     } else if (customPrompt) {
       prompt = customPrompt;
       logger.debug(`Using custom prompt: ${prompt}`);

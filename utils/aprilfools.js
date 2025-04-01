@@ -23,15 +23,20 @@ const fakeChannels = [
   'fwenbot-appreciation-chat',
   'do-you-like-me',
   'garrysmod-darkrp',
-  'worm-posting',
-
+  'worm-posting'
 ];
+
+const excludedCategory = [
+  'News',
+  'Voice Channels',
+  'janny zone',
+  'archive'
+]
 
 module.exports = {
   // April fools 2025
   // idea: schizo mode, lots of random stuff happening throughout the day
   init: async function (client, guild, key) {
-    // Create the prank role if it doesn't exist
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
     if (!prankRole) {
       logger.error('April fools role not found');
@@ -50,7 +55,6 @@ module.exports = {
     this.hideChannels(guild, prankRole);
     logger.debug(`Initialized April fools mode for guild: ${guild.name}`);
 
-    // Announce April Fools mode
     const prompt = `hey guys, it's your favorite bot Fwen Bot here\n\n` +
     `a lot of you have been hating on me. always saying "fix your bot for the 1488th time" and "bot rigged"\n` +
     `and i am FED UP with it. i am SICK and TIRED of you FUCKS treating me like a total waste of space\n` +
@@ -76,7 +80,6 @@ module.exports = {
   phantomChannels: async function (client, guild, aikey = null) {
     const randomName = fakeChannels[Math.floor(Math.random() * fakeChannels.length)];
 
-    // remove existing phantom channels
     const phantomChannels = guild.channels.cache.filter(channel => fakeChannels.includes(channel.name));
     for (const channel of phantomChannels.values()) {
       await channel.delete().catch(() => {});
@@ -114,13 +117,6 @@ module.exports = {
       logger.error('Role not found');
       return;
     }
-
-    const excludedCategory = [
-      'News',
-      'Voice Channels',
-      'janny zone',
-      'archive'
-    ]
 
     const excludedChannels = [];
 
@@ -192,7 +188,7 @@ module.exports = {
       channel.permissionsFor(prankRole).has('ViewChannel')
     );
 
-    if (!visibleChannels.size) return; // No channels currently visible
+    if (!visibleChannels.size) return;
 
     const randomChannel = visibleChannels.random();
     const onlineUsers = guild.members.cache.filter(member => 
@@ -200,7 +196,7 @@ module.exports = {
       !member.user.bot
     );
 
-    if (!onlineUsers.size) return; // No online users to ping
+    if (!onlineUsers.size) return; 
 
     const randomUser = onlineUsers.random();
 
@@ -222,7 +218,7 @@ module.exports = {
       !member.user.bot
     );
 
-    if (!members.size) return; // No members with the prank role
+    if (!members.size) return;
 
     const randomMember = members.random();
 
@@ -279,38 +275,45 @@ module.exports = {
       logger.error(`Failed to shuffle roles: ${error.message}`);
     });
   },
+  newDiscussion: async (client, guild, aikey, role) => {
+    const channels = guild.channels.cache.filter(channel => channel.permissionsFor(role).has('ViewChannel') && channel.type === 0 && !excludedCategory.includes(channel.parent.name));
+    logger.debug(`Found ${channels.size} channels visible to ${role.name}`);
+    if (!channels.size) return; 
+
+    const randomChannel = channels.random();
+    if (aikey) {
+      logger.debug(`Handling bot message for phantom channel #${randomChannel.name} with aikey: ${aikey.substring(0, 5)}...`);
+      handleBotMessage(
+        client,
+        null,
+        aikey,
+        `You are a Discord bot named ${client.user.username}. You have entered the text channel #${randomChannel.name} in the guild ${guild.name}. Respond with a message that fits the theme of this channel to get the conversation going. Markdown is supported. All text will be visible to the channel members.\n\n`,
+        randomChannel.id
+      )
+    }
+
+  },
   aprilfoolsMode: async function (client, guild, key) {
-    // initialize april fools mode
     this.init(client, guild, key);
 
-    // Phantom channels, 40 minute interval
-    setInterval(() => {
-      this.phantomChannels(client, guild, key);
-    }, 40 * 60 * 1000); 
+    const i = [ // in minutes
+      { name: "Phantom Channels", interval: 60 },
+      { name: "Profile Swap",     interval: 18 },
+      { name: "Hide Channels",    interval: 24 },
+      { name: "Phantom Kick",     interval: 18 },
+      { name: "Role Shuffle",     interval: 45 },
+      { name: "Ghost Ping",       interval: 15 },
+      { name: "New Discussion",   interval: 12 }
+    ]
+    const m = 60 * 1000;
 
-    // Profile swap, 18 minute interval
-    setInterval(() => {
-      this.profileSwap(guild);
-    }, 18 * 60 * 1000); 
-
-    // Hide channels, 12 minute interval
-    setInterval(() => {
-      this.hideChannels(guild, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE));
-    }, 12 * 60 * 1000);
-
-    // Phantom kick, 15 minute interval
-    setInterval(() => {
-      this.phantomKick(client, guild);
-    }, 15 * 60 * 1000);
-
-    // Role shuffle, 30 minute interval
-    setInterval(() => {
-      this.roleShuffle(guild);
-    }, 30 * 60 * 1000);
-
-    // Ghost ping, 10 minute interval
-    setInterval(() => {
-      this.ghostPing(guild);
-    }, 10 * 60 * 1000);
+    // edit the above intervals to suit your needs
+    setInterval(() => { this.phantomChannels(client, guild, key) }, i[0].interval * m); 
+    setInterval(() => { this.profileSwap(guild) }, i[1].interval * m);
+    setInterval(() => { this.hideChannels(guild, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE)) }, i[2].interval * m);
+    setInterval(() => { this.phantomKick(client, guild) }, i[3].interval * m);
+    setInterval(() => { this.roleShuffle(guild) }, i[4].interval * m);
+    setInterval(() => { this.ghostPing(guild) }, i[5].interval * m);
+    setInterval(() => { this.newDiscussion(client, guild, key, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE)) }, i[6].interval * m); 
   }
 };
