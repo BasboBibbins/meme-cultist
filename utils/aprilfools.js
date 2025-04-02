@@ -90,7 +90,7 @@ module.exports = {
     const fakeChannel = await guild.channels.create({
       name: randomName,
       type: 0,
-      parent: '1348762416426520649'
+      parent: '1250197013774209109'
     });
 
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
@@ -329,13 +329,13 @@ module.exports = {
     this.init(client, guild, key);
 
     const i = [ // in minutes
-      { name: "Phantom Channels", interval: 60 },
-      { name: "Profile Swap",     interval: 1 },
-      { name: "Hide Channels",    interval: 24 },
-      { name: "Phantom Kick",     interval: 18 },
-      { name: "Role Shuffle",     interval: 45 },
-      { name: "Ghost Ping",       interval: 15 },
-      { name: "New Discussion",   interval: 12 }
+      { name: "Phantom Channels", interval: 20 },
+      { name: "Profile Swap",     interval: 53 },
+      { name: "Hide Channels",    interval: 45 },
+      { name: "Phantom Kick",     interval: 24 },
+      { name: "Role Shuffle",     interval: 30 },
+      { name: "Ghost Ping",       interval: 50 },
+      { name: "New Discussion",   interval: 27 }
     ]
     const m = 60 * 1000;
 
@@ -347,5 +347,52 @@ module.exports = {
     setInterval(() => { this.roleShuffle(guild) }, i[4].interval * m);
     setInterval(() => { this.ghostPing(guild) }, i[5].interval * m);
     setInterval(() => { this.newDiscussion(client, guild, key, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE)) }, i[6].interval * m); 
+  },
+  undoAprilFools: async function (client, guild) {
+    // remove prank role from all members
+    logger.debug('Removing prank role from all members...');
+    const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
+    if (!prankRole) {
+      logger.error('April fools role not found');
+      return;
+    }
+
+    const members = guild.members.cache.filter(member => !member.user.bot);
+    for (const member of members.values()) {
+      await member.roles.remove(prankRole).catch(() => {});
+    }
+    logger.debug(`Removed ${prankRole.name} role from ${members.size} members.`);
+
+    // reveal all channels again
+    const channels = guild.channels.cache.filter(channel => channel.type === 0 && channel.permissionsFor(prankRole).has('ViewChannel'));
+    for (const channel of channels.values()) {
+      await channel.permissionOverwrites.edit(prankRole, { ViewChannel: false }).catch(() => {});
+      logger.debug(`Revealed channel #${channel.name}`);
+    }
+    // swap meme pope rank back to basbo
+    const currentPope = guild.members.cache.find(member => member.roles.cache.some(role => role.name === 'Meme Pope'));
+    const basbo = members.find(member => member.displayName === "Basbo");
+    const basboRole = guild.roles.cache.find(role => role.name.startsWith('Meme') && role.name !== 'Meme Pope' && role.name !== 'Meme Cultist');
+    if (currentPope && basbo) {
+      await currentPope.roles.remove(guild.roles.cache.find(role => role.name === 'Meme Pope')).catch(() => {});
+      await currentPope.roles.add(basboRole).catch(() => {});
+      await basbo.roles.remove(basboRole).catch(() => {});
+      await basbo.roles.add(guild.roles.cache.find(role => role.name === 'Meme Pope')).catch(() => {});
+      logger.debug(`Swapped ${currentPope.user.username} with Basbo for Meme Pope`);
+    } else {
+      logger.error('Failed to swap Meme Pope with Basbo');
+    }
+    // revert nicknames
+    for (const member of members.values()) {
+      await member.setNickname(member.user.username).catch(() => {});
+      logger.debug(`Reverted nickname for ${member.user.username}`);
+    }
+    // delete phantom channels
+    const phantomChannels = guild.channels.cache.filter(channel => fakeChannels.includes(channel.name));
+    for (const channel of phantomChannels.values()) {
+      await channel.delete().catch(() => {});
+      logger.debug(`Deleted phantom channel #${channel.name}`);
+    }
+    logger.debug(`Removed prank role and reverted changes for guild: ${guild.name}`);
   }
 };

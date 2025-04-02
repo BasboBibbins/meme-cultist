@@ -24,6 +24,7 @@ const LOAD_DB = process.argv[2] == "dbinit"
 const DEBUG_MODE = process.argv[2] == "debug"
 const DELETE_SLASH = process.argv[2] == "delete"
 const DELETE_SLASH_ID = process.argv[3]
+const UNDO_APRILFOOLS = process.argv[2] == "afundo"
 
 const banned = BANNED_ROLE;
 
@@ -157,6 +158,12 @@ if (DELETE_SLASH) {
         if (APRIL_FOOLS_MODE) {
             logger.info(`April Fools mode is enabled!`);
             require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);
+        }
+        if (UNDO_APRILFOOLS && !APRIL_FOOLS_MODE) {
+            require("./utils/aprilfools").undoAprilFools(client, client.guilds.cache.get(GUILD_ID));
+        } else {
+            logger.error(`April fools mode is still enabled! Disable in the config before running this command.`);
+            process.exit(1)
         }
         if (CHATBOT_LOCAL) {
             logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
