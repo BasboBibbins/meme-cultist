@@ -35,7 +35,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildPresences
     ]
 })
 
@@ -209,7 +209,7 @@ if (DELETE_SLASH) {
                 }
 
                 if (interaction.member.roles.cache.has(banned)){
-                    await interaction.reply({content: "You turned against me. I will not answer to you.", ephemeral: true})
+                    await interaction.reply({content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`, ephemeral: true})
                     return
                 }
             
@@ -316,7 +316,16 @@ if (DELETE_SLASH) {
             })
         };
 
-        if (message.channel.id == CHATBOT_CHANNEL && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
+        if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
+            if (message.member.roles.cache.has(banned)) {
+                await message.member.createDM().then(async dm => {
+                    const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
+                    if (isLastMsgBot) {
+                        await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
+                    }
+                })
+                return
+            }
             logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}.`);
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
