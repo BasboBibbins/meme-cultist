@@ -4,33 +4,29 @@ const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
-const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
 const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
+const { handleBotMessage, runLocalModel } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 
 const LOAD_SLASH = process.argv[2] == "load"
 const LOAD_DB = process.argv[2] == "dbinit"
 const DEBUG_MODE = process.argv[2] == "debug"
 const DELETE_SLASH = process.argv[2] == "delete"
 const DELETE_SLASH_ID = process.argv[3]
+const UNDO_APRILFOOLS = process.argv[2] == "afundo"
 
 const banned = BANNED_ROLE;
-
-const config = new Configuration({
-    apiKey: process.env.OPENAI_KEY
-})
-
-const openai = new OpenAIApi(config)
 
 const client = new Client({
     intents: [
@@ -159,6 +155,20 @@ if (DELETE_SLASH) {
             initDB(client)
         }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        if (APRIL_FOOLS_MODE) {
+            logger.info(`April Fools mode is enabled!`);
+            require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);
+        }
+        if (UNDO_APRILFOOLS && !APRIL_FOOLS_MODE) {
+            require("./utils/aprilfools").undoAprilFools(client, client.guilds.cache.get(GUILD_ID));
+        } else if (UNDO_APRILFOOLS && APRIL_FOOLS_MODE) {
+            logger.error(`April fools mode is still enabled! Disable in the config before running this command.`);
+            process.exit(1)
+        }
+        if (CHATBOT_LOCAL) {
+            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
+            runLocalModel();
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -305,5 +315,17 @@ if (DELETE_SLASH) {
                 await message.delete()
             })
         };
+
+        if (message.channel.id == CHATBOT_CHANNEL && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
+            logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}.`);
+            await handleBotMessage(client, message, OPENAI_API_KEY);
+        } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
+            const randomChance = Math.random();
+            const isMentioned = message.mentions.has(client.user); // Check if the bot was mentioned in the message
+            if (randomChance < 0.2 || isMentioned) { // 20% chance to respond or if mentioned
+                logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}. (April Fools)`);
+                await handleBotMessage(client, message, OPENAI_API_KEY); 
+            } 
+        }
     })
 }

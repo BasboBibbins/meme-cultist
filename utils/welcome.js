@@ -10,9 +10,9 @@ const { randomHexColor } = require('./randomcolor');
 
 async function ripGen(guildMember, prompt) {
     const victim = guildMember.user;
-    const buffer = 25;
-    let rip = `\`\`\`\n-=-=-=-=-=-=-=-=-=-=- R I P -=-=-=-=-=-=-=-=-=-=-\n`;
-    let ripLines = buffer - (((victim.displayName .length + 5) + 2)/2);
+    const buffer = 23;
+    let rip = `\`\`\`\n-=-=-=-=-=-=-=-=-=- R I P -=-=-=-=-=-=-=-=-=-\n`;
+    let ripLines = buffer - (((victim.displayName .length + 5)-3)/2);
     rip += `\n${'-'.repeat(ripLines)} ${victim.displayName } ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
     let joinedAt = guildMember.joinedAt || `??/??/20XX`;
     let joinDate = new Date(joinedAt);
@@ -34,7 +34,7 @@ async function ripGen(guildMember, prompt) {
     const serverName = guildMember.guild.name;
     const serverNameLines = buffer - ((serverName.length+2)/2);
     rip += `\n${'-'.repeat(serverNameLines)} ${serverName} ${'-'.repeat(serverNameLines %1==0? serverNameLines-1 : serverNameLines)}\n`;
-    rip += `\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n\`\`\``;
+    rip += `\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n\`\`\``;
     return rip;
 }
 
@@ -57,7 +57,7 @@ module.exports = {
             .setTitle(`Welcome${dbUser ? ` back`:``} to ${member.guild.name}, ${member.user.displayName }!`)
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(`Welcome ${dbUser ? `back`:``} to ${member.guild.name} <@${member.id}>! Now **GET THE FUCK OUT OF MY DISCORD NORMIE!!!!**\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, as they are heavily enforced! *Our janitors do it for free!*`)
-            .setFooter({ text: `${interaction.client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         await channel.send({ embeds: [embed] });
 
@@ -151,7 +151,7 @@ module.exports = {
             .setTitle(titles[Math.floor(Math.random() * titles.length)])
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(await ripGen(member, prompt))
-            .setFooter({ text: `${interaction.client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         await channel.send({ embeds: [embed] });
     }
