@@ -125,9 +125,22 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           { "role": "user", "content": prompt }
       ]
     });
+    
     logger.info(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
     logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
-    channel.send(completion.data.choices[0].message.content);
+    if (completion.data.choices[0].message.content.length > 2000) {
+      logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
+      const response = completion.data.choices[0].message.content;
+      const chunks = response.match(/[\s\S]{1,2000}/g) || []; // Split into chunks of 2000 characters
+      for (const chunk of chunks) {
+        await channel.send(chunk);
+      }
+      logger.info("Response successfully split into chunks and sent.");
+      return;
+    } else {
+      logger.debug("Response is within Discord's character limit, sending as a single message.");
+      channel.send(completion.data.choices[0].message.content);
+    }
   } catch (error) {
     channel.send("I'm sorry, I couldn't generate a response.");
     logger.error(`Error generating response: ${error.message}`);
