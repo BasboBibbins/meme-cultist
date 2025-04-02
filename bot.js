@@ -161,7 +161,7 @@ if (DELETE_SLASH) {
         }
         if (UNDO_APRILFOOLS && !APRIL_FOOLS_MODE) {
             require("./utils/aprilfools").undoAprilFools(client, client.guilds.cache.get(GUILD_ID));
-        } else {
+        } else if (UNDO_APRILFOOLS && APRIL_FOOLS_MODE) {
             logger.error(`April fools mode is still enabled! Disable in the config before running this command.`);
             process.exit(1)
         }
