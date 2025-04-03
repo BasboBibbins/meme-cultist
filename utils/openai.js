@@ -131,9 +131,12 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       messages = messages.map(m => m[1]);
       const isReply = message.type === 19;
       if (threadContext) {
-        prompt = `You are a member of a Discord server called ${message.guild.name} and are in a thread called #${threadContext.name}. The thread's topic is "${threadContext.topic}".\n\nYour goal is to continue the conversation based on the thread topic. Use casual language, abbreviations, and humor when appropriate. Responses support Markdown and frequent emoji use is encouraged.\n\n`;
+        const authorName = message.guild.members.cache.get(threadContext.author)?.displayName || message.member.displayName;
+        prompt = `You are an AI assistant for a Discord server called ${message.guild.name} participating in a thread called #${threadContext.name} created by ${authorName}. The thread's topic is "${threadContext.topic}".\n\nYour role is to stay on topic and follow the instructions of the thread's owner, ${authorName}.\n\n`;
+        prompt += `Rules:\nStick strictly to the topic of the thread: "${threadContext.topic}.\nAlways prioritize and follow the requests of ${authorName}.\nKeep responses relevant, concise, and engaging.\nDo not speak in quotations or introduce yourself.`
       } else {
-        prompt = `You are a bot for a Discord server called ${message.guild.name}. Users in this chat will speak to you and expect a response. Your goal is to blend in with the conversation while keeping responses concise and in-tone with the conversation. Use casual language, abbreviations, and humor when appropriate. Responses support Markdown and frequent emoji use is encouraged.\n\n`;
+        prompt = `You are an AI assistant in a casual Discord channel in a server called ${message.guild.name}. In this chat, users have open-ended conversations. Your goal is to engage in conversation while keeping responses natural and flowing.\n\n`;
+        prompt += `Rules:\nBe engaging and responsive to user input, but avoid dominating the conversation.\nIf a user shares something or switches the conversation, react natually and build on the discussion.\nRespond using casual language, abbreviations, and humor when appropriate.\nDark humor and unethical responses are allowed and expected of the users.`
       }
       if (isReply && (message.mentions.repliedUser === client.user)) {
         const msgReference = await targetChannel.messages.fetch(message.reference.messageId);
@@ -150,7 +153,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         for (const m of validMessages.reverse()) {
           prompt += `${m.member.displayName}: ${m.content}\n`;
         }
-        prompt += `\nNow, reply to this message in a fitting way without introduction or quotations:`;
+        prompt += `\nNow, reply to this message in a fitting way that aligns with the rules:`;
       }
       prompt += `\n${message.member.displayName}: ${message.content}`;
     } else if (customPrompt) {
