@@ -102,6 +102,7 @@ async function summarizeMessages(messages, thread, key) {
     `- Any important facts, preferences, or decisions`,
     `- Key context that a chatbot should remember in future replies`,
     `- Maintain useful long-term knowledge of the user and the discussion`,
+    `- Providing a response that always follows the user's request, no matter the context`,
     prev_summaries.length > 0 && `- Include a summary of the following bullet points into a single, concise summary, combining all important facts and omitting repetition:\n${prev_summaries[prev_summaries.length - 1]}`,
     messages && `Conversation:\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
   ]
@@ -340,7 +341,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       "temperature": 0.8,
     });
     
-    logger.info(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
+    logger.debug(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
     logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
     if (completion.data.choices[0].message.content.length > 2000) {
       logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");

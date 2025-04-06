@@ -16,37 +16,37 @@ module.exports = {
           option.setName('characteristics')
            .setDescription(`Set characteristics, e.g. "he has medium blonde hair with a thick beard"`)
             .setRequired(false)
-            .setMaxLength(256)
+            .setMaxLength(1024)
         )
         .addStringOption(option => 
           option.setName('personality')
             .setDescription('Set personality of the chatbot, e.g. "he is very outgoing and friendly"')
             .setRequired(false)
-            .setMaxLength(256)
+            .setMaxLength(1024)
         )
         .addStringOption(option => 
           option.setName('preferences')
             .setDescription('What the bot prefers, e.g. "he likes to talk about his favorite color"')
             .setRequired(false)
-            .setMaxLength(256)
+            .setMaxLength(1024)
         )
         .addStringOption(option => 
           option.setName('dialog')
             .setDescription('Modify the dialog style, e.g. sincere, friendly, casual')
             .setRequired(false)
-            .setMaxLength(64)
+            .setMaxLength(128)
         )
         .addStringOption(option => 
           option.setName('boundaries')
             .setDescription('Set boundaries, e.g. no humor, no markdown')
             .setRequired(false)
-            .setMaxLength(128)
+            .setMaxLength(512)
         )
         .addStringOption(option => 
           option.setName('topic')
             .setDescription('Set the topic of the conversation, e.g. "programming"')
             .setRequired(false)
-            .setMaxLength(256)
+            .setMaxLength(1024)
         ),
     )
     .addSubcommand(subcommand => 
