@@ -5,12 +5,12 @@ const fs = require("fs")
 const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
-const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
+const { initDB } = require("./database")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS, PAST_MESSAGES } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
-const { handleBotMessage, runLocalModel } = require("./utils/openai")
+const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages, summarizeMessages } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
@@ -299,7 +299,36 @@ if (DELETE_SLASH) {
         logger.error(error.stack);
     });
 
+    client.on(Events.ThreadCreate, async (thread) => {
+        logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}, checking if it's a chatbot thread...`);
+        if (thread.parentId === CHATBOT_CHANNEL) {
+            await addNewThreadContext(thread);
+        } 
+    });
+
+    client.on(Events.ThreadDelete, async (thread) => {
+        logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}, checking if it's a chatbot thread...`);
+        if (thread.parentId === CHATBOT_CHANNEL) {
+            await deleteThreadContext(thread);
+        } 
+    });
+
     client.login(TOKEN)
+
+    client.on(Events.MessageCreate, async (message) => {
+        // separated so that we can check for bot messages
+        const targetChannel = message.channel;
+        if (targetChannel.isThread()) {
+            const threadMessagesCount = targetChannel.messageCount
+            logger.debug(`Thread has ${threadMessagesCount} messages.`)
+            if ((threadMessagesCount) % PAST_MESSAGES === 0) {
+                logger.debug(`Beginning to summarize thread...`)
+                const validMessages = await getValidMessages(targetChannel, message);
+                const summary = await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
+                logger.debug(`Summary of the thread:\n${summary}\n\n`);
+            }
+        }
+    });
 
     client.on(Events.MessageCreate, async (message) => {
         if (message.author.bot) return;
@@ -326,12 +355,11 @@ if (DELETE_SLASH) {
                 })
                 return
             }
-            logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}.`);
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
             const randomChance = Math.random();
-            const isMentioned = message.mentions.has(client.user); // Check if the bot was mentioned in the message
-            if (randomChance < 0.2 || isMentioned) { // 20% chance to respond or if mentioned
+            const isMentioned = message.mentions.has(client.user); 
+            if (randomChance < 0.2 || isMentioned) { 
                 logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}. (April Fools)`);
                 await handleBotMessage(client, message, OPENAI_API_KEY); 
             } 
