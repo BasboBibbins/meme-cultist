@@ -56,8 +56,14 @@ module.exports = {
     )
     .addSubcommand(subcommand => 
       subcommand
-        .setName('summaries')
-        .setDescription('List the current thread summaries')
+        .setName('summary')
+        .setDescription('View an AI generated summary of the current thread.')
+        .addIntegerOption(option => 
+          option.setName('number')
+            .setDescription('The number of the summary to view. Default: Latest')
+            .setRequired(false)
+            .setMinValue(1)
+        )
     )
     .addSubcommand(subcommand => 
       subcommand
@@ -150,11 +156,23 @@ module.exports = {
           .setColor(0xF9844A);
           await interaction.reply({ embeds: [embed], ephemeral: true });
         break;
-      case 'summaries':
-        const latestSummary = summaries[summaries.length - 1];
-        const output = latestSummary // TODO: change to show multiple summaries if there is space
+      case 'summary':
+        const n = interaction.options.getInteger("number") || summaries.length;
+        logger.debug(`n: ${n} | summaries.length: ${summaries.length}`)
+        const chosenSummary = summaries[n-1];
+        if (n < 0 || n > summaries.length) {
+          embed
+          .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setDescription(`Invalid summary number, please choose a number between 1 and ${summaries.length}.`)
+          .setColor(0xF9844A);
+          return await interaction.reply({
+            content: `Invalid summary number, please choose a number between 1 and ${summaries.length}.`,
+            ephemeral: true,
+          });
+        }
+        const output = chosenSummary // TODO: change to show multiple summaries if there is space
         embed
-         .setAuthor({ name: `Chatbot Summaries`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setAuthor({ name: `Chatbot Summary (#${n} of ${summaries.length})`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
          .setDescription(`${summaries.length > 0 ? output : `No summaries found for thread "${thread.name}"`}`)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
