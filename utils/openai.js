@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require("openai");
-const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE } = require("../config.json");
+const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX } = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const logger = require("./logger");
@@ -16,10 +16,10 @@ async function getValidMessages(channel, message) {
     before: message.id
   }));
   messages = messages.map(m => m[1]);
-
   let validMessages = messages.filter(m => 
     m && m.member && 
     !m.hasThread && 
+    !m.content.startsWith(OOC_PREFIX) &&
     !m.member.roles.cache.some(role => role.id === BANNED_ROLE)
   ).slice(0, PAST_MESSAGES);
 

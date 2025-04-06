@@ -6,7 +6,7 @@ const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS, PAST_MESSAGES } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS, PAST_MESSAGES, OOC_PREFIX } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
@@ -319,6 +319,7 @@ if (DELETE_SLASH) {
         // separated so that we can check for bot messages
         const targetChannel = message.channel;
         if (targetChannel.isThread()) {
+            if (message.content.startsWith(OOC_PREFIX)) return;
             const threadMessagesCount = targetChannel.messageCount
             logger.debug(`Thread has ${threadMessagesCount} messages.`)
             if ((threadMessagesCount) % PAST_MESSAGES === 0) {
@@ -331,20 +332,7 @@ if (DELETE_SLASH) {
     });
 
     client.on(Events.MessageCreate, async (message) => {
-        if (message.author.bot) return;
-
-        if (LEGACY_COMMANDS.some(cmd => message.content.startsWith(`>${cmd}`))) {
-            const wait = require('util').promisify(setTimeout);
-            let reply;
-            message.channel.sendTyping().then(async () => {
-                reply = await message.reply({content: `This bot is now slash commands only. Please use \`/\` instead of \`>\`.\nDiscord is stupid and forced me at gunpoint to make this change.`, ephemeral: true})
-            })
-            return await wait(15000).then(async () => {
-                await reply.delete()
-                await message.delete()
-            })
-        };
-
+        if (message.author.bot) return
         if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
             if (message.member.roles.cache.has(banned)) {
                 await message.member.createDM().then(async dm => {
@@ -354,6 +342,9 @@ if (DELETE_SLASH) {
                     }
                 })
                 return
+            }
+            if (message.content.startsWith(OOC_PREFIX)) {
+                return;
             }
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
