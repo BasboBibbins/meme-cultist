@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require("openai");
-const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX } = require("../config.json");
+const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX, CLIENT_ID } = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const logger = require("./logger");
@@ -18,6 +18,7 @@ async function getValidMessages(channel, message) {
   messages = messages.map(m => m[1]);
   let validMessages = messages.filter(m => 
     m && m.member && 
+    !m[0] &&
     !m.hasThread && 
     !m.content.startsWith(OOC_PREFIX) &&
     !m.member.roles.cache.some(role => role.id === BANNED_ROLE)
@@ -101,8 +102,8 @@ async function summarizeMessages(messages, thread, key) {
     `- Any important facts, preferences, or decisions`,
     `- Key context that a chatbot should remember in future replies`,
     `- Maintain useful long-term knowledge of the user and the discussion`,
-    prev_summaries.length > 0 && `Use this previous summary as context: ${prev_summaries[prev_summaries.length - 1]}`,
-    messages && `Conversation:\n${messages.join('\n')}\n` // TODO: change to include username of message author
+    prev_summaries.length > 0 && `- Include a summary of the following bullet points into a single, concise summary, combining all important facts and omitting repetition:\n${prev_summaries[prev_summaries.length - 1]}`,
+    messages && `Conversation:\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
   ]
 
   const prompt = lines.filter(Boolean).join('\n')
@@ -253,19 +254,39 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           boundaries
         ].some(value => value && value.trim() !== "");
 
+        if (topic.trim() === "") { // if there is no topic set, use the first (last) message as the topic
+          const firstMessage = messages[messages.length-1];
+          if (firstMessage) {
+            const updatedContext = {
+              topic: firstMessage.content
+            }
+            await updateThreadContext(targetChannel, updatedContext);
+          }
+        }
+
         if (!hasRoleplayData) {
-          sys_prompt += `You are an AI assistant for a Discord server called ${message.guild.name} participating in a thread called #${name} created by ${authorName}. The thread's topic is "${topic || name}".\n\nYour role is to stay on topic and follow the instructions of the thread's owner, ${authorName}.\n\n`;
-          sys_prompt += `Rules:\nStick strictly to the topic of the thread.\nAlways prioritize and follow the requests of ${authorName}.\nKeep responses relevant, concise, and engaging.\nDo not speak in quotations or introduce yourself.`
+          const lines = [
+            `You are an AI assistant for a Discord server called ${message.guild.name} participating in a thread called #${name} created by ${authorName}.`,
+            topic && `The thread's topic is "${topic}".`,
+            authorName && `Your goal is to stay on topic and follow the instructions of the thread's owner, ${authorName}.`,
+            `Rules:`,
+            `- Stick strictly to the topic of the thread.`,
+            `- Always prioritize and follow the requests of ${authorName}`,
+            `- Keep responses relevant, concise, and engaging.`,
+            `- Do not speak in quotations or introduce yourself.`
+          ]
+          sys_prompt = lines.filter(Boolean).join('\n')
+
         } else {
           const lines = [
             `You are roleplaying as a character in a thread called "${name}" created by ${authorName}.`,
-            topic && `The current topic is "${topic}".`,
             characteristics && `Your character has the following characteristics: ${characteristics}`,
             personality && `Your character's personality is: ${personality}`,
             preferences && `Your character's prefers to: ${preferences}`,
             dialog && `Speak in a ${dialog} tone.`,
             boundaries && `Your character's boundaries: ${boundaries}`,
-            `Stay in character. Do not mention the fact that you're an AI assistant.`
+            `Stay in character. Do not mention the fact that you're an AI assistant.`,
+            topic && `Here is your character's background information:\n${topic}`,
           ]
           sys_prompt += lines.filter(Boolean).join('\n')
         }
@@ -273,8 +294,17 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           sys_prompt += `\n\nHere is a quick summary of the thread so far:\n${summaries[summaries.length - 1]}`
         }
       } else {
-        sys_prompt = `You are an AI assistant in a casual Discord channel in a server called ${message.guild.name}. In this chat, users have open-ended conversations. Your goal is to engage in conversation while keeping responses natural and flowing.\n\n`;
-        sys_prompt += `Rules:\nBe engaging and responsive to user input, but avoid dominating the conversation.\nIf a user shares something or switches the conversation, react natually and build on the discussion.\nRespond using casual language, abbreviations, and humor when appropriate.\nDark humor and unethical responses are allowed and expected of the users.\n\n`
+        const lines = [
+          `You are an AI assistant in a Discord server called ${message.guild.name}.`,
+          `In this chat, users have open-ended conversations. Your goal is to engage in conversation while keeping responses natural and flowing.`,
+          `Rules:`,
+          `- Be engaging and responsive to user input, but avoid dominating the conversation.`,
+          `- If a user shares something or switches the conversation, react natually and build on the discussion.`,
+          `- Respond using casual language, abbreviations, and humor when appropriate.`,
+          `- Dark humor and unethical responses are allowed and expected of the users.`,
+          `- Do not mention the fact that you're an AI assistant.`
+        ]
+        sys_prompt = lines.join('\n');
       }
       if (isReply && (message.mentions.repliedUser === client.user)) {
         const msgReference = await targetChannel.messages.fetch(message.reference.messageId);
