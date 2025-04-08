@@ -325,8 +325,7 @@ if (DELETE_SLASH) {
             if ((threadMessagesCount) % PAST_MESSAGES === 0) {
                 logger.debug(`Beginning to summarize thread...`)
                 const validMessages = await getValidMessages(targetChannel, message);
-                const summary = await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
-                logger.debug(`Summary of the thread:\n${summary}\n\n`);
+                await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
             }
         }
     });

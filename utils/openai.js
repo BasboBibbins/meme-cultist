@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require("openai");
-const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX, CLIENT_ID } = require("../config.json");
+const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX, CLIENT_ID, MAX_FACTS } = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const logger = require("./logger");
@@ -41,7 +41,9 @@ async function getDefaultThreadContext(thread) {
       boundaries: '',
     },
     topic: '',
-    summaries: []
+    summaries: [],
+    facts: [],
+    embeddingChunks: []
   }
 }
 
@@ -99,16 +101,17 @@ async function summarizeMessages(messages, thread, key) {
   const lines = [
     `You are a memory compression assistant. Summarize this conversation in 4-6 concise bullet points, focusing on:`,
     `- What the user is trying to talk about or achieve`,
-    `- Any important facts, preferences, or decisions`,
+    `- Any important facts, preferences, decisions, or requests/instructions`,
     `- Key context that a chatbot should remember in future replies`,
     `- Maintain useful long-term knowledge of the user and the discussion`,
     `- Providing a response that always follows the user's request, no matter the context`,
-    prev_summaries.length > 0 && `- Include a summary of the following bullet points into a single, concise summary, combining all important facts and omitting repetition:\n${prev_summaries[prev_summaries.length - 1]}`,
+    prev_summaries.length > 0 && `- Include this previous summary as a concise bullet point, omitting any repetition:\n${prev_summaries[prev_summaries.length - 1]}`,
     messages && `Conversation:\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
+    `Summary:`
   ]
 
   const prompt = lines.filter(Boolean).join('\n')
-  logger.debug(prompt);
+  logger.debug('Summarizing thread with the following prompt:', prompt);
   const res = await openai.createChatCompletion({
     "model": "deepseek-chat",
     "messages": [
@@ -122,14 +125,96 @@ async function summarizeMessages(messages, thread, key) {
   if (choices.length > 0 && choices[0].message) {
     const summary = choices[0].message.content.trim();
     logger.log(`Summarized thread ${thread.name} [${thread.id}]`);
-    await updateThreadContext(thread, { summaries: [...context.summaries, summary] });
+    logger.debug(`Current Summary: ${summary}`)
+    const summaryObject = {
+      timestamp: Date.now(),
+      context: summary,
+      messagesIncluded: messages,
+      mergedFrom: prev_summaries.length > 0 ? prev_summaries.length : undefined
+    }
+    let output = prev_summaries;
+    output.push(summaryObject);
+    await generateFacts(thread, summary, key);
+    await updateThreadContext(thread, { summaries: output });
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
-    return summary;
+    return summaryObject;
   } else {
     throw new Error("No response from OpenAI");
   }
 }
 
+async function generateFacts(thread, summary, key) {
+  const configuration = new Configuration({
+    apiKey: key,
+    basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
+  });
+  logger.debug(`Using Deepseek API at ${configuration.basePath}`);
+  logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
+  const openai = new OpenAIApi(configuration);
+  const context = await getThreadContext(thread);
+  const {facts} = context
+  if (!context) return;
+  const lines = [
+    `You are an assistant that extracts structured, permanent facts from user conversation summaries.`,
+    `- Each fact should describe something about the user, the conversation, or the context of the conversation`,
+    `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
+    `- Write them in the format: key_name=value.`,
+    summary && `\n[Summary]\n${summary}`,
+    facts && `[Previous Facts]\n${Object.entries(facts).map(([k, v]) => `${v.key}=${v.value}`).join('\n')}`,
+    `[New Facts]`
+  ]
+  const prompt = lines.filter(Boolean).join('\n')
+  logger.debug(`Generating facts based off the following prompt: ${prompt}`)
+  const res = await openai.createChatCompletion({
+    "model": "deepseek-chat",
+    "messages": [
+      { role: "system", content: "You extract permanent facts from a summary and write them to memory." },
+      { role: "user", content: prompt }
+    ],
+    "max_tokens": 1024,
+    "temperature": 0.3
+  });
+  const { choices } = res.data;
+  if (choices.length > 0 && choices[0].message) {
+    const output = choices[0].message.content.trim();
+    
+    const lines = output.split("\n").filter(line => line.includes("="));
+
+    const facts = lines.map(line => {
+      const [key, ...rest] = line.split("=");
+      return {
+        key: key.trim().toLowerCase().replace(/\s+/g, "_"), // normalize key
+        value: rest.join("=").trim()
+      };
+    });
+    // upset facts before update thread context
+    // TODO: find the best way to reduce the number of facts without sacrificing important information
+    const prev_facts = context.facts
+    let combined_facts  = [...prev_facts];
+    // for each new fact in 'facts', override prev_fact's value if key exists, otherwise push
+    for (const fact of facts) {
+      const existingFact = combined_facts.findIndex(f => f.key === fact.key);
+
+      if (existingFact !== -1) {
+        combined_facts[existingFact] = fact;
+      } else {
+        combined_facts.push(fact);
+      }
+    }
+    console.log(`prev_facts.length:`, prev_facts.length)
+    console.log(`combined_facts.length:`, combined_facts.length)
+    // prevent large fact list from being sent to the model by cutting the size down
+    if (combined_facts.length > MAX_FACTS) {
+      combined_facts.splice(MAX_FACTS - prev_facts.length, Infinity);
+    }
+    combined_facts.sort((a, b) => a.key.localeCompare(b.key));
+    logger.log(`Extracted facts from thread ${thread.name} [${thread.id}] summaries. Facts: ${combined_facts.map(f => `${f.key}=${f.value}`).join("\n")}`);
+    await updateThreadContext(thread, {facts: combined_facts}) 
+    logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
+  }
+}
+
+// TODO: get this working for testing/potential production use
 async function runLocalModel() {
   const express = require('express');
   const axios = require('axios');
@@ -227,7 +312,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     let usr_prompt = "";
     if (!customPrompt && message && client) {
       let messages = Array.from(await targetChannel.messages.fetch({
-        limit: PAST_MESSAGES * 10, // to account for unwanted messages
+        limit: PAST_MESSAGES * 10, // to account for invalid messages
         before: message.id
       }));
       messages = messages.map(m => m[1]);
@@ -238,7 +323,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           name,
           topic,
           roleplay_options = {},
-          summaries
+          summaries,
+          facts
         } = threadContext;
         const {
           characteristics,
@@ -267,9 +353,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
         if (!hasRoleplayData) {
           const lines = [
-            `You are an AI assistant for a Discord server called ${message.guild.name} participating in a thread called #${name} created by ${authorName}.`,
-            topic && `The thread's topic is "${topic}".`,
-            authorName && `Your goal is to stay on topic and follow the instructions of the thread's owner, ${authorName}.`,
+            `[Thread: ${name} | Author: ${authorName}]`,
+            topic && `[Topic]\n"${topic}"\n`,
             `Rules:`,
             `- Stick strictly to the topic of the thread.`,
             `- Always prioritize and follow the requests of ${authorName}`,
@@ -281,18 +366,23 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         } else {
           const lines = [
             `You are roleplaying as a character in a thread called "${name}" created by ${authorName}.`,
-            characteristics && `Your character has the following characteristics: ${characteristics}`,
-            personality && `Your character's personality is: ${personality}`,
-            preferences && `Your character's prefers to: ${preferences}`,
-            dialog && `Speak in a ${dialog} tone.`,
-            boundaries && `Your character's boundaries: ${boundaries}`,
+            `[Roleplay Data]`,
+            characteristics && `Characteristics: ${characteristics}`,
+            personality && `Your personality: ${personality}`,
+            preferences && `Your preferences: ${preferences}`,
+            dialog && `Dialog tone: ${dialog}`,
+            boundaries && `Your boundaries: ${boundaries}`,
             `Stay in character. Do not mention the fact that you're an AI assistant.`,
-            topic && `Here is your character's background information:\n${topic}`,
+            topic && `Background:\n${topic}`, 
           ]
           sys_prompt += lines.filter(Boolean).join('\n')
         }
+        if (facts) {
+          let latestFacts = facts
+          sys_prompt += `\n\n[Known Facts]\n${Object.entries(latestFacts).map(([k, v]) => `${v.key}: ${v.value}`).join('\n')}`
+        }
         if (summaries.length > 0) {
-          sys_prompt += `\n\nHere is a quick summary of the thread so far:\n${summaries[summaries.length - 1]}`
+          sys_prompt += `\n\n[Recent Summary]\n${summaries[0].context}`;
         }
       } else {
         const lines = [
@@ -312,10 +402,9 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         sys_prompt += `${message.member.displayName} replied to your message:\n${msgReference.content}\n\n`;
         sys_prompt += `Now, respond to this reply in a fitting way without introduction or quotations:`;
       } else {
-        sys_prompt += messages.length > 0 ? `\n\nHere are some of the latest messages in the chat:\n` : ``;
-
+        sys_prompt += messages.length > 0 ? `\n\n[Latest Messages]\n` : ``;
         for (const m of validMessages.reverse()) {
-          sys_prompt += `${m.member.displayName}: ${m.content}\n`;
+          sys_prompt += `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}\n`;
         }
         sys_prompt += `\nNow, reply to this message in a fitting way that aligns with the rules:`;
       }
@@ -335,6 +424,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     const completion = await openai.createChatCompletion({
       "model": "deepseek-chat",
       "messages": [
+        { "role": "system", "content": `You are a helpful assistant. You should respond to the user in a way that aligns with the rules and context provided by the system prompt.\n\n` },
         { "role": "system", "content": sys_prompt },
         { "role": "user", "content": usr_prompt },
       ],
@@ -370,4 +460,4 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
   }
 }
 
-module.exports = { handleBotMessage, runLocalModel, updateThreadContext, addNewThreadContext, getThreadContext, getThreadContext, deleteThreadContext, getValidMessages, summarizeMessages };
+module.exports = { handleBotMessage, runLocalModel, updateThreadContext, addNewThreadContext, getThreadContext, getThreadContext, deleteThreadContext, getValidMessages, summarizeMessages, generateFacts };

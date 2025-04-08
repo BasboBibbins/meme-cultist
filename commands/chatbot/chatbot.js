@@ -75,6 +75,7 @@ module.exports = {
     const subcommand = interaction.options.getSubcommand();
     const thread = interaction.client.channels.cache.get(interaction.channelId)
 
+    let list; let desc;
     let embed = new EmbedBuilder()
     .setAuthor({ name: `Chatbot Context`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
     .setTimestamp()
@@ -86,25 +87,27 @@ module.exports = {
       return;
     }
     const threadContext = await getThreadContext(thread);
+    console.log(threadContext);
     const { characteristics, personality, preferences, dialog, boundaries } = threadContext.roleplay_options;
-    const { topic, summaries } = threadContext;
+    const { topic, summaries, facts, embeddingChunks } = threadContext;
     switch (subcommand) {
       case 'get':
-        // Get the current context for the thread.
+        list = [
+          characteristics != '' && `**Characteristics:** ${characteristics}`,
+          personality != '' && `**Personality:** ${personality}`,
+          preferences != '' && `**Preference:** ${preferences}`,
+          dialog != '' && `**Dialog:** ${dialog}`,
+          boundaries != '' && `**Boundaries:** ${boundaries}`,
+          topic != '' && `**Topic:** ${topic}`,
+          summaries.length > 0 && `**Summaries:** ${summaries.length}`,
+          facts && `**Facts:** ${facts.length}`
+        ]
+        desc = list.filter(Boolean).join('\n')
         embed 
           .setAuthor({ name: `Current Chatbot Context`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`
-            Characteristics: **${characteristics != '' ? characteristics : '*None*'}**
-            Personality: **${personality != '' ? personality : '*None*'}**
-            Preference: **${preferences != '' ? preferences : '*None*'}**
-            Dialog: **${dialog != '' ? dialog : '*None*'}**
-            Boundaries: **${boundaries != '' ? boundaries : '*None*'}**
-            Topic: **${topic != '' ? topic : '*None*'}**
-            Summaries: **${summaries.length > 0 ? summaries.length : '*None*'}**
-            `)
+          .setDescription(desc)
           .setColor(0x007bff);
         await interaction.reply({ embeds: [embed], ephemeral: true });
-        logger.debug(`Thread Context:${JSON.stringify(threadContext)}`)
         break;
       case 'set':
         // Set the current context for the thread.
@@ -125,16 +128,18 @@ module.exports = {
           topic: topicValue
         };
         await updateThreadContext(thread, updatedContext);
+        list = [
+          characteristicValue != '' && `Characteristics: ${characteristicValue}`,
+          personalityValue !== '' && `Personality: ${personalityValue}`,
+          preferenceValue !== '' && `Preferences: ${preferenceValue}`,
+          dialogValue !== '' && `Dialog: ${dialogValue}`,
+          boundariesValue !== '' && `Boundaries: ${boundariesValue}`,
+          topicValue !== '' && `Topic: ${topicValue}`,
+        ]
+        desc = list.filter(Boolean).join('\n');
         embed
           .setAuthor({ name: `Chatbot Context Updated`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`
-            Characteristics: **${characteristicValue != '' ? characteristicValue : '*No Changes*'}**
-            Personality: **${personalityValue != '' ? personalityValue : '*No Changes*'}**
-            Preferences: **${preferenceValue != '' ? preferenceValue : '*No Changes*'}**
-            Dialog: **${dialogValue != '' ? dialogValue : '*No Changes*'}**
-            Boundaries: **${boundariesValue != '' ? boundariesValue : '*No Changes*'}**
-            Topic: **${topicValue != '' ? topicValue : '*No Changes*'}**`
-          )
+          .setDescription(desc)
           .setColor(0xF9844A);
         await interaction.reply({ embeds: [embed], ephemeral: true });
         break;  
@@ -148,6 +153,7 @@ module.exports = {
             boundaries: ''
           },
           topic: '',
+          facts: [],
         };
         await updateThreadContext(thread, blankContext);
         embed
@@ -170,10 +176,16 @@ module.exports = {
             ephemeral: true,
           });
         }
-        const output = chosenSummary // TODO: change to show multiple summaries if there is space
+        list = [
+          chosenSummary && `**Summary:**\n${chosenSummary.context}`,
+          chosenSummary.messagesIncluded && `**Messages used:** ${chosenSummary.messagesIncluded.map((m, i) => `${i+1}: ${m.content.length > 128 ? m.content.substring(0, 128)+`...` : m.content}`).join('\n')}`,
+          chosenSummary.mergedFrom && `**Previous summaries used:** ${chosenSummary.mergedFrom}`,
+          chosenSummary.timestamp && `**Generated on ${new Date(chosenSummary.timestamp).toLocaleString()}**`
+        ]
+        desc = list.filter(Boolean).join('\n');
         embed
          .setAuthor({ name: `Chatbot Summary (#${n} of ${summaries.length})`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-         .setDescription(`${summaries.length > 0 ? output : `No summaries found for thread "${thread.name}"`}`)
+         .setDescription(desc)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
          break;
