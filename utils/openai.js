@@ -10,6 +10,13 @@ function estimateTokenCount(text) {
   return tokens.length;
 }
 
+function withTimeout(promise, ms, err = "Request timed out") {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(err), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 async function getValidMessages(channel, message) {
   let messages = Array.from(await channel.messages.fetch({
     limit: PAST_MESSAGES * 10, // to account for unwanted messages
@@ -112,15 +119,19 @@ async function summarizeMessages(messages, thread, key) {
 
   const prompt = lines.filter(Boolean).join('\n')
   logger.debug('Summarizing thread with the following prompt:', prompt);
-  const res = await openai.createChatCompletion({
-    "model": "deepseek-chat",
-    "messages": [
-      { role: "system", content: "You summarize chat conversations into useful memory, responding with only the summary body." },
-      { role: "user", content: prompt }
-    ],
-    "max_tokens": 1024,
-    "temperature": 0.3
-  });
+  const res = await withoutTime(
+    openai.createChatCompletion({
+      "model": "deepseek-chat",
+      "messages": [
+        { role: "system", content: "You summarize chat conversations into useful memory, responding with only the summary body." },
+        { role: "user", content: prompt }
+      ],
+      "max_tokens": 1024,
+      "temperature": 0.3
+    }),
+    30_000,
+    "Deepseek API response (summarizeMessasges) took to long (30 seconds)"
+  );
   const { choices } = res.data;
   if (choices.length > 0 && choices[0].message) {
     const summary = choices[0].message.content.trim();
@@ -139,7 +150,7 @@ async function summarizeMessages(messages, thread, key) {
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
     return summaryObject;
   } else {
-    throw new Error("No response from OpenAI");
+    throw new Error("No response from Deepseek");
   }
 }
 
@@ -165,15 +176,20 @@ async function generateFacts(thread, summary, key) {
   ]
   const prompt = lines.filter(Boolean).join('\n')
   logger.debug(`Generating facts based off the following prompt: ${prompt}`)
-  const res = await openai.createChatCompletion({
-    "model": "deepseek-chat",
-    "messages": [
-      { role: "system", content: "You extract permanent facts from a summary and write them to memory." },
-      { role: "user", content: prompt }
-    ],
-    "max_tokens": 1024,
-    "temperature": 0.3
-  });
+  const res = await withTimeout(
+    openai.createChatCompletion({
+      "model": "deepseek-chat",
+      "messages": [
+        { role: "system", content: "You extract permanent facts from a summary and write them to memory." },
+        { role: "user", content: prompt }
+      ],
+      "max_tokens": 1024,
+      "temperature": 0.3
+    }),
+    30_000,
+    // red text
+    "Deepseek response (generateFacts) took too long (30 seconds)"
+  );
   const { choices } = res.data;
   if (choices.length > 0 && choices[0].message) {
     const output = choices[0].message.content.trim();
@@ -421,16 +437,19 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     logger.debug(`Deepseek prompt:\nSYS_PROMPT: ${sys_prompt}\nUSR_PROMPT: ${usr_prompt}`);
     logger.debug(`Estimated token count: ${estimateTokenCount(sys_prompt)}`);
 
-    const completion = await openai.createChatCompletion({
-      "model": "deepseek-chat",
-      "messages": [
-        { "role": "system", "content": `You are a helpful assistant. You should respond to the user in a way that aligns with the rules and context provided by the system prompt.\n\n` },
-        { "role": "system", "content": sys_prompt },
-        { "role": "user", "content": usr_prompt },
-      ],
-      "temperature": 0.8,
-    });
-    
+    const completion = await withTimeout(
+      openai.createChatCompletion({
+        "model": "deepseek-chat",
+        "messages": [
+          { "role": "system", "content": `You are a helpful assistant. You should respond to the user in a way that aligns with the rules and context provided by the system prompt.\n\n` },
+          { "role": "system", "content": sys_prompt },
+          { "role": "user", "content": usr_prompt },
+        ],
+        "temperature": 0.8,
+      }),
+      30_000,
+      "Deepseek API request (handleBotMessage) took too long (30 seconds)."
+    );
     logger.debug(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
     logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
     if (completion.data.choices[0].message.content.length > 2000) {
@@ -450,7 +469,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       targetChannel.send(completion.data.choices[0].message.content);
     }
   } catch (error) {
-    targetChannel.send("I'm sorry, I couldn't generate a response.");
+    targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
     logger.error(`Error generating response: ${error.message}`);
     if (error.response) {
       logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
