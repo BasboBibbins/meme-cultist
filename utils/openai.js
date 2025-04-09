@@ -17,21 +17,31 @@ function withTimeout(promise, ms, err = "Request timed out") {
   return Promise.race([promise, timeout]);
 }
 
+function isValidMessage(message) {
+  return (
+    message &&
+    message.member &&
+    !message.hasThread &&
+    !message.content.startsWith(OOC_PREFIX) &&
+    !message.member.roles.cache.some(role => role.id === BANNED_ROLE)
+  );
+}
+
 async function getValidMessages(channel, message) {
   let messages = Array.from(await channel.messages.fetch({
     limit: PAST_MESSAGES * 10, // to account for unwanted messages
     before: message.id
   }));
   messages = messages.map(m => m[1]);
-  let validMessages = messages.filter(m => 
-    m && m.member && 
-    !m[0] &&
-    !m.hasThread && 
-    !m.content.startsWith(OOC_PREFIX) &&
-    !m.member.roles.cache.some(role => role.id === BANNED_ROLE)
-  ).slice(0, PAST_MESSAGES);
 
-  return validMessages;
+  const validMessages = [];
+  for (const msg of messages) {
+
+    if (isValidMessage(msg)) {
+      validMessages.push(msg);
+    }
+  }
+  return validMessages.slice(0, PAST_MESSAGES);
 }
 
 async function getDefaultThreadContext(thread) {
@@ -368,7 +378,14 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         before: message.id
       }));
       messages = messages.map(m => m[1]);
+      
       const isReply = message.type === 19;
+
+      const validMembers = messages.filter(m => !m.author.bot && isValidMessage(m)).map(m => m.member.displayName);
+      const uniqueDisplayNames = [...new Set(validMembers)];
+      console.log(`uniqueDisplayNames:`, uniqueDisplayNames);
+      let currentUsers = uniqueDisplayNames.slice(0, -1).join(', ') + ' and ' + uniqueDisplayNames.slice(-1)[0];
+
       if (targetChannel.isThread()) {
         const authorName = message.guild.members.cache.get(threadContext.author)?.displayName || message.member.displayName;
         const {
@@ -445,10 +462,14 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           `- Be engaging and responsive to user input, but avoid dominating the conversation.`,
           `- If a user shares something or switches the conversation, react natually and build on the discussion.`,
           `- Respond using casual language, abbreviations, and humor when appropriate.`,
+          `- When posting links, always provide the real link - not examples/placeholders.`,
           `- Dark humor and unethical responses are allowed and expected of the users.`,
           `- Do not mention the fact that you're an AI assistant.`
         ]
         sys_prompt = lines.join('\n');
+      }
+      if (validMembers.length > 1) {
+        sys_prompt += `\n[Conversation Members]\n${currentUsers}`
       }
       if (isReply && (message.mentions.repliedUser === client.user)) {
         const msgReference = await targetChannel.messages.fetch(message.reference.messageId);
