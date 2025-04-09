@@ -112,14 +112,14 @@ async function summarizeMessages(messages, thread, key) {
     `- Key context that a chatbot should remember in future replies`,
     `- Maintain useful long-term knowledge of the user and the discussion`,
     `- Providing a response that always follows the user's request, no matter the context`,
-    prev_summaries.length > 0 && `- Include this previous summary as a concise bullet point, omitting any repetition:\n${prev_summaries[prev_summaries.length - 1]}`,
-    messages && `Conversation:\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
-    `Summary:`
+    messages && `[Conversation]\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
+    prev_summaries.length > 0 && `[Previous Summary]\n*Include any additional info from this previous summary as a concise bullet point.*\n${prev_summaries[prev_summaries.length - 1]}`,
+    `[Summary]`
   ]
 
   const prompt = lines.filter(Boolean).join('\n')
   logger.debug('Summarizing thread with the following prompt:', prompt);
-  const res = await withoutTime(
+  const res = await withTimeout(
     openai.createChatCompletion({
       "model": "deepseek-chat",
       "messages": [
@@ -163,14 +163,15 @@ async function generateFacts(thread, summary, key) {
   logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
   const openai = new OpenAIApi(configuration);
   const context = await getThreadContext(thread);
-  const {facts} = context
+  const {facts, summaries} = context
   if (!context) return;
+  const lastFive = summaries.slice(-5).map(s => s.context ).join('\n');
   const lines = [
     `You are an assistant that extracts structured, permanent facts from user conversation summaries.`,
     `- Each fact should describe something about the user, the conversation, or the context of the conversation`,
     `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
-    `- Write them in the format: key_name=value.`,
-    summary && `\n[Summary]\n${summary}`,
+    `- Write them in the format: key_name=value. Only return the key name, value pair. Do not include any other information.`,
+    summaries && `[Previous Summaries]\n${lastFive}`,
     facts && `[Previous Facts]\n${Object.entries(facts).map(([k, v]) => `${v.key}=${v.value}`).join('\n')}`,
     `[New Facts]`
   ]
@@ -186,7 +187,7 @@ async function generateFacts(thread, summary, key) {
       "max_tokens": 1024,
       "temperature": 0.3
     }),
-    30_000,
+    60_000,
     // red text
     "Deepseek response (generateFacts) took too long (30 seconds)"
   );
@@ -228,6 +229,41 @@ async function generateFacts(thread, summary, key) {
     await updateThreadContext(thread, {facts: combined_facts}) 
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
   }
+}
+
+async function generateTopic(initMessage, key) {
+  const configuration = new Configuration({
+    apiKey: key,
+    basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
+  });
+  logger.debug(`Using Deepseek API at ${configuration.basePath}`);
+  logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
+  const openai = new OpenAIApi(configuration);
+  const lines = [
+    `Summarize the message below into a short topic paragraph (1–3 sentences).`,
+    `Response will be used as the topic of the thread, so it should be concise and informative.`,
+    `Focus on the main idea. Be clear and natural. Do not mention the message or that you are an AI assistant.`,
+    initMessage && `Message:\n${initMessage}`,
+    `Topic:`
+  ]
+  const prompt = lines.filter(Boolean).join('\n')
+  logger.debug(`Generating topic based off the following prompt: ${prompt}`)
+  const res = await withTimeout(
+    openai.createChatCompletion({
+      "model": "deepseek-chat",
+      "messages": [
+        { role: "system", content: "You are a AI assistant responsible for organizing and summarizing discussions." },
+        { role: "user", content: prompt }
+      ],
+      "max_tokens": 1024,
+      "temperature": 0.3
+    }),
+    30_000,
+    "Deepseek response (generateTopic) took too long (30 seconds)"
+  );
+  const { choices } = res.data;
+  logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
+  return choices[0].message.content.trim();
 }
 
 // TODO: get this working for testing/potential production use
@@ -357,11 +393,11 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           boundaries
         ].some(value => value && value.trim() !== "");
 
-        if (topic.trim() === "") { // if there is no topic set, use the first (last) message as the topic
+        if (topic.trim() === '') { 
           const firstMessage = messages[messages.length-1];
           if (firstMessage) {
             const updatedContext = {
-              topic: firstMessage.content
+              topic: await generateTopic(firstMessage, key)
             }
             await updateThreadContext(targetChannel, updatedContext);
           }
@@ -375,7 +411,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
             `- Stick strictly to the topic of the thread.`,
             `- Always prioritize and follow the requests of ${authorName}`,
             `- Keep responses relevant, concise, and engaging.`,
-            `- Do not speak in quotations or introduce yourself.`
+            `- Do not speak in quotations or introduce yourself.`,
+            `- Ensure response stylization complies with Markdown syntax.`
           ]
           sys_prompt = lines.filter(Boolean).join('\n')
 
@@ -393,12 +430,12 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           ]
           sys_prompt += lines.filter(Boolean).join('\n')
         }
-        if (facts) {
+        if (facts.length > 0) {
           let latestFacts = facts
           sys_prompt += `\n\n[Known Facts]\n${Object.entries(latestFacts).map(([k, v]) => `${v.key}: ${v.value}`).join('\n')}`
         }
         if (summaries.length > 0) {
-          sys_prompt += `\n\n[Recent Summary]\n${summaries[0].context}`;
+          sys_prompt += `\n\n[Recent Summary]\n${summaries[summaries.length-1].context}`;
         }
       } else {
         const lines = [
@@ -447,7 +484,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         ],
         "temperature": 0.8,
       }),
-      30_000,
+      90_000,
       "Deepseek API request (handleBotMessage) took too long (30 seconds)."
     );
     logger.debug(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
@@ -455,8 +492,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     if (completion.data.choices[0].message.content.length > 2000) {
       logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
       const response = completion.data.choices[0].message.content;
-      const chunks = response.match(/[\s\S]{1,1997}/g) || [];
-      for (const chunk of chunks) {
+      let chunks = response.match(/[\s\S]{1,1997}/g) || [];
+      for (let chunk of chunks) {
         if (chunk !== chunks[chunks.length - 1]) {
           chunk += "..."; // Add ellipsis to indicate more content
         }
