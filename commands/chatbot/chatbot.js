@@ -7,38 +7,38 @@ const logger = require('../../utils/logger.js');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('context')
-    .setDescription('Manage chatbot context and features')
+    .setDescription(`Allows you to view and manage various chatbot features within threads.`)
     .addSubcommand(subcommand => 
       subcommand
         .setName('set')
-        .setDescription('Set chatbot context and features')
+        .setDescription('Modify various settings, including the topic and roleplaying variables.')
         .addStringOption(option => 
           option.setName('characteristics')
-           .setDescription(`Set characteristics, e.g. "he has medium blonde hair with a thick beard"`)
+           .setDescription(`[RP] Set characteristics, e.g. "he has medium blonde hair with a thick beard"`)
             .setRequired(false)
             .setMaxLength(1024)
         )
         .addStringOption(option => 
           option.setName('personality')
-            .setDescription('Set personality of the chatbot, e.g. "he is very outgoing and friendly"')
+            .setDescription('[RP] Set personality of the chatbot, e.g. "he is very outgoing and friendly"')
             .setRequired(false)
             .setMaxLength(1024)
         )
         .addStringOption(option => 
           option.setName('preferences')
-            .setDescription('What the bot prefers, e.g. "he likes to talk about his favorite color"')
+            .setDescription('[RP] What the bot prefers, e.g. "he likes to talk about his favorite color"')
             .setRequired(false)
             .setMaxLength(1024)
         )
         .addStringOption(option => 
           option.setName('dialog')
-            .setDescription('Modify the dialog style, e.g. sincere, friendly, casual')
+            .setDescription('[RP] Modify the dialog style, e.g. sincere, friendly, casual')
             .setRequired(false)
             .setMaxLength(128)
         )
         .addStringOption(option => 
           option.setName('boundaries')
-            .setDescription('Set boundaries, e.g. no humor, no markdown')
+            .setDescription('[RP] Set boundaries, e.g. no humor, no markdown')
             .setRequired(false)
             .setMaxLength(512)
         )
@@ -52,7 +52,7 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('get')
-        .setDescription('Set chatbot context and features')
+        .setDescription(`View the current thread's context data and variables`)
     )
     .addSubcommand(subcommand => 
       subcommand
@@ -67,8 +67,13 @@ module.exports = {
     )
     .addSubcommand(subcommand => 
       subcommand
+        .setName('facts')
+        .setDescription('Display a table of all saved facts of the current thread.')
+    )
+    .addSubcommand(subcommand => 
+      subcommand
         .setName('reset')
-        .setDescription('Reset all chatbot context and features')
+        .setDescription(`Reset the current thread's context to default.`)
     ),
 
   async execute(interaction) {
@@ -82,14 +87,13 @@ module.exports = {
     .setColor(0xFF0000)
     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
     if (!thread.isThread() || thread.parentId != CHATBOT_CHANNEL) {
-      embed.setDescription('Please run this command in a thread!');
+      embed.setDescription('Please run this command in a chatbot thread!');
       await interaction.reply({ embeds: [embed], ephemeral: true });
       return;
     }
     const threadContext = await getThreadContext(thread);
-    console.log(threadContext);
     const { characteristics, personality, preferences, dialog, boundaries } = threadContext.roleplay_options;
-    const { topic, summaries, facts, embeddingChunks } = threadContext;
+    const { topic, summaries, facts } = threadContext;
     switch (subcommand) {
       case 'get':
         list = [
@@ -164,7 +168,6 @@ module.exports = {
         break;
       case 'summary':
         const n = interaction.options.getInteger("number") || summaries.length;
-        logger.debug(`n: ${n} | summaries.length: ${summaries.length}`)
         const chosenSummary = summaries[n-1];
         if (n < 0 || n > summaries.length) {
           embed
@@ -189,6 +192,22 @@ module.exports = {
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
          break;
+      case 'facts':
+        let fields = Object.entries(facts).map(([_, v]) => ({
+          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`, // Format key to title case
+          value: v.value.toString().replace(/_/g, ' '), // Ensure value is a string
+          inline: true // Set to true if you want them displayed side by side
+        }));
+        if (fields.length > 25) {
+          logger.warn(`Too many fields! (${fields.length}) Trimming to first 25 fields`); // TODO: create page system (25 per page)'
+          fields = fields.slice(0, 25);
+        }
+        embed
+         .setAuthor({ name: `Facts for thread "${thread.name}"`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setFields(fields)
+         .setColor(0xF9844A);
+         await interaction.reply({ embeds: [embed], ephemeral: true });
+        break;
       default:
         await interaction.reply({
           content: 'Invalid command',

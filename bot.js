@@ -300,14 +300,14 @@ if (DELETE_SLASH) {
     });
 
     client.on(Events.ThreadCreate, async (thread) => {
-        logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}, checking if it's a chatbot thread...`);
+        logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}.`);
         if (thread.parentId === CHATBOT_CHANNEL) {
             await addNewThreadContext(thread);
         } 
     });
 
     client.on(Events.ThreadDelete, async (thread) => {
-        logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}, checking if it's a chatbot thread...`);
+        logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
         if (thread.parentId === CHATBOT_CHANNEL) {
             await deleteThreadContext(thread);
         } 
@@ -334,6 +334,7 @@ if (DELETE_SLASH) {
         if (message.author.bot) return
         if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
             if (message.member.roles.cache.has(banned)) {
+                logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
                 await message.member.createDM().then(async dm => {
                     const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
                     if (isLastMsgBot) {

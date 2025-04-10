@@ -40,12 +40,12 @@ module.exports = {
                     },
                     {
                         name: "Links",
-                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[Support Server](https://discord.gg/C3cMvwP)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)\n[Trello Board](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)`,
+                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[Support Server](https://discord.gg/h3hymqEUsR)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)\n[Trello Board](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)`,
                         inline: false
                     },
                     {
                         name: "Copyright",
-                        value: `©️ 2023 BasboBibbins (<@${OWNER_ID}>).\nLicensed under the [MIT License](https://github.com/BasboBibbins/meme-cultist/blob/master/LICENSE) and the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).`,
+                        value: `© ${new Date().getFullYear()} BasboBibbins [<@${OWNER_ID}>].\nLicensed under the [MIT License](https://github.com/BasboBibbins/meme-cultist/blob/master/LICENSE) and the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).`,
                         inline: false
                     }
                 )

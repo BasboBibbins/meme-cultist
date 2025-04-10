@@ -180,7 +180,7 @@ async function generateFacts(thread, summary, key) {
     `You are an assistant that extracts structured, permanent facts from user conversation summaries.`,
     `- Each fact should describe something about the user, the conversation, or the context of the conversation`,
     `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
-    `- Write them in the format: key_name=value. Only return the key name, value pair. Do not include any other information.`,
+    `- Write them in the format: key_name=value. Any other response will break the database, so please do not use it.`,
     summaries && `[Previous Summaries]\n${lastFive}`,
     facts && `[Previous Facts]\n${Object.entries(facts).map(([k, v]) => `${v.key}=${v.value}`).join('\n')}`,
     `[New Facts]`
@@ -214,11 +214,9 @@ async function generateFacts(thread, summary, key) {
         value: rest.join("=").trim()
       };
     });
-    // upset facts before update thread context
-    // TODO: find the best way to reduce the number of facts without sacrificing important information
+
     const prev_facts = context.facts
     let combined_facts  = [...prev_facts];
-    // for each new fact in 'facts', override prev_fact's value if key exists, otherwise push
     for (const fact of facts) {
       const existingFact = combined_facts.findIndex(f => f.key === fact.key);
 
@@ -228,9 +226,6 @@ async function generateFacts(thread, summary, key) {
         combined_facts.push(fact);
       }
     }
-    console.log(`prev_facts.length:`, prev_facts.length)
-    console.log(`combined_facts.length:`, combined_facts.length)
-    // prevent large fact list from being sent to the model by cutting the size down
     if (combined_facts.length > MAX_FACTS) {
       combined_facts.splice(MAX_FACTS - prev_facts.length, Infinity);
     }
@@ -383,7 +378,6 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
       const validMembers = messages.filter(m => !m.author.bot && isValidMessage(m)).map(m => m.member.displayName);
       const uniqueDisplayNames = [...new Set(validMembers)];
-      console.log(`uniqueDisplayNames:`, uniqueDisplayNames);
       let currentUsers = uniqueDisplayNames.slice(0, -1).join(', ') + ' and ' + uniqueDisplayNames.slice(-1)[0];
 
       if (targetChannel.isThread()) {
