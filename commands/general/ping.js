@@ -12,7 +12,7 @@ module.exports = {
             .setAuthor({ name: `Pong! 🏓`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setDescription(`Latency is ${sent.createdTimestamp - interaction.createdTimestamp}ms.\n\nAPI Latency is ${Math.round(interaction.client.ws.ping)}ms.`)
             .setColor(randomHexColor())
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp()
         await interaction.editReply({ content: null, embeds: [embed] });
     }

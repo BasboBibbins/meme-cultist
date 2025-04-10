@@ -30,7 +30,7 @@ module.exports = {
         const error_embed = new EmbedBuilder()
             .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         if (!dbUser) {
@@ -94,7 +94,7 @@ module.exports = {
             .setAuthor({ name: `${user.displayName }`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
             .setColor(randomHexColor())
-            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         let winnings = Number(bet);

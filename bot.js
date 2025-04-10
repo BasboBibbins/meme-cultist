@@ -4,33 +4,29 @@ const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player } = require("discord-player")
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
-const { OpenAIApi, Configuration } = require("openai")
 const { QuickDB } = require("quick.db")
-const { initDB, addNewDBUser } = require("./database")
-const { GUILD_ID, CLIENT_ID, BOT_CHANNEL, PAST_MESSAGES, BANNED_ROLE, DEFAULT_ROLE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS } = require("./config.json")
+const { initDB } = require("./database")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS, PAST_MESSAGES, OOC_PREFIX } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
+const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages, summarizeMessages } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 
 const LOAD_SLASH = process.argv[2] == "load"
 const LOAD_DB = process.argv[2] == "dbinit"
 const DEBUG_MODE = process.argv[2] == "debug"
 const DELETE_SLASH = process.argv[2] == "delete"
 const DELETE_SLASH_ID = process.argv[3]
+const UNDO_APRILFOOLS = process.argv[2] == "afundo"
 
 const banned = BANNED_ROLE;
-
-const config = new Configuration({
-    apiKey: process.env.OPENAI_KEY
-})
-
-const openai = new OpenAIApi(config)
 
 const client = new Client({
     intents: [
@@ -39,7 +35,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildPresences
     ]
 })
 
@@ -144,7 +140,7 @@ if (DELETE_SLASH) {
     logger.info(`Loading slash commands...`)
     rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), {body: commands})
     .then(() => {
-        logger.info(`Successfully reloaded application (/) commands.`)
+        logger.info(`Successfully reloaded ${commands.length} application (/) commands.`)
         process.exit(0)
     })
     .catch((err) => {
@@ -159,6 +155,20 @@ if (DELETE_SLASH) {
             initDB(client)
         }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        if (APRIL_FOOLS_MODE) {
+            logger.info(`April Fools mode is enabled!`);
+            require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);
+        }
+        if (UNDO_APRILFOOLS && !APRIL_FOOLS_MODE) {
+            require("./utils/aprilfools").undoAprilFools(client, client.guilds.cache.get(GUILD_ID));
+        } else if (UNDO_APRILFOOLS && APRIL_FOOLS_MODE) {
+            logger.error(`April fools mode is still enabled! Disable in the config before running this command.`);
+            process.exit(1)
+        }
+        if (CHATBOT_LOCAL) {
+            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
+            runLocalModel();
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -180,7 +190,7 @@ if (DELETE_SLASH) {
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
             return await interaction.member.createDM().then(async dm => {
-                await dm.send(`You are banned from using Meme Cultist. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
+                await dm.send(`You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
             })
         }
         if (interaction.isChatInputCommand()) {
@@ -194,12 +204,12 @@ if (DELETE_SLASH) {
                 }
 
                 if (TESTING_MODE && !interaction.member.roles.cache.has(TESTING_ROLE)){
-                    await interaction.reply({content: `The new Meme Cultist is currently in beta! Contact <@${OWNER_ID}> for access!`, ephemeral: true})
+                    await interaction.reply({content: `The new ${interaction.client.user.username} is currently in beta! Contact <@${OWNER_ID}> for access!`, ephemeral: true})
                     return
                 }
 
                 if (interaction.member.roles.cache.has(banned)){
-                    await interaction.reply({content: "You turned against me. I will not answer to you.", ephemeral: true})
+                    await interaction.reply({content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`, ephemeral: true})
                     return
                 }
             
@@ -289,21 +299,61 @@ if (DELETE_SLASH) {
         logger.error(error.stack);
     });
 
+    client.on(Events.ThreadCreate, async (thread) => {
+        logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}.`);
+        if (thread.parentId === CHATBOT_CHANNEL) {
+            await addNewThreadContext(thread);
+        } 
+    });
+
+    client.on(Events.ThreadDelete, async (thread) => {
+        logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
+        if (thread.parentId === CHATBOT_CHANNEL) {
+            await deleteThreadContext(thread);
+        } 
+    });
+
     client.login(TOKEN)
 
     client.on(Events.MessageCreate, async (message) => {
-        if (message.author.bot) return;
+        // separated so that we can check for bot messages
+        const targetChannel = message.channel;
+        if (targetChannel.isThread()) {
+            if (message.content.startsWith(OOC_PREFIX)) return;
+            const threadMessagesCount = targetChannel.messageCount
+            logger.debug(`Thread has ${threadMessagesCount} messages.`)
+            if ((threadMessagesCount) % PAST_MESSAGES === 0) {
+                logger.debug(`Beginning to summarize thread...`)
+                const validMessages = await getValidMessages(targetChannel, message);
+                await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
+            }
+        }
+    });
 
-        if (LEGACY_COMMANDS.some(cmd => message.content.startsWith(`>${cmd}`))) {
-            const wait = require('util').promisify(setTimeout);
-            let reply;
-            message.channel.sendTyping().then(async () => {
-                reply = await message.reply({content: `This bot is now slash commands only. Please use \`/\` instead of \`>\`.\nDiscord is stupid and forced me at gunpoint to make this change.`, ephemeral: true})
-            })
-            return await wait(15000).then(async () => {
-                await reply.delete()
-                await message.delete()
-            })
-        };
+    client.on(Events.MessageCreate, async (message) => {
+        if (message.author.bot) return
+        if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
+            if (message.member.roles.cache.has(banned)) {
+                logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
+                await message.member.createDM().then(async dm => {
+                    const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
+                    if (isLastMsgBot) {
+                        await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
+                    }
+                })
+                return
+            }
+            if (message.content.startsWith(OOC_PREFIX)) {
+                return;
+            }
+            await handleBotMessage(client, message, OPENAI_API_KEY);
+        } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
+            const randomChance = Math.random();
+            const isMentioned = message.mentions.has(client.user); 
+            if (randomChance < 0.2 || isMentioned) { 
+                logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}. (April Fools)`);
+                await handleBotMessage(client, message, OPENAI_API_KEY); 
+            } 
+        }
     })
 }

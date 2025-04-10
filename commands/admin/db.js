@@ -1,6 +1,6 @@
 const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const { QuickDB } = require("quick.db");
-const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue } = require("../../database");
+const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB } = require("../../database");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("../../utils/logger");
 const wait = require('util').promisify(setTimeout);
@@ -60,17 +60,21 @@ module.exports = {
                 .addUserOption(option =>
                     option.setName('user')
                         .setDescription('The user to reset all data from the database.')
-                        .setRequired(true))),
+                        .setRequired(true)))
+        .addSubcommand (subcommand =>
+            subcommand
+                .setName('cleanup')
+                .setDescription('[ADMIN] Cleanup the database.')),
     async execute(interaction) {
         const subcommand = interaction.options.getSubcommand();
-        const user = interaction.options.getUser('user');
+        const user = interaction.options.getUser('user') || interaction.user;
         const key = interaction.options.getString('key');
         const value = interaction.options.getString('value');
 
         const error_embed = new EmbedBuilder()
-            .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: user.username , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         if (!interaction.member.permissions.has('ADMINISTRATOR')) {
@@ -83,7 +87,7 @@ module.exports = {
             return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }
 
-        interaction.deferReply({ephemeral: true});
+        await interaction.deferReply({ephemeral: true});
         await wait (1000);
         switch (subcommand) {
             case 'add':
@@ -118,6 +122,15 @@ module.exports = {
                 await addNewDBUser(user);
                 await interaction.editReply({content: `Reset database entry for user ${user.username} (${user.id}) to the default.`, ephemeral: true});
                 logger.log(`Reset database entry for user ${user.username} (${user.id}) to the default.`, 'info');
+                break;
+            case 'cleanup':
+                var deleted = await cleanDB(interaction.client) || []; // returns array or empty array
+                if (deleted.length === 0) {
+                    await interaction.editReply({content: `No entries to delete!`, ephemeral: true});
+                    return;
+                }
+                await interaction.editReply({content: `Cleaned up the database. Deleted ${deleted.length} entries.\nDeleted users: ${deleted.map(user => `<@${user.id}>`).join('\n')}`, ephemeral: true});
+                logger.log(`Cleaned up the database.`, 'info');
                 break;
         }
     },

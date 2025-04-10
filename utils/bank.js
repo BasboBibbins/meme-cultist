@@ -66,8 +66,15 @@ module.exports = {
     },
     getCurrentTopUsers: async () => {
         const users = await db.all();
+        logger.debug(`Getting current top users...`);
         for (const user of users) {
+            if (user.value.name == undefined) {
+                await db.delete(user.id);
+                logger.warn(`User ${user.id} has corrupted data, deleting...`);
+                continue;
+            }
             const bank = await db.get(`${user.id}.bank`);
+            logger.debug(`${user.value.name} (${user.id}): ${bank}`);
             user.value.bank = bank;
         }
         const topUsers = users.sort((a, b) => b.value.bank - a.value.bank).slice(0, 10);
@@ -75,12 +82,19 @@ module.exports = {
     },
     getAllTimeTopUsers: async () => {
         const users = await db.all();
+        logger.debug(`Getting all-time top users...`);
         for (const user of users) {
+            if (user.value.name == undefined) {
+                await db.delete(user.id);
+                logger.warn(`User ${user.id} has corrupted data, deleting...`);
+                continue;
+            }
             const largestBank = await db.get(`${user.id}.stats.largestBank`);
             const bank = await db.get(`${user.id}.bank`);
-            if (bank > largestBank) {
+            if (bank > largestBank || !largestBank) {
                 await db.set(`${user.id}.stats.largestBank`, bank);
             }
+            logger.debug(`${user.value.name} (${user.id}): ${largestBank} (largestBank) | ${bank} (bank)`);
             user.value.stats.largestBank = largestBank;
         }
         const topUsers = users.sort((a, b) => b.value.stats.largestBank - a.value.stats.largestBank).slice(0, 10);

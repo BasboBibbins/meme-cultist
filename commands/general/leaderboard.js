@@ -45,7 +45,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setColor(randomHexColor())
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
                     
@@ -59,11 +59,5 @@ module.exports = {
             { name: "All Time Top 10 Banks", value: allTime.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.stats.largestBank} ${CURRENCY_NAME}`).join("\n"), inline: true }
         );
         await interaction.editReply({ embeds: [embed] });
-        await wait(60000).then(async () => {
-            interaction.deleteReply();
-        }).catch((err) => {
-            logger.error(`Failed to delete reply for command ${interaction.commandName}`);
-            logger.error(err);
-        });
     }
 };

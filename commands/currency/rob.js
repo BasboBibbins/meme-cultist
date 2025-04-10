@@ -21,7 +21,7 @@ module.exports = {
         const error_embed = new EmbedBuilder()
             .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         
         if (!dbUser) {
@@ -55,7 +55,7 @@ module.exports = {
                 .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setDescription(`You have already attempted to rob someone recently! You can rob again in **${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s**.`)
                 .setColor(0xFF0000)
-                .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
             return await interaction.reply({ embeds: [embed], ephemeral: true });
         }
@@ -64,7 +64,7 @@ module.exports = {
             .setAuthor({ name: `${user.displayName } is attempting to rob ${victim.displayName }!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setThumbnail(victim.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setTimestamp()
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
         await interaction.deferReply();
 
         logger.debug(`chance > 75: ${chance > 75} | chance: ${chance} | amount: ${amount} | victim: ${victim.displayName } (${victim.id}) | user: ${user.displayName } (${user.id})`)
@@ -81,7 +81,7 @@ module.exports = {
                 .setDescription(`**${user.displayName }** just robbed you of **${amount}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\nBe sure to keep your ${CURRENCY_NAME} safe by depositing it into your bank next time!`)
                 .setColor("#ff0000")
                 .setTimestamp()
-                .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })] });
+                .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })] });
         } else {
             embed.setColor("#ff0000");
             embed.setDescription(`${user.displayName } failed to rob ${victim.displayName }!`);

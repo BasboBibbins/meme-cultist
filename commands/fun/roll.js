@@ -24,7 +24,7 @@ module.exports = {
         .setAuthor({ name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
         .setDescription(`${number > 1 ? `You rolled **${number} ${dice}**-sided dice and got:` : `You rolled a **${dice}**-sided die and got:`}\n**${await roll(dice, number)}**`)
         .setColor(randomHexColor())
-        .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
         await interaction.reply({ embeds: [embed], fetchReply: true});
     },

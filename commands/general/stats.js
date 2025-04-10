@@ -16,8 +16,8 @@ function getFavoriteCommand(type) {
 }
 
 async function getTotalGamesPlayed(gameName, user) {
-    let wins = await db.get(`${user.id}.stats.${gameName}.wins`);
-    let losses = await db.get(`${user.id}.stats.${gameName}.losses`);
+    let wins = await db.get(`${user.id}.stats.${gameName}.wins`) ?? 0;
+    let losses = await db.get(`${user.id}.stats.${gameName}.losses`) ?? 0;
     if (gameName == "blackjack") {
         let ties = await db.get(`${user.id}.stats.${gameName}.ties`);
         return wins + losses + ties;
@@ -30,7 +30,7 @@ async function getTotalGamesPlayed(gameName, user) {
 }
 
 async function getWinPercentage(gameName, user) {
-    let wins = await db.get(`${user.id}.stats.${gameName}.wins`);
+    let wins = await db.get(`${user.id}.stats.${gameName}.wins`) ?? 0;
     let totalGamesPlayed = await getTotalGamesPlayed(gameName, user);
     let percentage = (wins / totalGamesPlayed) * 100 || 0;
     return percentage.toFixed(2);
@@ -135,9 +135,9 @@ async function generateStatsEmbed(page, interaction, user) {
                     { name: "Poker", value: `
                         *Games Played:* **${await getTotalGamesPlayed("poker", user)}**
                         *Win Rate:* **${await getWinPercentage("poker", user)}%**
-                        *Royal Flushes:* **${await db.get(`${user.id}.stats.poker.royals`)}**
-                        *Biggest Win:* **${await db.get(`${user.id}.stats.poker.biggestWin`)}**
-                        *Biggest Loss:* **${await db.get(`${user.id}.stats.poker.biggestLoss`)}**`,
+                        *Royal Flushes:* **${await db.get(`${user.id}.stats.poker.royals` ?? 0)}**
+                        *Biggest Win:* **${await db.get(`${user.id}.stats.poker.biggestWin` ?? 0)}**
+                        *Biggest Loss:* **${await db.get(`${user.id}.stats.poker.biggestLoss` ?? 0)}**`,
                         inline: true
                     },
                 );

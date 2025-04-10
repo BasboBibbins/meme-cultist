@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_RATE } = require('../config.json');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNEL, OOC_PREFIX } = require('../config.json');
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 
 module.exports = {
@@ -115,4 +115,55 @@ module.exports = {
             Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.
             Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.`,
     },
+    chatbot: {
+        name: "Chatbot",
+        description: `
+            Sending a message in <#${CHATBOT_CHANNEL}> will start a conversation with the bot. The bot uses a GPT-like model to generate responses based on the context of the conversation.
+            The bot is designed to have open-ended conversations that are engaging and interactive. You can use it to ask questions, share information, or just chat with the bot.
+            
+            Threads, public or private, can be used in <#${CHATBOT_CHANNEL}> to create a more personalized conversation with the bot.
+            Each thread has it's own context and history, which will update as you interact with the bot in that thread.
+
+            The \`/context\` command provids various features for managing the chatbot within a thread, including viewing, modifying, and resetting the thread context used for generating responses.
+            For more information, type \`/help context\`.
+        `,
+        note: `
+            As this is a ChatGPT-like model, it's important to keep in mind that the bot ***may not always respond as expected or accurately***.
+
+            The bot reacts to any message within <#${CHATBOT_CHANNEL}>, meaning there is no need to mention the bot.
+
+            Responses are generated based on how you communicate with it. Previous messages are used as context, alongside context saved based on your interactions and settings.
+
+            If you want to say something out-of-character that the bot doesn't use or react to, prefix your message with "${OOC_PREFIX}" and the bot will ignore it completely.
+
+            Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions.
+            If you want your thread to be more roleplay-focused, modify the settings tagged **[RP]** when using \`/context set\`.
+
+            The bot may reject or defer your request if it's in violation of **[Deepseek Terms of Use](https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html)**. 
+            There are no explicit rules to using the bot; just keep in mind your request can be rejected if it isn't kosher ;)
+           `,
+        example: `
+            **[Example 1 - Basic Conversation]**
+            Basbo: Hey, how's it going?
+            Chatbot: Hey Basbo! Doing great, thanks for asking. What's up with you?
+            Basbo: Just looking to talk with my best bud 🙂
+            Chatbot: Aw, you're making me smile! Always happy to chat with my best bud Basbo. What's on your mind today? 😊
+
+            **[Example 2 - Question and Answer]**
+            Basbo: Give me your top 5 favorite Minecraft blocks to build with.
+            Chatbot: Sure thing! Here are my top 5 favorite Minecraft blocks to build with:
+            -Stone Brick
+            -Spruce Planks
+            -Andesite
+            -Terracotta
+            -Netherrack
+            Basbo: That's an... interesting list. What's your favorite block to build with?
+            Chatbot: My favorite block to build with is stone brick! It's versatile, easy to farm, and pairs well with other blocks!
+
+            **[Example 3 - Roleplay]**
+            Basbo: You are roleplaying as a woman I have a crush on. I finally worked up the courage to ask you out.
+            Basbo: "Do you think there is something more between us?"
+            Chatbot: "I've been thinking about that too. I like being around you—more than just a friend would. Maybe we've both been waiting for the right moment?"
+        `
+    }
 }

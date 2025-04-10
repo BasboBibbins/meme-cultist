@@ -28,6 +28,6 @@ module.exports = {
         }
         const channel = RIP_CHANNEL || interaction.member.guild.channels.cache.find(ch => ch.name === 'rip');
         await rip(interaction.client, guildMember, prompt);
-        await interaction.reply({ content: `Done! Check the <#${channel}> channel for the message!`, ephemeral: true });
+        await interaction.reply({ content: `Done! Check the ${channel} channel for the message!`, ephemeral: true });
     },
 };

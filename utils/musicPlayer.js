@@ -41,7 +41,7 @@ module.exports = {
         .setDescription(`${desc}\n\n${track.isStream ? `🔴 LIVE` : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ``}`)
         .setThumbnail(track.thumbnail)
         .setColor(randomHexColor())
-        .setFooter({ text: `Meme Cultist | Version ${require('../package.json').version}`, iconURL: client.user.displayAvatarURL({dynamic: true}) })
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../package.json').version}`, iconURL: client.user.displayAvatarURL({dynamic: true}) })
         .setTimestamp();
 
         msg = await channel.send({embeds: [player], components: [row]});

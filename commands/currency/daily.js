@@ -3,6 +3,7 @@ const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.json");
+const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
 module.exports = {
@@ -25,9 +26,9 @@ module.exports = {
             const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
             const embed = new EmbedBuilder()
                 .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${timeLeft.getUTCHours()}h ${timeLeft.getUTCMinutes()}m ${timeLeft.getUTCSeconds()}s**.`)
+                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${await formatTimeLeft(timeLeft)}**.`)
                 .setColor(0xFF0000)
-                .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();
             return await interaction.reply({embeds: [embed]});
         }
@@ -56,7 +57,7 @@ module.exports = {
             .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
             .setDescription(`You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus)}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
             .setColor(0x00FF00)
-            .setFooter({text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+            .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();
         await interaction.reply({embeds: [embed]});
         logger.log(`${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${amount + bonus} (${amount} + ${bonus}) ${CURRENCY_NAME}.`);

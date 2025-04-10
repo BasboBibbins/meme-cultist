@@ -24,7 +24,7 @@ module.exports = {
         const error_embed = new EmbedBuilder()
             .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
-            .setFooter({ text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         if (user.bot) {
@@ -45,7 +45,7 @@ module.exports = {
             .setTimestamp()
             .setFooter( interaction.options.getUser('user') ? 
                 { text: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) } : 
-                { text: `Meme Cultist | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})}
+                { text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})}
             );
         await interaction.reply({embeds: [embed]});
     },
