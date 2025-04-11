@@ -1,9 +1,23 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { randomHexColor } = require('../../utils/randomcolor');
-const { lyricsExtractor } = require('@discord-player/extractor');
+const logger = require('../../utils/logger');
+const { Client: GeniusClient } = require('genius-lyrics');
 
-const lyricsClient = lyricsExtractor(process.env.GENIUS_KEY);
+// Initialize Genius API client
+const genius = new GeniusClient(process.env.GENIUS_API_KEY); // Add your Genius API key to your .env file
 
+function formatLyrics(lyrics) {
+    const lines = lyrics.split('\n');
+    const formattedLyrics = lines.map((line, index) => {
+        if (index === 0 && line.trim() !== '') return;
+        if (line.startsWith('[') && line.endsWith(']')) {
+            return `**${line}**`;
+        } else {
+            return line;
+        }
+    }).join('\n');
+    return formattedLyrics;
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,27 +34,43 @@ module.exports = {
             .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         
-        const currentTrack = require('../../utils/musicPlayer').currentTrack;
+        const player = interaction.client.player;
+        const currentTrack = player.nodes.get(interaction.guild.id)?.currentTrack;
         let song = interaction.options.getString('song');
+
+        // If no song is provided, try to use the current track
         if (!song) {
             if (currentTrack) {
-                song = currentTrack.title.includes(' - ') ? `${currentTrack.title.split(' - ')[1]} ${currentTrack.title.split(' - ')[0]}` : `${currentTrack.title} ${currentTrack.author}`;
+                song = currentTrack.title.includes(' - ') 
+                    ? `${currentTrack.title.split(' - ')[1]} ${currentTrack.title.split(' - ')[0]}` 
+                    : `${currentTrack.title} ${currentTrack.author}`;
             } else {
-                embed.setDescription(`There is no song playing! Please try again when a song is playing, otherwise use \`/lyrics <song>\` to get a song's lyrics.`); 
+                embed.setDescription(`There is no song playing! Please try again when a song is playing, or use \`/lyrics <song>\` to get a song's lyrics.`);
                 return await interaction.editReply({ embeds: [embed] });
             }
         }
 
-        await lyricsClient
-            .search(song)
-            .then(async (x) => {
-                embed.setAuthor({ name: `${x.title} - ${x.artist.name}`, url: x.url, iconURL: x.artist.image || `https://www.google.com/s2/favicons?domain=https://genius.com/` });
-                embed.setDescription(`\`\`\`${x.lyrics}\`\`\``);
-            })
-            .catch(async (err) => {
-                embed.setDescription(`Could not find lyrics for ${song}`);
-            });
+        // Validate the song variable
+        if (!song || typeof song !== 'string' || song.trim() === '') {
+            embed.setDescription(`Invalid song name provided. Please specify a valid song.`);
+            return await interaction.editReply({ embeds: [embed] });
+        }
+
+        try {
+            const searches = await genius.songs.search(song);
+            if (!searches || searches.length === 0) {
+                embed.setDescription(`Could not find lyrics for "${song}".`);
+            } else {
+                const songData = searches[0];
+                const lyrics = await songData.lyrics();
+                embed.setAuthor({ name: `${songData.title} - ${songData.artist.name}`, url: songData.url, iconURL: songData.thumbnail });
+                embed.setDescription(formatLyrics(lyrics));
+            }
+        } catch (err) {
+            embed.setDescription(`Could not find lyrics for "${song}".`);
+            logger.error(`Error when finding lyrics for "${song}":\n${err.stack || err}`);
+        }
+
         await interaction.editReply({ embeds: [embed] });
     },
 };
-
