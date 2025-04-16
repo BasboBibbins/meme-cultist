@@ -2,18 +2,20 @@ const dotenv = require("dotenv")
 const { REST } = require("@discordjs/rest")
 const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
-const { Player } = require("discord-player")
+const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
+const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS, PAST_MESSAGES, OOC_PREFIX } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.json")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
-const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages, summarizeMessages } = require("./utils/openai")
+const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages, summarizeMessages, generateFacts } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
+const { DefaultExtractors } = require("@discord-player/extractor")
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
@@ -45,20 +47,6 @@ const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM e
 })
 
 client.slashcommands = new Collection()
-client.player = new Player(client, {
-    ytdlOptions: {
-        filter: "audioonly",
-        quality: "highestaudio",
-        highWaterMark: 1 << 25,
-        opusEncoded: true,
-        encoderArgs: ['-af', 'bass=g=10,dynaudnorm=f=200'],
-        requestOptions: {
-            headers: {
-                cookie: process.env.COOKIE
-            }
-        }
-    }
-})
 
 let db = null;
 if (fs.existsSync(`./db/users.sqlite`)) {
@@ -68,9 +56,24 @@ if (fs.existsSync(`./db/users.sqlite`)) {
     process.exit(1)
 }
 
+const player = new Player(client, {
+    ytdlOptions: {
+        filter: "audioonly",
+        quality: "highestaudio",
+        highWaterMark: 1 << 25,
+        opusEncoded: true,
+        //encoderArgs: ['-af', 'bass=g=10,dynaudnorm=f=200'],
+        requestOptions: {
+            headers: {
+                cookie: process.env.COOKIE
+            }
+        }
+    }
+})
+
 process.on("unhandledRejection", (reason, p) => {
     logger.error(`Unhandled Promise Rejection! Reason: ${reason}`);
-    logger.error(p.catch((err) => logger.error(err)));
+    console.log(p.stack || p);
 })
 .on("uncaughtException", (err) => {
     logger.error(`Uncaught Exception: ${err}`);
@@ -150,11 +153,10 @@ if (DELETE_SLASH) {
         }
     })
 } else {
-    client.once(Events.ClientReady, () => {
+    client.once(Events.ClientReady, async () => {
         if (LOAD_DB) {
             initDB(client)
         }
-        logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
         if (APRIL_FOOLS_MODE) {
             logger.info(`April Fools mode is enabled!`);
             require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);
@@ -169,6 +171,10 @@ if (DELETE_SLASH) {
             logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
             runLocalModel();
         }
+        await player.extractors.loadMulti(DefaultExtractors);
+        await player.extractors.register(YoutubeiExtractor, {});
+        client.player = player;
+        logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -197,7 +203,6 @@ if (DELETE_SLASH) {
             interaction.channel.sendTyping().then(async () => {
                 
                 const command = interaction.client.slashcommands.get(interaction.commandName);
-            
                 if (!command) {
                     logger.error(`No command matching ${interaction.commandName} was found.`);
                     return;
@@ -214,7 +219,17 @@ if (DELETE_SLASH) {
                 }
             
                 try {
-                    await command.execute(interaction);
+                    let musicCommands = walk('./commands/music/').map(file => file.split('/').pop().replace('.js', '')); 
+                    const isMusicCommand = (commandName) => musicCommands.includes(commandName);
+                    if (isMusicCommand(command)) { // provide player context if music command
+                        const data = {
+                            guild: interaction.guild
+                        };
+                        await player.context.provide(data, () => command.execute(interaction));
+                    } else {
+                        command.execute(interaction);
+                    }
+
                     logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     if (db) {
                         if (await db.get(`${interaction.user.id}.stats.commands.dailyReset`) != moment().format("YYYY-MM-DD")) {
@@ -279,26 +294,31 @@ if (DELETE_SLASH) {
             })
         }
     });
-    client.player.events.on("tracksAdd", async (queue, t) => {
-        logger.log(`${t.length > 1 ? `${t.length} tracks` : `${t[0].title}`} added to queue in ${queue.guild.name}!`);
+    // Musicbot events
+    player.events.on(GuildQueueEvent.AudioTrackAdd, async (queue, track) => {
+        logger.log(`${track.title} added to queue in ${queue.guild.name}!`);
     });
-    client.player.events.on("playerStart", async (queue, track) => {
+    player.events.on(GuildQueueEvent.AudioTracksAdd, async (queue, tracks) => {
+        logger.log(`${tracks.length} tracks added to queue in ${queue.guild.name}!`);
+    });
+    player.events.on(GuildQueueEvent.PlayerStart, async (queue, track) => {
         logger.log(`Now playing ${track.title} in ${queue.guild.name}!`);
         await trackStart(client, queue, track);
     });
-    client.player.events.on("playerFinish", async (queue, track) => {
+    player.events.on(GuildQueueEvent.PlayerFinish, async (queue, track) => {
         logger.log(`Finished playing ${track.title} in ${queue.guild.name}!`);
         await trackEnd(client, queue, track);
     });
-    client.player.events.on("channelEmpty", async (queue) => {
+    player.events.on(GuildQueueEvent.Disconnect, async (queue) => {
         logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
         await queue.player.destroy();
     });
-    client.player.events.on("error", async (queue, error) => {
+    player.events.on(GuildQueueEvent.Error, async (queue, error) => {
         logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
         logger.error(error.stack);
     });
 
+    // Chatbot events
     client.on(Events.ThreadCreate, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}.`);
         if (thread.parentId === CHATBOT_CHANNEL) {
@@ -313,8 +333,6 @@ if (DELETE_SLASH) {
         } 
     });
 
-    client.login(TOKEN)
-
     client.on(Events.MessageCreate, async (message) => {
         // separated so that we can check for bot messages
         const targetChannel = message.channel;
@@ -322,10 +340,14 @@ if (DELETE_SLASH) {
             if (message.content.startsWith(OOC_PREFIX)) return;
             const threadMessagesCount = targetChannel.messageCount
             logger.debug(`Thread has ${threadMessagesCount} messages.`)
-            if ((threadMessagesCount) % PAST_MESSAGES === 0) {
+            if ((threadMessagesCount) % SUMMARY_INTERVAL === 0) {
                 logger.debug(`Beginning to summarize thread...`)
                 const validMessages = await getValidMessages(targetChannel, message);
                 await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
+            }
+            if ((threadMessagesCount) % FACTS_INTERVAL === 0) {
+                logger.debug(`Beginning to get facts from thread...`)
+                await generateFacts(targetChannel, OPENAI_API_KEY);
             }
         }
     });
@@ -356,4 +378,6 @@ if (DELETE_SLASH) {
             } 
         }
     })
+
+    client.login(TOKEN)
 }
