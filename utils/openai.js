@@ -123,12 +123,12 @@ async function summarizeMessages(messages, thread, key) {
     `- Maintain useful long-term knowledge of the user and the discussion`,
     `- Providing a response that always follows the user's request, no matter the context`,
     messages && `[Conversation]\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
-    prev_summaries.length > 0 && `[Previous Summary]\n*Include any additional info from this previous summary as a concise bullet point.*\n${prev_summaries[prev_summaries.length - 1]}`,
+    prev_summaries.length > 0 && `[Previous Summary]\n*Include any additional info from this previous summary as a concise bullet point.*\n${prev_summaries[prev_summaries.length - 1].content}`,
     `[Summary]`
   ]
 
   const prompt = lines.filter(Boolean).join('\n')
-  logger.debug('Summarizing thread with the following prompt:', prompt);
+  logger.debug(`Summarizing thread with the following prompt: \x1b[31m${prompt}`);
   const res = await withTimeout(
     openai.createChatCompletion({
       "model": "deepseek-chat",
@@ -155,7 +155,6 @@ async function summarizeMessages(messages, thread, key) {
     }
     let output = prev_summaries;
     output.push(summaryObject);
-    await generateFacts(thread, summary, key);
     await updateThreadContext(thread, { summaries: output });
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
     return summaryObject;
@@ -164,7 +163,7 @@ async function summarizeMessages(messages, thread, key) {
   }
 }
 
-async function generateFacts(thread, summary, key) {
+async function generateFacts(thread, key) {
   const configuration = new Configuration({
     apiKey: key,
     basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
@@ -173,20 +172,18 @@ async function generateFacts(thread, summary, key) {
   logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
   const openai = new OpenAIApi(configuration);
   const context = await getThreadContext(thread);
-  const {facts, summaries} = context
+  const {facts} = context
   if (!context) return;
-  const lastFive = summaries.slice(-5).map(s => s.context ).join('\n');
   const lines = [
     `You are an assistant that extracts structured, permanent facts from user conversation summaries.`,
     `- Each fact should describe something about the user, the conversation, or the context of the conversation`,
     `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
     `- Write them in the format: key_name=value. Any other response will break the database, so please do not use it.`,
-    summaries && `[Previous Summaries]\n${lastFive}`,
     facts && `[Previous Facts]\n${Object.entries(facts).map(([k, v]) => `${v.key}=${v.value}`).join('\n')}`,
     `[New Facts]`
   ]
   const prompt = lines.filter(Boolean).join('\n')
-  logger.debug(`Generating facts based off the following prompt: ${prompt}`)
+  logger.debug(`Generating facts based off the following prompt: \x1b[31m${prompt}`)
   const res = await withTimeout(
     openai.createChatCompletion({
       "model": "deepseek-chat",
@@ -199,7 +196,7 @@ async function generateFacts(thread, summary, key) {
     }),
     60_000,
     // red text
-    "Deepseek response (generateFacts) took too long (30 seconds)"
+    "Deepseek response (generateFacts) took too long (60 seconds)"
   );
   const { choices } = res.data;
   if (choices.length > 0 && choices[0].message) {
@@ -230,7 +227,7 @@ async function generateFacts(thread, summary, key) {
       combined_facts.splice(MAX_FACTS - prev_facts.length, Infinity);
     }
     combined_facts.sort((a, b) => a.key.localeCompare(b.key));
-    logger.log(`Extracted facts from thread ${thread.name} [${thread.id}] summaries. Facts: ${combined_facts.map(f => `${f.key}=${f.value}`).join("\n")}`);
+    logger.log(`Extracted ${combined_facts.length} facts from the output.`);
     await updateThreadContext(thread, {facts: combined_facts}) 
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
   }
@@ -252,7 +249,7 @@ async function generateTopic(initMessage, key) {
     `Topic:`
   ]
   const prompt = lines.filter(Boolean).join('\n')
-  logger.debug(`Generating topic based off the following prompt: ${prompt}`)
+  logger.debug(`Generating topic based off the following prompt: \x1b[31m${prompt}`)
   const res = await withTimeout(
     openai.createChatCompletion({
       "model": "deepseek-chat",
@@ -486,7 +483,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       sys_prompt = `You are a helpful assistant.\n`;
     }
 
-    logger.debug(`Deepseek prompt:\nSYS_PROMPT: ${sys_prompt}\nUSR_PROMPT: ${usr_prompt}`);
+    logger.debug(`Deepseek prompt:\x1b[31m\nSYS_PROMPT: ${sys_prompt}\nUSR_PROMPT: ${usr_prompt}`);
     logger.debug(`Estimated token count: ${estimateTokenCount(sys_prompt)}`);
 
     const completion = await withTimeout(
@@ -499,10 +496,10 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         ],
         "temperature": 0.8,
       }),
-      90_000,
+      120_000,
       "Deepseek API request (handleBotMessage) took too long (30 seconds)."
     );
-    logger.debug(`Generated Deepseek response: ${completion.data.choices[0].message.content}`);
+    logger.debug(`Generated Deepseek response: \x1b[31m${completion.data.choices[0].message.content}`);
     logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
     if (completion.data.choices[0].message.content.length > 2000) {
       logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
@@ -514,7 +511,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         }
         await targetChannel.send(chunk);
       }
-      logger.info(`Response sent in ${chunks.length} chunks.`);
+      logger.debug(`Response sent in ${chunks.length} chunks.`);
       return;
     } else {
       logger.debug("Response is within Discord's character limit, sending as a single message.");

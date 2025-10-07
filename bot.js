@@ -175,6 +175,9 @@ if (DELETE_SLASH) {
         await player.extractors.register(YoutubeiExtractor, {});
         client.player = player;
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        if (DEBUG_MODE) {
+            logger.info(`DEBUG MODE ENABLED!`);
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -368,6 +371,7 @@ if (DELETE_SLASH) {
             if (message.content.startsWith(OOC_PREFIX)) {
                 return;
             }
+            logger.log(`User ${message.author.username} sent a chatbot message in #${message.channel.name} in ${message.guild.name}`);
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
             const randomChance = Math.random();
