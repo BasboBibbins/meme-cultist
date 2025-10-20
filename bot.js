@@ -15,6 +15,7 @@ const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContex
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
+const rateLimiter = require('./utils/ratelimiter')
 const { DefaultExtractors } = require("@discord-player/extractor")
 
 dotenv.config()
@@ -356,30 +357,35 @@ if (DELETE_SLASH) {
     });
 
     client.on(Events.MessageCreate, async (message) => {
-        if (message.author.bot) return
-        if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
-            if (message.member.roles.cache.has(banned)) {
-                logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
-                await message.member.createDM().then(async dm => {
-                    const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
-                    if (isLastMsgBot) {
-                        await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
-                    }
-                })
-                return
-            }
-            if (message.content.startsWith(OOC_PREFIX)) {
-                return;
-            }
-            logger.log(`User ${message.author.username} sent a chatbot message in #${message.channel.name} in ${message.guild.name}`);
+        if (message.author.bot) return;
+        if (!CHATBOT_ENABLED) {
+            logger.warn(`Chatbot is disabled! Ignoring request...`)
+            return;
+        }
+        if (message.content.startsWith(OOC_PREFIX)) {
+            return;
+        }
+        if (message.member.roles.cache.has(banned)) {
+            logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
+            await message.member.createDM().then(async dm => {
+                const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
+                if (isLastMsgBot) {
+                    await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
+                }
+            })
+            return
+        }
+
+        const { allowed, reason } = rateLimiter.canProceed(message.author.id);
+        if (!allowed) {
+            return message.reply(`⏳ ${reason}`);
+        }
+
+        const isMentioned = message.mentions.has(client.user); 
+        if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && !APRIL_FOOLS_MODE) {
             await handleBotMessage(client, message, OPENAI_API_KEY);
-        } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
-            const randomChance = Math.random();
-            const isMentioned = message.mentions.has(client.user); 
-            if (randomChance < 0.2 || isMentioned) { 
-                logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}. (April Fools)`);
-                await handleBotMessage(client, message, OPENAI_API_KEY); 
-            } 
+        } else if (isMentioned) {
+            await handleBotMessage(client, message, OPENAI_API_KEY);
         }
     })
 

@@ -28,6 +28,10 @@
     "MAX_FACTS": 25,
     "OOC_PREFIX": ">",
 
+    "USER_COOLDOWN": 5,
+    "GLOBAL_LIMIT": 30,
+    "WINDOW_SIZE": 60,
+
     "CURRENCY_NAME": "koku",
     "INTEREST_RATE": 1,
     
