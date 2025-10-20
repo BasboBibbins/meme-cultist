@@ -28,17 +28,22 @@ function isValidMessage(message) {
   );
 }
 
-async function getValidMessages(channel, message) {
+async function getValidMessages(client, channel, message) {
+  const resetPointId = client.contextResetPoints.get(channel.id);
+
   let messages = Array.from(await channel.messages.fetch({
-    limit: PAST_MESSAGES * 10, // to account for unwanted messages
+    limit: PAST_MESSAGES * 10,
     before: message.id
   }));
-  messages = messages.map(m => m[1]);
+
+  messages = messages
+    .map(m => m[1])
+    .filter(m => !resetPointId || BigInt(m.id) > BigInt(resetPointId));
 
   const validMessages = [];
   for (const msg of messages) {
 
-    if (isValidMessage(msg)) {
+    if (isValidMessage(msg)) { 
       validMessages.push(msg);
     }
   }
@@ -345,7 +350,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
   }
 
   const threadContext = await getThreadContext(targetChannel);
-  let validMessages = await getValidMessages(targetChannel, message);
+  let validMessages = await getValidMessages(client, targetChannel, message);
 
   if (!targetChannel) {
     logger.error(`Channel/thread not found: ${channelId || targetChannel.id}`);

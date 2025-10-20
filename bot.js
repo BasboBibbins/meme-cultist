@@ -49,6 +49,9 @@ const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM e
 
 client.slashcommands = new Collection()
 
+global.client = client;
+client.contextResetPoints = new Map();
+
 let db = null;
 if (fs.existsSync(`./db/users.sqlite`)) {
     db = new QuickDB({ filePath: `./db/users.sqlite` })
