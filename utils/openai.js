@@ -178,15 +178,19 @@ async function generateFacts(thread, key) {
   logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
   const openai = new OpenAIApi(configuration);
   const context = await getThreadContext(thread);
-  const {facts} = context
+  const {facts, summaries} = context
   if (!context) return;
+
+  const latestSummary = summaries.length > 0 ? summaries[summaries.length - 1].context : null;
+
   const lines = [
     `You are an assistant that extracts structured, permanent facts from user conversation summaries.`,
     `- Each fact should describe something about the user, the conversation, or the context of the conversation`,
     `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
     `- Write them in the format: key_name=value. Any other response will break the database, so please do not use it.`,
-    facts && `[Previous Facts]\n${Object.entries(facts).map(([k, v]) => `${v.key}=${v.value}`).join('\n')}`,
-    `[New Facts]`
+    latestSummary && `[Latest Conversation Summary]\n${latestSummary}`,
+    facts.length > 0 && `[Previously Known Facts — update or keep these]\n${facts.map(f => `${f.key}=${f.value}`).join('\n')}`,
+    `[New or Updated Facts]`
   ]
   const prompt = lines.filter(Boolean).join('\n')
   logger.debug(`Generating facts based off the following prompt: \x1b[31m${prompt}`)
@@ -365,11 +369,14 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     }
   };
 
+  const now = new Date().toLocaleString('en-US', { timeZone: 'UTC' });
+
   sendTyping();
 
   try {
     let sys_prompt = "";
     let usr_prompt = "";
+    const conversationHistory = [];
     if (!customPrompt && message && client) {
       let messages = Array.from(await targetChannel.messages.fetch({
         limit: PAST_MESSAGES * 10, // to account for invalid messages
@@ -420,7 +427,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
         if (!hasRoleplayData) {
           const lines = [
-            `[Thread: ${name} | Author: ${authorName}]`,
+            `[Thread: ${name} | Author: ${authorName} | Created: ${now} UTC]`,
             topic && `[Topic]\n"${topic}"\n`,
             `Rules:`,
             `- Stick strictly to the topic of the thread.`,
@@ -450,7 +457,16 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           sys_prompt += `\n\n[Known Facts]\n${Object.entries(latestFacts).map(([k, v]) => `${v.key}: ${v.value}`).join('\n')}`
         }
         if (summaries.length > 0) {
-          sys_prompt += `\n\n[Recent Summary]\n${summaries[summaries.length-1].context}`;
+          const lastSummary = summaries[summaries.length - 1];
+          const ageMs = Date.now() - lastSummary.timestamp;
+          const ageMinutes = Math.floor(ageMs / 60000);
+          const ageLabel = ageMinutes < 60 
+            ? `${ageMinutes}m ago` 
+            : ageMinutes < 1440 
+              ? `${Math.floor(ageMinutes / 60)}h ago` 
+              : `${Math.floor(ageMinutes / 1440)}d ago`;
+          
+          sys_prompt += `\n\n[Conversation Summary — from ${ageLabel}]\n${lastSummary.context}`;
         }
       } else if (isMentioned) {
         const lines = [
@@ -501,11 +517,13 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         sys_prompt += `${message.member.displayName} replied to a message from: ${message.mentions.repliedUser !== client.user ? message.mentions.repliedUser.displayName : 'you'}:\n${msgReference.content}\n\n`;
         sys_prompt += `Now, respond to this reply in a fitting way without introduction or quotations:`;
       } else {
-        sys_prompt += messages.length > 0 ? `\n\n[Latest Messages]\n` : ``;
         for (const m of validMessages.reverse()) {
-          sys_prompt += `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}\n`;
+          if (m.member.id === client.user.id) {
+            conversationHistory.push({ role: 'assistant', content: m.content });
+          } else {
+            conversationHistory.push({ role: 'user', content: `${m.member.displayName}: ${m.content}` });
+          }
         }
-        sys_prompt += `\nNow, reply to this message in a fitting way that aligns with the rules:`;
       }
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
     } else if (customPrompt) {
@@ -518,6 +536,10 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     }
 
     logger.debug(`Deepseek prompt:\x1b[31m\nSYS_PROMPT: ${sys_prompt}\nUSR_PROMPT: ${usr_prompt}`);
+    logger.debug(`Conversation history length: ${conversationHistory.length} messages.`);
+    for (const msg of conversationHistory) {
+      logger.debug(`${msg.role.toUpperCase()}: ${msg.content}`);
+    }
     logger.debug(`Estimated token count: ${estimateTokenCount(sys_prompt)}`);
 
     const completion = await withTimeout(
@@ -526,6 +548,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         "messages": [
           { "role": "system", "content": `You are a helpful assistant. You should respond to the user in a way that aligns with the rules and context provided by the system prompt.\n\n` },
           { "role": "system", "content": sys_prompt },
+          ...conversationHistory,
           { "role": "user", "content": usr_prompt },
         ],
         "temperature": 0.9,
