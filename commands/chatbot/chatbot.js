@@ -7,8 +7,8 @@ const logger = require('../../utils/logger.js');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('context')
-    .setDescription(`Allows you to view and manage various chatbot features within threads.`)
-    .addSubcommand(subcommand => 
+    .setDescription(`Allows you to view and manage various chatbot features within channels and threads.`)
+    .addSubcommand(subcommand =>
       subcommand
         .setName('set')
         .setDescription('Modify various settings, including the topic and roleplaying variables.')
@@ -52,12 +52,12 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('get')
-        .setDescription(`View the current thread's context data and variables`)
+        .setDescription(`View the current channel's context data and variables`)
     )
     .addSubcommand(subcommand => 
       subcommand
         .setName('summary')
-        .setDescription('View an AI generated summary of the current thread.')
+        .setDescription('View an AI generated summary of the current channel.')
         .addIntegerOption(option => 
           option.setName('number')
             .setDescription('The number of the summary to view. Default: Latest')
@@ -68,17 +68,17 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('facts')
-        .setDescription('Display a table of all saved facts of the current thread.')
+        .setDescription('Display a table of all saved facts of the current channel.')
     )
     .addSubcommand(subcommand => 
       subcommand
         .setName('reset')
-        .setDescription(`Reset the current thread's context to default.`)
+        .setDescription(`Reset the current channel's context to default.`)
     ),
 
   async execute(interaction) {
     const subcommand = interaction.options.getSubcommand();
-    const thread = interaction.client.channels.cache.get(interaction.channelId)
+    const channel = interaction.client.channels.cache.get(interaction.channelId)
 
     let list; let desc;
     let embed = new EmbedBuilder()
@@ -86,12 +86,7 @@ module.exports = {
     .setTimestamp()
     .setColor(0xFF0000)
     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
-    if (!thread.isThread() || thread.parentId != CHATBOT_CHANNEL) {
-      embed.setDescription('Please run this command in a chatbot thread!');
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-      return;
-    }
-    const threadContext = await getThreadContext(thread);
+    const threadContext = await getThreadContext(channel);
     const { characteristics, personality, preferences, dialog, boundaries } = threadContext.roleplay_options;
     const { topic, summaries, facts } = threadContext;
     switch (subcommand) {
@@ -131,7 +126,7 @@ module.exports = {
           },
           topic: topicValue
         };
-        await updateThreadContext(thread, updatedContext);
+        await updateThreadContext(channel, updatedContext);
         list = [
           characteristicValue != '' && `Characteristics: ${characteristicValue}`,
           personalityValue !== '' && `Personality: ${personalityValue}`,
@@ -159,7 +154,7 @@ module.exports = {
           topic: '',
           facts: [],
         };
-        await updateThreadContext(thread, blankContext);
+        await updateThreadContext(channel, blankContext);
         embed
           .setAuthor({ name: `Chatbot Context Reset`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
           .setDescription(`Successfully reset chatbot context.`)
@@ -169,6 +164,16 @@ module.exports = {
       case 'summary':
         const n = interaction.options.getInteger("number") || summaries.length;
         const chosenSummary = summaries[n-1];
+        if (!chosenSummary) {
+          embed
+          .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setDescription(`No summaries found! Continue chatting with the bot and try again later`)
+          .setColor(0xF9844A);
+          return await interaction.reply({
+            content: `No summaries found! Continue chatting with the bot and try again later`,
+            ephemeral: true,
+          });
+        }
         if (n < 0 || n > summaries.length) {
           embed
           .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
@@ -187,7 +192,7 @@ module.exports = {
         ]
         desc = list.filter(Boolean).join('\n');
         embed
-         .setAuthor({ name: `Chatbot Summary (#${n} of ${summaries.length})`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setAuthor({ name: `Latest Summary`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
          .setDescription(desc)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -203,7 +208,7 @@ module.exports = {
           fields = fields.slice(0, 25);
         }
         embed
-         .setAuthor({ name: `Facts for thread "${thread.name}"`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setAuthor({ name: `Facts for "${channel.name}"`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
          .setFields(fields)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });

@@ -11,7 +11,7 @@ const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BA
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
-const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages, summarizeMessages, generateFacts } = require("./utils/openai")
+const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
@@ -338,25 +338,6 @@ if (DELETE_SLASH) {
         if (thread.parentId === CHATBOT_CHANNEL) {
             await deleteThreadContext(thread);
         } 
-    });
-
-    client.on(Events.MessageCreate, async (message) => {
-        // separated so that we can check for bot messages
-        const targetChannel = message.channel;
-        if (targetChannel.isThread()) {
-            if (message.content.startsWith(OOC_PREFIX)) return;
-            const threadMessagesCount = targetChannel.messageCount
-            logger.debug(`Thread has ${threadMessagesCount} messages.`)
-            if ((threadMessagesCount) % SUMMARY_INTERVAL === 0) {
-                logger.debug(`Beginning to summarize thread...`)
-                const validMessages = await getValidMessages(targetChannel, message);
-                await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
-            }
-            if ((threadMessagesCount) % FACTS_INTERVAL === 0) {
-                logger.debug(`Beginning to get facts from thread...`)
-                await generateFacts(targetChannel, OPENAI_API_KEY);
-            }
-        }
     });
 
     client.on(Events.MessageCreate, async (message) => {
