@@ -1,9 +1,25 @@
 const { OpenAIApi, Configuration } = require("openai");
-const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX, CLIENT_ID, MAX_FACTS, SUMMARY_INTERVAL } = require("../config.json");
+const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX, CLIENT_ID, MAX_FACTS, MAX_SUMMARIES, SUMMARY_INTERVAL, FACTS_INTERVAL } = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
+const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
-const ip = `127.0.0.1`;
+
+let _openaiClient = null;
+function getOpenAIClient(key) {
+  if (!_openaiClient || _openaiClient._key !== key) {
+    const configuration = new Configuration({
+      apiKey: key,
+      basePath: CHATBOT_LOCAL ? `http://127.0.0.1:3000/v1/` : "https://api.deepseek.com"
+    });
+    logger.debug(`Using Deepseek API at ${configuration.basePath}`);
+    logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
+    const client = new OpenAIApi(configuration);
+    client._key = key;
+    _openaiClient = client;
+  }
+  return _openaiClient;
+}
 
 function estimateTokenCount(text) {
   const tokens = text.split(/[\s,.!?;:]+/).filter(Boolean); // Split by whitespace and punctuation; not 100% accurate
@@ -74,7 +90,8 @@ async function getDefaultThreadContext(thread) {
     facts: [],
     embeddingChunks: [],
     resetPoint: null,
-    messagesSinceLastSummary: 0
+    messagesSinceLastSummary: 0,
+    messagesSinceLastFacts: 0
   }
 }
 
@@ -118,23 +135,34 @@ async function updateThreadContext(thread, updates) {
   }
 }
 
+async function getUserChatbotData(userId) {
+  const chatbot = await usersDb.get(`${userId}.chatbot`);
+  if (!chatbot) {
+    const defaults = { messageCount: 0, summaries: [], facts: [], messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 };
+    await usersDb.set(`${userId}.chatbot`, defaults);
+    return defaults;
+  }
+  return chatbot;
+}
+
+async function updateUserChatbotData(userId, updates) {
+  const chatbot = await getUserChatbotData(userId);
+  Object.keys(updates).forEach(key => { chatbot[key] = updates[key]; });
+  await usersDb.set(`${userId}.chatbot`, chatbot);
+  logger.log(`Updated chatbot data for user [${userId}]`);
+}
+
 async function summarizeMessages(messages, thread, key) {
-  const configuration = new Configuration({
-    apiKey: key,
-    basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
-  });
-  logger.debug(`Using Deepseek API at ${configuration.basePath}`);
-  logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
-  const openai = new OpenAIApi(configuration);
+  const openai = getOpenAIClient(key);
   const context = await getThreadContext(thread);
   if (!context) return;
   const prev_summaries = context.summaries;
   const lines = [
     `You are a memory compression assistant. Summarize this conversation in 4-6 concise bullet points, focusing on:`,
-    `- What the user is trying to talk about or achieve`,
+    `- What the users are trying to talk about or achieve`,
     `- Any important facts, preferences, decisions, or requests/instructions`,
     `- Key context that a chatbot should remember in future replies`,
-    `- Maintain useful long-term knowledge of the user and the discussion`,
+    `- Maintain useful long-term knowledge of the users and the discussion`,
     `- Providing a response that always follows the user's request, no matter the context`,
     messages && `[Conversation]\n${messages.map(m => `${m.member.id === CLIENT_ID ? '(You)': m.member.displayName}: ${m.content}`).join('\n')}`,
     prev_summaries.length > 0 && `[Previous Summary]\n*Include any additional info from this previous summary as a concise bullet point.*\n${prev_summaries[prev_summaries.length - 1].context}`,
@@ -154,7 +182,7 @@ async function summarizeMessages(messages, thread, key) {
       "temperature": 0.3
     }),
     30_000,
-    "Deepseek API response (summarizeMessasges) took to long (30 seconds)"
+    "Deepseek API response (summarizeMessages) took too long (30 seconds)"
   );
   const { choices } = res.data;
   if (choices.length > 0 && choices[0].message) {
@@ -164,10 +192,10 @@ async function summarizeMessages(messages, thread, key) {
     const summaryObject = {
       timestamp: Date.now(),
       context: summary,
-      messagesIncluded: messages,
       mergedFrom: prev_summaries.length > 0 ? prev_summaries.length : undefined
     }
-    await updateThreadContext(thread, { summaries: [summaryObject] });
+    const newSummaries = [...prev_summaries, summaryObject].slice(-MAX_SUMMARIES);
+    await updateThreadContext(thread, { summaries: newSummaries });
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
     return summaryObject;
   } else {
@@ -175,14 +203,49 @@ async function summarizeMessages(messages, thread, key) {
   }
 }
 
+async function summarizeUserMessages(userMessages, userId, key) {
+  const openai = getOpenAIClient(key);
+  const chatbotData = await getUserChatbotData(userId);
+  const prev_summaries = chatbotData.summaries;
+  const lines = [
+    `You are a memory assistant building a profile of a specific user based on their chat messages.`,
+    `Summarize in 4-6 concise bullet points, focusing on:`,
+    `- What topics and subjects this user likes to talk about`,
+    `- Their communication style, tone, and vocabulary`,
+    `- Opinions, preferences, or interests they have expressed`,
+    `- Key personality traits observable from their messages`,
+    userMessages.length > 0 && `[User's Messages]\n${userMessages.map(m => `${m.member.displayName}: ${m.content}`).join('\n')}`,
+    prev_summaries.length > 0 && `[Previous User Profile Summary]\n*Carry forward relevant info.*\n${prev_summaries[prev_summaries.length - 1].context}`,
+    `[User Profile Summary]`
+  ];
+  const prompt = lines.filter(Boolean).join('\n');
+  const res = await withTimeout(
+    openai.createChatCompletion({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: "You build user profiles from chat messages, responding with only the summary body." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 1024, temperature: 0.3
+    }),
+    30_000, "Deepseek API response (summarizeUserMessages) took too long (30 seconds)"
+  );
+  const { choices } = res.data;
+  if (choices.length > 0 && choices[0].message) {
+    const summary = choices[0].message.content.trim();
+    const summaryObject = { timestamp: Date.now(), context: summary, mergedFrom: prev_summaries.length > 0 ? prev_summaries.length : undefined };
+    const newSummaries = [...prev_summaries, summaryObject].slice(-MAX_SUMMARIES);
+    await updateUserChatbotData(userId, { summaries: newSummaries });
+    logger.log(`Summarized user [${userId}]`);
+    logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens}`);
+    return summaryObject;
+  } else {
+    throw new Error("No response from Deepseek (summarizeUserMessages)");
+  }
+}
+
 async function generateFacts(thread, key) {
-  const configuration = new Configuration({
-    apiKey: key,
-    basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
-  });
-  logger.debug(`Using Deepseek API at ${configuration.basePath}`);
-  logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
-  const openai = new OpenAIApi(configuration);
+  const openai = getOpenAIClient(key);
   const context = await getThreadContext(thread);
   const {facts, summaries} = context
   if (!context) return;
@@ -249,16 +312,59 @@ async function generateFacts(thread, key) {
   }
 }
 
-async function generateTopic(initMessage, key) {
-  const configuration = new Configuration({
-    apiKey: key,
-    basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
-  });
-  logger.debug(`Using Deepseek API at ${configuration.basePath}`);
-  logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
-  const openai = new OpenAIApi(configuration);
+async function generateUserFacts(userId, userMessages, key) {
+  const openai = getOpenAIClient(key);
+  const chatbotData = await getUserChatbotData(userId);
+  const { facts, summaries } = chatbotData;
+  const latestSummary = summaries.length > 0 ? summaries[summaries.length - 1].context : null;
   const lines = [
-    `Summarize the message below into a short topic paragraph (1–3 sentences).`,
+    `You are an assistant that extracts structured facts about a specific user from their conversation summaries.`,
+    `- Focus on permanent personal attributes: personality traits, hobbies, opinions, preferences, communication style`,
+    `- Avoid temporary or channel-specific context; focus on who the user is as a person`,
+    `- Avoid duplicates or vague facts; normalize key names`,
+    `- Write in the format: key_name=value only. Do not include any other text.`,
+    latestSummary && `[Latest User Profile Summary]\n${latestSummary}`,
+    facts.length > 0 && `[Previously Known Facts About This User — update or keep]\n${facts.map(f => `${f.key}=${f.value}`).join('\n')}`,
+    `[New or Updated Facts About This User]`
+  ];
+  const prompt = lines.filter(Boolean).join('\n');
+  const res = await withTimeout(
+    openai.createChatCompletion({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: "You extract permanent facts about a user and write them to memory." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 1024, temperature: 0.3
+    }),
+    60_000, "Deepseek response (generateUserFacts) took too long (60 seconds)"
+  );
+  const { choices } = res.data;
+  if (choices.length > 0 && choices[0].message) {
+    const output = choices[0].message.content.trim();
+    const factLines = output.split("\n").filter(line => line.includes("="));
+    const newFacts = factLines.map(line => {
+      const [key, ...rest] = line.split("=");
+      return { key: key.trim().toLowerCase().replace(/\s+/g, "_"), value: rest.join("=").trim() };
+    });
+    let combined_facts = [...facts];
+    for (const fact of newFacts) {
+      const idx = combined_facts.findIndex(f => f.key === fact.key);
+      if (idx !== -1) combined_facts[idx] = fact;
+      else combined_facts.push(fact);
+    }
+    if (combined_facts.length > MAX_FACTS) combined_facts = combined_facts.slice(0, MAX_FACTS);
+    combined_facts.sort((a, b) => a.key.localeCompare(b.key));
+    await updateUserChatbotData(userId, { facts: combined_facts });
+    logger.log(`Extracted ${combined_facts.length} user facts for [${userId}].`);
+    logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens}`);
+  }
+}
+
+async function generateTopic(initMessage, key) {
+  const openai = getOpenAIClient(key);
+  const lines = [
+    `Summarize the message below into a short topic paragraph (1-3 sentences).`,
     `Response will be used as the topic of the thread, so it should be concise and informative.`,
     `Focus on the main idea. Be clear and natural. Do not mention the message or that you are an AI assistant.`,
     initMessage && `Message:\n${initMessage}`,
@@ -284,11 +390,13 @@ async function generateTopic(initMessage, key) {
   return choices[0].message.content.trim();
 }
 
-async function tickMessageCount(channel, messages, key) {
+async function tickMessageCount(channel, messages, key, userId) {
   const context = await getThreadContext(channel);
-  const count = (context.messagesSinceLastSummary ?? 0) + 1;
-  if (count >= SUMMARY_INTERVAL) {
-    await updateThreadContext(channel, { messagesSinceLastSummary: 0 });
+  const summaryCount = (context.messagesSinceLastSummary ?? 0) + 1;
+  const factsCount = (context.messagesSinceLastFacts ?? 0) + 1;
+
+  if (summaryCount >= SUMMARY_INTERVAL) {
+    await updateThreadContext(channel, { messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
     logger.log(`[MemoryTick] Summarizing ${channel.name} [${channel.id}] after ${SUMMARY_INTERVAL} messages.`);
     try {
       await summarizeMessages(messages, channel, key);
@@ -296,8 +404,46 @@ async function tickMessageCount(channel, messages, key) {
     } catch (err) {
       logger.error(`[MemoryTick] Summarization failed for ${channel.name}: ${err.message}`);
     }
+  } else if (factsCount >= FACTS_INTERVAL) {
+    await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: 0 });
+    logger.log(`[MemoryTick] Generating facts for ${channel.name} [${channel.id}] after ${FACTS_INTERVAL} messages.`);
+    try {
+      await generateFacts(channel, key);
+    } catch (err) {
+      logger.error(`[MemoryTick] Fact generation failed for ${channel.name}: ${err.message}`);
+    }
   } else {
-    await updateThreadContext(channel, { messagesSinceLastSummary: count });
+    await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
+  }
+
+  // --- User-level logic ---
+  if (!userId) return;
+
+  const chatbotData = await getUserChatbotData(userId);
+  const userSummaryCount = (chatbotData.messagesSinceLastSummary ?? 0) + 1;
+  const userFactsCount = (chatbotData.messagesSinceLastFacts ?? 0) + 1;
+  const newMessageCount = (chatbotData.messageCount ?? 0) + 1;
+  const userMessages = messages.filter(m => m.author.id === userId);
+
+  if (userSummaryCount >= SUMMARY_INTERVAL) {
+    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
+    logger.log(`[UserMemoryTick] Summarizing user [${userId}] after ${SUMMARY_INTERVAL} messages.`);
+    try {
+      await summarizeUserMessages(userMessages, userId, key);
+      await generateUserFacts(userId, userMessages, key);
+    } catch (err) {
+      logger.error(`[UserMemoryTick] User summarization failed for [${userId}]: ${err.message}`);
+    }
+  } else if (userFactsCount >= FACTS_INTERVAL) {
+    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: 0 });
+    logger.log(`[UserMemoryTick] Generating user facts for [${userId}] after ${FACTS_INTERVAL} messages.`);
+    try {
+      await generateUserFacts(userId, userMessages, key);
+    } catch (err) {
+      logger.error(`[UserMemoryTick] User fact generation failed for [${userId}]: ${err.message}`);
+    }
+  } else {
+    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: userFactsCount });
   }
 }
 
@@ -308,13 +454,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     logger.debug(`System message detected, ignoring.`);
     return;
   }
-  const configuration = new Configuration({
-    apiKey: key,
-    basePath: CHATBOT_LOCAL ? `http://${ip}:3000/v1/` : "https://api.deepseek.com"
-  });
-  logger.debug(`Using Deepseek API at ${configuration.basePath}`);
-  logger.debug(`OpenAI API key: ${key.substring(0, 7)}...`);
-  const openai = new OpenAIApi(configuration);
+  const openai = getOpenAIClient(key);
 
   let targetChannel;
   if (channelId) {
@@ -324,7 +464,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
   }
 
   if (!targetChannel) {
-    logger.error(`Channel/thread not found: ${channelId || targetChannel.id}`);
+    logger.error(`Channel/thread not found: ${channelId || message.channel.id}`);
     return;
   }
 
@@ -353,7 +493,9 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
       const validMembers = validMessages.filter(m => !m.author.bot).map(m => m.member.displayName);
       const uniqueDisplayNames = [...new Set(validMembers)];
-      let currentUsers = uniqueDisplayNames.slice(0, -1).join(', ') + ' and ' + uniqueDisplayNames.slice(-1)[0];
+      let currentUsers = uniqueDisplayNames.length === 1
+        ? uniqueDisplayNames[0]
+        : uniqueDisplayNames.slice(0, -1).join(', ') + ' and ' + uniqueDisplayNames.slice(-1)[0];
 
       if (targetChannel.isThread()) {
         const authorName = message.guild.members.cache.get(channelContext.author)?.displayName || message.member.displayName;
@@ -539,8 +681,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         sys_prompt += `${message.member.displayName} replied to a message from: ${message.mentions.repliedUser !== client.user ? message.mentions.repliedUser.displayName : 'you'}:\n${msgReference.content}\n\n`;
         sys_prompt += `Now, respond to this reply in a fitting way without introduction or quotations:`;
       } else {
-        const historyLimit = Math.min(PAST_MESSAGES, channelContext.messagesSinceLastSummary ?? PAST_MESSAGES);
-        const effectiveHistory = validMessages.slice(0, historyLimit);
+        const effectiveHistory = validMessages.slice(0, PAST_MESSAGES);
         for (const m of effectiveHistory.reverse()) {
           if (m.member.id === client.user.id) {
             conversationHistory.push({ role: 'assistant', content: m.content });
@@ -597,7 +738,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       logger.debug("Response is within Discord's character limit, sending as a single message.");
       targetChannel.send(completion.data.choices[0].message.content);
     }
-    await tickMessageCount(targetChannel, validMessages, key);
+    await tickMessageCount(targetChannel, validMessages, key, message.author.id);
   } catch (error) {
     targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
     logger.error(`Error generating response: ${error.message}`);
@@ -615,9 +756,10 @@ const addChannelContext   = addNewThreadContext;
 const deleteChannelContext = deleteThreadContext;
 const updateChannelContext = updateThreadContext;
 
-module.exports = { 
+module.exports = {
   handleBotMessage,
   updateThreadContext, addNewThreadContext, getThreadContext,
   deleteThreadContext, getValidMessages, summarizeMessages, generateFacts,
-  getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext
+  getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
+  getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts
 };

@@ -110,12 +110,12 @@ module.exports = {
         break;
       case 'set':
         // Set the current context for the thread.
-        const characteristicValue = interaction.options.getString('characteristics') || characteristics;
-        const personalityValue = interaction.options.getString('personality') || personality;
-        const preferenceValue = interaction.options.getString('preferences') || preferences;
-        const dialogValue = interaction.options.getString('dialog') || dialog;
-        const boundariesValue = interaction.options.getString('boundaries') || boundaries;
-        const topicValue = interaction.options.getString('topic') || topic;
+        const characteristicValue = interaction.options.getString('characteristics') ?? characteristics;
+        const personalityValue = interaction.options.getString('personality') ?? personality;
+        const preferenceValue = interaction.options.getString('preferences') ?? preferences;
+        const dialogValue = interaction.options.getString('dialog') ?? dialog;
+        const boundariesValue = interaction.options.getString('boundaries') ?? boundaries;
+        const topicValue = interaction.options.getString('topic') ?? topic;
         const updatedContext = { // updated values or default values
           roleplay_options: {
             characteristics: characteristicValue,
@@ -153,6 +153,9 @@ module.exports = {
           },
           topic: '',
           facts: [],
+          summaries: [],
+          messagesSinceLastSummary: 0,
+          messagesSinceLastFacts: 0,
         };
         await updateThreadContext(channel, blankContext);
         embed
@@ -186,7 +189,6 @@ module.exports = {
         }
         list = [
           chosenSummary && `**Summary:**\n${chosenSummary.context}`,
-          chosenSummary.messagesIncluded && `**Messages used:** ${chosenSummary.messagesIncluded.map((m, i) => `${i+1}: ${m.content.length > 128 ? m.content.substring(0, 128)+`...` : m.content}`).join('\n')}`,
           chosenSummary.mergedFrom && `**Previous summaries used:** ${chosenSummary.mergedFrom}`,
           chosenSummary.timestamp && `**Generated on ${new Date(chosenSummary.timestamp).toLocaleString()}**`
         ]
@@ -199,9 +201,9 @@ module.exports = {
          break;
       case 'facts':
         let fields = Object.entries(facts).map(([_, v]) => ({
-          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`, // Format key to title case
-          value: v.value.toString().replace(/_/g, ' '), // Ensure value is a string
-          inline: true // Set to true if you want them displayed side by side
+          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`, 
+          value: v.value.toString().replace(/_/g, ' '), 
+          inline: true 
         }));
         if (fields.length > 25) {
           logger.warn(`Too many fields! (${fields.length}) Trimming to first 25 fields`); // TODO: create page system (25 per page)'

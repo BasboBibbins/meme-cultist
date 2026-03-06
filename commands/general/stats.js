@@ -3,6 +3,7 @@ const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { CURRENCY_NAME } = require("../../config.json");
 const { addNewDBUser } = require("../../database");
+const { getUserChatbotData } = require('../../utils/openai');
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 
@@ -49,7 +50,7 @@ async function generateStatsEmbed(page, interaction, user) {
     if (user !== interaction.user) {
         embed.setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
     }
-    embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+    embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/5`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
     switch (page) {
         case 1:
             // General Stats
@@ -143,6 +144,22 @@ async function generateStatsEmbed(page, interaction, user) {
                 );
             }
             break;
+        case 5:
+            embed.setTitle(`${user.displayName}'s Chatbot Stats`);
+            const chatbotData = await getUserChatbotData(user.id);
+            const latestUserSummary = chatbotData.summaries.length > 0
+                ? chatbotData.summaries[chatbotData.summaries.length - 1].context
+                : 'No summary generated yet. Keep chatting!';
+            const userFactsText = chatbotData.facts.length > 0
+                ? chatbotData.facts.map(f => `**${f.key.replace(/_/g, ' ')}:** ${f.value}`).join('\n')
+                : 'No facts recorded yet. Keep chatting!';
+            embed.setFields(
+                { name: "Messages Processed", value: `${chatbotData.messageCount}`, inline: true },
+                { name: "\u200b", value: "\u200b", inline: false },
+                { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
+                { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
+            );
+            break;
     }
     return embed;
 }
@@ -211,7 +228,7 @@ module.exports = {
                 i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
             } else if (i.customId === 'next') {
                 page++;
-                if (page === 4) {
+                if (page === 5) {
                     row.components[1].setDisabled(true);
                 }
                 row.components[0].setDisabled(false);

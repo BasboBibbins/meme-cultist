@@ -62,6 +62,13 @@ async function getDefaultDB(user) {
             "largestBalance": 0,
             "largestBank": 0,
         },
+        "chatbot": {
+            messageCount: 0,
+            summaries: [],
+            facts: [],
+            messagesSinceLastSummary: 0,
+            messagesSinceLastFacts: 0,
+        },
     }
 }
 module.exports = {

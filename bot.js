@@ -11,7 +11,7 @@ const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BA
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
-const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
+const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
@@ -172,8 +172,7 @@ if (DELETE_SLASH) {
             process.exit(1)
         }
         if (CHATBOT_LOCAL) {
-            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
-            runLocalModel();
+            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`);
         }
         await player.extractors.loadMulti(DefaultExtractors);
         await player.extractors.register(YoutubeiExtractor, {});
@@ -335,9 +334,10 @@ if (DELETE_SLASH) {
 
     client.on(Events.ThreadDelete, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
+        client.contextResetPoints.delete(thread.id);
         if (thread.parentId === CHATBOT_CHANNEL) {
             await deleteThreadContext(thread);
-        } 
+        }
     });
 
     client.on(Events.MessageCreate, async (message) => {
