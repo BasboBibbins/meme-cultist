@@ -68,6 +68,7 @@ async function getDefaultDB(user) {
             facts: [],
             messagesSinceLastSummary: 0,
             messagesSinceLastFacts: 0,
+            incognitoMode: false,
         },
     }
 }

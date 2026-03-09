@@ -154,7 +154,7 @@ async function generateStatsEmbed(page, interaction, user) {
                 ? chatbotData.facts.map(f => `**${f.key.replace(/_/g, ' ')}:** ${f.value}`).join('\n')
                 : 'No facts recorded yet. Keep chatting!';
             embed.setFields(
-                { name: "Messages Processed", value: `${chatbotData.messageCount}`, inline: true },
+                { name: "Messages sent to chatbot", value: `${chatbotData.messageCount}`, inline: true },
                 { name: "\u200b", value: "\u200b", inline: false },
                 { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
                 { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },

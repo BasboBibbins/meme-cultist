@@ -22,8 +22,29 @@ function getOpenAIClient(key) {
 }
 
 function estimateTokenCount(text) {
-  const tokens = text.split(/[\s,.!?;:]+/).filter(Boolean); // Split by whitespace and punctuation; not 100% accurate
-  return tokens.length;
+  if (!text) return 0;
+  // CJK characters tokenize at ~1 char/token
+  const cjk = (text.match(/[一-龥\u3040-\u30FF\uAC00-\uD7AF]/g) ?? []).length;
+  // Numbers are isolated in groups of 1-3 digits by DeepSeek's pre-tokenizer
+  const digits = (text.match(/\p{N}{1,3}/gu) ?? []).length;
+  // Remaining text (latin, punctuation, spaces) averages ~3.5 chars/token
+  const remaining = text.length - cjk - (text.match(/\p{N}/gu) ?? []).length;
+  return Math.ceil(cjk + digits + remaining / 3.5);
+}
+
+function estimateCost(apiResponse) {
+  // Cost breakdown based on Deepseek's pricing: https://api-docs.deepseek.com/quick_start/pricing/
+  // 1M INPUT TOKENS (CACHE HIT): $0.028
+  // 1M INPUT TOKENS (CACHE MISS): $0.28
+  // 1M OUTPUT TOKENS: $0.42
+  const usage = apiResponse.usage || {};
+  const promptTokens = usage.prompt_tokens || 0;
+  const promptTokensHit = usage.prompt_tokens_hit_tokens || 0;
+  const promptTokensMissed = usage.prompt_tokens_missed_tokens || 0;
+  const completionTokens = usage.completion_tokens || 0;
+  const cost = (promptTokensHit * 0.028 + promptTokensMissed * 0.28 + completionTokens * 0.42) / 1_000_000;
+  const costPerToken = cost / promptTokens || 0;
+  return cost.toFixed(6);
 }
 
 function withTimeout(promise, ms, err = "Request timed out") {
@@ -138,7 +159,7 @@ async function updateThreadContext(thread, updates) {
 async function getUserChatbotData(userId) {
   const chatbot = await usersDb.get(`${userId}.chatbot`);
   if (!chatbot) {
-    const defaults = { messageCount: 0, summaries: [], facts: [], messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 };
+    const defaults = { messageCount: 0, summaries: [], facts: [], messagesSinceLastSummary: 0, messagesSinceLastFacts: 0, incognitoMode: false };
     await usersDb.set(`${userId}.chatbot`, defaults);
     return defaults;
   }
@@ -147,9 +168,13 @@ async function getUserChatbotData(userId) {
 
 async function updateUserChatbotData(userId, updates) {
   const chatbot = await getUserChatbotData(userId);
-  Object.keys(updates).forEach(key => { chatbot[key] = updates[key]; });
-  await usersDb.set(`${userId}.chatbot`, chatbot);
-  logger.log(`Updated chatbot data for user [${userId}]`);
+  if (!chatbot.incognitoMode) {
+    Object.keys(updates).forEach(key => { chatbot[key] = updates[key]; });
+    await usersDb.set(`${userId}.chatbot`, chatbot);
+    logger.log(`Updated chatbot data for user [${userId}]`);
+  } else {
+    logger.debug(`User [${userId}] is in incognito mode; skipping chatbot data update.`);
+  }
 }
 
 async function summarizeMessages(messages, thread, key) {
@@ -333,6 +358,7 @@ async function generateUserFacts(userId, userMessages, key) {
       model: "deepseek-chat",
       messages: [
         { role: "system", content: "You extract permanent facts about a user and write them to memory." },
+        ...userMessages.length > 0 ? [{ role: "system", content: `User's recent messages:\n${userMessages.map(m => `${m.member.displayName}: ${m.content}`).join('\n')}` }] : [],
         { role: "user", content: prompt }
       ],
       max_tokens: 1024, temperature: 0.3
@@ -416,34 +442,35 @@ async function tickMessageCount(channel, messages, key, userId) {
     await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
   }
 
-  // --- User-level logic ---
-  if (!userId) return;
+  if (!channel.isThread()){ // don't collect user facts for threads, only main channels
+    if (!userId) return;
 
-  const chatbotData = await getUserChatbotData(userId);
-  const userSummaryCount = (chatbotData.messagesSinceLastSummary ?? 0) + 1;
-  const userFactsCount = (chatbotData.messagesSinceLastFacts ?? 0) + 1;
-  const newMessageCount = (chatbotData.messageCount ?? 0) + 1;
-  const userMessages = messages.filter(m => m.author.id === userId);
+    const chatbotData = await getUserChatbotData(userId);
+    const userSummaryCount = (chatbotData.messagesSinceLastSummary ?? 0) + 1;
+    const userFactsCount = (chatbotData.messagesSinceLastFacts ?? 0) + 1;
+    const newMessageCount = (chatbotData.messageCount ?? 0) + 1;
+    const userMessages = messages.filter(m => m.author.id === userId);
 
-  if (userSummaryCount >= SUMMARY_INTERVAL) {
-    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
-    logger.log(`[UserMemoryTick] Summarizing user [${userId}] after ${SUMMARY_INTERVAL} messages.`);
-    try {
-      await summarizeUserMessages(userMessages, userId, key);
-      await generateUserFacts(userId, userMessages, key);
-    } catch (err) {
-      logger.error(`[UserMemoryTick] User summarization failed for [${userId}]: ${err.message}`);
+    if (userSummaryCount >= SUMMARY_INTERVAL) {
+      await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
+      logger.log(`[UserMemoryTick] Summarizing user [${userId}] after ${SUMMARY_INTERVAL} messages.`);
+      try {
+        await summarizeUserMessages(userMessages, userId, key);
+        await generateUserFacts(userId, userMessages, key);
+      } catch (err) {
+        logger.error(`[UserMemoryTick] User summarization failed for [${userId}]: ${err.message}`);
+      }
+    } else if (userFactsCount >= FACTS_INTERVAL) {
+      await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: 0 });
+      logger.log(`[UserMemoryTick] Generating user facts for [${userId}] after ${FACTS_INTERVAL} messages.`);
+      try {
+        await generateUserFacts(userId, userMessages, key);
+      } catch (err) {
+        logger.error(`[UserMemoryTick] User fact generation failed for [${userId}]: ${err.message}`);
+      }
+    } else {
+      await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: userFactsCount });
     }
-  } else if (userFactsCount >= FACTS_INTERVAL) {
-    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: 0 });
-    logger.log(`[UserMemoryTick] Generating user facts for [${userId}] after ${FACTS_INTERVAL} messages.`);
-    try {
-      await generateUserFacts(userId, userMessages, key);
-    } catch (err) {
-      logger.error(`[UserMemoryTick] User fact generation failed for [${userId}]: ${err.message}`);
-    }
-  } else {
-    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: userFactsCount });
   }
 }
 
@@ -560,7 +587,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         }
         if (facts.length > 0) {
           let latestFacts = facts
-          sys_prompt += `\n\n[Known Facts]\n${Object.entries(latestFacts).map(([k, v]) => `${v.key}: ${v.value}`).join('\n')}`
+          sys_prompt += `\n\n[Known Channel Facts]\n${Object.entries(latestFacts).map(([k, v]) => `${v.key}: ${v.value}`).join('\n')}`
         }
         if (summaries.length > 0) {
           const lastSummary = summaries[summaries.length - 1];
@@ -617,7 +644,9 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           const lines = [
             `You are ${client.user.displayName}, a helpful AI assistant for a chatroom called ${message.guild.name}.`,
             `Current time: ${now} UTC.`,
+            validMembers.length > 0 && `Current users in this channel: ${currentUsers}\n`,
             channelContext.topic && `\n[Channel Topic]\n${channelContext.topic}\n`,
+            `[Prompt Guidelines]`,
             `\nOBJECTIVES:`,
             `- Answer user questions accurately and briefly.`,
             `- Adapt tone/format/language to fit the request of the user. Match user's tone/format/language if unspecified.`,
@@ -639,7 +668,9 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           const lines = [
             `You are ${client.user.displayName}, an AI assistant in a Discord server called ${message.guild.name}.`,
             `Current time: ${now} UTC.`,
+            validMembers.length > 0 && `Current users in this channel: ${currentUsers}\n`,
             channelContext.topic && `\n[Channel Topic]\n${channelContext.topic}\n`,
+            `[Prompt Guidelines]`,
             `\nOBJECTIVES:`,
             `In this chat, users have open-ended conversations. Your goal is to engage in conversation while keeping responses natural and flowing.`,
             `\nBEHAVIOR:`,
@@ -658,9 +689,6 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           ]
           sys_prompt = lines.join('\n');
         }
-        if (facts.length > 0) {
-          sys_prompt += `\n\n[Known Facts About This Channel & Users]\n${facts.map(f => `${f.key}: ${f.value}`).join('\n')}`;
-        }
         if (summaries.length > 0) {
           const lastSummary = summaries[summaries.length - 1];
           const ageMs = Date.now() - lastSummary.timestamp;
@@ -673,8 +701,19 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           sys_prompt += `\n\n[Recent Channel Summary — ${ageLabel}]\n${lastSummary.context}`;
         }
       }
-      if (validMembers.length > 1) {
-        sys_prompt += `\n[Conversation Members]\n${currentUsers}`
+      const userChatbotData = await getUserChatbotData(message.author.id);
+      const userFactsCount = userChatbotData.facts.length;
+      if (userFactsCount && userChatbotData.summaries.length > 0) {
+        const latestUserSummary = userChatbotData.summaries.length > 0 ? userChatbotData.summaries[userChatbotData.summaries.length - 1].context : null;
+        const latestUserFacts = userChatbotData.facts;
+        logger.debug(`Latest user summary: ${latestUserSummary}`);
+        logger.debug(`Latest user facts: ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join('; ')}`);
+        if (latestUserSummary) {
+          sys_prompt += `\n\n[Summary of ${message.member.displayName}]\n${latestUserSummary}`;
+        }
+        if (latestUserFacts.length > 0) {
+          sys_prompt += `\n\n[Known Facts About ${message.member.displayName}]\n${latestUserFacts.map(f => `${f.key}: ${f.value}`).join('\n')}`;
+        }
       }
       if (isReply) {
         const msgReference = await targetChannel.messages.fetch(message.reference.messageId);
@@ -683,6 +722,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       } else {
         const effectiveHistory = validMessages.slice(0, PAST_MESSAGES);
         for (const m of effectiveHistory.reverse()) {
+          logger.debug(` ${m.member.displayName}: ${m.content}`);
           if (m.member.id === client.user.id) {
             conversationHistory.push({ role: 'assistant', content: m.content });
           } else {
@@ -700,13 +740,18 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       sys_prompt = `You are a helpful assistant.\n`;
     }
 
-    logger.debug(`Deepseek prompt:\x1b[31m\nSYS_PROMPT: ${sys_prompt}\nUSR_PROMPT: ${usr_prompt}`);
     logger.debug(`Conversation history length: ${conversationHistory.length} messages.`);
     for (const msg of conversationHistory) {
       logger.debug(`${msg.role.toUpperCase()}: ${msg.content}`);
     }
-    logger.debug(`Estimated token count: ${estimateTokenCount(sys_prompt)}`);
+    const fullPrompt = [
+      { role: "system", content: sys_prompt },
+      ...conversationHistory,
+      { role: "user", content: usr_prompt }
+    ].map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 
+    logger.debug(`Full prompt sent to Deepseek:\x1b[31m${fullPrompt}`);
+    logger.debug(`Estimated token count: ${estimateTokenCount(fullPrompt)} tokens`);
     const completion = await withTimeout(
       openai.createChatCompletion({
         "model": "deepseek-chat",
@@ -721,7 +766,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       "Deepseek API request (handleBotMessage) took too long (30 seconds)."
     );
     logger.debug(`Generated Deepseek response: \x1b[31m${completion.data.choices[0].message.content}`);
-    logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
+    logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} (HIT: ${completion.data.usage.prompt_cache_hit_tokens} | MISS: ${completion.data.usage.prompt_cache_miss_tokens})  | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
+    logger.debug(`Estimated Cost: \x1b[33m$${estimateCost(completion.data)}`);
     if (completion.data.choices[0].message.content.length > 2000) {
       logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
       const response = completion.data.choices[0].message.content;
