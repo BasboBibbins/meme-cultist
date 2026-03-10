@@ -69,6 +69,7 @@ async function getDefaultDB(user) {
             messagesSinceLastSummary: 0,
             messagesSinceLastFacts: 0,
             incognitoMode: false,
+            incognitoChannels: [],
         },
     }
 }

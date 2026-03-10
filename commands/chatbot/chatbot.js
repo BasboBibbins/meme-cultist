@@ -99,7 +99,9 @@ module.exports = {
           boundaries != '' && `**Boundaries:** ${boundaries}`,
           topic != '' && `**Topic:** ${topic}`,
           summaries.length > 0 && `**Summaries:** ${summaries.length}`,
-          facts && `**Facts:** ${facts.length}`
+          facts && `**Facts:** ${facts.length}`,
+          summaries.length > 0 && `**Last Summary At:** ${new Date(summaries[summaries.length - 1].timestamp).toLocaleString()}`,
+          facts && facts.length > 0 && facts[0].updatedAt && `**Last Facts Update:** ${new Date(facts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0].updatedAt).toLocaleString()}`
         ]
         desc = list.filter(Boolean).join('\n')
         embed 

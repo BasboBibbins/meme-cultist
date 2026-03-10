@@ -1,5 +1,19 @@
 const { OpenAIApi, Configuration } = require("openai");
-const { PAST_MESSAGES, CHATBOT_LOCAL, BANNED_ROLE, OOC_PREFIX, CLIENT_ID, MAX_FACTS, MAX_SUMMARIES, SUMMARY_INTERVAL, FACTS_INTERVAL } = require("../config.json");
+const {
+  PAST_MESSAGES,
+  CHATBOT_LOCAL,
+  BANNED_ROLE,
+  OOC_PREFIX,
+  CLIENT_ID,
+  MAX_FACTS,
+  MAX_SUMMARIES,
+  SUMMARY_INTERVAL,
+  FACTS_INTERVAL,
+  CHAT_MAX_PROMPT_TOKENS,
+  SUMMARY_MAX_PROMPT_TOKENS,
+  INCLUDE_CHANNEL_FACTS_IN_PROMPT,
+  INCLUDE_USER_FACTS_IN_PROMPT,
+} = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
@@ -52,6 +66,27 @@ function withTimeout(promise, ms, err = "Request timed out") {
     setTimeout(() => reject(err), ms)
   );
   return Promise.race([promise, timeout]);
+}
+
+function formatAgeLabel(timestamp) {
+  if (!timestamp) return "0m";
+  const ageMs = Date.now() - timestamp;
+  const ageMinutes = Math.max(0, Math.floor(ageMs / 60000));
+  if (ageMinutes < 60) return `${ageMinutes}m`;
+  if (ageMinutes < 1440) return `${Math.floor(ageMinutes / 60)}h`;
+  return `${Math.floor(ageMinutes / 1440)}d`;
+}
+
+function buildSummaryBlock(tag, summaryObject) {
+  if (!summaryObject || !summaryObject.context) return "";
+  const age = formatAgeLabel(summaryObject.timestamp);
+  return `[${tag} age=${age}]\n${summaryObject.context}`;
+}
+
+function buildFactsBlock(tag, factsArray) {
+  if (!factsArray || !Array.isArray(factsArray) || factsArray.length === 0) return "";
+  const factsBody = factsArray.map(f => `${f.key}: ${f.value}`).join('\n');
+  return `[${tag} n=${factsArray.length}]\n${factsBody}`;
 }
 
 function isValidMessage(message) {
@@ -157,12 +192,31 @@ async function updateThreadContext(thread, updates) {
 }
 
 async function getUserChatbotData(userId) {
-  const chatbot = await usersDb.get(`${userId}.chatbot`);
-  if (!chatbot) {
-    const defaults = { messageCount: 0, summaries: [], facts: [], messagesSinceLastSummary: 0, messagesSinceLastFacts: 0, incognitoMode: false };
+  const existing = await usersDb.get(`${userId}.chatbot`);
+  const defaults = {
+    messageCount: 0,
+    summaries: [],
+    facts: [],
+    messagesSinceLastSummary: 0,
+    messagesSinceLastFacts: 0,
+    incognitoMode: false,
+    incognitoChannels: [],
+  };
+
+  if (!existing) {
     await usersDb.set(`${userId}.chatbot`, defaults);
     return defaults;
   }
+
+  // Backwards-compatible: ensure new fields exist
+  const chatbot = {
+    ...defaults,
+    ...existing,
+    incognitoChannels: Array.isArray(existing.incognitoChannels) ? existing.incognitoChannels : [],
+  };
+
+  // Persist any backfilled defaults
+  await usersDb.set(`${userId}.chatbot`, chatbot);
   return chatbot;
 }
 
@@ -272,7 +326,7 @@ async function summarizeUserMessages(userMessages, userId, key) {
 async function generateFacts(thread, key) {
   const openai = getOpenAIClient(key);
   const context = await getThreadContext(thread);
-  const {facts, summaries} = context
+  const {facts: existingFacts, summaries} = context
   if (!context) return;
 
   const latestSummary = summaries.length > 0 ? summaries[summaries.length - 1].context : null;
@@ -283,7 +337,7 @@ async function generateFacts(thread, key) {
     `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
     `- Write them in the format: key_name=value. Any other response will break the database, so please do not use it.`,
     latestSummary && `[Latest Conversation Summary]\n${latestSummary}`,
-    facts.length > 0 && `[Previously Known Facts — update or keep these]\n${facts.map(f => `${f.key}=${f.value}`).join('\n')}`,
+    existingFacts.length > 0 && `[Previously Known Facts — update or keep these]\n${existingFacts.map(f => `${f.key}=${f.value}`).join('\n')}`,
     `[New or Updated Facts]`
   ]
   const prompt = lines.filter(Boolean).join('\n')
@@ -305,34 +359,51 @@ async function generateFacts(thread, key) {
   const { choices } = res.data;
   if (choices.length > 0 && choices[0].message) {
     const output = choices[0].message.content.trim();
-    
-    const lines = output.split("\n").filter(line => line.includes("="));
 
-    const facts = lines.map(line => {
-      const [key, ...rest] = line.split("=");
+    const factLines = output.split("\n").filter(line => line.includes("="));
+
+    const parsedFacts = factLines.map(line => {
+      const [rawKey, ...rest] = line.split("=");
       return {
-        key: key.trim().toLowerCase().replace(/\s+/g, "_"), // normalize key
-        value: rest.join("=").trim()
+        key: rawKey.trim().toLowerCase().replace(/\s+/g, "_"), // normalize key
+        value: rest.join("=").trim(),
+        updatedAt: Date.now(),
       };
     });
 
-    const prev_facts = context.facts
-    let combined_facts  = [...prev_facts];
-    for (const fact of facts) {
-      const existingFact = combined_facts.findIndex(f => f.key === fact.key);
+    let combinedFacts  = Array.isArray(existingFacts) ? [...existingFacts] : [];
 
-      if (existingFact !== -1) {
-        combined_facts[existingFact] = fact;
+    for (const fact of parsedFacts) {
+      const existingIndex = combinedFacts.findIndex(f => f.key === fact.key);
+      if (existingIndex !== -1) {
+        combinedFacts[existingIndex] = {
+          ...combinedFacts[existingIndex],
+          ...fact,
+          updatedAt: Date.now(),
+        };
       } else {
-        combined_facts.push(fact);
+        combinedFacts.push(fact);
       }
     }
-    if (combined_facts.length > MAX_FACTS) {
-      combined_facts = combined_facts.slice(0, MAX_FACTS);
+
+    combinedFacts = combinedFacts.map(f => ({
+      ...f,
+      updatedAt: f.updatedAt ?? Date.now(),
+    }));
+
+    combinedFacts.sort((a, b) => {
+      const aTime = a.updatedAt || 0;
+      const bTime = b.updatedAt || 0;
+      if (aTime !== bTime) return bTime - aTime; // newest first
+      return a.key.localeCompare(b.key);
+    });
+
+    if (combinedFacts.length > MAX_FACTS) {
+      combinedFacts = combinedFacts.slice(0, MAX_FACTS);
     }
-    combined_facts.sort((a, b) => a.key.localeCompare(b.key));
-    logger.log(`Extracted ${combined_facts.length} facts from the output.`);
-    await updateThreadContext(thread, {facts: combined_facts}) 
+
+    logger.log(`Extracted ${combinedFacts.length} facts from the output.`);
+    await updateThreadContext(thread, {facts: combinedFacts}) 
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
   }
 }
@@ -340,7 +411,7 @@ async function generateFacts(thread, key) {
 async function generateUserFacts(userId, userMessages, key) {
   const openai = getOpenAIClient(key);
   const chatbotData = await getUserChatbotData(userId);
-  const { facts, summaries } = chatbotData;
+  const { facts: existingFacts, summaries } = chatbotData;
   const latestSummary = summaries.length > 0 ? summaries[summaries.length - 1].context : null;
   const lines = [
     `You are an assistant that extracts structured facts about a specific user from their conversation summaries.`,
@@ -349,7 +420,7 @@ async function generateUserFacts(userId, userMessages, key) {
     `- Avoid duplicates or vague facts; normalize key names`,
     `- Write in the format: key_name=value only. Do not include any other text.`,
     latestSummary && `[Latest User Profile Summary]\n${latestSummary}`,
-    facts.length > 0 && `[Previously Known Facts About This User — update or keep]\n${facts.map(f => `${f.key}=${f.value}`).join('\n')}`,
+    existingFacts.length > 0 && `[Previously Known Facts About This User — update or keep]\n${existingFacts.map(f => `${f.key}=${f.value}`).join('\n')}`,
     `[New or Updated Facts About This User]`
   ];
   const prompt = lines.filter(Boolean).join('\n');
@@ -370,19 +441,39 @@ async function generateUserFacts(userId, userMessages, key) {
     const output = choices[0].message.content.trim();
     const factLines = output.split("\n").filter(line => line.includes("="));
     const newFacts = factLines.map(line => {
-      const [key, ...rest] = line.split("=");
-      return { key: key.trim().toLowerCase().replace(/\s+/g, "_"), value: rest.join("=").trim() };
+      const [rawKey, ...rest] = line.split("=");
+      return { key: rawKey.trim().toLowerCase().replace(/\s+/g, "_"), value: rest.join("=").trim(), updatedAt: Date.now() };
     });
-    let combined_facts = [...facts];
+    let combinedFacts = Array.isArray(existingFacts) ? [...existingFacts] : [];
     for (const fact of newFacts) {
-      const idx = combined_facts.findIndex(f => f.key === fact.key);
-      if (idx !== -1) combined_facts[idx] = fact;
-      else combined_facts.push(fact);
+      const idx = combinedFacts.findIndex(f => f.key === fact.key);
+      if (idx !== -1) {
+        combinedFacts[idx] = {
+          ...combinedFacts[idx],
+          ...fact,
+          updatedAt: Date.now(),
+        };
+      } else {
+        combinedFacts.push(fact);
+      }
     }
-    if (combined_facts.length > MAX_FACTS) combined_facts = combined_facts.slice(0, MAX_FACTS);
-    combined_facts.sort((a, b) => a.key.localeCompare(b.key));
-    await updateUserChatbotData(userId, { facts: combined_facts });
-    logger.log(`Extracted ${combined_facts.length} user facts for [${userId}].`);
+
+    combinedFacts = combinedFacts.map(f => ({
+      ...f,
+      updatedAt: f.updatedAt ?? Date.now(),
+    }));
+
+    combinedFacts.sort((a, b) => {
+      const aTime = a.updatedAt || 0;
+      const bTime = b.updatedAt || 0;
+      if (aTime !== bTime) return bTime - aTime; // newest first
+      return a.key.localeCompare(b.key);
+    });
+
+    if (combinedFacts.length > MAX_FACTS) combinedFacts = combinedFacts.slice(0, MAX_FACTS);
+
+    await updateUserChatbotData(userId, { facts: combinedFacts });
+    logger.log(`Extracted ${combinedFacts.length} user facts for [${userId}].`);
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens}`);
   }
 }
@@ -442,35 +533,39 @@ async function tickMessageCount(channel, messages, key, userId) {
     await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
   }
 
-  if (!channel.isThread()){ // don't collect user facts for threads, only main channels
-    if (!userId) return;
+  if (!userId) return;
 
-    const chatbotData = await getUserChatbotData(userId);
-    const userSummaryCount = (chatbotData.messagesSinceLastSummary ?? 0) + 1;
-    const userFactsCount = (chatbotData.messagesSinceLastFacts ?? 0) + 1;
-    const newMessageCount = (chatbotData.messageCount ?? 0) + 1;
-    const userMessages = messages.filter(m => m.author.id === userId);
+  const chatbotData = await getUserChatbotData(userId);
+  const incognitoChannels = Array.isArray(chatbotData.incognitoChannels) ? chatbotData.incognitoChannels : [];
+  if (chatbotData.incognitoMode || incognitoChannels.includes(channel.id)) {
+    logger.debug(`[UserMemoryTick] User [${userId}] is incognito${chatbotData.incognitoMode ? ' (global)' : ''} in channel [${channel.id}]; skipping user memory update.`);
+    return;
+  }
 
-    if (userSummaryCount >= SUMMARY_INTERVAL) {
-      await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
-      logger.log(`[UserMemoryTick] Summarizing user [${userId}] after ${SUMMARY_INTERVAL} messages.`);
-      try {
-        await summarizeUserMessages(userMessages, userId, key);
-        await generateUserFacts(userId, userMessages, key);
-      } catch (err) {
-        logger.error(`[UserMemoryTick] User summarization failed for [${userId}]: ${err.message}`);
-      }
-    } else if (userFactsCount >= FACTS_INTERVAL) {
-      await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: 0 });
-      logger.log(`[UserMemoryTick] Generating user facts for [${userId}] after ${FACTS_INTERVAL} messages.`);
-      try {
-        await generateUserFacts(userId, userMessages, key);
-      } catch (err) {
-        logger.error(`[UserMemoryTick] User fact generation failed for [${userId}]: ${err.message}`);
-      }
-    } else {
-      await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: userFactsCount });
+  const userSummaryCount = (chatbotData.messagesSinceLastSummary ?? 0) + 1;
+  const userFactsCount = (chatbotData.messagesSinceLastFacts ?? 0) + 1;
+  const newMessageCount = (chatbotData.messageCount ?? 0) + 1;
+  const userMessages = messages.filter(m => m.author.id === userId);
+
+  if (userSummaryCount >= SUMMARY_INTERVAL) {
+    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
+    logger.log(`[UserMemoryTick] Summarizing user [${userId}] after ${SUMMARY_INTERVAL} messages.`);
+    try {
+      await summarizeUserMessages(userMessages, userId, key);
+      await generateUserFacts(userId, userMessages, key);
+    } catch (err) {
+      logger.error(`[UserMemoryTick] User summarization failed for [${userId}]: ${err.message}`);
     }
+  } else if (userFactsCount >= FACTS_INTERVAL) {
+    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: 0 });
+    logger.log(`[UserMemoryTick] Generating user facts for [${userId}] after ${FACTS_INTERVAL} messages.`);
+    try {
+      await generateUserFacts(userId, userMessages, key);
+    } catch (err) {
+      logger.error(`[UserMemoryTick] User fact generation failed for [${userId}]: ${err.message}`);
+    }
+  } else {
+    await updateUserChatbotData(userId, { messageCount: newMessageCount, messagesSinceLastSummary: userSummaryCount, messagesSinceLastFacts: userFactsCount });
   }
 }
 
@@ -585,21 +680,18 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           ]
           sys_prompt += lines.filter(Boolean).join('\n')
         }
-        if (facts.length > 0) {
-          let latestFacts = facts
-          sys_prompt += `\n\n[Known Channel Facts]\n${Object.entries(latestFacts).map(([k, v]) => `${v.key}: ${v.value}`).join('\n')}`
+        if (facts.length > 0 && INCLUDE_CHANNEL_FACTS_IN_PROMPT) {
+          const factsBlock = buildFactsBlock('ChannelFacts', facts);
+          if (factsBlock) {
+            sys_prompt += `\n\n${factsBlock}`;
+          }
         }
         if (summaries.length > 0) {
           const lastSummary = summaries[summaries.length - 1];
-          const ageMs = Date.now() - lastSummary.timestamp;
-          const ageMinutes = Math.floor(ageMs / 60000);
-          const ageLabel = ageMinutes < 60 
-            ? `${ageMinutes}m ago` 
-            : ageMinutes < 1440 
-              ? `${Math.floor(ageMinutes / 60)}h ago` 
-              : `${Math.floor(ageMinutes / 1440)}d ago`;
-          
-          sys_prompt += `\n\n[Conversation Summary — from ${ageLabel}]\n${lastSummary.context}`;
+          const summaryBlock = buildSummaryBlock('ChannelSummary', lastSummary);
+          if (summaryBlock) {
+            sys_prompt += `\n\n${summaryBlock}`;
+          }
         }
       } else {
         const {
@@ -691,28 +783,31 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         }
         if (summaries.length > 0) {
           const lastSummary = summaries[summaries.length - 1];
-          const ageMs = Date.now() - lastSummary.timestamp;
-          const ageMinutes = Math.floor(ageMs / 60000);
-          const ageLabel = ageMinutes < 60
-            ? `${ageMinutes}m ago`
-            : ageMinutes < 1440
-              ? `${Math.floor(ageMinutes / 60)}h ago`
-              : `${Math.floor(ageMinutes / 1440)}d ago`;
-          sys_prompt += `\n\n[Recent Channel Summary — ${ageLabel}]\n${lastSummary.context}`;
+          const summaryBlock = buildSummaryBlock('ChannelSummary', lastSummary);
+          if (summaryBlock) {
+            sys_prompt += `\n\n${summaryBlock}`;
+          }
         }
       }
       const userChatbotData = await getUserChatbotData(message.author.id);
       const userFactsCount = userChatbotData.facts.length;
-      if (userFactsCount && userChatbotData.summaries.length > 0) {
-        const latestUserSummary = userChatbotData.summaries.length > 0 ? userChatbotData.summaries[userChatbotData.summaries.length - 1].context : null;
+      if (userFactsCount && userChatbotData.summaries.length > 0 && INCLUDE_USER_FACTS_IN_PROMPT) {
+        const latestUserSummaryObject = userChatbotData.summaries[userChatbotData.summaries.length - 1];
+        const latestUserSummary = latestUserSummaryObject ? latestUserSummaryObject.context : null;
         const latestUserFacts = userChatbotData.facts;
         logger.debug(`Latest user summary: ${latestUserSummary}`);
         logger.debug(`Latest user facts: ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join('; ')}`);
-        if (latestUserSummary) {
-          sys_prompt += `\n\n[Summary of ${message.member.displayName}]\n${latestUserSummary}`;
+        if (latestUserSummaryObject) {
+          const userSummaryBlock = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
+          if (userSummaryBlock) {
+            sys_prompt += `\n\n${userSummaryBlock}`;
+          }
         }
         if (latestUserFacts.length > 0) {
-          sys_prompt += `\n\n[Known Facts About ${message.member.displayName}]\n${latestUserFacts.map(f => `${f.key}: ${f.value}`).join('\n')}`;
+          const userFactsBlock = buildFactsBlock(`UserFacts name="${message.member.displayName}"`, latestUserFacts);
+          if (userFactsBlock) {
+            sys_prompt += `\n\n${userFactsBlock}`;
+          }
         }
       }
       if (isReply) {
@@ -740,18 +835,53 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       sys_prompt = `You are a helpful assistant.\n`;
     }
 
-    logger.debug(`Conversation history length: ${conversationHistory.length} messages.`);
+    logger.debug(`Conversation history length before trimming: ${conversationHistory.length} messages.`);
     for (const msg of conversationHistory) {
       logger.debug(`${msg.role.toUpperCase()}: ${msg.content}`);
     }
-    const fullPrompt = [
-      { role: "system", content: sys_prompt },
-      ...conversationHistory,
-      { role: "user", content: usr_prompt }
-    ].map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+
+    const buildPromptForEstimate = () => {
+      return [
+        { role: "system", content: sys_prompt },
+        ...conversationHistory,
+        { role: "user", content: usr_prompt }
+      ].map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+    };
+
+    let estimatedTokens = estimateTokenCount(buildPromptForEstimate());
+    logger.debug(`Estimated token count before dynamic trimming: ${estimatedTokens} tokens`);
+
+    if (CHAT_MAX_PROMPT_TOKENS && estimatedTokens > CHAT_MAX_PROMPT_TOKENS) {
+      logger.warn(`[PromptTrim] Prompt estimated at ${estimatedTokens} tokens, trimming history to target ${CHAT_MAX_PROMPT_TOKENS}.`);
+
+      // Always keep at least the last few turns (up to 4 messages: 2 user/2 assistant)
+      const MIN_HISTORY_MESSAGES = 4;
+      let trimmedHistory = [...conversationHistory];
+
+      while (trimmedHistory.length > MIN_HISTORY_MESSAGES) {
+        // Drop the oldest message and re-estimate
+        trimmedHistory.shift();
+        const tempHistory = trimmedHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
+        const tempPrompt = [
+          { role: "system", content: sys_prompt },
+          { role: "user", content: usr_prompt }
+        ].map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n') + '\n\n' + tempHistory;
+        const tempEstimate = estimateTokenCount(tempPrompt);
+        estimatedTokens = tempEstimate;
+        if (tempEstimate <= CHAT_MAX_PROMPT_TOKENS) {
+          break;
+        }
+      }
+
+      logger.debug(`[PromptTrim] History trimmed from ${conversationHistory.length} to ${trimmedHistory.length} messages. New estimate: ${estimatedTokens} tokens.`);
+      conversationHistory.length = 0;
+      conversationHistory.push(...trimmedHistory);
+    }
+
+    const fullPrompt = buildPromptForEstimate();
 
     logger.debug(`Full prompt sent to Deepseek:\x1b[31m${fullPrompt}`);
-    logger.debug(`Estimated token count: ${estimateTokenCount(fullPrompt)} tokens`);
+    logger.debug(`Estimated token count: ${estimatedTokens} tokens`);
     const completion = await withTimeout(
       openai.createChatCompletion({
         "model": "deepseek-chat",
