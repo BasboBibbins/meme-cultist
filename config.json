@@ -40,6 +40,13 @@
 
     "CURRENCY_NAME": "koku",
     "INTEREST_RATE": 1,
+    "ROULETTE_MIN_BET": 10,
+    "ROULETTE_MAX_BET": 5000,
+    "ROULETTE_HOUSE_EDGE": 2.7,
+    "DUEL_MIN_BET": 50,
+    "DUEL_COOLDOWN": 300000,
+    "RACE_MIN_BET": 10,
+    "RACE_MAX_BET": 1000,
     
     "LEGACY_COMMANDS": [
         "help",
