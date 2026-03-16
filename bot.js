@@ -17,10 +17,18 @@ const logger = require("./utils/logger")
 const schedule = require("node-schedule")
 const rateLimiter = require('./utils/ratelimiter')
 const { DefaultExtractors } = require("@discord-player/extractor")
+const playdl = require('play-dl');
 
 dotenv.config()
 const TOKEN = process.env.TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+if (process.env.COOKIE) {
+    playdl.setToken({
+        youtube: {
+            cookie: process.env.COOKIE
+        }
+    });
+}
 
 const LOAD_SLASH = process.argv[2] == "load"
 const LOAD_DB = process.argv[2] == "dbinit"

@@ -3,6 +3,7 @@ const { QueryType, useMainPlayer } = require('discord-player');
 const wait = require('util').promisify(setTimeout);
 const logger = require('../../utils/logger');
 const crypto = require('crypto');
+const playdl = require('play-dl');
 const { randomHexColor } = require('../../utils/randomcolor');
 
 module.exports = {
@@ -62,6 +63,15 @@ module.exports = {
             metadata: {
                 channel: interaction.channel,
                 requestedBy: interaction.user
+            },
+            async onBeforeCreateStream(track, source, _queue) {
+                try {
+                    const stream = await playdl.stream(track.url);
+                    return stream.stream;
+                } catch (error) {
+                    logger.error('Error while creating stream with play-dl:', error);
+                    throw error;
+                }
             }
         });
 
@@ -151,11 +161,7 @@ module.exports = {
                 queue.addTrack(track);
                 try {
                     if (!queue.isPlaying()) {
-                        await player.play(userChannel.id, track, {
-                            nodeOptions: {
-                                metadata: { channel: userChannel }
-                            }
-                        });
+                        await queue.node.play();
                     }
                 } catch (error) {
                     logger.error("Error while playing the queue:");
