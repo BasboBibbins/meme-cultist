@@ -119,23 +119,53 @@ module.exports = {
                 .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
 
+            // Determine chip position based on bet type
+            let chipNumber = parsedNumber;
+            if (!chipNumber) {
+                // Map bet types to positions on the table
+                switch (betType) {
+                    case 'red': chipNumber = 'red'; break;
+                    case 'black': chipNumber = 'black'; break;
+                    case 'even': chipNumber = 'even'; break;
+                    case 'odd': chipNumber = 'odd'; break;
+                    case 'low': chipNumber = 'low'; break;
+                    case 'high': chipNumber = 'high'; break;
+                    case 'dozen1': chipNumber = 'dozen1'; break;
+                    case 'dozen2': chipNumber = 'dozen2'; break;
+                    case 'dozen3': chipNumber = 'dozen3'; break;
+                    case 'column1': chipNumber = 'column1'; break;
+                    case 'column2': chipNumber = 'column2'; break;
+                    case 'column3': chipNumber = 'column3'; break;
+                }
+            }
+
             // Draw initial table
-            const bets = [{ number: parsedNumber, amount: bet }];
-            const tableFile = await drawRouletteTable(bets);
+            const bets = [{ number: chipNumber, amount: bet, userId: user.id }];
+            const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 256 });
+            const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl });
             embed.setImage('attachment://roulette.png');
 
             await interaction.editReply({ embeds: [embed], files: [tableFile] });
 
-            // Spin animation - show multiple frames
+            // Spin animation - show multiple frames (with chips)
+            const timeBetweenSpins = 500;
+            await wait(timeBetweenSpins);
             for (let i = 0; i < 5; i++) {
-                await wait(1000);
                 const randomNum = Math.floor(Math.random() * 37);
-                const resultFile = await drawResult(randomNum, 0);
+                const resultFile = await drawResult(randomNum, 0, false, bets, { [user.id]: avatarUrl });
                 await interaction.editReply({ embeds: [embed.setTitle('Spinning...')], files: [resultFile] });
+                await wait(timeBetweenSpins);
             }
 
-            // Final spin result
+            // Final spin result - first show the winning number without the result overlay
             const winningNumber = spinWheel();
+
+            // Draw the winning number highlight (no overlay, no chips)
+            const winningNumberFile = await drawResult(winningNumber, 0, false, [], {});
+            await interaction.editReply({ embeds: [embed.setTitle(`Result: ${winningNumber}...`)], files: [winningNumberFile] });
+            await wait(800);
+
+            // Now calculate winnings
             const winnings = calculateWinnings(betType, parsedNumber, bet, winningNumber);
             const color = getRedBlack(winningNumber);
             const colorHex = color === 'green' ? '#00aa00' : (color === 'red' ? '#ff0000' : '#000000');
@@ -165,13 +195,14 @@ module.exports = {
                 resultDescription = `The winning number was **${winningNumber}** (${color}).\n\nYou bet ${bet} ${CURRENCY_NAME} on ${betType}${parsedNumber !== null ? ' ' + parsedNumber : ''}.\n\nYou lost your bet of **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`;
             }
 
-            // Draw final result
-            const finalFile = await drawResult(winningNumber, winnings, true);
+            // Draw final result (with chips)
+            const finalFile = await drawResult(winningNumber, winnings, true, bets, { [user.id]: avatarUrl });
 
             const resultEmbed = new EmbedBuilder()
                 .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setTitle(resultTitle)
                 .setDescription(resultDescription)
+                .setImage('attachment://roulette.png')
                 .setColor(colorHex === '#ff0000' ? 0xff0000 : (colorHex === '#000000' ? 0x000000 : 0x00aa00))
                 .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();

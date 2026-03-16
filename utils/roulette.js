@@ -1,4 +1,4 @@
-const { createCanvas } = require('canvas');
+const { createCanvas, loadImage } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
 
 // Physical pocket order around the wheel
@@ -17,6 +17,10 @@ const ROULETTE_NUMBERS = [
 ];
 
 const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+
+const CHIP_COLORS = [
+    '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e91e63', '#00bcd4'
+];
 
 function getRedBlack(number) {
     if (number === 0) return 'green';
@@ -56,6 +60,28 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function getNumberPosition(number) {
+    // Handle non-number bet types - return position in betting area
+    if (typeof number === 'string') {
+        const dozenW = GRID_W / 3;
+        const evenW = GRID_W / 6;
+
+        switch (number) {
+            case 'red':    return { x: GRID_X + evenW * 2.5, y: EVEN_Y + EVEN_H / 2 };
+            case 'black':  return { x: GRID_X + evenW * 3.5, y: EVEN_Y + EVEN_H / 2 };
+            case 'even':   return { x: GRID_X + evenW * 1.5, y: EVEN_Y + EVEN_H / 2 };
+            case 'odd':    return { x: GRID_X + evenW * 4.5, y: EVEN_Y + EVEN_H / 2 };
+            case 'low':    return { x: GRID_X + evenW * 0.5, y: EVEN_Y + EVEN_H / 2 };
+            case 'high':   return { x: GRID_X + evenW * 5.5, y: EVEN_Y + EVEN_H / 2 };
+            case 'dozen1': return { x: GRID_X + dozenW * 0.5, y: DOZEN_Y + DOZEN_H / 2 };
+            case 'dozen2': return { x: GRID_X + dozenW * 1.5, y: DOZEN_Y + DOZEN_H / 2 };
+            case 'dozen3': return { x: GRID_X + dozenW * 2.5, y: DOZEN_Y + DOZEN_H / 2 };
+            case 'column1': return { x: GRID_X + GRID_W + COL21_W * 0.5, y: TABLE_Y + CELL_H * 0.5 };
+            case 'column2': return { x: GRID_X + GRID_W + COL21_W * 1.5, y: TABLE_Y + CELL_H * 1.5 };
+            case 'column3': return { x: GRID_X + GRID_W + COL21_W * 2.5, y: TABLE_Y + CELL_H * 2.5 };
+            default: return null;
+        }
+    }
+
     if (number === 0) {
         return { x: ZERO_X + ZERO_W / 2, y: TABLE_Y + GRID_H / 2 };
     }
@@ -64,7 +90,7 @@ function getNumberPosition(number) {
 
     const dataRow = Math.floor(index / 12);
     const col = index % 12;
-    const displayRow = 2 - dataRow; // Flip data-row to display-row
+    const displayRow = 2 - dataRow; // flip data-row to display-row
 
     return {
         x: GRID_X + col * CELL_W + CELL_W / 2,
@@ -72,12 +98,90 @@ function getNumberPosition(number) {
     };
 }
 
+function chipColorForUser(userId) {
+    let hash = 0;
+    for (const ch of String(userId)) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffff; // simple hash to get a consistent color per user
+    return CHIP_COLORS[hash % CHIP_COLORS.length];
+}
+
+async function drawChip(ctx, cx, cy, amount, avatarImg, chipColor) {
+    const R        = 22;  // total chip radius
+    const RIM_IN   = 15;  // inner edge of the decorative rim segments
+    const RIM_OUT  = R - 1;
+    const SEGMENTS = 8;
+    const segAngle = (Math.PI * 2) / SEGMENTS;
+    const gapAngle = segAngle * 0.35;
+ 
+    ctx.save();
+    ctx.shadowColor   = 'rgba(0,0,0,0.55)';
+    ctx.shadowBlur    = 6;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = chipColor;
+    ctx.fill();
+    ctx.restore();
+ 
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = chipColor;
+    ctx.fill();
+ 
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+ 
+    // white arc segments evenly distributed around the rim (classic chip inlay pattern)
+    for (let i = 0; i < SEGMENTS; i++) {
+        const start = i * segAngle + gapAngle / 2 - Math.PI / 2;
+        const end   = start + segAngle - gapAngle;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(start) * RIM_IN, cy + Math.sin(start) * RIM_IN);
+        ctx.arc(cx, cy, RIM_OUT, start, end);
+        ctx.arc(cx, cy, RIM_IN,  end,   start, true);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.88)';
+        ctx.fill();
+    }
+ 
+    ctx.beginPath();
+    ctx.arc(cx, cy, RIM_IN, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+ 
+    // clip avatar to the inner circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, RIM_IN - 1, 0, Math.PI * 2);
+    ctx.clip();
+    if (avatarImg) {
+        ctx.drawImage(avatarImg, cx - RIM_IN + 1, cy - RIM_IN + 1, (RIM_IN - 1) * 2, (RIM_IN - 1) * 2);
+    } else { // fallback if avatar fails to load
+        ctx.fillStyle = chipColor;
+        ctx.fillRect(cx - RIM_IN, cy - RIM_IN, RIM_IN * 2, RIM_IN * 2);
+    }
+    ctx.restore();
+ 
+    ctx.fillStyle    = '#ffffff';
+    ctx.font         = 'bold 11px Arial';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+    ctx.shadowColor  = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur   = 3;
+    ctx.fillText(amount.toString(), cx, cy + R + 2);
+    ctx.shadowBlur   = 0;
+}
+
 function drawWheel(ctx, highlightNumber = null) {
     const cx = WHL_CX, cy = WHL_CY;
     const sliceAngle = (Math.PI * 2) / 37;
     const startAngle = -Math.PI / 2;
 
-    // Wooden outer ring
+    // wooden outer ring
     const woodGrad = ctx.createRadialGradient(cx, cy, WHL_R_POCK, cx, cy, WHL_R_OUTER);
     woodGrad.addColorStop(0, '#6b3a0f');
     woodGrad.addColorStop(0.5, '#4a2808');
@@ -87,14 +191,14 @@ function drawWheel(ctx, highlightNumber = null) {
     ctx.fillStyle = woodGrad;
     ctx.fill();
 
-    // Gold rim
+    // gold rim
     ctx.beginPath();
     ctx.arc(cx, cy, WHL_R_OUTER, 0, Math.PI * 2);
     ctx.strokeStyle = '#c8a830';
     ctx.lineWidth = 5;
     ctx.stroke();
 
-    // Number pockets
+    // number pockets
     for (let i = 0; i < 37; i++) {
         const num = WHEEL_ORDER[i];
         const angle = startAngle + i * sliceAngle;
@@ -112,7 +216,7 @@ function drawWheel(ctx, highlightNumber = null) {
         ctx.closePath();
         ctx.fill();
 
-        // Pocket divider
+        // pocket divider
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(cx + Math.cos(angle) * WHL_R_POCK, cy + Math.sin(angle) * WHL_R_POCK);
@@ -120,7 +224,7 @@ function drawWheel(ctx, highlightNumber = null) {
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Number label (radially rotated)
+        // number label (radially rotated)
         const labelR = (WHL_R_POCK + WHL_R_INNER) / 2;
         const midAngle = angle + sliceAngle / 2;
         const lx = cx + Math.cos(midAngle) * labelR;
@@ -137,7 +241,7 @@ function drawWheel(ctx, highlightNumber = null) {
         ctx.restore();
     }
 
-    // Inner ring and felt bowl
+    // inner ring and felt bowl
     ctx.beginPath();
     ctx.arc(cx, cy, WHL_R_INNER, 0, Math.PI * 2);
     ctx.strokeStyle = '#c8a830';
@@ -153,7 +257,7 @@ function drawWheel(ctx, highlightNumber = null) {
     ctx.fillStyle = feltGrad;
     ctx.fill();
 
-    // Spokes
+    // spokes
     for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
         ctx.beginPath();
@@ -164,7 +268,7 @@ function drawWheel(ctx, highlightNumber = null) {
         ctx.stroke();
     }
 
-    // Centre hub
+    // center hub
     const hubGrad = ctx.createRadialGradient(cx - 7, cy - 7, 2, cx, cy, WHL_R_HUB);
     hubGrad.addColorStop(0, '#f5e070');
     hubGrad.addColorStop(0.5, '#c8a830');
@@ -190,13 +294,13 @@ function drawBallOnWheel(ctx, number) {
     const bx = cx + Math.cos(midAngle) * ballDist;
     const by = cy + Math.sin(midAngle) * ballDist;
 
-    // Shadow
+    // shadow
     ctx.beginPath();
     ctx.arc(bx + 2, by + 3, 9, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fill();
 
-    // Ball with 3D gradient
+    // ball with 3D gradient
     const grad = ctx.createRadialGradient(bx - 3, by - 3, 1, bx, by, 9);
     grad.addColorStop(0, '#ffffff');
     grad.addColorStop(0.4, '#e0e0e0');
@@ -214,7 +318,7 @@ function drawBettingTable(ctx, highlightNumber = null) {
     roundRect(ctx, TABLE_BG_X, TABLE_Y - 4, tableBgW, tableBgH, 8);
     ctx.fill();
 
-    // Zero cell
+    // zero cell
     const zx = ZERO_X + PAD, zy = TABLE_Y + PAD;
     const zw = ZERO_W - PAD * 2, zh = GRID_H - PAD * 2;
     const zeroWin = highlightNumber === 0;
@@ -229,7 +333,7 @@ function drawBettingTable(ctx, highlightNumber = null) {
     ctx.textBaseline = 'middle';
     ctx.fillText('0', ZERO_X + ZERO_W / 2, TABLE_Y + GRID_H / 2);
 
-    // Number grid
+    // number grid
     for (let i = 0; i < 36; i++) {
         const number = ROULETTE_NUMBERS[i];
         const dataRow = Math.floor(i / 12);
@@ -254,7 +358,7 @@ function drawBettingTable(ctx, highlightNumber = null) {
         ctx.fillText(number.toString(), x + w / 2, y + h / 2);
     }
 
-    // Column bets (2:1)
+    // column bets (2:1)
     const c21X = GRID_X + GRID_W + 2;
     for (let row = 0; row < 3; row++) {
         const x = c21X + PAD;
@@ -270,7 +374,7 @@ function drawBettingTable(ctx, highlightNumber = null) {
         roundRect(ctx, x, y, w, h, 6);
         ctx.stroke();
 
-        // Vertical text
+        // vertical text
         ctx.save();
         ctx.translate(c21X + COL21_W / 2, TABLE_Y + row * CELL_H + CELL_H / 2);
         ctx.rotate(Math.PI / 2);
@@ -282,7 +386,7 @@ function drawBettingTable(ctx, highlightNumber = null) {
         ctx.restore();
     }
 
-    // Dozen bets
+    // dozen bets
     const dozenW = GRID_W / 3;
     const dozenLabels = ['1st 12', '2nd 12', '3rd 12'];
 
@@ -307,7 +411,7 @@ function drawBettingTable(ctx, highlightNumber = null) {
         ctx.fillText(dozenLabels[d], GRID_X + d * dozenW + dozenW / 2, DOZEN_Y + DOZEN_H / 2);
     }
 
-    // Even-money bets
+    // even-money bets
     const evenW = GRID_W / 6;
     const evenAreas = [
         { label: '1-18', bg: null },
@@ -349,7 +453,7 @@ function drawTitle(ctx) {
     ctx.fillText('ROULETTE', CANVAS_W / 2, 46);
 }
 
-async function drawRouletteTable(bets = []) {
+async function drawRouletteTable(bets = [], userAvatars = {}) {
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
@@ -360,24 +464,22 @@ async function drawRouletteTable(bets = []) {
     drawBettingTable(ctx);
     drawTitle(ctx);
 
-    // Bet chips
+    const avatarImages = {};
+    const uniqueUserIds = [...new Set(bets.map(b => b.userId).filter(Boolean))];
+    await Promise.all(uniqueUserIds.map(async userId => {
+        const url = userAvatars[userId];
+        if (url) {
+            try { avatarImages[userId] = await loadImage(url); } catch { /* fall back to solid */ }
+        }
+    }));
+ 
     for (const bet of bets) {
         const pos = getNumberPosition(bet.number);
         if (!pos) continue;
 
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffd700';
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(bet.amount.toString(), pos.x, pos.y);
+        const avatarImg = avatarImages[bet.userId] ?? null;
+        const chipColor = chipColorForUser(bet.userId ?? bet.number);
+        drawChip(ctx, pos.x, pos.y, bet.amount, avatarImg, chipColor);
     }
 
     const buffer = canvas.toBuffer('image/png');
@@ -389,7 +491,7 @@ async function drawBall(canvas, number) {
     return canvas;
 }
 
-async function drawResult(number, totalWinnings = 0, isFinal = false) {
+async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [], userAvatars = {}) {
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
@@ -401,7 +503,28 @@ async function drawResult(number, totalWinnings = 0, isFinal = false) {
     drawBettingTable(ctx, number);
     drawTitle(ctx);
 
-    // Result overlay
+    // Load user avatars and draw chips
+    if (bets.length > 0) {
+        const avatarImages = {};
+        const uniqueUserIds = [...new Set(bets.map(b => b.userId).filter(Boolean))];
+        await Promise.all(uniqueUserIds.map(async userId => {
+            const url = userAvatars[userId];
+            if (url) {
+                try { avatarImages[userId] = await loadImage(url); } catch { /* fall back to solid */ }
+            }
+        }));
+
+        for (const bet of bets) {
+            const pos = getNumberPosition(bet.number);
+            if (!pos) continue;
+
+            const avatarImg = avatarImages[bet.userId] ?? null;
+            const chipColor = chipColorForUser(bet.userId ?? bet.number);
+            drawChip(ctx, pos.x, pos.y, bet.amount, avatarImg, chipColor);
+        }
+    }
+
+    // result overlay
     const resultColor = getRedBlack(number);
     const boxBg = number === 0 ? '#1a8a3f' : resultColor === 'red' ? '#c0392b' : '#1a1a1a';
 
@@ -409,18 +532,18 @@ async function drawResult(number, totalWinnings = 0, isFinal = false) {
     const bx = GRID_X + GRID_W / 2 - bw / 2;
     const by = TABLE_Y + GRID_H / 2 - bh / 2;
 
-    // Bg Overlay
+    // bg overlay on final result
     if (isFinal) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
-    // Shadow
+    // shadow
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     roundRect(ctx, bx - 4, by - 4, bw + 8, bh + 8, 14);
     ctx.fill();
 
-    // Box
+    // box
     ctx.fillStyle = boxBg;
     roundRect(ctx, bx, by, bw, bh, 11);
     ctx.fill();
@@ -429,24 +552,19 @@ async function drawResult(number, totalWinnings = 0, isFinal = false) {
     roundRect(ctx, bx, by, bw, bh, 11);
     ctx.stroke();
 
-    // Winning number
+    // winning number
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 56px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(number.toString(), bx + bw / 2, by + (totalWinnings > 0 ? bh * 0.42 : bh / 2));
 
-    // Win amount
+    // win amount
     if (totalWinnings > 0) {
         ctx.fillStyle = '#00ee44';
         ctx.font = 'bold 22px Arial';
         ctx.textBaseline = 'middle';
         ctx.fillText(`+${totalWinnings}`, bx + bw / 2, by + bh * 0.80);
-    } else {
-        ctx.fillStyle = '#ee4444';
-        ctx.font = 'bold 22px Arial';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`-${betAmount}`, bx + bw / 2, by + bh * 0.80);
     }
 
     const buffer = canvas.toBuffer('image/png');
