@@ -70,11 +70,11 @@ module.exports = {
                 error_embed.setDescription(`You must bet a valid amount of ${CURRENCY_NAME}!`);
                 return await interaction.reply({ embeds: [error_embed], ephemeral: true });
             }
-            if (bet < ROULETTE_MIN_BET) {
+            if (ROULETTE_MIN_BET && bet < ROULETTE_MIN_BET) {
                 error_embed.setDescription(`You must bet at least ${ROULETTE_MIN_BET} ${CURRENCY_NAME}!`);
                 return await interaction.reply({ embeds: [error_embed], ephemeral: true });
             }
-            if (bet > ROULETTE_MAX_BET) {
+            if (ROULETTE_MAX_BET && bet > ROULETTE_MAX_BET) {
                 error_embed.setDescription(`You can bet at most ${ROULETTE_MAX_BET} ${CURRENCY_NAME}!`);
                 return await interaction.reply({ embeds: [error_embed], ephemeral: true });
             }
