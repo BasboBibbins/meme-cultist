@@ -48,7 +48,11 @@
     "DUEL_COOLDOWN": 300000,
     "RACE_MIN_BET": 10,
     "RACE_MAX_BET": 1000,
-    
+    "RACE_BETTING_TIME": 60000,
+    "RACE_HOUSE_EDGE": 0.10,
+    "RACE_ANIMATION_TICKS": 10,
+    "RACE_TICK_INTERVAL": 1500,
+
     "LEGACY_COMMANDS": [
         "help",
         "restart",

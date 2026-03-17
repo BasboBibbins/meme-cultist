@@ -62,6 +62,13 @@ async function getDefaultDB(user) {
                 "biggestLoss": 0,
                 "totalBet": 0,
             },
+            "race": {
+                "wins": 0,
+                "losses": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+                "totalBet": 0,
+            },
             "begs": {
                 "wins": 0,
                 "losses": 0,
