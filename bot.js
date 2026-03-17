@@ -59,6 +59,7 @@ client.slashcommands = new Collection()
 
 global.client = client;
 client.contextResetPoints = new Map();
+client.rouletteGames = new Map();
 
 let db = null;
 if (fs.existsSync(`./db/users.sqlite`)) {
