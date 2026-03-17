@@ -18,10 +18,6 @@ const ROULETTE_NUMBERS = [
 
 const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
 
-const CHIP_COLORS = [
-    '#e74c3c', '#3498db', '#2ecc71', '#9b59b6', '#f39c12', '#1abc9c', '#e91e63', '#00bcd4'
-];
-
 function getRedBlack(number) {
     if (number === 0) return 'green';
     return RED_NUMBERS.includes(number) ? 'red' : 'black';
@@ -96,12 +92,6 @@ function getNumberPosition(number) {
         x: GRID_X + col * CELL_W + CELL_W / 2,
         y: TABLE_Y + displayRow * CELL_H + CELL_H / 2
     };
-}
-
-function chipColorForUser(userId) {
-    let hash = 0;
-    for (const ch of String(userId)) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffff; // simple hash to get a consistent color per user
-    return CHIP_COLORS[hash % CHIP_COLORS.length];
 }
 
 function computeChipOffsets(count) {
@@ -472,7 +462,7 @@ function drawTitle(ctx) {
     ctx.fillText(`ROULETTE`, CANVAS_W / 2, 46);
 }
 
-async function drawRouletteTable(bets = [], userAvatars = {}) {
+async function drawRouletteTable(bets = [], userAvatars = {}, userColors = {}) {
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
@@ -507,7 +497,7 @@ async function drawRouletteTable(bets = [], userAvatars = {}) {
         const offsets = computeChipOffsets(group.length);
         group.forEach((bet, index) => {
             const avatarImg = avatarImages[bet.userId] ?? null;
-            const chipColor = chipColorForUser(bet.userId ?? bet.number);
+            const chipColor = userColors[bet.userId] ?? '#888888';
             drawChip(ctx, basePos.x + offsets[index], basePos.y, bet.amount, avatarImg, chipColor);
         });
     }
@@ -521,7 +511,7 @@ async function drawBall(canvas, number) {
     return canvas;
 }
 
-async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [], userAvatars = {}) {
+async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [], userAvatars = {}, userColors = {}) {
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
@@ -559,7 +549,7 @@ async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [],
             const offsets = computeChipOffsets(group.length);
             group.forEach((bet, index) => {
                 const avatarImg = avatarImages[bet.userId] ?? null;
-                const chipColor = chipColorForUser(bet.userId ?? bet.number);
+                const chipColor = userColors[bet.userId] ?? '#888888';
                 drawChip(ctx, basePos.x + offsets[index], basePos.y, bet.amount, avatarImg, chipColor);
             });
         }
@@ -577,36 +567,34 @@ async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [],
     if (isFinal) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    }
 
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    roundRect(ctx, bx - 4, by - 4, bw + 8, bh + 8, 14);
-    ctx.fill();
+        // shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        roundRect(ctx, bx - 4, by - 4, bw + 8, bh + 8, 14);
+        ctx.fill();
 
-    // box
-    ctx.fillStyle = boxBg;
-    roundRect(ctx, bx, by, bw, bh, 11);
-    ctx.fill();
-    ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 3;
-    roundRect(ctx, bx, by, bw, bh, 11);
-    ctx.stroke();
+        // box
+        ctx.fillStyle = boxBg;
+        roundRect(ctx, bx, by, bw, bh, 11);
+        ctx.fill();
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 3;
+        roundRect(ctx, bx, by, bw, bh, 11);
+        ctx.stroke();
 
-    // winning number
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 56px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(number.toString(), bx + bw / 2, by + (totalWinnings > 0 ? bh * 0.58 : bh / 2));
+        // winning number
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 56px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(number.toString(), bx + bw / 2, by + (totalWinnings > 0 ? bh * 0.58 : bh / 2));
 
-    // winning number text
-    if (isFinal) {
+        // winning number text
         ctx.fillStyle = '#ffd700';
         ctx.font = 'bold 18px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Winning Number:', bx + bw / 2, by + bh * 0.10);
+        ctx.fillText('Winning Number:', bx + bw / 2, by + bh * 0.15);
     }
 
     const buffer = canvas.toBuffer('image/png');

@@ -25,6 +25,22 @@ const BET_TYPES = [
     { name: 'Column 3', value: 'column3' }
 ];
 
+const BET_TYPE_TO_CHIP = {
+    straight: null, // uses parsedNumber
+    red: 'red',
+    black: 'black',
+    even: 'even',
+    odd: 'odd',
+    low: 'low',
+    high: 'high',
+    dozen1: 'dozen1',
+    dozen2: 'dozen2',
+    dozen3: 'dozen3',
+    column1: 'column1',
+    column2: 'column2',
+    column3: 'column3'
+};
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('roulette')
@@ -59,7 +75,6 @@ module.exports = {
             .setFooter({ text: `${client.user.username} | Version ${require('../../package.json').version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
-        // Validate bet amount
         const bet = Number(await parseBet(betAmountStr, user.id));
         if (isNaN(bet)) {
             return await interaction.reply({ embeds: [errorEmbed(`You must bet a valid amount of ${CURRENCY_NAME}!`)], ephemeral: true });
@@ -85,17 +100,13 @@ module.exports = {
             }
         }
 
-        // Check for existing game in this channel
         const existingGame = client.rouletteGames.get(channelId);
 
         if (!existingGame) {
-            // Create a new game
             await handleNewGame(interaction, client, user, betType, parsedNumber, bet);
         } else if (existingGame.status === 'betting') {
-            // Add bet to existing game
             await handleAddBet(interaction, client, user, betType, parsedNumber, bet, existingGame);
         } else {
-            // Game is spinning or resolved
             return await interaction.reply({ embeds: [errorEmbed(`This game's betting period has ended. Please wait for the next game.`)], ephemeral: true });
         }
     }
@@ -130,28 +141,14 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
 
     await interaction.deferReply();
 
-    let chipNumber = parsedNumber;
-    if (!chipNumber) {
-        switch (betType) {
-            case 'red': chipNumber = 'red'; break;
-            case 'black': chipNumber = 'black'; break;
-            case 'even': chipNumber = 'even'; break;
-            case 'odd': chipNumber = 'odd'; break;
-            case 'low': chipNumber = 'low'; break;
-            case 'high': chipNumber = 'high'; break;
-            case 'dozen1': chipNumber = 'dozen1'; break;
-            case 'dozen2': chipNumber = 'dozen2'; break;
-            case 'dozen3': chipNumber = 'dozen3'; break;
-            case 'column1': chipNumber = 'column1'; break;
-            case 'column2': chipNumber = 'column2'; break;
-            case 'column3': chipNumber = 'column3'; break;
-        }
-    }
+    let chipNumber = parsedNumber ?? BET_TYPE_TO_CHIP[betType];
 
     const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 256 });
+    const fetchUserFromGuild = await interaction.guild.members.fetch(user.id).catch(() => null);
+    const chipColor = user.accentColor ? user.accentColor : (fetchUserFromGuild && fetchUserFromGuild.displayHexColor && fetchUserFromGuild.displayHexColor !== '#000000' ? fetchUserFromGuild.displayHexColor : '#888888');
     const bets = [{ number: chipNumber, amount: bet, userId: user.id, username: user.displayName, type: betType, numberValue: parsedNumber }];
 
-    const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl });
+    const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl }, { [user.id]: chipColor });
 
     const row = new ActionRowBuilder()
         .addComponents(
@@ -184,6 +181,7 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
         creatorUsername: user.displayName,
         bets: bets,
         userAvatars: { [user.id]: avatarUrl },
+        userColors: { [user.id]: chipColor },
         status: 'betting',
         createdAt: Date.now(),
         endTime: Date.now() + ROULETTE_BETTING_TIME,
@@ -234,7 +232,6 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
             game.collector.stop('spin');
         } else if (i.customId === 'roulette_cancel') {
             clearInterval(game.countdownInterval);
-            // Refund all bets on cancellation
             for (const bet of game.bets) {
                 await db.add(`${bet.userId}.balance`, bet.amount);
             }
@@ -258,18 +255,13 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
         const finalGame = client.rouletteGames.get(interaction.channelId);
         if (!finalGame || finalGame.status !== 'betting') return;
 
-        if (reason === 'time') {
-            // Timer expired - resolve the game
-            await resolveGame(client, interaction.channel, message, finalGame);
-        } else if (reason === 'spin') {
-            // Spin button clicked
+        if (reason === 'time' || reason === 'spin') {
             await resolveGame(client, interaction.channel, message, finalGame);
         }
     });
 }
 
 async function handleAddBet(interaction, client, user, betType, parsedNumber, bet, game) {
-    // Get user database entry
     let dbUser = await db.get(user.id);
     if (!dbUser) {
         await addNewDBUser(user);
@@ -286,37 +278,18 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
         ], ephemeral: true });
     }
 
-    // Deduct bet
     await db.sub(`${user.id}.balance`, bet);
 
-    // Track stats
     const stats = `${user.id}.stats.roulette`;
     await db.add(`${stats}.totalBet`, bet);
 
     logger.log(`${user.username} (${user.id}) added bet ${bet} ${CURRENCY_NAME} on ${betType}${parsedNumber !== null ? ' ' + parsedNumber : ''} to roulette game`);
 
-    // Determine chip position
-    let chipNumber = parsedNumber;
-    if (!chipNumber) {
-        switch (betType) {
-            case 'red': chipNumber = 'red'; break;
-            case 'black': chipNumber = 'black'; break;
-            case 'even': chipNumber = 'even'; break;
-            case 'odd': chipNumber = 'odd'; break;
-            case 'low': chipNumber = 'low'; break;
-            case 'high': chipNumber = 'high'; break;
-            case 'dozen1': chipNumber = 'dozen1'; break;
-            case 'dozen2': chipNumber = 'dozen2'; break;
-            case 'dozen3': chipNumber = 'dozen3'; break;
-            case 'column1': chipNumber = 'column1'; break;
-            case 'column2': chipNumber = 'column2'; break;
-            case 'column3': chipNumber = 'column3'; break;
-        }
-    }
+    let chipNumber = parsedNumber ?? BET_TYPE_TO_CHIP[betType];
 
     const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 256 });
 
-    // Add bet to game (merge with existing bet on same spot for this user)
+    // Merge with existing bet on same spot for this user
     const existingBet = game.bets.find(b =>
         b.userId === user.id &&
         b.type === betType &&
@@ -336,15 +309,16 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
             numberValue: parsedNumber
         });
     }
-    game.userAvatars[user.id] = avatarUrl;
 
-    // Reset timer
+    game.userAvatars[user.id] = avatarUrl;
+    const fetchUserFromGuild = await interaction.guild.members.fetch(user.id).catch(() => null);
+    const chipColor = user.accentColor ? user.accentColor : (fetchUserFromGuild && fetchUserFromGuild.displayHexColor && fetchUserFromGuild.displayHexColor !== '#000000' ? fetchUserFromGuild.displayHexColor : '#888888');
+    game.userColors[user.id] = chipColor;
+
     game.endTime = Date.now() + ROULETTE_BETTING_TIME;
 
-    // Regenerate table image
-    const tableFile = await drawRouletteTable(game.bets, game.userAvatars);
+    const tableFile = await drawRouletteTable(game.bets, game.userAvatars, game.userColors);
 
-    // Build bets description
     const betsDescription = buildBetsDescription(game.bets);
 
     const embed = new EmbedBuilder()
@@ -356,7 +330,6 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
         .setTimestamp()
         .setImage('attachment://roulette.png');
 
-    // Acknowledge the user's bet
     const localEmbed = new EmbedBuilder()
         .setAuthor({ name: `Good luck!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
         .setDescription(`Bet placed: ${bet} on ${formatBetType(betType, parsedNumber)}`)
@@ -365,12 +338,10 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
         .setTimestamp();
     await interaction.reply({ embeds: [localEmbed], ephemeral: true });
 
-    // Update the game message
     try {
         const gameMessage = await interaction.channel.messages.fetch(game.messageId);
         await gameMessage.edit({ embeds: [embed], files: [tableFile] });
 
-        // Reset collector timer
         if (game.collector) {
             game.collector.resetTimer();
         }
@@ -382,14 +353,12 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
 async function resolveGame(client, channel, message, game) {
     game.status = 'spinning';
 
-    // Clear components
     await message.edit({ components: [] });
 
-    // Get winning number
     const winningNumber = spinWheel();
     const color = getRedBlack(winningNumber);
 
-    // Show spin animation
+    // Spin animation - show random numbers before revealing winner
     const embed = new EmbedBuilder()
         .setAuthor({ name: `${game.creatorUsername}'s Roulette Game`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTitle('Spinning the wheel...')
@@ -400,17 +369,15 @@ async function resolveGame(client, channel, message, game) {
     const timeBetweenSpins = 500;
     for (let i = 0; i < 5; i++) {
         const randomNum = Math.floor(Math.random() * 37);
-        const resultFile = await drawResult(randomNum, 0, false, game.bets, game.userAvatars);
+        const resultFile = await drawResult(randomNum, 0, false, game.bets, game.userAvatars, game.userColors);
         await message.edit({ embeds: [embed.setTitle('Spinning...')], files: [resultFile] });
         await wait(timeBetweenSpins);
     }
 
-    // Show final winning number
-    const winningNumberFile = await drawResult(winningNumber, 0, false, [], {});
+    const winningNumberFile = await drawResult(winningNumber, 0, false, game.bets, game.userAvatars, game.userColors);
     await message.edit({ embeds: [embed.setTitle(`Result: ${winningNumber}...`)], files: [winningNumberFile] });
     await wait(800);
 
-    // Calculate results for each bet
     const results = [];
     for (const bet of game.bets) {
         const winnings = calculateWinnings(bet.type, bet.numberValue, bet.amount, winningNumber);
@@ -443,9 +410,8 @@ async function resolveGame(client, channel, message, game) {
         });
     }
 
-    // Draw final result
     const totalWinnings = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
-    const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars);
+    const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars, game.userColors);
 
     const resultEmbed = new EmbedBuilder()
         .setAuthor({ name: `${game.creatorUsername}'s Roulette Game`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
@@ -470,7 +436,6 @@ async function resolveGame(client, channel, message, game) {
         await sendResultDM(client, resultsByUser[userId], winningNumber, color);
     }
 
-    // Clean up game state
     client.rouletteGames.delete(game.channelId);
 }
 
