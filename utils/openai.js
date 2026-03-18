@@ -13,11 +13,157 @@ const {
   SUMMARY_MAX_PROMPT_TOKENS,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT,
   INCLUDE_USER_FACTS_IN_PROMPT,
+  CURRENCY_NAME,
 } = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
+const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
+
+// Tool definitions for OpenAI function calling (using 'tools' format for DeepSeek compatibility)
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "get_balance",
+      description: "Get a user's wallet and bank balance. Call when user asks about their or someone else's money.",
+      parameters: {
+        type: "object",
+        properties: {
+          user_id: { type: "string", description: "Discord user ID (optional, defaults to current user)" }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_leaderboard",
+      description: "Get the top users by bank balance. Call when user asks about rankings, leaderboards, or richest users.",
+      parameters: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["current", "all_time"], description: "Current or all-time leaderboard (default: current)" }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_user_stats",
+      description: "Get a user's game statistics, command usage, and other stats. Call when user asks about their or someone's stats.",
+      parameters: {
+        type: "object",
+        properties: {
+          user_id: { type: "string", description: "Discord user ID (optional, defaults to current user)" }
+        },
+        required: []
+      }
+    }
+  }
+];
+
+// Helper to resolve a user ID or username to a guild member
+async function resolveMember(input, guild) {
+  if (!input) return null;
+
+  // If it looks like a Discord snowflake ID (17-19 digits)
+  if (/^\d{17,19}$/.test(input)) {
+    return guild.members.fetch(input).catch(() => null);
+  }
+
+  // Otherwise, search by display name, username, or nickname
+  const searchName = input.toLowerCase().replace(/^@/, '');
+  const members = await guild.members.fetch();
+
+  return members.find(m =>
+    m.displayName.toLowerCase() === searchName ||
+    m.user.username.toLowerCase() === searchName ||
+    (m.nickname && m.nickname.toLowerCase() === searchName)
+  ) || null;
+}
+
+// Tool handlers - each receives args and message for context
+async function handleGetBalance(args, message) {
+  const guild = message.guild;
+
+  let user;
+  if (args.user_id) {
+    user = await resolveMember(args.user_id, guild);
+    if (!user) return { error: `User "${args.user_id}" not found in this server.` };
+  } else {
+    user = message.member;
+  }
+
+  const userData = await usersDb.get(user.id);
+  if (!userData) return { error: "User has no data yet." };
+
+  return {
+    user_id: user.id,
+    username: user.displayName,
+    balance: userData.balance ?? 0,
+    bank: userData.bank ?? 0,
+    currency: CURRENCY_NAME
+  };
+}
+
+async function handleGetLeaderboard(args, message) {
+  const type = args.type || "current";
+
+  const topUsers = type === "all_time"
+    ? await getAllTimeTopUsers()
+    : await getCurrentTopUsers();
+
+  return {
+    type: type,
+    users: topUsers.slice(0, 10).map((u, i) => ({
+      rank: i + 1,
+      user_id: u.id,
+      username: u.value.name || "Unknown",
+      bank: type === "all_time" ? (u.value.stats?.largestBank ?? u.value.bank ?? 0) : (u.value.bank ?? 0)
+    }))
+  };
+}
+
+async function handleGetUserStats(args, message) {
+  const guild = message.guild;
+
+  let member;
+  if (args.user_id) {
+    member = await resolveMember(args.user_id, guild);
+    if (!member) return { error: `User "${args.user_id}" not found in this server.` };
+  } else {
+    member = message.member;
+  }
+
+  const userData = await usersDb.get(member.id);
+  if (!userData) return { error: "User has no data yet." };
+
+  const stats = userData.stats || {};
+
+  return {
+    user_id: member.id,
+    username: member.displayName,
+    total_commands: Object.values(stats.commands?.total || {}).reduce((a, b) => a + b, 0),
+    balance: userData.balance ?? 0,
+    bank: userData.bank ?? 0,
+    games: {
+      blackjack: { wins: stats.blackjack?.wins ?? 0, losses: stats.blackjack?.losses ?? 0 },
+      slots: { wins: stats.slots?.wins ?? 0, jackpots: stats.slots?.jackpots ?? 0 },
+      flip: { wins: stats.flip?.wins ?? 0, losses: stats.flip?.losses ?? 0 }
+    }
+  };
+}
+
+const TOOL_HANDLERS = {
+  get_balance: handleGetBalance,
+  get_leaderboard: handleGetLeaderboard,
+  get_user_stats: handleGetUserStats
+};
 
 let _openaiClient = null;
 function getOpenAIClient(key) {
@@ -882,25 +1028,105 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
     logger.debug(`Full prompt sent to Deepseek:\x1b[31m${fullPrompt}`);
     logger.debug(`Estimated token count: ${estimatedTokens} tokens`);
-    const completion = await withTimeout(
-      openai.createChatCompletion({
-        "model": "deepseek-chat",
-        "messages": [
-          { "role": "system", "content": sys_prompt },
-          ...conversationHistory,
-          { "role": "user", "content": usr_prompt },
-        ],
-        "temperature": 0.9,
-      }),
-      120_000,
-      "Deepseek API request (handleBotMessage) took too long (30 seconds)."
-    );
-    logger.debug(`Generated Deepseek response: \x1b[31m${completion.data.choices[0].message.content}`);
-    logger.debug(`Prompt tokens: ${completion.data.usage.prompt_tokens} (HIT: ${completion.data.usage.prompt_cache_hit_tokens} | MISS: ${completion.data.usage.prompt_cache_miss_tokens})  | Completion tokens: ${completion.data.usage.completion_tokens} | Total tokens: ${completion.data.usage.total_tokens}`);
-    logger.debug(`Estimated Cost: \x1b[33m$${estimateCost(completion.data)}`);
-    if (completion.data.choices[0].message.content.length > 2000) {
+
+    let messages = [
+      { role: "system", content: sys_prompt },
+      ...conversationHistory,
+      { role: "user", content: usr_prompt }
+    ];
+
+    let response = null;
+    let toolCallDepth = 0;
+    const MAX_TOOL_DEPTH = 5;
+
+    while (toolCallDepth < MAX_TOOL_DEPTH) {
+      const requestBody = {
+        model: "deepseek-chat",
+        messages: messages,
+        temperature: 0.9,
+        tools: TOOLS,
+        tool_choice: "auto"
+      };
+
+      logger.debug(`[API Request] tools: ${JSON.stringify(TOOLS.map(t => t.function.name))}`);
+      logger.debug(`[API Request] last user message: ${messages[messages.length - 1]?.content?.substring(0, 100)}...`);
+
+      const completion = await withTimeout(
+        openai.createChatCompletion(requestBody),
+        120_000,
+        "Deepseek API request took too long"
+      );
+
+      const choice = completion.data.choices[0];
+      logger.debug(`API response: finish_reason=${choice.finish_reason}`);
+      logger.debug(`[API Response] message keys: ${Object.keys(choice.message || {}).join(', ')}`);
+
+      if (choice.message?.tool_calls) {
+        logger.debug(`[API Response] tool_calls: ${JSON.stringify(choice.message.tool_calls)}`);
+      }
+      if (choice.message?.content) {
+        logger.debug(`[API Response] content preview: ${choice.message.content?.substring(0, 100)}...`);
+      }
+
+      // If model wants to call a tool
+      if (choice.finish_reason === "tool_calls" && choice.message.tool_calls?.length) {
+        // Add the assistant's message with tool calls to history
+        messages.push(choice.message);
+
+        for (const toolCall of choice.message.tool_calls) {
+          const fnName = toolCall.function.name;
+          const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
+
+          logger.log(`[ToolCall] ${fnName}(${JSON.stringify(fnArgs)})`);
+
+          // Execute the tool
+          let toolResult;
+          try {
+            const handler = TOOL_HANDLERS[fnName];
+            if (!handler) {
+              toolResult = { error: `Unknown function: ${fnName}` };
+            } else {
+              toolResult = await handler(fnArgs, message);
+            }
+          } catch (err) {
+            logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);
+            toolResult = { error: err.message };
+          }
+
+          logger.debug(`[ToolCall] Result: ${JSON.stringify(toolResult)}`);
+
+          // Add tool result to messages
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(toolResult)
+          });
+        }
+
+        toolCallDepth++;
+        continue;
+      }
+
+      // No more function calls — we have a final response
+      response = choice.message.content;
+      logger.debug(`Generated Deepseek response: \x1b[31m${response}`);
+      logger.debug(
+        `Prompt tokens: ${completion.data.usage.prompt_tokens} ` +
+        `(HIT: ${completion.data.usage.prompt_cache_hit_tokens ?? 0} | MISS: ${completion.data.usage.prompt_cache_miss_tokens ?? 0}) ` +
+        `| Completion tokens: ${completion.data.usage.completion_tokens} ` +
+        `| Total tokens: ${completion.data.usage.total_tokens}`
+      );
+      logger.debug(`Estimated Cost: \x1b[33m$${estimateCost(completion.data)}`);
+      break;
+    }
+
+    if (toolCallDepth >= MAX_TOOL_DEPTH) {
+      logger.warn("[ToolCall] Max depth reached, forcing response");
+      response = "I'm having trouble processing that request. Please try again.";
+    }
+
+    if (response && response.length > 2000) {
       logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
-      const response = completion.data.choices[0].message.content;
       let chunks = response.match(/[\s\S]{1,1997}/g) || [];
       for (let chunk of chunks) {
         if (chunk !== chunks[chunks.length - 1]) {
@@ -910,9 +1136,9 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       }
       logger.debug(`Response sent in ${chunks.length} chunks.`);
       return;
-    } else {
+    } else if (response) {
       logger.debug("Response is within Discord's character limit, sending as a single message.");
-      targetChannel.send(completion.data.choices[0].message.content);
+      targetChannel.send(response);
     }
     await tickMessageCount(targetChannel, validMessages, key, message.author.id);
   } catch (error) {
