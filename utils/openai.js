@@ -13,157 +13,12 @@ const {
   SUMMARY_MAX_PROMPT_TOKENS,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT,
   INCLUDE_USER_FACTS_IN_PROMPT,
-  CURRENCY_NAME,
 } = require("../config.json");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
-const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
-
-// Tool definitions for OpenAI function calling (using 'tools' format for DeepSeek compatibility)
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "get_balance",
-      description: "Get a user's wallet and bank balance. Call when user asks about their or someone else's money.",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "string", description: "Discord user ID (optional, defaults to current user)" }
-        },
-        required: []
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_leaderboard",
-      description: "Get the top users by bank balance. Call when user asks about rankings, leaderboards, or richest users.",
-      parameters: {
-        type: "object",
-        properties: {
-          type: { type: "string", enum: ["current", "all_time"], description: "Current or all-time leaderboard (default: current)" }
-        },
-        required: []
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_user_stats",
-      description: "Get a user's game statistics, command usage, and other stats. Call when user asks about their or someone's stats.",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "string", description: "Discord user ID (optional, defaults to current user)" }
-        },
-        required: []
-      }
-    }
-  }
-];
-
-// Helper to resolve a user ID or username to a guild member
-async function resolveMember(input, guild) {
-  if (!input) return null;
-
-  // If it looks like a Discord snowflake ID (17-19 digits)
-  if (/^\d{17,19}$/.test(input)) {
-    return guild.members.fetch(input).catch(() => null);
-  }
-
-  // Otherwise, search by display name, username, or nickname
-  const searchName = input.toLowerCase().replace(/^@/, '');
-  const members = await guild.members.fetch();
-
-  return members.find(m =>
-    m.displayName.toLowerCase() === searchName ||
-    m.user.username.toLowerCase() === searchName ||
-    (m.nickname && m.nickname.toLowerCase() === searchName)
-  ) || null;
-}
-
-// Tool handlers - each receives args and message for context
-async function handleGetBalance(args, message) {
-  const guild = message.guild;
-
-  let user;
-  if (args.user_id) {
-    user = await resolveMember(args.user_id, guild);
-    if (!user) return { error: `User "${args.user_id}" not found in this server.` };
-  } else {
-    user = message.member;
-  }
-
-  const userData = await usersDb.get(user.id);
-  if (!userData) return { error: "User has no data yet." };
-
-  return {
-    user_id: user.id,
-    username: user.displayName,
-    balance: userData.balance ?? 0,
-    bank: userData.bank ?? 0,
-    currency: CURRENCY_NAME
-  };
-}
-
-async function handleGetLeaderboard(args, message) {
-  const type = args.type || "current";
-
-  const topUsers = type === "all_time"
-    ? await getAllTimeTopUsers()
-    : await getCurrentTopUsers();
-
-  return {
-    type: type,
-    users: topUsers.slice(0, 10).map((u, i) => ({
-      rank: i + 1,
-      user_id: u.id,
-      username: u.value.name || "Unknown",
-      bank: type === "all_time" ? (u.value.stats?.largestBank ?? u.value.bank ?? 0) : (u.value.bank ?? 0)
-    }))
-  };
-}
-
-async function handleGetUserStats(args, message) {
-  const guild = message.guild;
-
-  let member;
-  if (args.user_id) {
-    member = await resolveMember(args.user_id, guild);
-    if (!member) return { error: `User "${args.user_id}" not found in this server.` };
-  } else {
-    member = message.member;
-  }
-
-  const userData = await usersDb.get(member.id);
-  if (!userData) return { error: "User has no data yet." };
-
-  const stats = userData.stats || {};
-
-  return {
-    user_id: member.id,
-    username: member.displayName,
-    total_commands: Object.values(stats.commands?.total || {}).reduce((a, b) => a + b, 0),
-    balance: userData.balance ?? 0,
-    bank: userData.bank ?? 0,
-    games: {
-      blackjack: { wins: stats.blackjack?.wins ?? 0, losses: stats.blackjack?.losses ?? 0 },
-      slots: { wins: stats.slots?.wins ?? 0, jackpots: stats.slots?.jackpots ?? 0 },
-      flip: { wins: stats.flip?.wins ?? 0, losses: stats.flip?.losses ?? 0 }
-    }
-  };
-}
-
-const TOOL_HANDLERS = {
-  get_balance: handleGetBalance,
-  get_leaderboard: handleGetLeaderboard,
-  get_user_stats: handleGetUserStats
-};
+const { TOOLS, executeToolCall } = require("./openai-tools");
 
 let _openaiClient = null;
 function getOpenAIClient(key) {
@@ -1074,28 +929,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         messages.push(choice.message);
 
         for (const toolCall of choice.message.tool_calls) {
-          const fnName = toolCall.function.name;
-          const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
+          const toolResult = await executeToolCall(toolCall, message);
 
-          logger.log(`[ToolCall] ${fnName}(${JSON.stringify(fnArgs)})`);
-
-          // Execute the tool
-          let toolResult;
-          try {
-            const handler = TOOL_HANDLERS[fnName];
-            if (!handler) {
-              toolResult = { error: `Unknown function: ${fnName}` };
-            } else {
-              toolResult = await handler(fnArgs, message);
-            }
-          } catch (err) {
-            logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);
-            toolResult = { error: err.message };
-          }
-
-          logger.debug(`[ToolCall] Result: ${JSON.stringify(toolResult)}`);
-
-          // Add tool result to messages
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
