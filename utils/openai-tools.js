@@ -166,16 +166,40 @@ async function handleGetUserStats(args, message) {
 
   const stats = userData.stats || {};
 
+  // Helper to compute total commands from the commands.total object
+  const totalCommands = Object.values(stats.commands?.total || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+
+  const gameStats = {};
+  const gameKeys = ['blackjack', 'slots', 'flip', 'roulette', 'race', 'begs'];
+  for (const key of gameKeys) {
+    if (stats[key]) {
+      gameStats[key] = { ...stats[key] };
+    }
+  }
+
   return {
     user_id: member.id,
     username: member.displayName,
-    total_commands: Object.values(stats.commands?.total || {}).reduce((a, b) => a + b, 0),
     balance: userData.balance ?? 0,
     bank: userData.bank ?? 0,
-    games: {
-      blackjack: { wins: stats.blackjack?.wins ?? 0, losses: stats.blackjack?.losses ?? 0 },
-      slots: { wins: stats.slots?.wins ?? 0, jackpots: stats.slots?.jackpots ?? 0 },
-      flip: { wins: stats.flip?.wins ?? 0, losses: stats.flip?.losses ?? 0 }
+    total_commands: totalCommands,
+    cooldowns: {
+      daily: userData.cooldowns?.daily || 0,
+      weekly: userData.cooldowns?.weekly || 0,
+      rob: userData.cooldowns?.rob || 0,
+      freespins: userData.cooldowns?.freespins || 0,
+    },
+    commands: {
+      daily: stats.commands?.daily || {},
+      monthly: stats.commands?.monthly || {},
+      yearly: stats.commands?.yearly || {}
+    },
+    dailies: stats.dailies || { claimed: 0, currentStreak: 0, longestStreak: 0 },
+    weeklies: stats.weeklies || { claimed: 0 },
+    games: gameStats,
+    records: {
+      largestBalance: stats.largestBalance ?? 0,
+      largestBank: stats.largestBank ?? 0
     }
   };
 }
@@ -183,11 +207,19 @@ async function handleGetUserStats(args, message) {
 async function handleGetGuildInfo(args, message) {
   const guild = message.guild;
   const client = global.client;
+  logger.debug(`Fetching guild info for "${guild.name}" (ID: ${guild.id})`);
+  console.log(`\x1b[33m${message.guild}\x1b[0m`);
 
   return {
     name: guild.name,
     id: guild.id,
     member_count: guild.memberCount,
+    members: guild.members.cache.map(m => ({
+      user_id: m.id,
+      username: m.user.username,
+      display_name: m.displayName || m.user.username,
+      nickname: m.nickname || m.user.username}
+    )).slice(0, 100), // Limit to first 100 members for brevity
     channel_count: guild.channels.cache.size,
     role_count: guild.roles.cache.size,
     bot_name: client.user.username,

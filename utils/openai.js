@@ -209,14 +209,11 @@ async function getUserChatbotData(userId) {
     return defaults;
   }
 
-  // Backwards-compatible: ensure new fields exist
   const chatbot = {
     ...defaults,
     ...existing,
     incognitoChannels: Array.isArray(existing.incognitoChannels) ? existing.incognitoChannels : [],
   };
-
-  // Persist any backfilled defaults
   await usersDb.set(`${userId}.chatbot`, chatbot);
   return chatbot;
 }
@@ -354,7 +351,6 @@ async function generateFacts(thread, key) {
       "temperature": 0.3
     }),
     60_000,
-    // red text
     "Deepseek response (generateFacts) took too long (60 seconds)"
   );
   const { choices } = res.data;
@@ -942,7 +938,6 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         continue;
       }
 
-      // No more function calls — we have a final response
       response = choice.message.content;
       logger.debug(`Generated Deepseek response: \x1b[31m${response}`);
       logger.debug(
