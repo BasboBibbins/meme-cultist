@@ -253,7 +253,10 @@ async function handleGetUserInfo(args, message) {
     joined_at: member.joinedAt?.toISOString(),
     account_created: member.user.createdAt.toISOString(),
     balance: userData?.balance ?? 0,
-    bank: userData?.bank ?? 0
+    bank: userData?.bank ?? 0,
+    user_facts: userData?.chatbot?.facts || [],
+    user_summary: userData?.chatbot?.summaries ? userData.chatbot.summaries.slice(-1)[0] : null,
+    chatbot_msg_count: userData?.chatbot?.messageCount || 0,
   };
 }
 
