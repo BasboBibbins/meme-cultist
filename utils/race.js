@@ -1,3 +1,26 @@
+const { OpenAIApi, Configuration } = require('openai');
+const { CHATBOT_LOCAL } = require('../config.json');
+const logger = require('./logger');
+
+let _openaiClient = null;
+function getOpenAIClient(key) {
+    if (!_openaiClient || _openaiClient._key !== key) {
+        const configuration = new Configuration({
+            apiKey: key,
+            basePath: CHATBOT_LOCAL ? 'http://127.0.0.1:3000/v1/' : 'https://api.deepseek.com'
+        });
+        const client = new OpenAIApi(configuration);
+        client._key = key;
+        _openaiClient = client;
+    }
+    return _openaiClient;
+}
+
+function withTimeout(promise, ms, err = "Request timed out") {
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(err), ms));
+    return Promise.race([promise, timeout]);
+}
+
 const ADJECTIVES = [
     'Royal', 'Noble', 'Silver', 'Golden', 'Dark', 'Swift', 'Bold', 'Wild', 'Iron',
     'Midnight', 'Crimson', 'Blazing', 'Ancient', 'Sacred', 'Mighty', 'Phantom',
@@ -242,6 +265,184 @@ function getDefaultRaceStats() {
     return { wins: 0, losses: 0, biggestWin: 0, biggestLoss: 0, totalBet: 0 };
 }
 
+/**
+ * Generates race commentary lines using DeepSeek API
+ * @param {string} apiKey - DeepSeek API key
+ * @returns {Promise<Array<string>>} Array of commentary lines
+ */
+async function generateRaceCommentary(apiKey) {
+    if (!apiKey) {
+        logger.warn('No API key provided for race commentary generation');
+        return getDefaultCommentary();
+    }
+
+    const openai = getOpenAIClient(apiKey);
+
+    const prompt = `You are an energetic horse racing commentator. Generate 15 short, exciting one-line commentary phrases for a horse race.
+
+Rules:
+- Each line should be 1-2 short sentences maximum
+- Make them exciting and varied (tension, surprise, humor)
+- Do NOT reference any specific horse names - use generic terms like "the leader", "the favorite", "a longshot", "number 3"
+- Include phrases for: race start, mid-race action, close finishes, underdogs pulling ahead, favorites struggling
+- Don't use emoji
+- Respond with ONLY the commentary lines, one per line, numbered 1-15
+
+Example style:
+"And they're off! The gates burst open with thundering hooves!"
+"A longshot is making a surprising move from the back of the pack!"
+"Neck and neck at the final stretch, this is going to be close!"
+"The favorite is struggling today as the underdogs surge forward!"
+
+Generate 15 unique commentary lines:`;
+
+    try {
+        const res = await withTimeout(
+            openai.createChatCompletion({
+                model: 'deepseek-chat',
+                messages: [
+                    { role: 'system', content: 'You are an exciting horse racing commentator. Respond with only numbered commentary lines, one per line. Never use specific horse names.' },
+                    { role: 'user', content: prompt }
+                ],
+                max_tokens: 1024,
+                temperature: 0.9
+            }),
+            15_000,
+            'Race commentary generation timed out'
+        );
+
+        const { choices } = res.data;
+        if (choices.length > 0 && choices[0].message) {
+            const content = choices[0].message.content.trim();
+            const lines = content
+                .split('\n')
+                .map(line => line.replace(/^\d+\.\s*/, '').trim())
+                .filter(line => line.length > 0 && line.length < 200);
+
+            logger.log(`Generated ${lines.length} race commentary lines`);
+            return lines.length >= 5 ? lines : getDefaultCommentary();
+        }
+    } catch (error) {
+        logger.error(`Failed to generate race commentary: ${error.message}`);
+    }
+
+    return getDefaultCommentary();
+}
+
+function getDefaultCommentary() {
+    return [
+        "And they're off! The gates burst open!",
+        "A chaotic start as horses jostle for position!",
+        "The crowd roars as they thunder down the track!",
+        "Neck and neck as they approach the first turn!",
+        "A surprise move from the back of the pack!",
+        "The favorite is making a move on the outside!",
+        "Tension builds as they round the final bend!",
+        "This is anyone's race at the halfway point!",
+        "A longshot is pulling ahead unexpectedly!",
+        "The leaders are fighting for every inch!",
+        "The crowd is on their feet for this finish!",
+        "A photo finish might be in the making!",
+        "Every horse is giving it their all!",
+        "The final stretch is approaching!",
+        "What an incredible race we're witnessing!"
+    ];
+}
+
+/**
+ * Selects appropriate commentary for a given race state
+ * @param {Array} commentaries - Pre-generated commentary lines
+ * @param {number} tick - Current tick (1-based)
+ * @param {number} totalTicks - Total ticks in the race
+ * @param {Array} horses - Horse data
+ * @param {Array} positions - Current positions
+ * @param {number|null} winnerIndex - Index of winner (if finished)
+ * @param {Array} finishOrder - Order horses finished in
+ * @returns {string} Commentary line for this moment
+ */
+function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winnerIndex = null, finishOrder = []) {
+    const isFinished = winnerIndex !== null;
+    const progress = tick / totalTicks;
+
+    // Generate finish commentary with winner info
+    if (isFinished && winnerIndex !== null) {
+        const winner = horses[winnerIndex];
+        const odds = winner.displayOdds;
+        const oddsLabel = getOddsLabel(winner.probability);
+
+        // Different commentary based on odds
+        if (odds < 3) {
+            // Favorite won - expected result
+            const favoriteLines = [
+                `The favorite ${winner.name} lives up to expectations!`,
+                `${winner.name} delivers as predicted at ${odds}x odds!`,
+                `No surprises here - ${winner.name} takes the win!`,
+                `The crowd expected this - ${winner.name} dominates!`,
+                `${winner.name} proves why they were the favorite!`
+            ];
+            return favoriteLines[Math.floor(Math.random() * favoriteLines.length)];
+        } else if (odds < 6) {
+            // Contender won - good result
+            const contenderLines = [
+                `${winner.name} pulls through with a solid performance!`,
+                `A strong finish from ${winner.name} at ${odds}x!`,
+                `${winner.name} takes the lead and holds on!`,
+                `What a run from ${winner.name}!`,
+                `${winner.name} crosses the line first!`
+            ];
+            return contenderLines[Math.floor(Math.random() * contenderLines.length)];
+        } else if (odds < 12) {
+            // Longshot won - exciting upset
+            const longshotLines = [
+                `An upset! ${winner.name} defies the odds at ${odds}x!`,
+                `What a surprise! ${winner.name} takes it home!`,
+                `The crowd is stunned - ${winner.name} wins at ${odds}x!`,
+                `Nobody saw that coming! ${winner.name} claims victory!`,
+                `An incredible upset by ${winner.name}!`
+            ];
+            return longshotLines[Math.floor(Math.random() * longshotLines.length)];
+        } else {
+            // Outsider won - huge upset
+            const outsiderLines = [
+                `INCREDIBLE! ${winner.name} shocks everyone at ${odds}x!`,
+                `A massive upset! ${winner.name} pulls off the miracle!`,
+                `Unbelievable! ${winner.name} wins against all odds!`,
+                `One of the biggest upsets ever - ${winner.name}!`,
+                `The crowd goes wild! ${winner.name} at ${odds}x!`
+            ];
+            return outsiderLines[Math.floor(Math.random() * outsiderLines.length)];
+        }
+    }
+
+    // During race - use pre-generated commentary with position context
+    if (!commentaries || commentaries.length === 0) {
+        return getDefaultCommentary()[Math.floor(Math.random() * getDefaultCommentary().length)];
+    }
+
+    // Select commentary based on race phase
+    let pool;
+    if (tick === 1) {
+        // Start - use first 2 commentaries
+        pool = commentaries.slice(0, 2);
+    } else if (progress < 0.4) {
+        // Early race
+        pool = commentaries.slice(2, 6);
+    } else if (progress < 0.7) {
+        // Mid race
+        pool = commentaries.slice(6, 10);
+    } else {
+        // Late race - building tension
+        pool = commentaries.slice(10, 13);
+    }
+
+    // Pick a random line from the appropriate pool
+    if (pool.length === 0) {
+        pool = commentaries;
+    }
+
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
 module.exports = {
     generateHorses,
     determineWinner,
@@ -250,7 +451,9 @@ module.exports = {
     buildTrack,
     buildRaceDescription,
     buildBettingDescription,
+    buildRaceTitle,
     advanceRace,
+    generateRaceCommentary,
     getDefaultRaceStats,
     ADJECTIVES,
     NOUNS,

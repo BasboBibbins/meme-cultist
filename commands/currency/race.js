@@ -4,7 +4,7 @@ const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require('../../database');
 const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL } = require('../../config.json');
 const { parseBet } = require('../../utils/betparse');
-const { generateHorses, determineWinner, calculatePayout, buildBettingDescription, buildRaceDescription, advanceRace } = require('../../utils/race');
+const { generateHorses, determineWinner, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require('../../utils/race');
 const logger = require('../../utils/logger');
 const { randomHexColor } = require('../../utils/randomcolor');
 const wait = require('node:timers/promises').setTimeout;
@@ -13,6 +13,8 @@ const HOUSE_EDGE = RACE_HOUSE_EDGE ?? 0.10;
 const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
 const ANIMATION_TICKS = RACE_ANIMATION_TICKS ?? 10;
 const TICK_INTERVAL = RACE_TICK_INTERVAL ?? 1500;
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -85,6 +87,12 @@ async function handleStartRace(interaction, client, user) {
 
     logger.log(`${user.username} (${user.id}) started a horse race. Winner: Horse ${winner.number} (${winner.name})`);
 
+    // Generate commentary asynchronously (don't await - use default if not ready)
+    let commentaryPromise = null;
+    if (OPENAI_API_KEY) {
+        commentaryPromise = generateRaceCommentary(OPENAI_API_KEY);
+    }
+
     // Build betting embed
     const endTime = Date.now() + BETTING_TIME;
     const betsDescription = buildBettingDescription(horses, [], endTime);
@@ -123,7 +131,8 @@ async function handleStartRace(interaction, client, user) {
         phase: 'betting',
         endTime: endTime,
         collector: null,
-        countdownInterval: null
+        countdownInterval: null,
+        commentary: null // Will be populated during betting phase
     };
 
     client.raceGames.set(interaction.channelId, game);
@@ -141,6 +150,21 @@ async function handleStartRace(interaction, client, user) {
     });
 
     game.collector = collector;
+
+    // Wait for commentary to generate (or timeout after 10 seconds)
+    if (commentaryPromise) {
+        try {
+            game.commentary = await Promise.race([
+                commentaryPromise,
+                new Promise(resolve => setTimeout(() => resolve(null), 10000))
+            ]);
+            if (game.commentary) {
+                logger.debug(`Race commentary generated: ${game.commentary.length} lines`);
+            }
+        } catch (e) {
+            logger.warn(`Failed to generate race commentary: ${e.message}`);
+        }
+    }
 
     // Countdown interval
     game.countdownInterval = setInterval(async () => {
@@ -370,7 +394,8 @@ async function resolveRace(client, channel, message, game) {
         }
 
         const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, []);
-        embed.setTitle(`🏁 Race in Progress — Lap ${tick}/${ANIMATION_TICKS} 🏁`);
+        const commentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, []);
+        embed.setTitle(commentary);
         embed.setDescription(description);
 
         await message.edit({ embeds: [embed] });
@@ -402,6 +427,7 @@ async function resolveRace(client, channel, message, game) {
     // Final results
     const winner = horses[game.winnerIndex];
     const finalDescription = buildRaceDescription(horses, positions, ANIMATION_TICKS, ANIMATION_TICKS, game.winnerIndex, finishOrder);
+    const finishCommentary = buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.winnerIndex, finishOrder);
 
     // Process payouts
     const results = [];
@@ -440,7 +466,9 @@ async function resolveRace(client, channel, message, game) {
     const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 
     const resultsLines = [
-        `**🏆 WINNER: Horse ${winner.number} — ${winner.name}** ${winner.emoji} [${winner.displayOdds}x]`,
+        `**${finishCommentary}**`,
+        '',
+        `🏆 **WINNER: Horse ${winner.number} — ${winner.name}** ${winner.emoji} [${winner.displayOdds}x]`,
         '',
         '```',
         finalDescription,
