@@ -3,6 +3,31 @@ const { createCanvas, loadImage } = require('canvas');
 const logger = require("./logger");
 const { AttachmentBuilder } = require('discord.js');
 
+// Canvas dimensions matching roulette aesthetic
+const CANVAS_W = 600;
+const CANVAS_H = 320;
+
+// Felt green matching roulette table
+const FELT_BG = '#0f4c25';
+const FELT_GREEN = '#1a6b35';
+const GOLD = '#ffd700';
+const GOLD_BORDER = '#c8a830';
+
+function roundRect(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
 async function pokerScore(hand) {
     try {
         const suits = [];
@@ -98,32 +123,88 @@ module.exports = {
     },
     canvasHand: async (hand, score) => {
         try {
-            const canvas = createCanvas(540, 250);
+            const canvas = createCanvas(CANVAS_W, CANVAS_H);
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < 5; i++) {
-                const card = await loadImage(hand[i].image);
-                ctx.drawImage(card, (110 * i), 100, 100, 150);
-            }
-            ctx.font = '24px Arial';
+
+            // Felt background matching roulette table
+            ctx.fillStyle = FELT_BG;
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+            // Draw title with gold styling
+            ctx.fillStyle = GOLD;
+            ctx.font = 'bold 28px Arial';
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 5;
-            ctx.lineJoin = 'round';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('VIDEO POKER', CANVAS_W / 2, 40);
+
+            // Card area background with rounded corners
+            const cardAreaX = 30, cardAreaY = 70;
+            const cardAreaW = CANVAS_W - 60, cardAreaH = 200;
+            ctx.fillStyle = FELT_GREEN;
+            roundRect(ctx, cardAreaX, cardAreaY, cardAreaW, cardAreaH, 12);
+            ctx.fill();
+            ctx.strokeStyle = GOLD_BORDER;
+            ctx.lineWidth = 3;
+            roundRect(ctx, cardAreaX, cardAreaY, cardAreaW, cardAreaH, 12);
+            ctx.stroke();
+
+            // Card dimensions and spacing
+            const cardW = 90, cardH = 135;
+            const cardSpacing = 14;
+            const totalCardsWidth = (cardW * 5) + (cardSpacing * 4);
+            const startCardX = (CANVAS_W - totalCardsWidth) / 2;
+            const cardY = cardAreaY + (cardAreaH - cardH) / 2;
+
+            // Load and draw cards
             for (let i = 0; i < 5; i++) {
+                const cardX = startCardX + i * (cardW + cardSpacing);
+                const card = await loadImage(hand[i].image);
+
+                // Card shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                roundRect(ctx, cardX + 3, cardY + 3, cardW, cardH, 8);
+                ctx.fill();
+
+                // Draw card image
+                ctx.drawImage(card, cardX, cardY, cardW, cardH);
+
+                // Gold border on held cards
                 if (hand[i].hold) {
-                    ctx.strokeText("HOLD", (110 * i) + 50, 75);
-                    ctx.fillStyle = 'white';
-                    ctx.fillText("HOLD", (110 * i) + 50, 75);
+                    ctx.strokeStyle = GOLD;
+                    ctx.lineWidth = 4;
+                    roundRect(ctx, cardX - 2, cardY - 2, cardW + 4, cardH + 4, 10);
+                    ctx.stroke();
+
+                    // HOLD label with shadow
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText('HOLD', cardX + cardW / 2, cardY - 6);
+                    ctx.fillStyle = GOLD;
+                    ctx.fillText('HOLD', cardX + cardW / 2 + 1, cardY - 5);
                 }
             }
-            ctx.font = '48px Arial';
+
+            // Score display at bottom
             if (score) {
-                ctx.strokeText(score, 270, 0);
-                ctx.fillStyle = 'white';
-                ctx.fillText(score, 270, 0);
+                const scoreY = CANVAS_H - 35;
+                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
+                ctx.fill();
+
+                ctx.strokeStyle = GOLD;
+                ctx.lineWidth = 2;
+                roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
+                ctx.stroke();
+
+                ctx.fillStyle = GOLD;
+                ctx.font = 'bold 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(score, CANVAS_W / 2, scoreY);
             }
+
             const buffer = canvas.toBuffer('image/png');
             const file = new AttachmentBuilder(buffer)
                 .setName('hand.png');
