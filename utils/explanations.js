@@ -67,12 +67,15 @@ module.exports = {
             There are 8 symbols, each with a different multiplier. You can see the paytable by using \`/slots paytable\`.
 
             You can also get free daily spins using \`/slots daily\` (resets daily at midnight).
+
+            **Progressive Jackpot:** Triple 7s wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 ${CURRENCY_NAME} to qualify for the jackpot.
             `,
         rules: `
             1. The goal of slots is to get three of the same symbol.
             2. There are 8 symbols, each with a different multiplier.
             3. Getting a single cherry will return your bet. Two cherries will return 2x your bet. Three cherries will return 5x your bet.
-            4. The jackpot is 100x your bet. The bot will also @everyone if you win the jackpot.`
+            4. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
+            5. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
     },
     poker: {
         name: "Poker",
@@ -82,6 +85,8 @@ module.exports = {
             You can then choose to keep or discard any number of cards again. You can keep all 5 cards if you want as well.
             After you are done discarding, you will be given your final hand and you will be paid out based on the paytable.
             You can see the paytable by using \`/poker paytable\`.
+
+            **Progressive Jackpot:** A royal flush wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 koku to qualify.
             `,
         note: `
             1. Aces are high, and straights can wrap around. Aces can be used as a high or low card, and straights can wrap around.
@@ -89,7 +94,8 @@ module.exports = {
             3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.
             4. If you take too long to make a decision, you will be timed out and lose your bet.
             5. Since the probability of getting a good hand is low, the payouts are high. Try small bets at first to get a feel for the game.
-            6. The chance of getting a royal flush is 1 in 649,740. It pays 250:1. The bot will also @everyone if you win a royal flush.`
+            6. The chance of getting a royal flush is 1 in 649,740. It wins the progressive jackpot! Minimum bet of 10 koku required. Bets below minimum receive a reduced 50x payout.
+            7. Every bet contributes 2% to the progressive jackpot pool.`
     },
     roulette: {
         name: "Roulette",

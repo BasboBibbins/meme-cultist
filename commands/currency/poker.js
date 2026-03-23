@@ -9,6 +9,7 @@ const { shuffleDeck, newDeck, dealHand, drawCard } = require('../../utils/deckof
 const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');
 const { getCard, canvasHand, pokerScore } = require('../../utils/poker');
+const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('../../utils/jackpot');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -21,6 +22,7 @@ module.exports = {
         const stats = `${user.id}.stats.poker`;
 
         if (option === 'paytable') {
+            const jackpot = await getJackpot();
             const paytable = new EmbedBuilder()
                 .setAuthor({ name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
                 .setColor(randomHexColor())
@@ -29,7 +31,7 @@ module.exports = {
                 .setTitle('Poker Paytable');
             paytable.addFields(
                 { name: 'Hand', value: `
-                    **Royal Flush** 
+                    **Royal Flush** 🎰
                     Straight Flush
                     Four of a Kind
                     Full House
@@ -39,7 +41,7 @@ module.exports = {
                     Two Pair
                     Jacks or Better`, inline: true },
                 { name: 'Payout', value: `
-                    **250x**
+                    **JACKPOT**
                     50x
                     25x
                     9x
@@ -48,6 +50,9 @@ module.exports = {
                     3x
                     2x
                     1x`, inline: true }
+            );
+            paytable.addFields(
+                { name: '🎰 Progressive Jackpot', value: `**${jackpot.amount.toLocaleString()} ${CURRENCY_NAME}**\nMinimum bet: ${MIN_BET} ${CURRENCY_NAME}`, inline: false }
             );
             return interaction.reply({ embeds: [paytable], ephemeral: true });
         }
@@ -87,6 +92,7 @@ module.exports = {
         
         let msg = await interaction.deferReply(interaction);
         await db.sub(`${user.id}.balance`, bet);
+        await contributeToJackpot(bet);
 
         const embed = new EmbedBuilder()
             .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
@@ -240,18 +246,37 @@ module.exports = {
                 return;
 
             } else if (reason === 'Royal Flush') {
-                winnings = Math.ceil(bet * 250);
+                // Check if bet qualifies for jackpot
+                if (!isJackpotEligible(bet)) {
+                    // Fallback payout for sub-minimum bet
+                    winnings = Math.ceil(bet * 50);
+                    await db.add(`${user.id}.balance`, winnings);
+                    await db.add(`${stats}.wins`, 1);
+                    await db.add(`${stats}.royals`, 1);
+                    if (winnings > await db.get(`${stats}.biggestWin`)) {
+                        await db.set(`${stats}.biggestWin`, winnings);
+                    }
+                    embed.setColor(0x00AE86)
+                        .setTitle(`You got a Royal Flush!`)
+                        .setDescription(`You won **${winnings}** ${CURRENCY_NAME}! (Reduced payout - bet below ${MIN_BET} ${CURRENCY_NAME} for jackpot)\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    await interaction.editReply({ components: [], embeds: [embed] });
+                    return;
+                }
+
+                // WIN PROGRESSIVE JACKPOT
+                const jackpotResult = await winJackpot(user.id, user.displayName);
+                winnings = jackpotResult.amount;
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
                 await db.add(`${stats}.royals`, 1);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got a Royal Flush!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                embed.setColor(0xFFD700)
+                    .setTitle(`🎰 JACKPOT! 🎰`)
+                    .setDescription(`You got a Royal Flush and won the **Progressive Jackpot**!\nYou won **${winnings.toLocaleString()}** ${CURRENCY_NAME}!\nYour new balance is **${(await db.get(`${user.id}.balance`)).toLocaleString()}** ${CURRENCY_NAME}.`);
                 await interaction.editReply({ components: [], embeds: [embed] });
-                await interaction.followUp({ content: `@everyone **${user.displayName }** just got a royal flush! Congratulations!`, allowedMentions: { parse: ['everyone'] }});
+                await interaction.followUp({ content: `@everyone **${user.displayName}** just won the JACKPOT with a Royal Flush! 🎰 **${winnings.toLocaleString()}** ${CURRENCY_NAME}!`, allowedMentions: { parse: ['everyone'] }});
                 return;
             } else if (reason === 'Straight Flush') {
                 winnings = Math.ceil(bet * 50);

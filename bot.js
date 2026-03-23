@@ -12,6 +12,7 @@ const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
+const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
@@ -53,6 +54,7 @@ const client = new Client({
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
     logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`)
     await interest(client)
+    await addJackpotInterest()
 })
 
 client.slashcommands = new Collection()
@@ -171,6 +173,8 @@ if (DELETE_SLASH) {
         if (LOAD_DB) {
             initDB(client)
         }
+        // Initialize progressive jackpot
+        await initJackpot();
         if (APRIL_FOOLS_MODE) {
             logger.info(`April Fools mode is enabled!`);
             require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);

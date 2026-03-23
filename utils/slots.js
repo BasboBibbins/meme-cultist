@@ -5,6 +5,7 @@ const { CURRENCY_NAME } = require('../config.json');
 const { randomHexColor } = require('./randomcolor');
 const wait = require('node:timers/promises').setTimeout;
 const logger = require('../utils/logger');
+const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('./jackpot');
 
 const slotsDefaultEmoji = '<a:slots:1250275896007589962>';
 const slotsEmoji = [
@@ -25,6 +26,7 @@ async function rng(min, max) {
 }
 
 async function generatePaytable(interaction) {
+  const jackpot = await getJackpot();
   const paytable = new EmbedBuilder()
     .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
     .setColor(randomHexColor())
@@ -34,8 +36,14 @@ async function generatePaytable(interaction) {
   let paytableEmoji = '', paytableMultiplier = '';
   let slotEmojiReverse = slotsEmoji.reverse();
   for (const slot of slotEmojiReverse) {
-    paytableEmoji += `${slot.emoji} ${slot.emoji} ${slot.emoji}\n`;
-    paytableMultiplier += `${slot.multiplier}x \n`;
+    if (slot.multiplier === 500) {
+      // Jackpot symbol - show progressive
+      paytableEmoji += `${slot.emoji} ${slot.emoji} ${slot.emoji} 🎰\n`;
+      paytableMultiplier += `JACKPOT\n`;
+    } else {
+      paytableEmoji += `${slot.emoji} ${slot.emoji} ${slot.emoji}\n`;
+      paytableMultiplier += `${slot.multiplier}x\n`;
+    }
   }
   paytableEmoji += `:cherries: :cherries:\n:cherries:\n`;
   paytableMultiplier += `2x\n1x\n`;
@@ -44,6 +52,9 @@ async function generatePaytable(interaction) {
     { name: 'Emoji', value: paytableEmoji, inline: true },
     { name: 'Multiplier', value: paytableMultiplier, inline: true }
   );
+  paytable.addFields(
+    { name: '🎰 Progressive Jackpot', value: `**${jackpot.amount.toLocaleString()} ${CURRENCY_NAME}**\nTriple 7s wins the jackpot!\nMinimum bet: ${MIN_BET} ${CURRENCY_NAME}`, inline: false }
+  );
   await interaction.reply({ embeds: [paytable] });
 }
 
@@ -51,6 +62,11 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
   const freePlay = bet === 0;
   const actualBet = freePlay ? 100 : bet;
   const freeSpinsLeft = freePlay ? 4 - freePlaySpin : 0;
+
+  // Contribute to jackpot (not for free plays)
+  if (!freePlay) {
+    await contributeToJackpot(actualBet);
+  }
 
   logger.debug(`Initializing slots with ${actualBet} ${CURRENCY_NAME} ${freePlay ? `(FREE PLAY ${freeSpinsLeft+1}/5) ` : ''}for ${user.displayName}`);
 
@@ -95,13 +111,37 @@ async function playSlots(interaction, bet, user, freePlaySpin = 0) {
     slots.setColor(0x00FF00);
     slots.setTimestamp();
     if (slotResults[0] === 7 && slotResults[1] === 7 && slotResults[2] === 7) {
-      slots.setTitle(`JACKPOT!!!${freePlay ? ' (ON A FREE SPIN?!?!)' : ''}`);
-      slots.setDescription(`${desc}\n\nYou won **${winnings}** ${CURRENCY_NAME}! \nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.${freePlay ? `\n\nFree spins left: ${freeSpinsLeft}` : ''}`);
-      await db.add(`${user.id}.balance`, winnings);
-      await db.add(`${user.id}.stats.slots.wins`, 1);
-      await db.add(`${user.id}.stats.slots.jackpots`, 1);
-      await interaction.editReply({ embeds: [slots] });
-      await interaction.followUp({ content: `@everyone **${user.displayName}** just won the jackpot! Congratulations!`, allowedMentions: { parse: ['everyone'] } });
+      // Check if eligible for progressive jackpot
+      const eligible = freePlay || isJackpotEligible(actualBet);
+
+      if (!eligible) {
+        // Sub-minimum bet - fallback payout (100x instead of jackpot)
+        winnings = actualBet * 100;
+        logger.debug(`Player won ${winnings} ${CURRENCY_NAME} with triple 7s (reduced - bet below minimum)`);
+        slots.setColor(0x00FF00);
+        slots.setTitle(`Triple 7s! (Reduced payout)`);
+        slots.setDescription(`${desc}\n\nYou won **${winnings}** ${CURRENCY_NAME}! (Bet below ${MIN_BET} ${CURRENCY_NAME} for jackpot)\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.${freePlay ? `\n\nFree spins left: ${freeSpinsLeft}` : ''}`);
+        await db.add(`${user.id}.balance`, winnings);
+        await db.add(`${user.id}.stats.slots.wins`, 1);
+        await db.add(`${user.id}.stats.slots.jackpots`, 1);
+        await interaction.editReply({ embeds: [slots] });
+      } else {
+        // WIN PROGRESSIVE JACKPOT
+        const jackpotResult = await winJackpot(user.id, user.displayName);
+        winnings = jackpotResult.amount;
+        logger.debug(`Player won JACKPOT of ${winnings} ${CURRENCY_NAME}!`);
+        slots.setColor(0xFFD700);
+        slots.setTitle(`🎰 JACKPOT!!! 🎰${freePlay ? ' (ON A FREE SPIN?!?!)' : ''}`);
+        slots.setDescription(`${desc}\n\nYou won the **Progressive Jackpot** of **${winnings.toLocaleString()}** ${CURRENCY_NAME}!\nYour new balance is **${(await db.get(`${user.id}.balance`)).toLocaleString()}** ${CURRENCY_NAME}.${freePlay ? `\n\nFree spins left: ${freeSpinsLeft}` : ''}`);
+        await db.add(`${user.id}.balance`, winnings);
+        await db.add(`${user.id}.stats.slots.wins`, 1);
+        await db.add(`${user.id}.stats.slots.jackpots`, 1);
+        if (winnings > await db.get(`${user.id}.stats.slots.biggestWin`)) {
+          await db.set(`${user.id}.stats.slots.biggestWin`, winnings);
+        }
+        await interaction.editReply({ embeds: [slots] });
+        await interaction.followUp({ content: `@everyone **${user.displayName}** just won the JACKPOT! 🎰 **${winnings.toLocaleString()}** ${CURRENCY_NAME}!`, allowedMentions: { parse: ['everyone'] } });
+      }
     } else {
       await db.add(`${user.id}.balance`, winnings);
       await db.add(`${user.id}.stats.slots.wins`, 1);
