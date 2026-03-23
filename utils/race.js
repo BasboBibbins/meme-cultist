@@ -73,11 +73,9 @@ function generateHorses() {
     const adj  = shuffleArray([...ADJECTIVES]);
     const noun = shuffleArray([...NOUNS]);
 
-    // Generate random form ratings (independent of horse number)
-    const forms = Array.from({ length: 8 }, () => Math.floor(Math.random() * 91) + 10); // 10-100
+    const forms = Array.from({ length: 8 }, () => Math.floor(Math.random() * 91) + 10);
     const totalForm = forms.reduce((sum, f) => sum + f, 0);
 
-    // Assign random numbers to each horse
     const numbers = shuffleArray([1, 2, 3, 4, 5, 6, 7, 8]);
 
     const horses = Array.from({ length: 8 }, (_, i) => {
@@ -96,7 +94,6 @@ function generateHorses() {
         };
     });
 
-    // Sort by number for display (1-8)
     horses.sort((a, b) => a.number - b.number);
 
     return horses;
@@ -129,7 +126,6 @@ function buildTrack(progress, horseEmoji, trackLength = 20) {
 function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = []) {
     const lines = [];
 
-    // Header
     const isFinished = winnerIndex !== null;
     lines.push(
         isFinished
@@ -137,16 +133,13 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
             : `🏁 **RACE IN PROGRESS — Lap ${tick}/${totalTicks}** 🏁\n`
     );
 
-    // Sort horses by number for display
     const sortedIndices = horses.map((_, i) => i).sort((a, b) => horses[a].number - horses[b].number);
 
-    // Determine medals
     const medalMap = new Map();
 
     if (isFinished && finishOrder.length > 0) {
-        // Final results: use finish order
+        // Final results: use finish order for silver/bronze
         medalMap.set(winnerIndex, '🥇');
-        // Silver and bronze from finish order (skip winner)
         let rank = 1;
         for (const idx of finishOrder) {
             if (idx === winnerIndex) continue;
@@ -156,7 +149,7 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
             if (rank > 2) break;
         }
     } else if (isFinished) {
-        // Fallback: winner gets gold, others by progress
+        // Fallback when no finishOrder: assign medals by progress
         medalMap.set(winnerIndex, '🥇');
         const otherFinished = horses
             .map((_, i) => ({ i, progress: positions[i] }))
@@ -168,7 +161,7 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
             medalMap.set(h.i, medals[rank]);
         });
     } else {
-        // During race: medals based on current position (who's in lead)
+        // During race: medals based on current position
         const finishedHorses = horses
             .map((_, i) => ({ i, progress: positions[i] }))
             .filter(h => h.progress >= 100)
@@ -180,7 +173,6 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
         });
     }
 
-    // Build lines in number order
     for (const i of sortedIndices) {
         const medal = medalMap.get(i) ?? '  ';
         const track = buildTrack(positions[i], horses[i].emoji);
@@ -193,7 +185,6 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
 function buildBettingDescription(horses, bets, endTime) {
     const lines = ['**Today\'s Horses:**', '```'];
 
-    // Sort horses by number for consistent display (1-8)
     const sortedHorses = [...horses].sort((a, b) => a.number - b.number);
 
     for (const horse of sortedHorses) {
@@ -209,7 +200,6 @@ function buildBettingDescription(horses, bets, endTime) {
             return acc;
         }, {});
 
-        // Sort bets by horse number for consistent display
         const sortedHorseIndices = Object.keys(betsByHorse)
             .map(Number)
             .sort((a, b) => horses[a].number - horses[b].number);
@@ -231,14 +221,6 @@ function buildBettingDescription(horses, bets, endTime) {
     return lines.join('\n');
 }
 
-/**
- * Advances horse positions for one animation tick
- * Returns updated positions and new finishers (horses that crossed 100% this tick)
- * @param {Array} horses - Array of horse objects
- * @param {Array} positions - Current positions (mutated in place)
- * @param {number} winnerIndex - Index of pre-determined winner
- * @returns {{ positions: Array, newFinishers: Array }}
- */
 function advanceRace(horses, positions, winnerIndex) {
     const newFinishers = [];
 
@@ -252,7 +234,6 @@ function advanceRace(horses, positions, winnerIndex) {
 
         positions[i] = Math.min(100, positions[i] + advance);
 
-        // Track horses that just finished this tick
         if (prevProgress < 100 && positions[i] >= 100) {
             newFinishers.push(i);
         }
@@ -265,11 +246,6 @@ function getDefaultRaceStats() {
     return { wins: 0, losses: 0, biggestWin: 0, biggestLoss: 0, totalBet: 0 };
 }
 
-/**
- * Generates race commentary lines using DeepSeek API
- * @param {string} apiKey - DeepSeek API key
- * @returns {Promise<Array<string>>} Array of commentary lines
- */
 async function generateRaceCommentary(apiKey) {
     if (!apiKey) {
         logger.warn('No API key provided for race commentary generation');
@@ -349,30 +325,16 @@ function getDefaultCommentary() {
     ];
 }
 
-/**
- * Selects appropriate commentary for a given race state
- * @param {Array} commentaries - Pre-generated commentary lines
- * @param {number} tick - Current tick (1-based)
- * @param {number} totalTicks - Total ticks in the race
- * @param {Array} horses - Horse data
- * @param {Array} positions - Current positions
- * @param {number|null} winnerIndex - Index of winner (if finished)
- * @param {Array} finishOrder - Order horses finished in
- * @returns {string} Commentary line for this moment
- */
 function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winnerIndex = null, finishOrder = []) {
     const isFinished = winnerIndex !== null;
     const progress = tick / totalTicks;
 
-    // Generate finish commentary with winner info
     if (isFinished && winnerIndex !== null) {
         const winner = horses[winnerIndex];
         const odds = winner.displayOdds;
         const oddsLabel = getOddsLabel(winner.probability);
 
-        // Different commentary based on odds
         if (odds < 3) {
-            // Favorite won - expected result
             const favoriteLines = [
                 `The favorite ${winner.name} lives up to expectations!`,
                 `${winner.name} delivers as predicted at ${odds}x odds!`,
@@ -382,7 +344,6 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
             ];
             return favoriteLines[Math.floor(Math.random() * favoriteLines.length)];
         } else if (odds < 6) {
-            // Contender won - good result
             const contenderLines = [
                 `${winner.name} pulls through with a solid performance!`,
                 `A strong finish from ${winner.name} at ${odds}x!`,
@@ -392,7 +353,6 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
             ];
             return contenderLines[Math.floor(Math.random() * contenderLines.length)];
         } else if (odds < 12) {
-            // Longshot won - exciting upset
             const longshotLines = [
                 `An upset! ${winner.name} defies the odds at ${odds}x!`,
                 `What a surprise! ${winner.name} takes it home!`,
@@ -402,7 +362,6 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
             ];
             return longshotLines[Math.floor(Math.random() * longshotLines.length)];
         } else {
-            // Outsider won - huge upset
             const outsiderLines = [
                 `INCREDIBLE! ${winner.name} shocks everyone at ${odds}x!`,
                 `A massive upset! ${winner.name} pulls off the miracle!`,
@@ -414,28 +373,21 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
         }
     }
 
-    // During race - use pre-generated commentary with position context
     if (!commentaries || commentaries.length === 0) {
         return getDefaultCommentary()[Math.floor(Math.random() * getDefaultCommentary().length)];
     }
 
-    // Select commentary based on race phase
     let pool;
     if (tick === 1) {
-        // Start - use first 2 commentaries
         pool = commentaries.slice(0, 2);
     } else if (progress < 0.4) {
-        // Early race
         pool = commentaries.slice(2, 6);
     } else if (progress < 0.7) {
-        // Mid race
         pool = commentaries.slice(6, 10);
     } else {
-        // Late race - building tension
         pool = commentaries.slice(10, 13);
     }
 
-    // Pick a random line from the appropriate pool
     if (pool.length === 0) {
         pool = commentaries;
     }

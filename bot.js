@@ -78,7 +78,6 @@ const player = new Player(client, {
         quality: "highestaudio",
         highWaterMark: 1 << 25,
         opusEncoded: true,
-        //encoderArgs: ['-af', 'bass=g=10,dynaudnorm=f=200'],
         requestOptions: {
             headers: {
                 cookie: process.env.COOKIE

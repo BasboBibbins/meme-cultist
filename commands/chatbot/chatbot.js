@@ -111,14 +111,13 @@ module.exports = {
         await interaction.reply({ embeds: [embed], ephemeral: true });
         break;
       case 'set':
-        // Set the current context for the thread.
         const characteristicValue = interaction.options.getString('characteristics') ?? characteristics;
         const personalityValue = interaction.options.getString('personality') ?? personality;
         const preferenceValue = interaction.options.getString('preferences') ?? preferences;
         const dialogValue = interaction.options.getString('dialog') ?? dialog;
         const boundariesValue = interaction.options.getString('boundaries') ?? boundaries;
         const topicValue = interaction.options.getString('topic') ?? topic;
-        const updatedContext = { // updated values or default values
+        const updatedContext = {
           roleplay_options: {
             characteristics: characteristicValue,
             personality: personalityValue,

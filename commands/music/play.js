@@ -27,7 +27,6 @@ module.exports = {
             })
             .setTimestamp();
 
-        // Voice channel checks
         const userChannel = interaction.member.voice.channel;
         const botChannel = interaction.guild.members.me.voice.channel;
 

@@ -78,7 +78,6 @@ async function generateStatsEmbed(page, interaction, user) {
     embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/5`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
     switch (page) {
         case 1:
-            // General Stats
             embed.setTitle(`${user.displayName }'s General Stats`)
             embed.setFields(
                 { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName }`, inline: false },
@@ -88,7 +87,6 @@ async function generateStatsEmbed(page, interaction, user) {
             );
             break;
         case 2: {
-            // Command Stats - fetch all command data at once
             const [daily, monthly, yearly, total] = await Promise.all([
                 db.get(`${user.id}.stats.commands.daily`),
                 db.get(`${user.id}.stats.commands.monthly`),
@@ -106,7 +104,6 @@ async function generateStatsEmbed(page, interaction, user) {
             break;
         }
         case 3: {
-            // Currency Stats - use stats object already fetched
             const dailies = stats?.stats?.dailies || {};
             const weeklies = stats?.stats?.weeklies || {};
             const cooldowns = stats?.cooldowns || {};
@@ -132,7 +129,6 @@ async function generateStatsEmbed(page, interaction, user) {
             break;
         }
         case 4: {
-            // Game Stats - fetch all game data in batch
             const gameStats = await getGameStats(user.id);
             const cooldowns = stats?.cooldowns || {};
             const bj = gameStats.blackjack || {};
@@ -260,7 +256,7 @@ module.exports = {
         const collector = await msg.createMessageComponentCollector({ filter, time: 60000 });
 
         if (interaction.options.getBoolean('details')) {
-            const chunks = []; // trim message to <2000 characters
+            const chunks = [];
             const data = JSON.stringify(dbUser, null, 4);
             for (let i = 0; i < data.length; i += 1900) {
                 chunks.push(data.substring(i, i + 1900));

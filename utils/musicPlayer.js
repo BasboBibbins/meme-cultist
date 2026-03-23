@@ -67,7 +67,7 @@ module.exports = {
             await msg.edit({ embeds: [player], components: [row] });
         }, 1000);
 
-        const filter = i => i.member.voice.channelId === queue.channel.id; // updated from queue.dispatcher.channel
+        const filter = i => i.member.voice.channelId === queue.channel.id;
         const collector = await msg.createMessageComponentCollector({ filter, time: (track.durationMS - queue.node.getTimestamp().current * 1000) });
 
         collector.on('collect', async i => {

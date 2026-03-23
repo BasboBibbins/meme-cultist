@@ -10,7 +10,7 @@ async function logToTxt(message, type) {
     }
     const date = new Date();
     const log = `[${date.toLocaleString()}] [${type.toUpperCase()}] ${message}\n`;
-    const dir = `./logs/${date.toLocaleDateString("ja-JP").split("/")[0]}/${date.toLocaleDateString("ja-JP").split("/")[1]}`; // japan because format is yyyy/mm/dd, not a weeb!
+    const dir = `./logs/${date.toLocaleDateString("ja-JP").split("/")[0]}/${date.toLocaleDateString("ja-JP").split("/")[1]}`;
     const fileFormat = `${dir}/${date.toLocaleDateString("ja-JP").split("/")[2]}.txt`;
     
     if (!fs.existsSync(dir)) {

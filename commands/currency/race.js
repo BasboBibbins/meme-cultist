@@ -46,7 +46,6 @@ module.exports = {
         const channel = interaction.channel;
         const subcommand = interaction.options.getSubcommand();
 
-        // Initialize race games map if not exists
         if (!client.raceGames) {
             client.raceGames = new Map();
         }
@@ -63,7 +62,6 @@ async function handleStartRace(interaction, client, user) {
     const channelId = interaction.channelId;
     const channel = interaction.channel;
 
-    // Check for existing game
     const existingGame = client.raceGames.get(channelId);
     if (existingGame) {
         const phaseMsg = existingGame.phase === 'betting'
@@ -80,7 +78,6 @@ async function handleStartRace(interaction, client, user) {
 
     await interaction.deferReply();
 
-    // Generate horses and determine winner
     const horses = generateHorses();
     const winner = determineWinner(horses);
     const winnerIndex = horses.findIndex(h => h.number === winner.number);
@@ -93,7 +90,6 @@ async function handleStartRace(interaction, client, user) {
         commentaryPromise = generateRaceCommentary(OPENAI_API_KEY);
     }
 
-    // Build betting embed
     const endTime = Date.now() + BETTING_TIME;
     const betsDescription = buildBettingDescription(horses, [], endTime);
 
@@ -105,7 +101,7 @@ async function handleStartRace(interaction, client, user) {
         .setFooter({ text: `Betting closes in ${BETTING_TIME / 1000}s • Use /race bet to wager`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
 
-    // Buttons (only creator can start/cancel)
+    // Buttons - only creator can start/cancel
     const row = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
@@ -120,7 +116,6 @@ async function handleStartRace(interaction, client, user) {
 
     const message = await interaction.editReply({ embeds: [embed], components: [row] });
 
-    // Game state
     const game = {
         channelId: interaction.channelId,
         messageId: message.id,
@@ -137,7 +132,6 @@ async function handleStartRace(interaction, client, user) {
 
     client.raceGames.set(interaction.channelId, game);
 
-    // Button collector
     const collector = channel.createMessageComponentCollector({
         componentType: ComponentType.Button,
         time: BETTING_TIME,
@@ -166,7 +160,6 @@ async function handleStartRace(interaction, client, user) {
         }
     }
 
-    // Countdown interval
     game.countdownInterval = setInterval(async () => {
         const currentGame = client.raceGames.get(interaction.channelId);
         if (!currentGame || currentGame.phase !== 'betting') {
@@ -196,7 +189,6 @@ async function handleStartRace(interaction, client, user) {
             game.collector.stop('start');
         } else if (i.customId === 'race_cancel') {
             clearInterval(game.countdownInterval);
-            // Refund all bets
             for (const b of game.bets) {
                 await db.add(`${b.userId}.balance`, b.amount);
                 await db.sub(`${b.userId}.stats.race.totalBet`, b.amount);
@@ -251,12 +243,10 @@ async function handleBet(interaction, client, user) {
         });
     }
 
-    // Validate horse number
     if (horseNumber < 1 || horseNumber > 8) {
         return await interaction.reply({ embeds: [errorEmbed(`Horse number must be between 1 and 8!`)], ephemeral: true });
     }
 
-    // Check if user already has a bet in this race
     const existingBet = game.bets.find(b => b.userId === user.id);
     if (existingBet) {
         const existingHorse = game.horses[existingBet.horseIndex];
@@ -266,7 +256,6 @@ async function handleBet(interaction, client, user) {
         });
     }
 
-    // Validate bet amount
     const bet = Number(await parseBet(betAmountStr, user.id));
     if (isNaN(bet)) {
         return await interaction.reply({ embeds: [errorEmbed(`You must bet a valid amount of ${CURRENCY_NAME}!`)], ephemeral: true });
@@ -281,7 +270,6 @@ async function handleBet(interaction, client, user) {
         return await interaction.reply({ embeds: [errorEmbed(`Maximum bet is ${RACE_MAX_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
     }
 
-    // Check balance
     let dbUser = await db.get(user.id);
     if (!dbUser) {
         logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
@@ -298,17 +286,15 @@ async function handleBet(interaction, client, user) {
         return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // Deduct bet
     await db.sub(`${user.id}.balance`, bet);
     await db.add(`${user.id}.stats.race.totalBet`, bet);
 
-    // Find the horse by its number (horses array is shuffled, so index != number - 1)
+    // Find horse by number (array is shuffled, so index != number - 1)
     const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
     const horse = game.horses[horseIndex];
 
     logger.log(`${user.username} (${user.id}) bet ${bet} ${CURRENCY_NAME} on Horse ${horseNumber} (${horse.name})`);
 
-    // Add bet to game
     const betObj = {
         userId: user.id,
         username: user.displayName,
@@ -318,13 +304,11 @@ async function handleBet(interaction, client, user) {
     };
     game.bets.push(betObj);
 
-    // Reset betting timer (extend for new bets)
     game.endTime = Date.now() + BETTING_TIME;
     if (game.collector) {
         game.collector.resetTimer();
     }
 
-    // Update main embed
     try {
         const gameMessage = await interaction.channel.messages.fetch(game.messageId);
         const betsDescription = buildBettingDescription(game.horses, game.bets, game.endTime);
@@ -340,7 +324,6 @@ async function handleBet(interaction, client, user) {
         logger.error(`Error updating race message: ${e.message}`);
     }
 
-    // Confirm to user
     const confirmEmbed = new EmbedBuilder()
         .setAuthor({ name: 'Bet Placed!', iconURL: user.displayAvatarURL({ dynamic: true }) })
         .setDescription([
@@ -358,14 +341,12 @@ async function handleBet(interaction, client, user) {
 async function resolveRace(client, channel, message, game) {
     game.phase = 'racing';
 
-    // Remove buttons
     await message.edit({ components: [] }).catch(() => {});
 
     const horses = game.horses;
     const positions = new Array(8).fill(0);
-    const finishOrder = []; // Track order horses finish in
+    const finishOrder = [];
 
-    // Check if there are any bets - if not, cancel silently
     if (game.bets.length === 0) {
         const embed = new EmbedBuilder()
             .setTitle('Race Cancelled')
@@ -377,7 +358,6 @@ async function resolveRace(client, channel, message, game) {
         return;
     }
 
-    // Race animation
     const embed = new EmbedBuilder()
         .setAuthor({ name: `Horse Race`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setColor(randomHexColor())
@@ -386,7 +366,6 @@ async function resolveRace(client, channel, message, game) {
     for (let tick = 1; tick <= ANIMATION_TICKS; tick++) {
         const result = advanceRace(horses, positions, game.winnerIndex);
 
-        // Track finish order (horses that just finished this tick)
         for (const idx of result.newFinishers) {
             if (!finishOrder.includes(idx)) {
                 finishOrder.push(idx);
@@ -402,34 +381,28 @@ async function resolveRace(client, channel, message, game) {
         await wait(TICK_INTERVAL);
     }
 
-    // Ensure winner reaches finish and is in finish order
     positions[game.winnerIndex] = 100;
     if (!finishOrder.includes(game.winnerIndex)) {
-        finishOrder.unshift(game.winnerIndex); // Winner should be first if somehow missed
+        finishOrder.unshift(game.winnerIndex);
     }
 
-    // Add any horses that didn't finish during animation, sorted by progress
     const unfinishedHorses = horses
         .map((_, i) => ({ i, progress: positions[i] }))
         .filter(h => !finishOrder.includes(h.i) && h.i !== game.winnerIndex)
         .sort((a, b) => b.progress - a.progress);
 
-    // Add remaining horses to finishOrder
     for (const h of unfinishedHorses) {
         finishOrder.push(h.i);
     }
 
-    // Set all positions to 100 for final display
     for (let i = 0; i < positions.length; i++) {
         positions[i] = 100;
     }
 
-    // Final results
     const winner = horses[game.winnerIndex];
     const finalDescription = buildRaceDescription(horses, positions, ANIMATION_TICKS, ANIMATION_TICKS, game.winnerIndex, finishOrder);
     const finishCommentary = buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.winnerIndex, finishOrder);
 
-    // Process payouts
     const results = [];
     for (const bet of game.bets) {
         const won = bet.horseIndex === game.winnerIndex;
@@ -461,7 +434,6 @@ async function resolveRace(client, channel, message, game) {
         });
     }
 
-    // Build results embed
     const totalWagered = game.bets.reduce((sum, b) => sum + b.amount, 0);
     const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 
@@ -482,7 +454,6 @@ async function resolveRace(client, channel, message, game) {
     if (results.length > 0) {
         resultsLines.push('');
         resultsLines.push('**Results:**');
-        // Sort by winnings (winners first, then by amount)
         const sorted = [...results].sort((a, b) => {
             if (a.won && !b.won) return -1;
             if (!a.won && b.won) return 1;

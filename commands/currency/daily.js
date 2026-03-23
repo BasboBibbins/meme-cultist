@@ -18,7 +18,7 @@ module.exports = {
             await addNewDBUser(user);
         }
 
-        const cooldown = 8.64e+7; // 24 hours
+        const cooldown = 8.64e+7;
         const db_currentStreak = `${user.id}.stats.dailies.currentStreak`;
         const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
 

@@ -108,7 +108,6 @@ async function resolveMember(input, guild) {
   ) || null;
 }
 
-// Tool handlers
 async function handleGetBalance(args, message) {
   const guild = message.guild;
 
@@ -166,7 +165,6 @@ async function handleGetUserStats(args, message) {
 
   const stats = userData.stats || {};
 
-  // Helper to compute total commands from the commands.total object
   const totalCommands = Object.values(stats.commands?.total || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
 
   const gameStats = {};
@@ -293,7 +291,6 @@ const TOOL_HANDLERS = {
   get_bot_info: handleGetBotInfo
 };
 
-// Execute a tool call
 async function executeToolCall(toolCall, message) {
   const fnName = toolCall.function.name;
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");

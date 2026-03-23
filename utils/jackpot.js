@@ -9,10 +9,6 @@ const RATE = JACKPOT_CONTRIBUTION_RATE ?? 0.02;  // 2%
 const MIN_BET = JACKPOT_MIN_BET ?? 10;
 const CURRENCY = CURRENCY_NAME ?? 'koku';
 
-/**
- * Get current jackpot state
- * @returns {Promise<{amount: number, lastWon: number|null, lastWinner: {id: string, name: string}|null}>}
- */
 async function getJackpot() {
     const jackpot = await db.get('progressive');
     if (!jackpot) {

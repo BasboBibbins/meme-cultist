@@ -3,8 +3,7 @@ const { randomHexColor } = require('../../utils/randomcolor');
 const logger = require('../../utils/logger');
 const { Client: GeniusClient } = require('genius-lyrics');
 
-// Initialize Genius API client
-const genius = new GeniusClient(process.env.GENIUS_API_KEY); // Add your Genius API key to your .env file
+const genius = new GeniusClient(process.env.GENIUS_API_KEY);
 
 function formatLyrics(lyrics) {
     const lines = lyrics.split('\n');
@@ -38,7 +37,6 @@ module.exports = {
         const currentTrack = player.nodes.get(interaction.guild.id)?.currentTrack;
         let song = interaction.options.getString('song');
 
-        // If no song is provided, try to use the current track
         if (!song) {
             if (currentTrack) {
                 song = currentTrack.title.includes(' - ') 
@@ -50,7 +48,6 @@ module.exports = {
             }
         }
 
-        // Validate the song variable
         if (!song || typeof song !== 'string' || song.trim() === '') {
             embed.setDescription(`Invalid song name provided. Please specify a valid song.`);
             return await interaction.editReply({ embeds: [embed] });
