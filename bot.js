@@ -373,16 +373,18 @@ if (DELETE_SLASH) {
             return
         }
 
-        const { allowed, reason } = rateLimiter.canProceed(message.author.id);
+        const isMentioned = message.mentions.has(client.user, { ignoreEveryone: true, ignoreRoles: true });
+        const isChatbotChannel = message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL;
+
+        const { allowed, reason } = rateLimiter.canProceed(message.author.id, isMentioned && !isChatbotChannel);
         if (!allowed) {
-            return message.reply(`⏳ ${reason}`);
+            return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
         }
 
-        const isMentioned = message.mentions.has(client.user); 
-        if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && !APRIL_FOOLS_MODE) {
+        if (isChatbotChannel && !APRIL_FOOLS_MODE) {
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (isMentioned) {
-            await handleBotMessage(client, message, OPENAI_API_KEY);
+            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true);
         }
     })
 
