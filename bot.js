@@ -1,4 +1,7 @@
+// Load environment variables FIRST before any other imports
 const dotenv = require("dotenv")
+dotenv.config()
+
 const { REST } = require("@discordjs/rest")
 const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
@@ -20,7 +23,6 @@ const rateLimiter = require('./utils/ratelimiter')
 const { DefaultExtractors } = require("@discord-player/extractor")
 const playdl = require('play-dl');
 
-dotenv.config()
 const TOKEN = process.env.TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 if (process.env.COOKIE) {
