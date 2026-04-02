@@ -1,5 +1,5 @@
 const { QuickDB } = require("quick.db");
-const { GUILD_ID } = require("./config.json");
+const { GUILD_ID } = require("./config.js");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./utils/logger");
 
@@ -55,12 +55,35 @@ async function getDefaultDB(user) {
                 "biggestWin": 0,
                 "biggestLoss": 0,
             },
+            "roulette": {
+                "wins": 0,
+                "losses": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+                "totalBet": 0,
+            },
+            "race": {
+                "wins": 0,
+                "losses": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+                "totalBet": 0,
+            },
             "begs": {
                 "wins": 0,
                 "losses": 0,
             },
             "largestBalance": 0,
             "largestBank": 0,
+        },
+        "chatbot": {
+            messageCount: 0,
+            summaries: [],
+            facts: [],
+            messagesSinceLastSummary: 0,
+            messagesSinceLastFacts: 0,
+            incognitoMode: false,
+            incognitoChannels: [],
         },
     }
 }

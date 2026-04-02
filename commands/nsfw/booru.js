@@ -80,7 +80,7 @@ module.exports = {
                     const getFavicon = (url) => {
                         const favicon = url.match(/^(?:https?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:\/\n?]+)/img);
                         
-                        return favicon ? `https://www.google.com/s2/favicons?domain=${favicon[0]}` : interaction.client.user.displayAvatarURL(); // search google cache for favicon. if none, use the bot's avatar.
+                        return favicon ? `https://www.google.com/s2/favicons?domain=${favicon[0]}` : interaction.client.user.displayAvatarURL();
                     }
                     logger.log(`${interaction.user.tag} (${interaction.user.id}) searched for \x1b[33m${tags.join(", ")}\x1b[0m on \x1b[33m${post.booru.site.domain}\x1b[0m.`)
                     const embed = new EmbedBuilder()

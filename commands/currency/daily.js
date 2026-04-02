@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.json");
+const { CURRENCY_NAME } = require("../../config.js");
 const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
@@ -18,7 +18,7 @@ module.exports = {
             await addNewDBUser(user);
         }
 
-        const cooldown = 8.64e+7; // 24 hours
+        const cooldown = 8.64e+7;
         const db_currentStreak = `${user.id}.stats.dailies.currentStreak`;
         const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
 

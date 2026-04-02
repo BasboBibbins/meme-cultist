@@ -1,23 +1,37 @@
+// Load environment variables FIRST before any other imports
 const dotenv = require("dotenv")
+dotenv.config()
+
 const { REST } = require("@discordjs/rest")
 const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
-const { Player } = require("discord-player")
+const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
+const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, LEGACY_COMMANDS, PAST_MESSAGES, OOC_PREFIX } = require("./config.json")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
-const { handleBotMessage, runLocalModel, deleteThreadContext, addNewThreadContext, getValidMessages, summarizeMessages } = require("./utils/openai")
+const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
+const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
 const schedule = require("node-schedule")
+const rateLimiter = require('./utils/ratelimiter')
+const { DefaultExtractors } = require("@discord-player/extractor")
+const playdl = require('play-dl');
 
-dotenv.config()
 const TOKEN = process.env.TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+if (process.env.COOKIE) {
+    playdl.setToken({
+        youtube: {
+            cookie: process.env.COOKIE
+        }
+    });
+}
 
 const LOAD_SLASH = process.argv[2] == "load"
 const LOAD_DB = process.argv[2] == "dbinit"
@@ -42,23 +56,14 @@ const client = new Client({
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
     logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`)
     await interest(client)
+    await addJackpotInterest()
 })
 
 client.slashcommands = new Collection()
-client.player = new Player(client, {
-    ytdlOptions: {
-        filter: "audioonly",
-        quality: "highestaudio",
-        highWaterMark: 1 << 25,
-        opusEncoded: true,
-        encoderArgs: ['-af', 'bass=g=10,dynaudnorm=f=200'],
-        requestOptions: {
-            headers: {
-                cookie: process.env.COOKIE
-            }
-        }
-    }
-})
+
+client.contextResetPoints = new Map();
+client.rouletteGames = new Map();
+client.raceGames = new Map();
 
 let db = null;
 if (fs.existsSync(`./db/users.sqlite`)) {
@@ -68,9 +73,23 @@ if (fs.existsSync(`./db/users.sqlite`)) {
     process.exit(1)
 }
 
+const player = new Player(client, {
+    ytdlOptions: {
+        filter: "audioonly",
+        quality: "highestaudio",
+        highWaterMark: 1 << 25,
+        opusEncoded: true,
+        requestOptions: {
+            headers: {
+                cookie: process.env.COOKIE
+            }
+        }
+    }
+})
+
 process.on("unhandledRejection", (reason, p) => {
     logger.error(`Unhandled Promise Rejection! Reason: ${reason}`);
-    logger.error(p.catch((err) => logger.error(err)));
+    console.log(p.stack || p);
 })
 .on("uncaughtException", (err) => {
     logger.error(`Uncaught Exception: ${err}`);
@@ -150,11 +169,12 @@ if (DELETE_SLASH) {
         }
     })
 } else {
-    client.once(Events.ClientReady, () => {
+    client.once(Events.ClientReady, async () => {
         if (LOAD_DB) {
             initDB(client)
         }
-        logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        // Initialize progressive jackpot
+        await initJackpot();
         if (APRIL_FOOLS_MODE) {
             logger.info(`April Fools mode is enabled!`);
             require("./utils/aprilfools").aprilfoolsMode(client, client.guilds.cache.get(GUILD_ID), OPENAI_API_KEY);
@@ -166,8 +186,14 @@ if (DELETE_SLASH) {
             process.exit(1)
         }
         if (CHATBOT_LOCAL) {
-            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`); 
-            runLocalModel();
+            logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`);
+        }
+        await player.extractors.loadMulti(DefaultExtractors);
+        await player.extractors.register(YoutubeiExtractor, {});
+        client.player = player;
+        logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
+        if (DEBUG_MODE) {
+            logger.info(`DEBUG MODE ENABLED!`);
         }
     })
 
@@ -197,7 +223,6 @@ if (DELETE_SLASH) {
             interaction.channel.sendTyping().then(async () => {
                 
                 const command = interaction.client.slashcommands.get(interaction.commandName);
-            
                 if (!command) {
                     logger.error(`No command matching ${interaction.commandName} was found.`);
                     return;
@@ -214,7 +239,17 @@ if (DELETE_SLASH) {
                 }
             
                 try {
-                    await command.execute(interaction);
+                    let musicCommands = walk('./commands/music/').map(file => file.split('/').pop().replace('.js', '')); 
+                    const isMusicCommand = (commandName) => musicCommands.includes(commandName);
+                    if (isMusicCommand(command)) { // provide player context if music command
+                        const data = {
+                            guild: interaction.guild
+                        };
+                        await player.context.provide(data, () => command.execute(interaction));
+                    } else {
+                        command.execute(interaction);
+                    }
+
                     logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     if (db) {
                         if (await db.get(`${interaction.user.id}.stats.commands.dailyReset`) != moment().format("YYYY-MM-DD")) {
@@ -279,26 +314,31 @@ if (DELETE_SLASH) {
             })
         }
     });
-    client.player.events.on("tracksAdd", async (queue, t) => {
-        logger.log(`${t.length > 1 ? `${t.length} tracks` : `${t[0].title}`} added to queue in ${queue.guild.name}!`);
+    // Musicbot events
+    player.events.on(GuildQueueEvent.AudioTrackAdd, async (queue, track) => {
+        logger.log(`${track.title} added to queue in ${queue.guild.name}!`);
     });
-    client.player.events.on("playerStart", async (queue, track) => {
+    player.events.on(GuildQueueEvent.AudioTracksAdd, async (queue, tracks) => {
+        logger.log(`${tracks.length} tracks added to queue in ${queue.guild.name}!`);
+    });
+    player.events.on(GuildQueueEvent.PlayerStart, async (queue, track) => {
         logger.log(`Now playing ${track.title} in ${queue.guild.name}!`);
         await trackStart(client, queue, track);
     });
-    client.player.events.on("playerFinish", async (queue, track) => {
+    player.events.on(GuildQueueEvent.PlayerFinish, async (queue, track) => {
         logger.log(`Finished playing ${track.title} in ${queue.guild.name}!`);
         await trackEnd(client, queue, track);
     });
-    client.player.events.on("channelEmpty", async (queue) => {
+    player.events.on(GuildQueueEvent.Disconnect, async (queue) => {
         logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
         await queue.player.destroy();
     });
-    client.player.events.on("error", async (queue, error) => {
+    player.events.on(GuildQueueEvent.Error, async (queue, error) => {
         logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
         logger.error(error.stack);
     });
 
+    // Chatbot events
     client.on(Events.ThreadCreate, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}.`);
         if (thread.parentId === CHATBOT_CHANNEL) {
@@ -308,52 +348,46 @@ if (DELETE_SLASH) {
 
     client.on(Events.ThreadDelete, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
+        client.contextResetPoints.delete(thread.id);
         if (thread.parentId === CHATBOT_CHANNEL) {
             await deleteThreadContext(thread);
-        } 
-    });
-
-    client.login(TOKEN)
-
-    client.on(Events.MessageCreate, async (message) => {
-        // separated so that we can check for bot messages
-        const targetChannel = message.channel;
-        if (targetChannel.isThread()) {
-            if (message.content.startsWith(OOC_PREFIX)) return;
-            const threadMessagesCount = targetChannel.messageCount
-            logger.debug(`Thread has ${threadMessagesCount} messages.`)
-            if ((threadMessagesCount) % PAST_MESSAGES === 0) {
-                logger.debug(`Beginning to summarize thread...`)
-                const validMessages = await getValidMessages(targetChannel, message);
-                await summarizeMessages(validMessages.reverse(), targetChannel, OPENAI_API_KEY);
-            }
         }
     });
 
     client.on(Events.MessageCreate, async (message) => {
-        if (message.author.bot) return
-        if ((message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL) && CHATBOT_ENABLED && !APRIL_FOOLS_MODE) {
-            if (message.member.roles.cache.has(banned)) {
-                logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
-                await message.member.createDM().then(async dm => {
-                    const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
-                    if (isLastMsgBot) {
-                        await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
-                    }
-                })
-                return
-            }
-            if (message.content.startsWith(OOC_PREFIX)) {
-                return;
-            }
+        if (message.author.bot) return;
+        if (!CHATBOT_ENABLED) {
+            logger.warn(`Chatbot is disabled! Ignoring request...`)
+            return;
+        }
+        if (message.content.startsWith(OOC_PREFIX)) {
+            return;
+        }
+        if (message.member.roles.cache.has(banned)) {
+            logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
+            await message.member.createDM().then(async dm => {
+                const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
+                if (isLastMsgBot) {
+                    await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
+                }
+            })
+            return
+        }
+
+        const isMentioned = message.mentions.has(client.user, { ignoreEveryone: true, ignoreRoles: true });
+        const isChatbotChannel = message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL;
+
+        const { allowed, reason } = rateLimiter.canProceed(message.author.id, isMentioned && !isChatbotChannel);
+        if (!allowed) {
+            return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
+        }
+
+        if (isChatbotChannel && !APRIL_FOOLS_MODE) {
             await handleBotMessage(client, message, OPENAI_API_KEY);
-        } else if (APRIL_FOOLS_MODE) { // 1/5 change to respond in any channel on april fools day
-            const randomChance = Math.random();
-            const isMentioned = message.mentions.has(client.user); 
-            if (randomChance < 0.2 || isMentioned) { 
-                logger.log(`${message.author.tag} sent a message in #${message.channel.name} in ${message.guild.name}. (April Fools)`);
-                await handleBotMessage(client, message, OPENAI_API_KEY); 
-            } 
+        } else if (isMentioned) {
+            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true);
         }
     })
+
+    client.login(TOKEN)
 }

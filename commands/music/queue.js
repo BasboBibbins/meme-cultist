@@ -41,7 +41,7 @@ module.exports = {
             return await interaction.reply({embeds: [embed], ephemeral: true});
         } 
         await interaction.deferReply({ ephemeral: true });
-        const queue = player.nodes.get(interaction.guild)
+        const queue = player.nodes.get(interaction.guild.id)
         if (!queue) {
             embed.setTitle("No queue found!");
             embed.setDescription("There is no queue to use this command on.");
@@ -109,7 +109,7 @@ module.exports = {
                 );
                 await interaction.editReply({embeds: [embed], components: [row2], ephemeral: true});
                 const filter2 = (i) => i.customId === "shuffleQueue" || i.customId === "cancel";
-                const collector2 = interaction.channel.createMessageComponentCollector({ filter2, time: 30000 });
+                const collector2 = interaction.channel.createMessageComponentCollector({ filter: filter2, time: 30000 });
                 collector2.on("collect", async (i) => {
                     if (i.customId === "shuffleQueue") {
                         tracks.shuffle();

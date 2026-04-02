@@ -1,8 +1,9 @@
 const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { CURRENCY_NAME } = require("../../config.json");
+const { CURRENCY_NAME } = require("../../config.js");
 const { addNewDBUser } = require("../../database");
+const { getUserChatbotData } = require('../../utils/openai');
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 
@@ -15,25 +16,50 @@ function getFavoriteCommand(type) {
     return { command: command, uses: type[command] };
 }
 
-async function getTotalGamesPlayed(gameName, user) {
-    let wins = await db.get(`${user.id}.stats.${gameName}.wins`) ?? 0;
-    let losses = await db.get(`${user.id}.stats.${gameName}.losses`) ?? 0;
-    if (gameName == "blackjack") {
-        let ties = await db.get(`${user.id}.stats.${gameName}.ties`);
-        return wins + losses + ties;
-    } else if (gameName == "slots") {
-        let jackpots = await db.get(`${user.id}.stats.${gameName}.jackpots`);
-        return wins + losses + jackpots;
-    } else {
-        return wins + losses;
-    }
+function buildDesc(lines) {
+    return lines.filter(Boolean).join('\n');
 }
 
-async function getWinPercentage(gameName, user) {
-    let wins = await db.get(`${user.id}.stats.${gameName}.wins`) ?? 0;
-    let totalGamesPlayed = await getTotalGamesPlayed(gameName, user);
-    let percentage = (wins / totalGamesPlayed) * 100 || 0;
-    return percentage.toFixed(2);
+// Fetch all game stats in a single batch to reduce db calls
+async function getGameStats(userId) {
+    const paths = [
+        'blackjack.wins', 'blackjack.losses', 'blackjack.ties', 'blackjack.blackjacks', 'blackjack.biggestWin', 'blackjack.biggestLoss',
+        'slots.wins', 'slots.losses', 'slots.jackpots', 'slots.biggestWin', 'slots.biggestLoss',
+        'flip.wins', 'flip.losses', 'flip.biggestWin', 'flip.biggestLoss',
+        'begs.wins', 'begs.losses',
+        'roulette.wins', 'roulette.losses', 'roulette.totalBet', 'roulette.biggestWin', 'roulette.biggestLoss',
+        'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss',
+        'poker.wins', 'poker.losses', 'poker.royals', 'poker.biggestWin', 'poker.biggestLoss'
+    ];
+
+    const results = await Promise.all(
+        paths.map(path => db.get(`${userId}.stats.${path}`))
+    );
+
+    const stats = {};
+    paths.forEach((path, i) => {
+        const [game, stat] = path.split('.');
+        if (!stats[game]) stats[game] = {};
+        stats[game][stat] = results[i] ?? 0;
+    });
+
+    return stats;
+}
+
+function calcTotalGames(gameStats, gameName) {
+    const g = gameStats[gameName] || {};
+    const wins = g.wins || 0;
+    const losses = g.losses || 0;
+    if (gameName === 'blackjack') return wins + losses + (g.ties || 0);
+    if (gameName === 'slots') return wins + losses + (g.jackpots || 0);
+    return wins + losses;
+}
+
+function calcWinRate(gameStats, gameName) {
+    const total = calcTotalGames(gameStats, gameName);
+    const wins = gameStats[gameName]?.wins || 0;
+    if (total === 0) return '0.00';
+    return ((wins / total) * 100).toFixed(2);
 }
 
 async function generateStatsEmbed(page, interaction, user) {
@@ -45,104 +71,148 @@ async function generateStatsEmbed(page, interaction, user) {
         .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
         .setColor(`${accentColor}`)
         .setTimestamp();
-    
+
     if (user !== interaction.user) {
         embed.setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
     }
-    embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/4`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
+    embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/5`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
     switch (page) {
         case 1:
-            // General Stats
             embed.setTitle(`${user.displayName }'s General Stats`)
             embed.setFields(
                 { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName }`, inline: false },
-                { name: "Creation Date", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: true },
-                { name: "Join Date", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: true },
+                { name: "Discord Member Since", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: true },
+                { name: "Joined Server", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: true },
                 { name: "Roles", value: `${fetchedUser.roles.cache.map(role => role.toString()).join(' ')}`, inline: false },
             );
             break;
-        case 2:
-            // Command Stats
+        case 2: {
+            const [daily, monthly, yearly, total] = await Promise.all([
+                db.get(`${user.id}.stats.commands.daily`),
+                db.get(`${user.id}.stats.commands.monthly`),
+                db.get(`${user.id}.stats.commands.yearly`),
+                db.get(`${user.id}.stats.commands.total`)
+            ]);
             embed.setTitle(`${user.displayName }'s Command Stats`)
-            let daily = await db.get(`${user.id}.stats.commands.daily`);
-            let monthly = await db.get(`${user.id}.stats.commands.monthly`);
-            let yearly = await db.get(`${user.id}.stats.commands.yearly`);
-            let total = await db.get(`${user.id}.stats.commands.total`);
             embed.setFields(
-                { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily)}**\n*Favorite Command:* /**${getFavoriteCommand(daily).command} (${getFavoriteCommand(daily).uses})**`, inline: true },
-                { name: "This Month", value: `*Commands Used:* **${totalNumOfCmds(monthly)}**\n*Favorite Command:* /**${getFavoriteCommand(monthly).command} (${getFavoriteCommand(monthly).uses})**`, inline: true },
-                { name: " ", value: " ", inline: false}, // buffer for inline fields
-                { name: "This Year", value: `*Commands Used:* **${totalNumOfCmds(yearly)}**\n*Favorite Command:* /**${getFavoriteCommand(yearly).command} (${getFavoriteCommand(yearly).uses})**`, inline: true },
-                { name: "All Time", value: `*Commands Used:* **${totalNumOfCmds(total)}**\n*Favorite Command:* /**${getFavoriteCommand(total).command} (${getFavoriteCommand(total).uses})**`, inline: true },
+                { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily || {})}**\n*Favorite Command:* /**${getFavoriteCommand(daily || {}).command} (${getFavoriteCommand(daily || {}).uses})**`, inline: true },
+                { name: "This Month", value: `*Commands Used:* **${totalNumOfCmds(monthly || {})}**\n*Favorite Command:* /**${getFavoriteCommand(monthly || {}).command} (${getFavoriteCommand(monthly || {}).uses})**`, inline: true },
+                { name: " ", value: " ", inline: false},
+                { name: "This Year", value: `*Commands Used:* **${totalNumOfCmds(yearly || {})}**\n*Favorite Command:* /**${getFavoriteCommand(yearly || {}).command} (${getFavoriteCommand(yearly || {}).uses})**`, inline: true },
+                { name: "All Time", value: `*Commands Used:* **${totalNumOfCmds(total || {})}**\n*Favorite Command:* /**${getFavoriteCommand(total || {}).command} (${getFavoriteCommand(total || {}).uses})**`, inline: true },
             );
             break;
-        case 3:
-            // Currency Stats
+        }
+        case 3: {
+            const dailies = stats?.stats?.dailies || {};
+            const weeklies = stats?.stats?.weeklies || {};
+            const cooldowns = stats?.cooldowns || {};
             embed.setTitle(`${user.displayName }'s Currency Stats`)
             embed.setFields(
-                { name: "Current Balance", value: `${stats.balance} ${CURRENCY_NAME}`, inline: true },
-                { name: "Bank Balance", value: `${stats.bank} ${CURRENCY_NAME}`, inline: true },
-                { name: " ", value: " ", inline: false}, // buffer for inline fields
-                { name: "Largest Balance", value: `${stats.stats.largestBalance} ${CURRENCY_NAME}`, inline: true },
-                { name: "Largest Bank Balance", value: `${stats.stats.largestBank} ${CURRENCY_NAME}`, inline: true },
-                { name: " ", value: " ", inline: false}, // buffer for inline fields
-                { name: "Dailies" , value: `
-                    *Total Claimed:* **${await db.get(`${user.id}.stats.dailies.claimed`)}**
-                    *Current Streak:* **${await db.get(`${user.id}.stats.dailies.currentStreak`)}**
-                    *Longest Streak:* **${await db.get(`${user.id}.stats.dailies.longestStreak`)}**`, 
-                    inline: true 
-                },
-                { name: "Weeklies", value: `*Total Claimed:* **${await db.get(`${user.id}.stats.weeklies.claimed`)}**`, inline: true },
+                { name: "Current Balance", value: `${stats?.balance ?? 0} ${CURRENCY_NAME}`, inline: true },
+                { name: "Bank Balance", value: `${stats?.bank ?? 0} ${CURRENCY_NAME}`, inline: true },
+                { name: " ", value: " ", inline: false},
+                { name: "Largest Balance", value: `${stats?.stats?.largestBalance ?? 0} ${CURRENCY_NAME}`, inline: true },
+                { name: "Largest Bank Balance", value: `${stats?.stats?.largestBank ?? 0} ${CURRENCY_NAME}`, inline: true },
+                { name: " ", value: " ", inline: false},
+                { name: "Dailies", value: buildDesc([
+                    `*Total Claimed:* **${dailies.claimed ?? 0}**`,
+                    `*Current Streak:* **${dailies.currentStreak ?? 0}**`,
+                    `*Longest Streak:* **${dailies.longestStreak ?? 0}**`,
+                    `*Next Available:* **${cooldowns.daily ? new Date(cooldowns.daily).toLocaleString() : 'Now!'}**`
+                ]), inline: true },
+                { name: "Weeklies", value: buildDesc([
+                    `*Total Claimed:* **${weeklies.claimed ?? 0}**`,
+                    `*Next Available:* **${cooldowns.weekly ? new Date(cooldowns.weekly).toLocaleString() : 'Now!'}**`
+                ]), inline: true },
             );
             break;
-        case 4:
-            // Game Stats
+        }
+        case 4: {
+            const gameStats = await getGameStats(user.id);
+            const cooldowns = stats?.cooldowns || {};
+            const bj = gameStats.blackjack || {};
+            const sl = gameStats.slots || {};
+            const fl = gameStats.flip || {};
+            const bg = gameStats.begs || {};
+            const rl = gameStats.roulette || {};
+            const rc = gameStats.race || {};
+            const pk = gameStats.poker || {};
+
             embed.setTitle(`${user.displayName }'s Game Stats`)
             embed.setFields(
-                { name: "Blackjack" , value: `
-                    *Games Played:* **${await getTotalGamesPlayed("blackjack", user)}**
-                    *Win Rate:* **${await getWinPercentage("blackjack", user)}%**
-                    *Blackjacks:* **${await db.get(`${user.id}.stats.blackjack.blackjacks`)}**
-                    *Biggest Win:* **${await db.get(`${user.id}.stats.blackjack.biggestWin`)}**
-                    *Biggest Loss:* **${await db.get(`${user.id}.stats.blackjack.biggestLoss`)}**`, 
-                    inline: true 
-                },
-                { name: "Slots", value: `
-                    *Games Played:* **${await getTotalGamesPlayed("slots", user)}**
-                    *Win Rate:* **${await getWinPercentage("slots", user)}%**
-                    *Jackpots:* **${await db.get(`${user.id}.stats.slots.jackpots`)}**
-                    *Biggest Win:* **${await db.get(`${user.id}.stats.slots.biggestWin`)}**
-                    *Biggest Loss:* **${await db.get(`${user.id}.stats.slots.biggestLoss`)}**`,
-                    inline: true 
-                },
-                { name: " ", value: " ", inline: false}, // buffer for inline fields
-                { name: "Flip", value: `
-                    *Total Flips:* **${await getTotalGamesPlayed("flip", user)}**
-                    *Success Rate:* **${await getWinPercentage("flip", user)}%**
-                    *Biggest Win:* **${await db.get(`${user.id}.stats.flip.biggestWin`)}**
-                    *Biggest Loss:* **${await db.get(`${user.id}.stats.flip.biggestLoss`)}**`, 
-                    inline: true 
-                },
-                { name: "Beg", value: `
-                    *Total Begs:* **${await getTotalGamesPlayed("begs", user)}**
-                    *Success Rate:* **${await getWinPercentage("begs", user)}%**`,
-                    inline: true 
-                },
-                { name: " ", value: " ", inline: false}, // buffer for inline fields
+                { name: "Blackjack", value: buildDesc([
+                    `*Games Played:* **${calcTotalGames(gameStats, 'blackjack')}**`,
+                    `*Win Rate:* **${calcWinRate(gameStats, 'blackjack')}%**`,
+                    bj.blackjacks && `*Blackjacks:* **${bj.blackjacks}**`,
+                    bj.biggestWin && `*Biggest Win:* **${bj.biggestWin}**`,
+                    bj.biggestLoss && `*Biggest Loss:* **${bj.biggestLoss}**`
+                ]), inline: true },
+                { name: "Slots", value: buildDesc([
+                    `*Games Played:* **${calcTotalGames(gameStats, 'slots')}**`,
+                    `*Win Rate:* **${calcWinRate(gameStats, 'slots')}%**`,
+                    `*Next Free Spin:* **${cooldowns.freespins ? new Date(cooldowns.freespins).toLocaleString() : 'Now!'}**`,
+                    sl.jackpots && `*Jackpots:* **${sl.jackpots}**`,
+                    sl.biggestWin && `*Biggest Win:* **${sl.biggestWin}**`,
+                    sl.biggestLoss && `*Biggest Loss:* **${sl.biggestLoss}**`
+                ]), inline: true },
+                { name: " ", value: " ", inline: false},
+                { name: "Flip", value: buildDesc([
+                    `*Total Flips:* **${calcTotalGames(gameStats, 'flip')}**`,
+                    `*Success Rate:* **${calcWinRate(gameStats, 'flip')}%**`,
+                    fl.biggestWin && `*Biggest Win:* **${fl.biggestWin}**`,
+                    fl.biggestLoss && `*Biggest Loss:* **${fl.biggestLoss}**`
+                ]), inline: true },
+                { name: "Beg", value: buildDesc([
+                    `*Total Begs:* **${calcTotalGames(gameStats, 'begs')}**`,
+                    `*Success Rate:* **${calcWinRate(gameStats, 'begs')}%**`
+                ]), inline: true },
+                { name: " ", value: " ", inline: false},
+                { name: "Roulette", value: buildDesc([
+                    `*Games Played:* **${calcTotalGames(gameStats, 'roulette')}**`,
+                    `*Win Rate:* **${calcWinRate(gameStats, 'roulette')}%**`,
+                    rl.totalBet && `*Total Bet:* **${rl.totalBet}**`,
+                    rl.biggestWin && `*Biggest Win:* **${rl.biggestWin}**`,
+                    rl.biggestLoss && `*Biggest Loss:* **${rl.biggestLoss}**`
+                ]), inline: true },
+                { name: "Race", value: buildDesc([
+                    `*Races:* **${calcTotalGames(gameStats, 'race')}**`,
+                    `*Win Rate:* **${calcWinRate(gameStats, 'race')}%**`,
+                    rc.totalBet && `*Total Bet:* **${rc.totalBet}**`,
+                    rc.biggestWin && `*Biggest Win:* **${rc.biggestWin}**`,
+                    rc.biggestLoss && `*Biggest Loss:* **${rc.biggestLoss}**`
+                ]), inline: true },
             );
-            if (await db.get(`${user.id}.stats.poker`)) {
+            if (pk.wins || pk.losses) {
                 embed.addFields(
-                    { name: "Poker", value: `
-                        *Games Played:* **${await getTotalGamesPlayed("poker", user)}**
-                        *Win Rate:* **${await getWinPercentage("poker", user)}%**
-                        *Royal Flushes:* **${await db.get(`${user.id}.stats.poker.royals` ?? 0)}**
-                        *Biggest Win:* **${await db.get(`${user.id}.stats.poker.biggestWin` ?? 0)}**
-                        *Biggest Loss:* **${await db.get(`${user.id}.stats.poker.biggestLoss` ?? 0)}**`,
-                        inline: true
-                    },
+                    { name: "Poker", value: buildDesc([
+                        `*Games Played:* **${calcTotalGames(gameStats, 'poker')}**`,
+                        `*Win Rate:* **${calcWinRate(gameStats, 'poker')}%**`,
+                        pk.royals && `*Royal Flushes:* **${pk.royals}**`,
+                        pk.biggestWin && `*Biggest Win:* **${pk.biggestWin}**`,
+                        pk.biggestLoss && `*Biggest Loss:* **${pk.biggestLoss}**`
+                    ]), inline: true },
                 );
             }
             break;
+        }
+        case 5: {
+            embed.setTitle(`${user.displayName}'s Chatbot Stats`);
+            const chatbotData = await getUserChatbotData(user.id);
+            const latestUserSummary = chatbotData.summaries.length > 0
+                ? chatbotData.summaries[chatbotData.summaries.length - 1].context
+                : 'No summary generated yet. Keep chatting!';
+            const userFactsText = chatbotData.facts.length > 0
+                ? chatbotData.facts.map(f => `**${f.key.replace(/_/g, ' ')}:** ${f.value}`).join('\n')
+                : 'No facts recorded yet. Keep chatting!';
+            embed.setFields(
+                { name: "Messages sent to chatbot", value: `${chatbotData.messageCount}`, inline: true },
+                { name: "\u200b", value: "\u200b", inline: false },
+                { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
+                { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
+            );
+            break;
+        }
     }
     return embed;
 }
@@ -168,9 +238,6 @@ module.exports = {
             await addNewDBUser(user);
         }
 
-        const error_embed = new EmbedBuilder()
-            
-
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -189,7 +256,7 @@ module.exports = {
         const collector = await msg.createMessageComponentCollector({ filter, time: 60000 });
 
         if (interaction.options.getBoolean('details')) {
-            const chunks = []; // trim message to <2000 characters
+            const chunks = [];
             const data = JSON.stringify(dbUser, null, 4);
             for (let i = 0; i < data.length; i += 1900) {
                 chunks.push(data.substring(i, i + 1900));
@@ -211,7 +278,7 @@ module.exports = {
                 i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
             } else if (i.customId === 'next') {
                 page++;
-                if (page === 4) {
+                if (page === 5) {
                     row.components[1].setDisabled(true);
                 }
                 row.components[0].setDisabled(false);

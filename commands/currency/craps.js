@@ -2,13 +2,13 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.json");
+const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { roll, drawDice } = require('../../utils/roll');
 const wait = require('node:timers/promises').setTimeout;
 const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');
-const { TESTING_MODE } = require('../../config.json');
+const { TESTING_MODE } = require('../../config.js');
 
 module.exports = {
     data: new SlashCommandBuilder()

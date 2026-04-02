@@ -1,14 +1,14 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { updateThreadContext, getThreadContext } = require('../../utils/openai.js');
 const { EmbedBuilder } = require("@discordjs/builders");
-const { CHATBOT_CHANNEL } = require('../../config.json');
+const { CHATBOT_CHANNEL } = require('../../config.js');
 const logger = require('../../utils/logger.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('context')
-    .setDescription(`Allows you to view and manage various chatbot features within threads.`)
-    .addSubcommand(subcommand => 
+    .setDescription(`Allows you to view and manage various chatbot features within channels and threads.`)
+    .addSubcommand(subcommand =>
       subcommand
         .setName('set')
         .setDescription('Modify various settings, including the topic and roleplaying variables.')
@@ -52,12 +52,12 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('get')
-        .setDescription(`View the current thread's context data and variables`)
+        .setDescription(`View the current channel's context data and variables`)
     )
     .addSubcommand(subcommand => 
       subcommand
         .setName('summary')
-        .setDescription('View an AI generated summary of the current thread.')
+        .setDescription('View an AI generated summary of the current channel.')
         .addIntegerOption(option => 
           option.setName('number')
             .setDescription('The number of the summary to view. Default: Latest')
@@ -68,17 +68,17 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('facts')
-        .setDescription('Display a table of all saved facts of the current thread.')
+        .setDescription('Display a table of all saved facts of the current channel.')
     )
     .addSubcommand(subcommand => 
       subcommand
         .setName('reset')
-        .setDescription(`Reset the current thread's context to default.`)
+        .setDescription(`Reset the current channel's context to default.`)
     ),
 
   async execute(interaction) {
     const subcommand = interaction.options.getSubcommand();
-    const thread = interaction.client.channels.cache.get(interaction.channelId)
+    const channel = interaction.client.channels.cache.get(interaction.channelId)
 
     let list; let desc;
     let embed = new EmbedBuilder()
@@ -86,12 +86,7 @@ module.exports = {
     .setTimestamp()
     .setColor(0xFF0000)
     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
-    if (!thread.isThread() || thread.parentId != CHATBOT_CHANNEL) {
-      embed.setDescription('Please run this command in a chatbot thread!');
-      await interaction.reply({ embeds: [embed], ephemeral: true });
-      return;
-    }
-    const threadContext = await getThreadContext(thread);
+    const threadContext = await getThreadContext(channel);
     const { characteristics, personality, preferences, dialog, boundaries } = threadContext.roleplay_options;
     const { topic, summaries, facts } = threadContext;
     switch (subcommand) {
@@ -104,7 +99,9 @@ module.exports = {
           boundaries != '' && `**Boundaries:** ${boundaries}`,
           topic != '' && `**Topic:** ${topic}`,
           summaries.length > 0 && `**Summaries:** ${summaries.length}`,
-          facts && `**Facts:** ${facts.length}`
+          facts && `**Facts:** ${facts.length}`,
+          summaries.length > 0 && `**Last Summary At:** ${new Date(summaries[summaries.length - 1].timestamp).toLocaleString()}`,
+          facts && facts.length > 0 && facts[0].updatedAt && `**Last Facts Update:** ${new Date(facts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0].updatedAt).toLocaleString()}`
         ]
         desc = list.filter(Boolean).join('\n')
         embed 
@@ -114,14 +111,13 @@ module.exports = {
         await interaction.reply({ embeds: [embed], ephemeral: true });
         break;
       case 'set':
-        // Set the current context for the thread.
-        const characteristicValue = interaction.options.getString('characteristics') || characteristics;
-        const personalityValue = interaction.options.getString('personality') || personality;
-        const preferenceValue = interaction.options.getString('preferences') || preferences;
-        const dialogValue = interaction.options.getString('dialog') || dialog;
-        const boundariesValue = interaction.options.getString('boundaries') || boundaries;
-        const topicValue = interaction.options.getString('topic') || topic;
-        const updatedContext = { // updated values or default values
+        const characteristicValue = interaction.options.getString('characteristics') ?? characteristics;
+        const personalityValue = interaction.options.getString('personality') ?? personality;
+        const preferenceValue = interaction.options.getString('preferences') ?? preferences;
+        const dialogValue = interaction.options.getString('dialog') ?? dialog;
+        const boundariesValue = interaction.options.getString('boundaries') ?? boundaries;
+        const topicValue = interaction.options.getString('topic') ?? topic;
+        const updatedContext = {
           roleplay_options: {
             characteristics: characteristicValue,
             personality: personalityValue,
@@ -131,7 +127,7 @@ module.exports = {
           },
           topic: topicValue
         };
-        await updateThreadContext(thread, updatedContext);
+        await updateThreadContext(channel, updatedContext);
         list = [
           characteristicValue != '' && `Characteristics: ${characteristicValue}`,
           personalityValue !== '' && `Personality: ${personalityValue}`,
@@ -158,8 +154,11 @@ module.exports = {
           },
           topic: '',
           facts: [],
+          summaries: [],
+          messagesSinceLastSummary: 0,
+          messagesSinceLastFacts: 0,
         };
-        await updateThreadContext(thread, blankContext);
+        await updateThreadContext(channel, blankContext);
         embed
           .setAuthor({ name: `Chatbot Context Reset`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
           .setDescription(`Successfully reset chatbot context.`)
@@ -169,6 +168,16 @@ module.exports = {
       case 'summary':
         const n = interaction.options.getInteger("number") || summaries.length;
         const chosenSummary = summaries[n-1];
+        if (!chosenSummary) {
+          embed
+          .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setDescription(`No summaries found! Continue chatting with the bot and try again later`)
+          .setColor(0xF9844A);
+          return await interaction.reply({
+            content: `No summaries found! Continue chatting with the bot and try again later`,
+            ephemeral: true,
+          });
+        }
         if (n < 0 || n > summaries.length) {
           embed
           .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
@@ -181,29 +190,28 @@ module.exports = {
         }
         list = [
           chosenSummary && `**Summary:**\n${chosenSummary.context}`,
-          chosenSummary.messagesIncluded && `**Messages used:** ${chosenSummary.messagesIncluded.map((m, i) => `${i+1}: ${m.content.length > 128 ? m.content.substring(0, 128)+`...` : m.content}`).join('\n')}`,
           chosenSummary.mergedFrom && `**Previous summaries used:** ${chosenSummary.mergedFrom}`,
           chosenSummary.timestamp && `**Generated on ${new Date(chosenSummary.timestamp).toLocaleString()}**`
         ]
         desc = list.filter(Boolean).join('\n');
         embed
-         .setAuthor({ name: `Chatbot Summary (#${n} of ${summaries.length})`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setAuthor({ name: `Latest Summary`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
          .setDescription(desc)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
          break;
       case 'facts':
         let fields = Object.entries(facts).map(([_, v]) => ({
-          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`, // Format key to title case
-          value: v.value.toString().replace(/_/g, ' '), // Ensure value is a string
-          inline: true // Set to true if you want them displayed side by side
+          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`, 
+          value: v.value.toString().replace(/_/g, ' '), 
+          inline: true 
         }));
         if (fields.length > 25) {
           logger.warn(`Too many fields! (${fields.length}) Trimming to first 25 fields`); // TODO: create page system (25 per page)'
           fields = fields.slice(0, 25);
         }
         embed
-         .setAuthor({ name: `Facts for thread "${thread.name}"`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setAuthor({ name: `Facts for "${channel.name}"`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
          .setFields(fields)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });

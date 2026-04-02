@@ -1,4 +1,5 @@
 const fs = require("fs");
+const DEBUG_LOGGING = process.argv[2] == "debug"
 
 async function logToTxt(message, type) {
     if (type == "error") {
@@ -9,7 +10,7 @@ async function logToTxt(message, type) {
     }
     const date = new Date();
     const log = `[${date.toLocaleString()}] [${type.toUpperCase()}] ${message}\n`;
-    const dir = `./logs/${date.toLocaleDateString("ja-JP").split("/")[0]}/${date.toLocaleDateString("ja-JP").split("/")[1]}`; // japan because format is yyyy/mm/dd, not a weeb!
+    const dir = `./logs/${date.toLocaleDateString("ja-JP").split("/")[0]}/${date.toLocaleDateString("ja-JP").split("/")[1]}`;
     const fileFormat = `${dir}/${date.toLocaleDateString("ja-JP").split("/")[2]}.txt`;
     
     if (!fs.existsSync(dir)) {
@@ -38,6 +39,7 @@ module.exports = {
                 logToTxt(message, type);
                 break;
             case "debug":
+                if (!DEBUG_LOGGING) break;
                 console.log(`\x1b[36m[DEBUG]\x1b[0m ${message}`);
                 logToTxt(message, type);
                 break;
@@ -52,6 +54,7 @@ module.exports = {
         logToTxt(message, "info");
     },
     debug: (message) => {
+        if (!DEBUG_LOGGING) return;
         console.log(`\x1b[36m[DEBUG]\x1b[0m ${message}`);
         logToTxt(message, "debug");
     },

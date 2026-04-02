@@ -1,11 +1,10 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { CURRENCY_NAME } = require("../../config.json");
+const { CURRENCY_NAME } = require("../../config.js");
 const { getAllTimeTopUsers, getCurrentTopUsers } = require("../../utils/bank");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
-const wait = require('node:timers/promises').setTimeout;
 
 async function getTopUsers(type) {
     const users = await db.all();
@@ -51,7 +50,6 @@ module.exports = {
                     
         const current = await getCurrentTopUsers();
         const allTime = await getAllTimeTopUsers();
-        await wait (500); // Wait for the database to update
         
         embed.setTitle(`Leaderboard for ${interaction.guild.name}`);
         embed.addFields(

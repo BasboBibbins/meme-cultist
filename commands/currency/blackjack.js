@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.json");
+const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const wait = require('node:timers/promises').setTimeout;
 const bj = require('../../utils/blackjack');

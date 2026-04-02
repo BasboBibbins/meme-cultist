@@ -1,5 +1,5 @@
 const logger = require("./logger");
-const { APRILFOOLS_ROLE } = require("../config.json");
+const { APRILFOOLS_ROLE, PHANTOM_CHANNEL_CATEGORY } = require("../config.js");
 const { rip } = require("../utils/welcome");
 const { handleBotMessage } = require("./openai");
 const shuffleArray = require("./misc");
@@ -90,7 +90,7 @@ module.exports = {
     const fakeChannel = await guild.channels.create({
       name: randomName,
       type: 0,
-      parent: '1250197013774209109'
+      parent: PHANTOM_CHANNEL_CATEGORY
     });
 
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
@@ -122,7 +122,6 @@ module.exports = {
     const excludedChannels = [];
 
     excludedCategory.forEach(category => {
-      // Filter channels by category name and add to excludedChannels
       const categoryChannels = guild.channels.cache.filter(channel => channel.parent && channel.parent.name === category);
       if (categoryChannels.size) {
         categoryChannels.forEach(channel => excludedChannels.push(channel.name));
@@ -131,19 +130,17 @@ module.exports = {
     });
     logger.debug(`Excluded channels: ${excludedChannels.join(', ')}`);
     
-    // Add fake channels to excludedChannels
     excludedChannels.push(...fakeChannels);
     logger.debug(`Excluded ${excludedChannels.length} channels.`);
 
-    // ensure excluded channels are visible in the first place
     const showExcludedChannels = guild.channels.cache.filter(channel => excludedChannels.includes(channel.name));
     for (const channel of showExcludedChannels.values()) {
       await channel.permissionOverwrites.edit(role, { ViewChannel: true }).catch(() => {});
     }
     
     const channels = guild.channels.cache.filter(channel =>
-      channel.type === 0 && // Only text channels
-      !excludedChannels.includes(channel.name) // Exclude specified channels
+      channel.type === 0 &&
+      !excludedChannels.includes(channel.name)
     );
     logger.debug(`Hiding ${channels.size} channels from ${role.name} role`);
 
@@ -271,7 +268,6 @@ module.exports = {
 
     logger.debug(`Shuffling roles for ${members.size} members...`);
     const shuffleMembers = async () => {
-      // remove existing roles
       for (const member of members.values()) {
         const memberRoles = member.roles.cache.filter(role => role.name.startsWith('Meme') && role.name !== 'Meme Cultist');
         await member.roles.remove(memberRoles).catch(() => {});
@@ -349,7 +345,6 @@ module.exports = {
     setInterval(() => { this.newDiscussion(client, guild, key, guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE)) }, i[6].interval * m); 
   },
   undoAprilFools: async function (client, guild) {
-    // remove prank role from all members
     logger.debug('Removing prank role from all members...');
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
     if (!prankRole) {
@@ -363,7 +358,6 @@ module.exports = {
     }
     logger.debug(`Removed ${prankRole.name} role from ${members.size} members.`);
 
-    // reveal all channels again
     const channels = guild.channels.cache.filter(channel => channel.type === 0 && channel.permissionsFor(prankRole).has('ViewChannel'));
     for (const channel of channels.values()) {
       await channel.permissionOverwrites.edit(prankRole, { ViewChannel: false }).catch(() => {});
@@ -382,12 +376,10 @@ module.exports = {
     } else {
       logger.error('Failed to swap Meme Pope with Basbo');
     }
-    // revert nicknames
     for (const member of members.values()) {
       await member.setNickname(member.user.username).catch(() => {});
       logger.debug(`Reverted nickname for ${member.user.username}`);
     }
-    // delete phantom channels
     const phantomChannels = guild.channels.cache.filter(channel => fakeChannels.includes(channel.name));
     for (const channel of phantomChannels.values()) {
       await channel.delete().catch(() => {});

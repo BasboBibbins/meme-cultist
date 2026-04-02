@@ -5,3 +5,6 @@
 *.txt
 /logs
 config.json
+/backup-db
+/.claude
+CLAUDE.md
