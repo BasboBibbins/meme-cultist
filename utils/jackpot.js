@@ -1,7 +1,7 @@
 const { QuickDB } = require('quick.db');
 const db = new QuickDB({ filePath: './db/jackpot.sqlite' });
 const logger = require('./logger');
-const { JACKPOT_SEED, JACKPOT_CONTRIBUTION_RATE, JACKPOT_MIN_BET, JACKPOT_INTEREST_RATE_PERCENT, CURRENCY_NAME } = require('../config.json');
+const { JACKPOT_SEED, JACKPOT_CONTRIBUTION_RATE, JACKPOT_MIN_BET, JACKPOT_INTEREST_RATE_PERCENT, CURRENCY_NAME } = require('../config.js');
 
 // Default values if not in config
 const SEED = JACKPOT_SEED ?? 1000;

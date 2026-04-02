@@ -3,7 +3,7 @@ const { OpenAIApi, Configuration } = require("openai");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
-const { CHATBOT_LOCAL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.json");
+const { CHATBOT_LOCAL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: `./db/feedback.sqlite` });
 

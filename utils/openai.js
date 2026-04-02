@@ -8,13 +8,14 @@ const {
   CLIENT_ID,
   MAX_FACTS,
   MAX_SUMMARIES,
+  FACT_TTL_DAYS,
   SUMMARY_INTERVAL,
   FACTS_INTERVAL,
   CHAT_MAX_PROMPT_TOKENS,
   SUMMARY_MAX_PROMPT_TOKENS,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT,
   INCLUDE_USER_FACTS_IN_PROMPT,
-} = require("../config.json");
+} = require("../config.js");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
@@ -68,6 +69,99 @@ function withTimeout(promise, ms, err = "Request timed out") {
     setTimeout(() => reject(err), ms)
   );
   return Promise.race([promise, timeout]);
+}
+
+/**
+ * Check if an error is transient and worth retrying.
+ * @param {Error} error - The error to check
+ * @returns {boolean}
+ */
+function isTransientError(error) {
+  if (!error) return false;
+  // Network/timeout errors
+  if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') return true;
+  if (error.message?.includes('timeout') || error.message?.includes('network')) return true;
+  // HTTP 5xx errors
+  if (error.response?.status >= 500 && error.response?.status < 600) return true;
+  // HTTP 429 (rate limit)
+  if (error.response?.status === 429) return true;
+  return false;
+}
+
+/**
+ * Retry a function with exponential backoff.
+ * @param {Function} fn - Async function to retry
+ * @param {number} maxRetries - Maximum number of retries (default 3)
+ * @param {number} baseDelay - Base delay in ms (default 1000)
+ * @returns {Promise<any>}
+ */
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxRetries || !isTransientError(error)) {
+        throw error;
+      }
+      const delay = baseDelay * Math.pow(2, attempt);
+      logger.warn(`Transient error on attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${delay}ms: ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Split a string at word boundaries to fit within a character limit.
+ * @param {string} text - Text to split
+ * @param {number} maxLength - Maximum length per chunk (default 1997 for Discord)
+ * @returns {string[]}
+ */
+function splitAtWordBoundary(text, maxLength = 1997) {
+  if (text.length <= maxLength) return [text];
+
+  const chunks = [];
+  let remaining = text;
+
+  while (remaining.length > maxLength) {
+    // Find the last space before the limit
+    let splitIndex = remaining.lastIndexOf(' ', maxLength - 1);
+
+    // If no space found, split at the limit (word is too long)
+    if (splitIndex === -1 || splitIndex < maxLength / 2) {
+      splitIndex = maxLength - 1;
+    }
+
+    // Add the chunk (plus space if we split at a space)
+    chunks.push(remaining.slice(0, splitIndex + 1).trim());
+    remaining = remaining.slice(splitIndex + 1).trim();
+  }
+
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
+/**
+ * Clean up facts that have exceeded the TTL.
+ * @param {Array} facts - Array of fact objects with updatedAt
+ * @returns {Array}
+ */
+function cleanupExpiredFacts(facts) {
+  if (!FACT_TTL_DAYS || !Array.isArray(facts)) return facts;
+
+  const ttlMs = FACT_TTL_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  return facts.filter(fact => {
+    if (!fact?.updatedAt) return true; // Keep facts without timestamp
+    const age = now - fact.updatedAt;
+    return age < ttlMs;
+  });
 }
 
 function formatAgeLabel(timestamp) {
@@ -371,6 +465,9 @@ async function generateFacts(thread, key) {
 
     let combinedFacts  = Array.isArray(existingFacts) ? [...existingFacts] : [];
 
+    // Clean up expired facts before adding new ones
+    combinedFacts = cleanupExpiredFacts(combinedFacts);
+
     for (const fact of parsedFacts) {
       const existingIndex = combinedFacts.findIndex(f => f.key === fact.key);
       if (existingIndex !== -1) {
@@ -443,6 +540,10 @@ async function generateUserFacts(userId, userMessages, key) {
       return { key: rawKey.trim().toLowerCase().replace(/\s+/g, "_"), value: rest.join("=").trim(), updatedAt: Date.now() };
     });
     let combinedFacts = Array.isArray(existingFacts) ? [...existingFacts] : [];
+
+    // Clean up expired facts before adding new ones
+    combinedFacts = cleanupExpiredFacts(combinedFacts);
+
     for (const fact of newFacts) {
       const idx = combinedFacts.findIndex(f => f.key === fact.key);
       if (idx !== -1) {
@@ -930,13 +1031,20 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       logger.debug(`[API Request] tools: ${JSON.stringify(TOOLS.map(t => t.function.name))}`);
       logger.debug(`[API Request] last user message: ${messages[messages.length - 1]?.content?.substring(0, 100)}...`);
 
-      const completion = await withTimeout(
-        openai.createChatCompletion(requestBody),
-        120_000,
-        "Deepseek API request took too long"
-      );
+      const completion = await retryWithBackoff(async () => {
+        return await withTimeout(
+          openai.createChatCompletion(requestBody),
+          120_000,
+          "Deepseek API request took too long"
+        );
+      }, 3, 1000);
 
-      const choice = completion.data.choices[0];
+      const choice = completion?.data?.choices?.[0];
+      if (!choice) {
+        logger.error("No choice in API response");
+        break;
+      }
+
       logger.debug(`API response: finish_reason=${choice.finish_reason}`);
       logger.debug(`[API Response] message keys: ${Object.keys(choice.message || {}).join(', ')}`);
 
@@ -953,7 +1061,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         messages.push(choice.message);
 
         for (const toolCall of choice.message.tool_calls) {
-          const toolResult = await executeToolCall(toolCall, message);
+          const toolResult = await executeToolCall(toolCall, message, client);
 
           messages.push({
             role: "tool",
@@ -966,13 +1074,18 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         continue;
       }
 
-      response = choice.message.content;
+      response = choice.message?.content;
+      if (!response) {
+        logger.warn("No content in API response");
+        break;
+      }
+
       logger.debug(`Generated Deepseek response: \x1b[31m${response}`);
       logger.debug(
-        `Prompt tokens: ${completion.data.usage.prompt_tokens} ` +
-        `(HIT: ${completion.data.usage.prompt_cache_hit_tokens ?? 0} | MISS: ${completion.data.usage.prompt_cache_miss_tokens ?? 0}) ` +
-        `| Completion tokens: ${completion.data.usage.completion_tokens} ` +
-        `| Total tokens: ${completion.data.usage.total_tokens}`
+        `Prompt tokens: ${completion.data?.usage?.prompt_tokens ?? 0} ` +
+        `(HIT: ${completion.data?.usage?.prompt_cache_hit_tokens ?? 0} | MISS: ${completion.data?.usage?.prompt_cache_miss_tokens ?? 0}) ` +
+        `| Completion tokens: ${completion.data?.usage?.completion_tokens ?? 0} ` +
+        `| Total tokens: ${completion.data?.usage?.total_tokens ?? 0}`
       );
       logger.debug(`Estimated Cost: \x1b[33m$${estimateCost(completion.data)}`);
       break;
@@ -985,9 +1098,10 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
     if (response && response.length > 2000) {
       logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
-      let chunks = response.match(/[\s\S]{1,1997}/g) || [];
-      for (let chunk of chunks) {
-        if (chunk !== chunks[chunks.length - 1]) {
+      const chunks = splitAtWordBoundary(response, 1997);
+      for (let i = 0; i < chunks.length; i++) {
+        let chunk = chunks[i];
+        if (i < chunks.length - 1) {
           chunk += "..."; // Add ellipsis to indicate more content
         }
         await targetChannel.send(chunk);

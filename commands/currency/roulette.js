@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { QuickDB } = require('quick.db');
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require('../../database');
-const { CURRENCY_NAME, ROULETTE_MIN_BET, ROULETTE_MAX_BET, ROULETTE_BETTING_TIME } = require('../../config.json');
+const { CURRENCY_NAME, ROULETTE_MIN_BET, ROULETTE_MAX_BET, ROULETTE_BETTING_TIME } = require('../../config.js');
 const { parseBet } = require('../../utils/betparse');
 const { drawRouletteTable, drawResult, spinWheel, calculateWinnings, getRedBlack, getNumberPosition } = require('../../utils/roulette');
 const logger = require('../../utils/logger');

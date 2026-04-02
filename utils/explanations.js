@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNEL, OOC_PREFIX } = require('../config.json');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNEL, OOC_PREFIX } = require('../config.js');
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 
 module.exports = {

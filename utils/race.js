@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require('openai');
-const { CHATBOT_LOCAL } = require('../config.json');
+const { CHATBOT_LOCAL } = require('../config.js');
 const logger = require('./logger');
 
 let _openaiClient = null;

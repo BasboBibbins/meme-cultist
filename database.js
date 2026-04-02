@@ -1,5 +1,5 @@
 const { QuickDB } = require("quick.db");
-const { GUILD_ID } = require("./config.json");
+const { GUILD_ID } = require("./config.js");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./utils/logger");
 

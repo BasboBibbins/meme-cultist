@@ -2,7 +2,7 @@ const { QuickDB } = require("quick.db");
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
-const { CURRENCY_NAME } = require("../config.json");
+const { CURRENCY_NAME } = require("../config.js");
 
 // Tool definitions for DeepSeek function calling
 const TOOLS = [
@@ -202,9 +202,8 @@ async function handleGetUserStats(args, message) {
   };
 }
 
-async function handleGetGuildInfo(args, message) {
+async function handleGetGuildInfo(args, message, client) {
   const guild = message.guild;
-  const client = global.client;
   logger.debug(`Fetching guild info for "${guild.name}" (ID: ${guild.id})`);
   console.log(`\x1b[33m${message.guild}\x1b[0m`);
 
@@ -258,8 +257,7 @@ async function handleGetUserInfo(args, message) {
   };
 }
 
-async function handleGetBotInfo(args, message) {
-  const client = global.client;
+async function handleGetBotInfo(args, message, client) {
   const commands = [];
 
   client.slashcommands.forEach((cmd, name) => {
@@ -291,7 +289,7 @@ const TOOL_HANDLERS = {
   get_bot_info: handleGetBotInfo
 };
 
-async function executeToolCall(toolCall, message) {
+async function executeToolCall(toolCall, message, client) {
   const fnName = toolCall.function.name;
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
 
@@ -303,7 +301,7 @@ async function executeToolCall(toolCall, message) {
     if (!handler) {
       result = { error: `Unknown function: ${fnName}` };
     } else {
-      result = await handler(fnArgs, message);
+      result = await handler(fnArgs, message, client);
     }
   } catch (err) {
     logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);

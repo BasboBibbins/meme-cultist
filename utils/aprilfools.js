@@ -1,5 +1,5 @@
 const logger = require("./logger");
-const { APRILFOOLS_ROLE } = require("../config.json");
+const { APRILFOOLS_ROLE, PHANTOM_CHANNEL_CATEGORY } = require("../config.js");
 const { rip } = require("../utils/welcome");
 const { handleBotMessage } = require("./openai");
 const shuffleArray = require("./misc");
@@ -90,7 +90,7 @@ module.exports = {
     const fakeChannel = await guild.channels.create({
       name: randomName,
       type: 0,
-      parent: '1250197013774209109'
+      parent: PHANTOM_CHANNEL_CATEGORY
     });
 
     const prankRole = guild.roles.cache.find(role => role.name === APRILFOOLS_ROLE);
