@@ -30,7 +30,7 @@ module.exports = {
                 .addFields(
                     { 
                         name: "General Information", 
-                        value: `**${interaction.client.user.displayName }** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to DM <@${OWNER_ID}>!`,
+                        value: `**${interaction.client.user.displayName }** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to use the \`/feedback\`command!`,
                         inline: false 
                     },
                     {
@@ -40,7 +40,7 @@ module.exports = {
                     },
                     {
                         name: "Links",
-                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[Support Server](https://discord.gg/h3hymqEUsR)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)\n[Trello Board](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)`,
+                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)\n[Trello Board](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)`,
                         inline: false
                     },
                     {
