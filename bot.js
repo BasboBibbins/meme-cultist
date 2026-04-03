@@ -377,14 +377,18 @@ if (DELETE_SLASH) {
         const isMentioned = message.mentions.has(client.user, { ignoreEveryone: true, ignoreRoles: true });
         const isChatbotChannel = message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL;
 
-        const { allowed, reason } = rateLimiter.canProceed(message.author.id, isMentioned && !isChatbotChannel);
-        if (!allowed) {
-            return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
-        }
-
+        // Only process chatbot messages (in chatbot channel or mentions)
         if (isChatbotChannel && !APRIL_FOOLS_MODE) {
+            const { allowed, reason } = rateLimiter.canProceed(message.author.id, false);
+            if (!allowed) {
+                return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
+            }
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (isMentioned) {
+            const { allowed, reason } = rateLimiter.canProceed(message.author.id, true);
+            if (!allowed) {
+                return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
+            }
             await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true);
         }
     })
