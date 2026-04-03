@@ -377,6 +377,8 @@ if (DELETE_SLASH) {
         const isMentioned = message.mentions.has(client.user, { ignoreEveryone: true, ignoreRoles: true });
         const isChatbotChannel = message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL;
 
+        if (!isChatbotChannel && !isMentioned) return;
+
         const { allowed, reason } = rateLimiter.canProceed(message.author.id, isMentioned && !isChatbotChannel);
         if (!allowed) {
             return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
