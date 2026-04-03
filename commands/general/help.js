@@ -1,92 +1,114 @@
-const { stripIndents, oneLine } = require('common-tags');
-const { Command } = require('discord.js-commando');
-const { MessageEmbed } = require('discord.js');
-const { version } = require('../../package.json')
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { randomHexColor } = require('../../utils/randomcolor');
+const { OWNER_ID } = require('../../config.js');
+const explanations = require('../../utils/explanations');
+const logger = require('../../utils/logger');
 
-module.exports = class HelpCommand extends Command {
-	constructor(client) {
-		super(client, {
-			name: 'help',
-			group: 'general',
-			memberName: 'help',
-			aliases: ['commands'],
-			description: 'Displays a list of available commands.',
-			examples: ['help', 'help prefix'],
-			args: [
-				{
-					key: 'command',
-					prompt: 'Which command would you like to view the help for?',
-					type: 'string',
-					default: ''
-				}
-			]
-		});
-	}
-  async run(msg, args) {
-    const groups = this.client.registry.groups;
-    const commands = this.client.registry.findCommands(args.command, false, msg);
-    const showAll = args.command && args.command.toLowerCase() === 'all';
-    if (args.command && !showAll) {
-      if (commands.length === 1) {
-				let body = `
-					__${commands[0].name}__
-					${commands[0].description}${commands[0].guildOnly ? ' *(Usable only in servers)*' : ''}${commands[0].nsfw ? ' *(Not Safe For Work!)*' : ''}\n
-					**Format:** ${msg.anyUsage(`${commands[0].name}${commands[0].format ? ` ${commands[0].format}` : ''}`)}`;
-					if(commands[0].aliases.length > 0) body += `\n**Aliases:** ${commands[0].aliases.join(', ')}`;
-					body += `\n${oneLine`
-						**Group:** ${commands[0].group.name}
-						(\`${commands[0].groupID}:${commands[0].memberName}\`)
-					`}`;
-					if(commands[0].details) body += `\n**Details:** ${commands[0].details}`;
-					if(commands[0].examples) body += `\n**Examples:**\n${commands[0].examples.join('\n')}`;
-        const embed = new MessageEmbed()
-          .setColor('#7289DA')
-          .addField(`**Command Menu**`, body)
-          .setFooter(`Meme Cultist | Ver. ${version}`, 'https://i.imgur.com/fbZ9H1I.jpg')
-					const messages = [];
-					try {
-						messages.push(await msg.direct({ embed }));
-						if (msg.channel.type !== 'dm') messages.push(await msg.reply('Sent ;)'));
-					} catch(err) {
-						messages.push(await msg.reply('Unable to send you the help DM. You probably have DMs disabled dummy.'));
-					}
-					return messages;
-      } else if (commands.length > 15) {
-        return msg.reply('multiple commands found, please be more specific.');
-      } else if (commands.length > 1) {
-        return msg.reply(disambiguation(commands, 'commands'));
-      } else {
-        return msg.reply(
-					`Unable to identify command. Use ${msg.usage(
-						null, msg.channel.type === 'dm' ? null : undefined, msg.channel.type === 'dm' ? null : undefined
-					)} to view the list of all commands.`
-				);
-      }
-    } else {
-      const messages = [];
-      const body = `${groups.filter(grp => grp.commands.some(cmd => !cmd.hidden && (showAll || cmd.isUsable(msg))))
-        .map(grp => stripIndents`
-          \n__${grp.name}__
-          ${grp.commands.filter(cmd => !cmd.hidden && (showAll || cmd.isUsable(msg)))
-            .map(cmd => `**${cmd.name}**`).join('\n')
-          }
-        `).join('\n\n')
-      }`;
-      const embed = new MessageEmbed()
-        .setThumbnail('https://i.imgur.com/fbZ9H1I.jpg')
-        .setColor('#7289DA')
-        .setTitle('**Meme Cultist**')
-        .addField('-=-=-=-=-=-=-=-', '**A bot by '+this.client.owners+'**\n[GitHub](https://github.com/BasboBibbins/meme-cultist) **|** [Trello](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)')
-        .addField('-=-=-=-=-=-=-=-', `\nTo run a command in ${msg.guild ? msg.guild.name : 'any server'},\nuse ${Command.usage('command', msg.guild ? msg.guild.commandPrefix : null, this.client.user)}\nFor example, ${Command.usage('normies', msg.guild ? msg.guild.commandPrefix : null, this.client.user)}.`)
-        .addField('List of Commands:', body)
-        .setFooter(`Ver. ${version} | ©2018-2020 Basbo#9817`, 'https://i.imgur.com/fbZ9H1I.jpg')
-      try {
-        messages.push(await msg.direct({ embed }));
-        if (msg.channel.type !== 'dm') messages.push(await msg.reply('Sent ;)'));
-      } catch(err) {
-        messages.push(await msg.reply('Unable to send you the help DM. You probably have DMs disabled dummy.'));
-      }
-      return messages;
-    }
-  }
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName("help")
+        .setDescription("Get help on a command.")
+        .addStringOption(option =>
+            option.setName('command')
+                .setDescription('The command to get help on.')
+                .setRequired(false)
+                .setAutocomplete(true)),
+    async autocomplete(interaction) {
+        const focusedValue = interaction.options.getFocused();
+        const commands = interaction.client.slashcommands;
+        const commandOptions = commands.map(command => ({ name: command.data.name, value: command.data.name }));
+        const filtered = commandOptions.filter(commandOption => commandOption.name.toLowerCase().startsWith(focusedValue.toLowerCase()));
+        await interaction.respond(
+            filtered.map(commandOption => ({ name: commandOption.name, value: commandOption.value }))
+        );
+    },
+    async execute(interaction) {
+        const commandName = interaction.options.getString('command');
+        if (!commandName) {
+            const embed = new EmbedBuilder()
+                .setAuthor({ name: `${interaction.client.user.username} Help`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .addFields(
+                    { 
+                        name: "General Information", 
+                        value: `**${interaction.client.user.displayName }** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to use the \`/feedback\`command!`,
+                        inline: false 
+                    },
+                    {
+                        name: "Commands",
+                        value: `The bot has a total of ${interaction.client.slashcommands.size} commands. Use \`/help [command]\` to get help on a specific command. For example, \`/help balance\` will give you help on the \`/balance\` command.`,
+                        inline: false
+                    },
+                    {
+                        name: "Links",
+                        value: `[Invite Link](https://discord.com/api/oauth2/authorize?client_id=${interaction.client.user.id}&permissions=8&scope=bot%20applications.commands)\n[GitHub Repository](https://github.com/BasboBibbins/meme-cultist)\n[Trello Board](https://trello.com/b/TeAjOwjm/meme-cultist-discord-bot)`,
+                        inline: false
+                    },
+                    {
+                        name: "Copyright",
+                        value: `© ${new Date().getFullYear()} BasboBibbins [<@${OWNER_ID}>].\nLicensed under the [MIT License](https://github.com/BasboBibbins/meme-cultist/blob/master/LICENSE) and the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).`,
+                        inline: false
+                    }
+                )
+                .setColor(randomHexColor())
+                .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+                .setTimestamp();
+
+            const row = new ActionRowBuilder()
+            .addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId('explanations')
+                    .setPlaceholder('Select a command/feature to learn more about it.')
+                    .addOptions(Object.keys(explanations).map((key) => {
+                        return {
+                            label: explanations[key].name,
+                            value: key
+                        }
+                    }))
+            );
+            
+            let msg = await interaction.reply({embeds: [embed], components: [row], fetchReply: true, ephemeral: true});
+            const filter = (i) => i.customId === 'explanations' && i.user.id === interaction.user.id;
+            const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+            collector.on('collect', async (i) => {
+                await collector.resetTimer();
+                await i.deferUpdate();
+                const explanation = explanations[i.values[0]];
+                const embed = new EmbedBuilder()
+                    .setAuthor({ name: explanation.name, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setDescription(`**Explanation:** ${explanation.description}\n\n${explanation.rules ? `**Rules:** ${explanation.rules}\n\n` : ''}${explanation.example ? `**Example:** ${explanation.example}\n\n` : ''}${explanation.note ? `**Note:** ${explanation.note}\n\n` : ''}`)
+                    .setColor(randomHexColor())
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+                    .setTimestamp();
+                await i.editReply({embeds: [embed]});
+            });
+            collector.on('end', async (collected, reason) => {
+                logger.debug(`/help Collector ended with reason: ${reason}. Collected ${collected.size} items.`);
+                if (reason === 'time') {
+                    await msg.delete();
+                }
+            });
+            return;
+        }
+        const command = interaction.client.slashcommands.get(commandName);
+        console.log(command);
+        if (!command) {
+            await interaction.reply({content: `No command found with name \`${commandName}\``, ephemeral: true});
+            return;
+        }
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `/${command.data.name}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setDescription(`${command.data.description}\n\n**Usage:** \`/${command.data.name} ${command.data.options.map(option => option.required ? `<${option.name}>` : `[${option.name}]`).join(' ')}\`\n\n**__Options:__**`)
+            .addFields(command.data.options.map(option => {
+                return {
+                    name: option.name,
+                    value: option.description,
+                    inline: true
+                    }
+                })
+            )
+            .setColor(randomHexColor())
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
+            .setTimestamp();
+        await interaction.reply({embeds: [embed], ephemeral: true});
+    },
 };

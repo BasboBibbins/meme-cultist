@@ -1,25 +1,22 @@
-const { Command } = require('discord.js-commando');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { randomHexColor } = require('../../utils/randomcolor');
+const { formatTimeSince } = require('../../utils/time');
 
-module.exports = class UptimeCommand extends Command {
-  constructor(client) {
-    super(client, {
-      name: 'uptime',
-      aliases: ['alive', 'up'],
-      memberName: 'uptime',
-      group: 'general',
-      description: "Replies with the bot's total uptime."
-    });
-  }
-  run(message) {
-    var seconds = parseInt((this.client.uptime / 1000) % 60),
-      minutes = parseInt((this.client.uptime / (1000 * 60)) % 60),
-      hours = parseInt((this.client.uptime / (1000 * 60 * 60)) % 24);
-
-    hours = hours < 10 ? '0' + hours : hours;
-    minutes = minutes < 10 ? '0' + minutes : minutes;
-    seconds = seconds < 10 ? '0' + seconds : seconds;
-    return message.say(
-      `:chart_with_upwards_trend: I've been running for **${hours}** hours, **${minutes}** minutes and **${seconds}** seconds!`
-    );
-  }
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('uptime')
+        .setDescription('Check the uptime of the bot.'),
+    async execute(interaction) {
+        const uptime = await formatTimeSince(interaction.client.uptime)
+        const user = interaction.user;
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `${user.displayName }`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setColor(randomHexColor())
+            .addFields(
+                { name: "Uptime", value: uptime, inline: true },
+            )
+            .setTimestamp()
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) });
+        await interaction.reply({embeds: [embed]});
+    }
 };

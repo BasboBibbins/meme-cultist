@@ -1,26 +1,24 @@
-const { Command } = require('discord.js-commando');
+const {SlashCommandBuilder} = require('discord.js');
 
-module.exports = class NormiesCommand extends Command {
-  constructor(client) {
-    super(client, {
-      name: 'owo',
-      aliases: ['owoify'],
-      memberName: 'owo',
-      group: 'fun',
-      description: "owo-ifies your text.",
-      args: [
-        {
-          key: 'args',
-          prompt: 'Type the text you want owo-ified.',
-          type: 'string'
-        }
-      ]
-    });
-  }
-  run(message, { args }) {
-    var text = args;
-    text = text.replace(/[lr]/g, 'w');
-    text = text.replace(/u/g, 'uw');
-    message.channel.send(text);
-  }
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName("owo")
+        .setDescription("OwO what's this?")
+        .addStringOption(option =>
+            option.setName('text')
+                .setDescription('The text to OwO-fy.')
+                .setRequired(true)),
+    async execute(interaction) {
+        var text = interaction.options.getString('text');
+        text = text.replace(/[lr]/g, 'w');
+        text = text.replace(/[LR]/g, 'W');
+        text = text.replace(/n([aeiou])/g, 'ny$1');
+        text = text.replace(/N([aeiou])/g, 'Ny$1');
+        text = text.replace(/N([AEIOU])/g, 'NY$1');
+        text = text.replace(/ove/g, 'uv');
+        text = text.replace(/\./g, ` ${Array.from({length: Math.floor(Math.random() * 5) + 1}, () => '~ OwO').join(' ')} `);
+        text = text.replace(/!+/g, ` ${Array.from({length: Math.floor(Math.random() * 5) + 1}, () => 'OwO').join(' ')} `);
+        text = text.replace(/\?+/g, ` ${Array.from({length: Math.floor(Math.random() * 5) + 1}, () => 'OwO').join(' ')} `);
+        await interaction.reply(text);
+    },
 };
