@@ -5,7 +5,7 @@ async function getHandValue(hand) {
     }
     if (total > 21) {
         for (let i = 0; i < hand.length; i++) {
-            if (hand[i].name == "Ace") {
+            if (hand[i].name == "Ace" && total > 21) {
                 total -= 10;
             }
         }
