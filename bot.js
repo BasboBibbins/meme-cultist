@@ -379,7 +379,7 @@ if (DELETE_SLASH) {
 
         if (!isChatbotChannel && !isMentioned) return;
 
-        const { allowed, reason } = rateLimiter.canProceed(message.author.id, isMentioned && !isChatbotChannel);
+        const { allowed, reason } = rateLimiter.canProceed(client, message.author.id, isMentioned && !isChatbotChannel);
         if (!allowed) {
             return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
         }

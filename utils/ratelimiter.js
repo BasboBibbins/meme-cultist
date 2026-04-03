@@ -5,7 +5,7 @@ const mentionCooldowns = new Map();
 let requestTimestamps = [];
 let requestCount = 0;
 
-const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE} = require("../config.js")
+const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, CHATBOT_CHANNEL} = require("../config.js")
 
 /**
  * Clean up expired timestamps from the request array.
@@ -24,16 +24,20 @@ function cleanupTimestamps() {
  * @param {boolean} isMention - Whether this is a mention (uses longer cooldown)
  * @returns {{allowed: boolean, reason?: string}}
  */
-function canProceed(userId, isMention = false) {
+function canProceed(client, userId, isMention = false) {
   const now = Date.now();
   const cooldown = isMention ? MENTION_COOLDOWN : USER_COOLDOWN;
   const cooldownMap = isMention ? mentionCooldowns : userCooldowns;
+
+  const mentionChannelId = CHATBOT_CHANNEL;
+  const mentionChannel = client.channels.cache.get(mentionChannelId);
+  const mentionChannelMention = mentionChannel ? `<#${mentionChannelId}>` : "the dedicated chatbot channel";
 
   // Per-user cooldown check
   const lastUsed = cooldownMap.get(userId) || 0;
   if (now - lastUsed < cooldown * 1000) {
     const remaining = Math.ceil((cooldown * 1000 - (now - lastUsed)) / 1000);
-    return { allowed: false, reason: `Too many requests! Please wait ${remaining}s before next use.` };
+    return { allowed: false, reason: `Too many requests! Please wait ${remaining}s before next use, or use ${mentionChannelMention}` };
   }
 
   // Clean up expired timestamps periodically (every 100 requests)
