@@ -148,7 +148,7 @@ module.exports = {
                         embed.setTitle(`Dealer wins!`);
                         return collector.stop('lose');
                     } 
-                    while (await bj.dealerChoice(dealerCards, playerCards) === 'hit' && (await bj.checkHand(dealerCards) === 'safe')) {
+                    while (await bj.dealerChoice(dealerCards) === 'hit' && (await bj.checkHand(dealerCards) === 'safe')) {
                         logger.debug(`Dealer choice is hit.`);
                         embed.setTitle(`I'm going to hit.`);
                         dealerCards = await bj.hit(dealerCards);
@@ -171,7 +171,7 @@ module.exports = {
                             return collector.stop('lose');
                         }
                     }
-                    if (await bj.dealerChoice(dealerCards, playerCards) === 'stand') {
+                    if (await bj.dealerChoice(dealerCards) === 'stand') {
                         logger.debug(`Dealer choice is stand.`);
                         embed.setTitle(`I'm going to stand.`);
                         await interaction.editReply({ embeds: [embed] });
@@ -195,13 +195,11 @@ module.exports = {
             collector.on('end', async (collected, reason) => {
                 logger.debug(`Blackjack collector ended. Collected ${collected.size} interactions. Reason: ${reason}`);
                 if (reason === 'blackjack') {
-                    winnings += Math.ceil(bet * 1.5);
+                    winnings += bet;
                     await db.add(`${user.id}.balance`, winnings);
                     await db.add(`${stats}.wins`, 1);
-                    await db.add(`${stats}.blackjacks`, 1);
-                    if (winnings > await db.get(`${stats}.blackjack.biggestWin`)) await db.set(`${stats}.blackjack.biggestWin`, winnings);
-                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName }:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                    embed.setTitle(`Blackjack!`);
+                    embed.setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName }:**\n${playerCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou hit to 21! You win **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
+                    embed.setTitle(`21!`);
                     embed.setColor(0x00AE86);
                     await interaction.editReply({ embeds: [embed], components: [] });
                 }
