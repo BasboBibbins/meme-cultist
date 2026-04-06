@@ -1,16 +1,26 @@
 async function getHandValue(hand) {
     let total = 0;
+    let aces = 0;
     for (let i = 0; i < hand.length; i++) {
         total += hand[i].value;
+        if (hand[i].name === "Ace") aces++;
     }
-    if (total > 21) {
-        for (let i = 0; i < hand.length; i++) {
-            if (hand[i].name == "Ace" && total > 21) {
-                total -= 10;
-            }
-        }
+    // Adjust for aces (can be 1 or 11)
+    while (total > 21 && aces > 0) {
+        total -= 10;
+        aces--;
     }
     return total;
+}
+
+async function canSplit(hand) {
+    // Can only split with exactly 2 cards of the same rank
+    if (hand.length !== 2) return false;
+    return hand[0].char === hand[1].char;
+}
+
+async function isAcePair(hand) {
+    return hand.length === 2 && hand[0].name === "Ace" && hand[1].name === "Ace";
 }
 
 async function dealCards() {
@@ -60,5 +70,11 @@ module.exports = {
             return "hit";
         }
         return "stand";
+    },
+    canSplit: async function (hand) {
+        return canSplit(hand);
+    },
+    isAcePair: async function (hand) {
+        return isAcePair(hand);
     }
 }

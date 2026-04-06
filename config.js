@@ -62,6 +62,7 @@ const config = {
     // Currency/game settings
     CURRENCY_NAME: "koku",
     INTEREST_RATE: 1,
+    BLACKJACK_MAX_HANDS: 4,
     ROULETTE_MIN_BET: 10,
     ROULETTE_MAX_BET: 5000,
     ROULETTE_HOUSE_EDGE: 2.7,
