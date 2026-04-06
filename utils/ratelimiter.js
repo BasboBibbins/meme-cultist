@@ -7,23 +7,11 @@ let requestCount = 0;
 
 const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, CHATBOT_CHANNEL} = require("../config.js")
 
-/**
- * Clean up expired timestamps from the request array.
- * This prevents memory growth over time.
- */
 function cleanupTimestamps() {
   const now = Date.now();
   requestTimestamps = requestTimestamps.filter(ts => now - ts < WINDOW_SIZE * 1000);
 }
 
-/**
- * Check if a user can proceed with a request.
- * Implements per-user cooldown and global rate limiting with race condition protection.
- *
- * @param {string} userId - The Discord user ID
- * @param {boolean} isMention - Whether this is a mention (uses longer cooldown)
- * @returns {{allowed: boolean, reason?: string}}
- */
 function canProceed(client, userId, isMention = false) {
   const now = Date.now();
   const cooldown = isMention ? MENTION_COOLDOWN : USER_COOLDOWN;

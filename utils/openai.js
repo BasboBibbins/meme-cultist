@@ -71,11 +71,6 @@ function withTimeout(promise, ms, err = "Request timed out") {
   return Promise.race([promise, timeout]);
 }
 
-/**
- * Check if an error is transient and worth retrying.
- * @param {Error} error - The error to check
- * @returns {boolean}
- */
 function isTransientError(error) {
   if (!error) return false;
   // Network/timeout errors
@@ -88,13 +83,6 @@ function isTransientError(error) {
   return false;
 }
 
-/**
- * Retry a function with exponential backoff.
- * @param {Function} fn - Async function to retry
- * @param {number} maxRetries - Maximum number of retries (default 3)
- * @param {number} baseDelay - Base delay in ms (default 1000)
- * @returns {Promise<any>}
- */
 async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
   let lastError;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -113,12 +101,6 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
   throw lastError;
 }
 
-/**
- * Split a string at word boundaries to fit within a character limit.
- * @param {string} text - Text to split
- * @param {number} maxLength - Maximum length per chunk (default 1997 for Discord)
- * @returns {string[]}
- */
 function splitAtWordBoundary(text, maxLength = 1997) {
   if (text.length <= maxLength) return [text];
 
@@ -146,11 +128,6 @@ function splitAtWordBoundary(text, maxLength = 1997) {
   return chunks;
 }
 
-/**
- * Clean up facts that have exceeded the TTL.
- * @param {Array} facts - Array of fact objects with updatedAt
- * @returns {Array}
- */
 function cleanupExpiredFacts(facts) {
   if (!FACT_TTL_DAYS || !Array.isArray(facts)) return facts;
 
