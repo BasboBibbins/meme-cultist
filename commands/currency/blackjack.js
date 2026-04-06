@@ -96,7 +96,7 @@ module.exports = {
             await db.add(`${user.id}.balance`, winnings);
             await db.add(`${stats}.wins`, 1);
             await db.add(`${stats}.blackjacks`, 1);
-            if (winnings > await db.get(`${stats}.blackjack.biggestWin`)) await db.set(`${stats}.blackjack.biggestWin`, winnings);
+            if (winnings > await db.get(`${stats}.biggestWin`)) await db.set(`${stats}.biggestWin`, winnings);
             const embed = new EmbedBuilder()
                 .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setTitle(`Blackjack!`)
@@ -436,14 +436,21 @@ module.exports = {
             // Add winnings
             if (totalWinnings > 0) {
                 await db.add(`${user.id}.balance`, totalWinnings);
-                if (totalWinnings > await db.get(`${stats}.blackjack.biggestWin`)) {
-                    await db.set(`${stats}.blackjack.biggestWin`, totalWinnings);
+                const profit = totalWinnings - totalBets;
+                if (profit > 0) {
+                    const biggestWin = await db.get(`${stats}.biggestWin`) || 0;
+                    if (profit > biggestWin) {
+                        await db.set(`${stats}.biggestWin`, profit);
+                    }
                 }
             }
 
             // Update stats for biggest loss (only actual losses)
-            if (biggestHandLoss > 0 && biggestHandLoss > await db.get(`${stats}.blackjack.biggestLoss`)) {
-                await db.set(`${stats}.blackjack.biggestLoss`, biggestHandLoss);
+            if (biggestHandLoss > 0) {
+                const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
+                if (biggestHandLoss > biggestLoss) {
+                    await db.set(`${stats}.biggestLoss`, biggestHandLoss);
+                }
             }
 
             const finalEmbed = new EmbedBuilder()
