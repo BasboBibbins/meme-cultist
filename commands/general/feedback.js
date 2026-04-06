@@ -105,6 +105,39 @@ async function notifyOwner(client, feedback) {
     }
 }
 
+async function generateIssueTitle(type, description) {
+    const openai = getFeedbackClient();
+    if (!openai) {
+        logger.debug("[Feedback] generateIssueTitle: No OpenAI client available, cannot generate title");
+        throw new Error("OpenAI client unavailable for title generation");
+    }
+
+    const typeLabel = type === 'bug' ? 'Bug Report' : 'Feature Suggestion';
+    logger.debug(`[Feedback] generateIssueTitle: Requesting title for ${typeLabel}, description length: ${description.length}`);
+
+    const response = await openai.createChatCompletion({
+        model: "deepseek-chat",
+        messages: [
+            { role: "system", content: "You generate concise GitHub issue titles. Respond with ONLY the title text, no quotes or extra formatting." },
+            { role: "user", content: `Generate a short, descriptive GitHub issue title for this ${typeLabel}:\n\n"${description}"` }
+        ],
+        max_tokens: 60,
+        temperature: 0.3
+    });
+
+    logger.debug(`[Feedback] generateIssueTitle: Response status: ${response.status}`);
+    logger.debug(`[Feedback] generateIssueTitle: Response choices: ${JSON.stringify(response.data?.choices)}`);
+
+    const title = response.data?.choices?.[0]?.message?.content?.trim();
+    if (!title) {
+        logger.debug(`[Feedback] generateIssueTitle: Empty title from API response. Full response.data: ${JSON.stringify(response.data)}`);
+        throw new Error("DeepSeek returned empty title content");
+    }
+
+    logger.debug(`[Feedback] generateIssueTitle: Generated title: "${title}"`);
+    return title.slice(0, 200);
+}
+
 async function createGitHubIssue(feedback) {
     const token = process.env.GITHUB_TOKEN;
     if (!token) return { success: false, error: "GITHUB_TOKEN not configured" };
@@ -112,7 +145,14 @@ async function createGitHubIssue(feedback) {
 
     const labels = feedback.type === 'bug' ? ['bug'] : ['enhancement'];
     const titlePrefix = feedback.type === 'bug' ? '[Bug] ' : '[Suggestion] ';
-    const title = (titlePrefix + feedback.description.slice(0, 200)).trim();
+    let issueTitle;
+    try {
+        issueTitle = await generateIssueTitle(feedback.type, feedback.description);
+    } catch (error) {
+        logger.error(`[Feedback] Title generation failed, falling back to description: ${error.message}`);
+        issueTitle = feedback.description.slice(0, 200);
+    }
+    const title = (titlePrefix + issueTitle).trim();
 
     const body = `## ${feedback.type === 'bug' ? 'Bug Report' : 'Feature Suggestion'}
 
