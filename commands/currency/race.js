@@ -2,9 +2,9 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { QuickDB } = require('quick.db');
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require('../../database');
-const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL } = require('../../config.js');
+const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../../config.js');
 const { parseBet } = require('../../utils/betparse');
-const { generateHorses, determineWinner, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require('../../utils/race');
+const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require('../../utils/race');
 const logger = require('../../utils/logger');
 const { randomHexColor } = require('../../utils/randomcolor');
 const wait = require('node:timers/promises').setTimeout;
@@ -37,7 +37,16 @@ module.exports = {
                 .addStringOption(option =>
                     option.setName('amount')
                         .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
-                        .setRequired(true))),
+                        .setRequired(true))
+                .addStringOption(option =>
+                    option.setName('type')
+                        .setDescription('Bet type: Win (1st), Place (1st-2nd), Show (1st-3rd)')
+                        .setRequired(false)
+                        .addChoices(
+                            { name: 'Win (must finish 1st)', value: 'win' },
+                            { name: 'Place (must finish 1st or 2nd)', value: 'place' },
+                            { name: 'Show (must finish 1st, 2nd, or 3rd)', value: 'show' }
+                        ))),
 
     async execute(interaction) {
         const client = interaction.client;
@@ -79,10 +88,9 @@ async function handleStartRace(interaction, client, user) {
     await interaction.deferReply();
 
     const horses = generateHorses();
-    const winner = determineWinner(horses);
-    const winnerIndex = horses.findIndex(h => h.number === winner.number);
+    const topThree = determineTopThree(horses);
 
-    logger.log(`${user.username} (${user.id}) started a horse race. Winner: Horse ${winner.number} (${winner.name})`);
+    logger.log(`${user.username} (${user.id}) started a horse race. Winner: Horse ${topThree.first.number} (${topThree.first.name}), 2nd: ${topThree.second.number}, 3rd: ${topThree.third.number}`);
 
     // Generate commentary asynchronously (don't await - use default if not ready)
     let commentaryPromise = null;
@@ -121,7 +129,12 @@ async function handleStartRace(interaction, client, user) {
         messageId: message.id,
         creatorId: user.id,
         horses: horses,
-        winnerIndex: winnerIndex,
+        topThree: {
+            firstIndex: topThree.firstIndex,
+            secondIndex: topThree.secondIndex,
+            thirdIndex: topThree.thirdIndex
+        },
+        winnerIndex: topThree.firstIndex, // Keep for backwards compatibility
         bets: [],
         phase: 'betting',
         endTime: endTime,
@@ -221,6 +234,7 @@ async function handleBet(interaction, client, user) {
     const channelId = interaction.channelId;
     const horseNumber = interaction.options.getInteger('horse');
     const betAmountStr = interaction.options.getString('amount');
+    const betType = interaction.options.getString('type') || 'win';
 
     const errorEmbed = (description) => new EmbedBuilder()
         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
@@ -293,14 +307,15 @@ async function handleBet(interaction, client, user) {
     const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
     const horse = game.horses[horseIndex];
 
-    logger.log(`${user.username} (${user.id}) bet ${bet} ${CURRENCY_NAME} on Horse ${horseNumber} (${horse.name})`);
+    logger.log(`${user.username} (${user.id}) bet ${bet} ${CURRENCY_NAME} on Horse ${horseNumber} (${horse.name}) - ${betType}`);
 
     const betObj = {
         userId: user.id,
         username: user.displayName,
         horseIndex: horseIndex,
         amount: bet,
-        odds: horse.displayOdds
+        odds: horse.displayOdds,
+        betType: betType
     };
     game.bets.push(betObj);
 
@@ -330,7 +345,8 @@ async function handleBet(interaction, client, user) {
             `You bet **${bet}** ${CURRENCY_NAME} on:`,
             `**Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
             `**Odds:** ${horse.displayOdds}x`,
-            `**Potential win:** ${calculatePayout(bet, horse.displayOdds, HOUSE_EDGE)} ${CURRENCY_NAME}`
+            `**Bet Type:** ${betType.charAt(0).toUpperCase() + betType.slice(1)}`,
+            `**Potential win:** ${calculatePayout(bet, horse.displayOdds, HOUSE_EDGE, betType)} ${CURRENCY_NAME}`
         ].join('\n'))
         .setColor(randomHexColor())
         .setTimestamp();
@@ -345,7 +361,7 @@ async function resolveRace(client, channel, message, game) {
 
     const horses = game.horses;
     const positions = new Array(8).fill(0);
-    const finishOrder = [];
+    let finishOrder = [];
 
     if (game.bets.length === 0) {
         const embed = new EmbedBuilder()
@@ -364,7 +380,7 @@ async function resolveRace(client, channel, message, game) {
         .setTimestamp();
 
     for (let tick = 1; tick <= ANIMATION_TICKS; tick++) {
-        const result = advanceRace(horses, positions, game.winnerIndex);
+        const result = advanceRace(horses, positions, game.topThree);
 
         for (const idx of result.newFinishers) {
             if (!finishOrder.includes(idx)) {
@@ -372,8 +388,8 @@ async function resolveRace(client, channel, message, game) {
             }
         }
 
-        const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, []);
-        const commentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, []);
+        const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, finishOrder, game.topThree);
+        const commentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
         embed.setTitle(commentary);
         embed.setDescription(description);
 
@@ -381,14 +397,23 @@ async function resolveRace(client, channel, message, game) {
         await wait(TICK_INTERVAL);
     }
 
-    positions[game.winnerIndex] = 100;
-    if (!finishOrder.includes(game.winnerIndex)) {
-        finishOrder.unshift(game.winnerIndex);
+    // Force top 3 into correct finish order
+    const topThreeIndices = [game.topThree.firstIndex, game.topThree.secondIndex, game.topThree.thirdIndex];
+    for (const idx of topThreeIndices) {
+        if (!finishOrder.includes(idx)) {
+            finishOrder.push(idx);
+        }
     }
+    // Remove top 3 and re-insert in correct order at the front
+    finishOrder = finishOrder.filter(idx => !topThreeIndices.includes(idx));
+    finishOrder.unshift(game.topThree.thirdIndex);
+    finishOrder.unshift(game.topThree.secondIndex);
+    finishOrder.unshift(game.topThree.firstIndex);
 
+    // Add remaining unfinished horses by progress
     const unfinishedHorses = horses
         .map((_, i) => ({ i, progress: positions[i] }))
-        .filter(h => !finishOrder.includes(h.i) && h.i !== game.winnerIndex)
+        .filter(h => !finishOrder.includes(h.i))
         .sort((a, b) => b.progress - a.progress);
 
     for (const h of unfinishedHorses) {
@@ -399,19 +424,39 @@ async function resolveRace(client, channel, message, game) {
         positions[i] = 100;
     }
 
-    const winner = horses[game.winnerIndex];
-    const finalDescription = buildRaceDescription(horses, positions, ANIMATION_TICKS, ANIMATION_TICKS, game.winnerIndex, finishOrder);
-    const finishCommentary = buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.winnerIndex, finishOrder);
+    const winner = horses[game.topThree.firstIndex];
+    const secondPlace = horses[game.topThree.secondIndex];
+    const thirdPlace = horses[game.topThree.thirdIndex];
+    const finalDescription = buildRaceDescription(horses, positions, ANIMATION_TICKS, ANIMATION_TICKS, game.topThree.firstIndex, finishOrder);
+    const finishCommentary = buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.topThree.firstIndex, finishOrder);
 
     const results = [];
     for (const bet of game.bets) {
-        const won = bet.horseIndex === game.winnerIndex;
+        const horsePosition = finishOrder.indexOf(bet.horseIndex);
+        const betType = bet.betType || 'win';
+        let won = false;
+
+        // Determine win based on bet type
+        if (betType === 'win') {
+            won = horsePosition === 0;
+        } else if (betType === 'place') {
+            won = horsePosition === 0 || horsePosition === 1;
+        } else if (betType === 'show') {
+            won = horsePosition === 0 || horsePosition === 1 || horsePosition === 2;
+        }
+
         let winnings = 0;
 
         if (won) {
-            winnings = calculatePayout(bet.amount, bet.odds, HOUSE_EDGE);
+            winnings = calculatePayout(bet.amount, bet.odds, HOUSE_EDGE, betType);
             await db.add(`${bet.userId}.balance`, winnings);
             await db.add(`${bet.userId}.stats.race.wins`, 1);
+
+            if (betType === 'place') {
+                await db.add(`${bet.userId}.stats.race.placeWins`, 1);
+            } else if (betType === 'show') {
+                await db.add(`${bet.userId}.stats.race.showWins`, 1);
+            }
 
             const biggestWin = await db.get(`${bet.userId}.stats.race.biggestWin`) || 0;
             if (winnings > biggestWin) {
@@ -430,6 +475,7 @@ async function resolveRace(client, channel, message, game) {
             ...bet,
             won,
             winnings,
+            horsePosition,
             newBalance: await db.get(`${bet.userId}.balance`)
         });
     }
@@ -440,7 +486,9 @@ async function resolveRace(client, channel, message, game) {
     const resultsLines = [
         `**${finishCommentary}**`,
         '',
-        `🏆 **WINNER: Horse ${winner.number} — ${winner.name}** ${winner.emoji} [${winner.displayOdds}x]`,
+        `🥇 **WINNER: Horse ${winner.number} — ${winner.name}** ${winner.emoji} [${winner.displayOdds}x]`,
+        `🥈 **2nd: Horse ${secondPlace.number} — ${secondPlace.name}** ${secondPlace.emoji} [${secondPlace.displayOdds}x]`,
+        `🥉 **3rd: Horse ${thirdPlace.number} — ${thirdPlace.name}** ${thirdPlace.emoji} [${thirdPlace.displayOdds}x]`,
         '',
         '```',
         finalDescription,
@@ -461,10 +509,12 @@ async function resolveRace(client, channel, message, game) {
         });
         for (const result of sorted) {
             const horse = horses[result.horseIndex];
+            const betTypeLabel = (result.betType || 'win').charAt(0).toUpperCase() + (result.betType || 'win').slice(1);
+            const positionLabel = result.horsePosition === 0 ? '🥇' : (result.horsePosition === 1 ? '🥈' : (result.horsePosition === 2 ? '🥉' : ''));
             if (result.won) {
-                resultsLines.push(`🥇 <@${result.userId}> won **${result.winnings}** ${CURRENCY_NAME} on Horse ${horse.number}!`);
+                resultsLines.push(`${positionLabel}✅ <@${result.userId}> won **${result.winnings}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})!`);
             } else {
-                resultsLines.push(`❌ <@${result.userId}> lost **${result.amount}** ${CURRENCY_NAME} on Horse ${horse.number}`);
+                resultsLines.push(`❌ <@${result.userId}> lost **${result.amount}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})`);
             }
         }
     }
@@ -481,6 +531,8 @@ async function resolveRace(client, channel, message, game) {
             const dmUser = await client.users.fetch(result.userId);
             const net = result.won ? result.winnings : -result.amount;
             const horse = horses[result.horseIndex];
+            const betTypeLabel = (result.betType || 'win').charAt(0).toUpperCase() + (result.betType || 'win').slice(1);
+            const positionText = result.horsePosition === 0 ? '1st 🥇' : (result.horsePosition === 1 ? '2nd 🥈' : (result.horsePosition === 2 ? '3rd 🥉' : `${result.horsePosition + 1}th`));
 
             const dmEmbed = new EmbedBuilder()
                 .setTitle(result.won ? '🎉 You Won!' : '😔 You Lost')
@@ -488,7 +540,9 @@ async function resolveRace(client, channel, message, game) {
                     `**Horse:** ${horse.number}. ${horse.name} ${horse.emoji}`,
                     `**Odds:** ${horse.displayOdds}x`,
                     `**Bet:** ${result.amount} ${CURRENCY_NAME}`,
-                    `**Result:** ${result.won ? 'Winner!' : 'Lost'}`,
+                    `**Bet Type:** ${betTypeLabel}`,
+                    `**Finish:** ${positionText}`,
+                    `**Result:** ${result.won ? 'Won!' : 'Lost'}`,
                     '',
                     `**Net:** ${net >= 0 ? '+' : ''}${net} ${CURRENCY_NAME}`,
                     `**New balance:** ${result.newBalance} ${CURRENCY_NAME}`
@@ -505,5 +559,5 @@ async function resolveRace(client, channel, message, game) {
 
     // Clean up
     client.raceGames.delete(game.channelId);
-    logger.log(`Race in channel ${game.channelId} completed. Winner: Horse ${winner.number} (${winner.name}). Bets: ${game.bets.length}, Wagered: ${totalWagered}, Paid: ${totalPaid}`);
+    logger.log(`Race in channel ${game.channelId} completed. Top 3: ${winner.number} (${winner.name}), ${secondPlace.number} (${secondPlace.name}), ${thirdPlace.number} (${thirdPlace.name}). Bets: ${game.bets.length}, Wagered: ${totalWagered}, Paid: ${totalPaid}`);
 }

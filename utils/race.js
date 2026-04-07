@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require('openai');
-const { CHATBOT_LOCAL } = require('../config.js');
+const { CHATBOT_LOCAL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../config.js');
 const logger = require('./logger');
 
 let _openaiClient = null;
@@ -65,8 +65,21 @@ function getOddsLabel(probability) {
     return ODDS_LABELS.find(o => probability >= o.threshold)?.label ?? '🔴 Outsider';
 }
 
-function calculatePayout(betAmount, displayOdds, houseEdge = 0.10) {
-    return Math.floor(betAmount * displayOdds * (1 - houseEdge));
+function calculatePayout(betAmount, displayOdds, houseEdge = 0.10, betType = 'win') {
+    let odds;
+    switch (betType) {
+        case 'place':
+            odds = (displayOdds - 1) * RACE_PLACE_MULTIPLIER + 1;
+            break;
+        case 'show':
+            odds = (displayOdds - 1) * RACE_SHOW_MULTIPLIER + 1;
+            break;
+        case 'win':
+        default:
+            odds = displayOdds;
+            break;
+    }
+    return Math.floor(betAmount * odds * (1 - houseEdge));
 }
 
 function generateHorses() {
@@ -111,6 +124,54 @@ function determineWinner(horses) {
     return horses[horses.length - 1];
 }
 
+function determineTopThree(horses) {
+    // Pick winner using weighted random
+    const first = determineWinner(horses);
+
+    // Remove winner and renormalize for second place
+    const remainingAfterFirst = horses.filter(h => h.number !== first.number);
+    const totalProbAfterFirst = remainingAfterFirst.reduce((sum, h) => sum + h.probability, 0);
+    const normalizedFirst = remainingAfterFirst.map(h => ({ ...h, probability: h.probability / totalProbAfterFirst }));
+
+    // Pick second place
+    let roll = Math.random();
+    let cumulative = 0;
+    let second = normalizedFirst[0];
+    for (const horse of normalizedFirst) {
+        cumulative += horse.probability;
+        if (roll < cumulative) {
+            second = horse;
+            break;
+        }
+    }
+
+    // Remove second and renormalize for third place
+    const remainingAfterSecond = normalizedFirst.filter(h => h.number !== second.number);
+    const totalProbAfterSecond = remainingAfterSecond.reduce((sum, h) => sum + h.probability, 0);
+    const normalizedSecond = remainingAfterSecond.map(h => ({ ...h, probability: h.probability / totalProbAfterSecond }));
+
+    // Pick third place
+    roll = Math.random();
+    cumulative = 0;
+    let third = normalizedSecond[0];
+    for (const horse of normalizedSecond) {
+        cumulative += horse.probability;
+        if (roll < cumulative) {
+            third = horse;
+            break;
+        }
+    }
+
+    return {
+        first,
+        second,
+        third,
+        firstIndex: horses.findIndex(h => h.number === first.number),
+        secondIndex: horses.findIndex(h => h.number === second.number),
+        thirdIndex: horses.findIndex(h => h.number === third.number)
+    };
+}
+
 function buildTrack(progress, horseEmoji, trackLength = 20) {
     if (progress >= 100) {
         return `|${'—'.repeat(trackLength)}${horseEmoji}|🏁`;
@@ -123,7 +184,7 @@ function buildTrack(progress, horseEmoji, trackLength = 20) {
     return `|${before}${horseEmoji}${after}|🏁`;
 }
 
-function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = []) {
+function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = [], topThree = null) {
     const lines = [];
 
     const isFinished = winnerIndex !== null;
@@ -138,15 +199,16 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
     const medalMap = new Map();
 
     if (isFinished && finishOrder.length > 0) {
-        // Final results: use finish order for silver/bronze
-        medalMap.set(winnerIndex, '🥇');
-        let rank = 1;
-        for (const idx of finishOrder) {
-            if (idx === winnerIndex) continue;
-            if (rank === 1) medalMap.set(idx, '🥈');
-            else if (rank === 2) medalMap.set(idx, '🥉');
-            rank++;
-            if (rank > 2) break;
+        // Final results: use finish order for medals
+        const medals = ['🥇', '🥈', '🥉'];
+        for (let i = 0; i < Math.min(3, finishOrder.length); i++) {
+            medalMap.set(finishOrder[i], medals[i]);
+        }
+    } else if (finishOrder.length > 0) {
+        // During race: use finish order for medals of horses that have crossed the line
+        const medals = ['🥇', '🥈', '🥉'];
+        for (let i = 0; i < Math.min(3, finishOrder.length); i++) {
+            medalMap.set(finishOrder[i], medals[i]);
         }
     } else if (isFinished) {
         // Fallback when no finishOrder: assign medals by progress
@@ -161,11 +223,16 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
             medalMap.set(h.i, medals[rank]);
         });
     } else {
-        // During race: medals based on current position
+        // During race without finishOrder: medals based on current position
         const finishedHorses = horses
             .map((_, i) => ({ i, progress: positions[i] }))
             .filter(h => h.progress >= 100)
-            .sort((a, b) => b.progress - a.progress);
+            .sort((a, b) => {
+                if (b.progress !== a.progress) {
+                    return b.progress - a.progress;
+                }
+                return 0; // Maintain stable order if progress is identical
+            });
 
         const medals = ['🥇', '🥈', '🥉'];
         finishedHorses.slice(0, 3).forEach((h, rank) => {
@@ -208,7 +275,7 @@ function buildBettingDescription(horses, bets, endTime) {
             const horse = horses[horseIdx];
             const horseBets = betsByHorse[horseIdx];
             const total = horseBets.reduce((sum, b) => sum + b.amount, 0);
-            const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()})`).join(', ');
+            const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()} ${(b.betType || 'win').charAt(0).toUpperCase() + (b.betType || 'win').slice(1)})`).join(', ');
             lines.push(`• **Horse ${horse.number}** (${horse.name}) — ${total.toLocaleString()} koku | ${users}`);
         }
     } else {
@@ -221,16 +288,26 @@ function buildBettingDescription(horses, bets, endTime) {
     return lines.join('\n');
 }
 
-function advanceRace(horses, positions, winnerIndex) {
+function advanceRace(horses, positions, topThree) {
     const newFinishers = [];
 
     for (let i = 0; i < horses.length; i++) {
         const prevProgress = positions[i];
-        let advance = 5 + Math.random() * 7;
+        // Base advancement with reduced randomness
+        let advance = 6 + Math.random() * 4; // 6-10, avg 8
 
-        if (i === winnerIndex) advance += 2 + Math.random() * 3;
+        // Strong deterministic boosts for predetermined top 3
+        // This ensures they finish in correct order
+        if (i === topThree.firstIndex) {
+            advance += 5 + Math.random() * 2; // +5-7, ensures 1st place
+        } else if (i === topThree.secondIndex) {
+            advance += 3 + Math.random() * 2; // +3-5, ensures 2nd place
+        } else if (i === topThree.thirdIndex) {
+            advance += 1 + Math.random() * 2; // +1-3, ensures 3rd place
+        }
 
-        advance += (horses[i].form / 100) * 2;
+        // Form bonus (smaller impact, doesn't override predetermined order)
+        advance += (horses[i].form / 100) * 1.5;
 
         positions[i] = Math.min(100, positions[i] + advance);
 
@@ -398,6 +475,7 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
 module.exports = {
     generateHorses,
     determineWinner,
+    determineTopThree,
     calculatePayout,
     getOddsLabel,
     buildTrack,
