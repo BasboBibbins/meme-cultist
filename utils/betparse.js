@@ -7,45 +7,39 @@ module.exports = {
         const dbUser = await db.get(id);
         const balance = dbUser.balance;
 
-        switch (true) {
-            case bet === "all" || bet === "max" || bet === "maxbet":
-                return balance;
+        let expression = bet.toLowerCase().trim();
 
-            case bet === "half":
-                return Math.round(balance / 2);
+        // 1. Keyword substitution
+        // We use regex with word boundaries to avoid replacing "half" inside another word
+        expression = expression.replace(/\b(all|max|maxbet)\b/g, balance);
+        expression = expression.replace(/\bhalf\b/g, `(${balance} / 2)`);
+        expression = expression.replace(/\bquarter\b/g, `(${balance} / 4)`);
+        expression = expression.replace(/\beighth\b/g, `(${balance} / 8)`);
 
-            case bet === "quarter":
-                return Math.round(balance / 4);
+        // 2. Percentage handling: "X%Y" becomes "X * (Y / 100)"
+        // Match: [number/expression]%[number]
+        const percRegex = /([0-9.() /*+-^]+)%([0-9.]+)/g;
+        expression = expression.replace(percRegex, (_, base, perc) => `(${base} * (${perc} / 100))`);
 
-            case bet === "eighth":
-                return Math.round(balance / 8);
+        // 3. Safe Math Evaluation
+        // only allowing numbers, basic operators, and parentheses.
+        try {
+            // Sanitize: only allow numbers, operators, dots, and parentheses
+            if (/[^0-9. \/\*\+\-\(\)\^]/.test(expression)) {
+                return NaN;
+            }
 
-            case bet.includes("/"):
-                const betSplitDiv = bet.split("/");
-                return Math.floor(betSplitDiv[0] / betSplitDiv[1]);
+            // Convert '^' to '**' for JS power operator
+            const jsExpr = expression.replace(/\^/g, '**');
 
-            case bet.includes("*"):
-                const betSplitMul = bet.split("*");
-                return Math.floor(betSplitMul[0] * betSplitMul[1]);
+            // Use Function constructor for a slightly safer evaluation than eval()
+            // but still restrictive to the sanitized string.
+            const result = new Function(`return ${jsExpr}`)();
 
-            case bet.includes("+"):
-                const betSplitAdd = bet.split("+");
-                return Math.floor(betSplitAdd[0] + betSplitAdd[1]);
-
-            case bet.includes("-"):
-                const betSplitSub = bet.split("-");
-                return Math.floor(betSplitSub[0] - betSplitSub[1]);
-
-            case bet.includes("%"):
-                const betSplitPerc = bet.split("%");
-                return Math.floor(betSplitPerc[0] * (betSplitPerc[1] / 100));
-
-            case bet.includes("^"):
-                const betSplitPow = bet.split("^");
-                return Math.pow(betSplitPow[0], betSplitPow[1]);
-
-            default:
-                return Number(bet);
+            return Math.floor(result);
+        } catch (err) {
+            logger.error(`[betparse] Failed to evaluate bet expression "${bet}": ${err.message}`);
+            return NaN;
         }
     }
 }
