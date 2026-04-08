@@ -36,4 +36,32 @@ module.exports = class CanvasUtil {
 			return resolve(lines);
 		});
 	}
+
+	static calculateSpriteBounds(ctx, symbol, targetSize) {
+		const { index } = symbol;
+		const sWidth = 64;
+		const sHeight = 64;
+		const sx = index * sWidth;
+		const sy = 0;
+		const drawSize = targetSize * 0.7;
+
+		// Calculate destination size maintaining aspect ratio
+		const aspect = sWidth / sHeight;
+		let dWidth, dHeight;
+
+		if (aspect >= 1) {
+			dWidth = drawSize;
+			dHeight = drawSize / aspect;
+		} else {
+			dHeight = drawSize;
+			dWidth = drawSize * aspect;
+		}
+
+		return {
+			sx, sy, sWidth, sHeight,
+			dWidth, dHeight
+		};
+	}
+
+	
 };

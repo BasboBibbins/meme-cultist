@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN } = require("../../config.js");
+const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
 const { getTheme, getThemeList } = require('../../utils/slotsThemes');
@@ -108,7 +108,7 @@ module.exports = {
                     logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
                     await db.set(`${user.id}.cooldowns.freespins`, Date.now() + SLOTS_DAILY_COOLDOWN);
                     await interaction.deferReply();
-                    await playSlots(interaction, 0, user, { lines: 3 });
+                    await playSlots(interaction, 0, user, { lines: SLOTS_DAILY_LINES });
                 }
                 break;
 

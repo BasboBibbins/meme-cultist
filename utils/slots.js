@@ -1,7 +1,7 @@
 const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER } = require('../config.js');
+const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET } = require('../config.js');
 const { randomHexColor } = require('./randomcolor');
 const wait = require('node:timers/promises').setTimeout;
 const logger = require('../utils/logger');
@@ -281,6 +281,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         balance: currentBalance,
         winResults,
         isBonus,
+        isFreePlay,
         bonusSpinsLeft: 0,
         theme,
     });
@@ -414,11 +415,11 @@ async function playSlots(interaction, bet, user, options = {}) {
     const theme = getTheme(themeId);
 
     const freePlay = bet === 0;
-    const actualBet = freePlay ? 100 : bet;
+    const actualBet = freePlay ? SLOTS_DAILY_BET : bet;
 
     // --- Free play daily spins ---
     if (freePlay) {
-        const totalFreeSpins = 5;
+        const totalFreeSpins = SLOTS_DAILY_FREE_SPINS;
         const spinResults = [];
 
         for (let i = 0; i < totalFreeSpins; i++) {

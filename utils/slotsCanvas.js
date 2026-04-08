@@ -3,6 +3,7 @@ const { AttachmentBuilder } = require('discord.js');
 const GIFEncoder = require('gif-encoder');
 const { CURRENCY_NAME } = require('../config.js');
 const { getTheme } = require('./slotsThemes');
+const CanvasUtil = require('./Canvas');
 
 // Payline definitions (game logic, not themed)
 const PAYLINES = [
@@ -24,7 +25,7 @@ const imageCache = new Map();
 
 async function preloadThemeImages(theme) {
     for (const sym of theme.symbols) {
-        if (sym.type === 'image' && !imageCache.has(sym.path)) {
+        if ((sym.type === 'image' || sym.type === 'sprite') && !imageCache.has(sym.path)) {
             try {
                 imageCache.set(sym.path, await loadImage(sym.path));
             } catch (err) {
@@ -89,6 +90,29 @@ function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
 function drawSymbol(ctx, symbolIndex, cx, cy, size, theme) {
     const sym = theme.symbols[symbolIndex];
     if (!sym) return;
+
+    if (sym.type === 'sprite') {
+        const img = imageCache.get(sym.path);
+        if (img) {
+            const bounds = CanvasUtil.calculateSpriteBounds(ctx, sym, size);
+            ctx.drawImage(
+                img,
+                bounds.sx, bounds.sy, bounds.sWidth, bounds.sHeight,
+                cx - bounds.dWidth / 2, cy - bounds.dHeight / 2,
+                bounds.dWidth, bounds.dHeight
+            );
+        } else {
+            // Fallback: render label text
+            ctx.save();
+            ctx.font = `bold ${Math.floor(size * 0.25)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = theme.colors.textWhite;
+            ctx.fillText(sym.label, cx, cy);
+            ctx.restore();
+        }
+        return;
+    }
 
     if (sym.type === 'image') {
         const img = imageCache.get(sym.path);
@@ -210,7 +234,7 @@ function drawScatter(ctx, cx, cy, size, sym) {
 
 // ─── Frame and grid drawing ──────────────────────────────────────────
 
-function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, theme, layout) {
+function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout) {
     const { W, H, FRAME_X, FRAME_Y, FRAME_W, FRAME_H, CELL_W, CELL_H } = layout;
     const c = theme.colors;
     const plColors = getPaylineColors(theme);
@@ -278,11 +302,11 @@ function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, theme, layout
     ctx.fillText(jackpotDisplay, W / 2, 51);
 
     // Bonus indicator
-    if (isBonus) {
+    if (isBonus || isFreePlay) {
         ctx.font = 'bold 14px Arial';
         ctx.fillStyle = c.frameBronze;
         ctx.textAlign = 'center';
-        ctx.fillText('\u2B50 BONUS FREE SPINS \u2B50', W / 2, FRAME_Y + FRAME_H + 22);
+        ctx.fillText(isFreePlay ? 'DAILY FREE PLAY' : '\u2B50 BONUS FREE SPINS \u2B50', W / 2, FRAME_Y + FRAME_H + 22);
     }
 
     // Payline indicators
@@ -363,7 +387,7 @@ function drawWinningLines(ctx, winResults, activeLines, theme, layout) {
     }
 }
 
-function drawResultText(ctx, totalWin, balance, isBonus, bonusSpinsLeft, theme, layout) {
+function drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout) {
     const { W, H } = layout;
     const c = theme.colors;
     const y = H - 42;
@@ -382,6 +406,9 @@ function drawResultText(ctx, totalWin, balance, isBonus, bonusSpinsLeft, theme, 
     let bottomText = `Balance: ${balance.toLocaleString()} ${CURRENCY_NAME}`;
     if (isBonus && bonusSpinsLeft > 0) {
         bottomText += `  |  Bonus spins left: ${bonusSpinsLeft}`;
+    }
+    if (isFreePlay) {
+        bottomText += `  |  Daily free play spin${bonusSpinsLeft > 0 ? 's' : ''} used`;
     }
     ctx.textAlign = 'right';
     ctx.fillText(bottomText, W - 30, H - 20);
@@ -402,6 +429,7 @@ async function drawSlotMachine(grid, options = {}) {
         balance = 0,
         winResults = [],
         isBonus = false,
+        isFreePlay = false,
         bonusSpinsLeft = 0,
         theme: themeOverride,
     } = options;
@@ -424,32 +452,32 @@ async function drawSlotMachine(grid, options = {}) {
     const hasWins = winResults.length > 0;
 
     if (!hasWins) {
-        drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, theme, layout);
+        drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
         drawGrid(ctx, grid, theme, layout);
-        drawResultText(ctx, totalWin, balance, isBonus, bonusSpinsLeft, theme, layout);
+        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
         encoder.setDelay(1000);
         encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
     } else {
         const blinkCycles = 3;
         for (let cycle = 0; cycle < blinkCycles; cycle++) {
-            drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, theme, layout);
+            drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
             drawGrid(ctx, grid, theme, layout);
             drawWinningLines(ctx, winResults, activeLines, theme, layout);
-            drawResultText(ctx, totalWin, balance, isBonus, bonusSpinsLeft, theme, layout);
+            drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
             encoder.setDelay(400);
             encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
 
-            drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, theme, layout);
+            drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
             drawGrid(ctx, grid, theme, layout);
-            drawResultText(ctx, totalWin, balance, isBonus, bonusSpinsLeft, theme, layout);
+            drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
             encoder.setDelay(250);
             encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
         }
 
-        drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, theme, layout);
+        drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
         drawGrid(ctx, grid, theme, layout);
         drawWinningLines(ctx, winResults, activeLines, theme, layout);
-        drawResultText(ctx, totalWin, balance, isBonus, bonusSpinsLeft, theme, layout);
+        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
         encoder.setDelay(2000);
         encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
     }
@@ -490,7 +518,7 @@ async function drawSpinAnimation(finalGrid, options = {}) {
     const symCount = theme.symbols.length;
 
     for (let frame = 0; frame < totalFrames; frame++) {
-        drawFrame(ctx, jackpotDisplay, activeLines, bet, false, theme, layout);
+        drawFrame(ctx, jackpotDisplay, activeLines, bet, false, false, theme, layout);
 
         for (let col = 0; col < 3; col++) {
             const lockFrame = lockFrames[col];

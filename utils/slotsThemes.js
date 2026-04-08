@@ -10,6 +10,7 @@ const path = require('path');
  *   'emoji'   — render text/emoji via ctx.fillText
  *   'special' — built-in renderer (bar, seven, wild, scatter) with custom colors
  *   'image'   — load a PNG from disk, draw centered/scaled in the cell
+ *   'sprite'  — load a sprite sheet, draw the specified frame centered/scaled
  */
 
 const ASSETS_BASE = path.join(__dirname, '..', 'assets', 'imgs', 'slots');
@@ -42,31 +43,16 @@ const themes = {
         },
 
         symbols: [
-            { type: 'emoji', text: '\u{1F34E}', label: 'Apple' },
-            { type: 'emoji', text: '\u{1F34A}', label: 'Orange' },
-            { type: 'emoji', text: '\u{1F34B}', label: 'Lemon' },
-            { type: 'emoji', text: '\u{1F347}', label: 'Grapes' },
-            { type: 'emoji', text: '\u{1F352}', label: 'Cherry' },
-            { type: 'emoji', text: '\u{1F514}', label: 'Bell' },
-            {
-                type: 'special', render: 'bar', label: 'BAR',
-                gradientColors: ['#888', '#fff', '#888'],
-                textColor: '#222', strokeColor: '#555',
-            },
-            {
-                type: 'special', render: 'seven', label: 'Seven',
-                fillColor: '#ff0000', glowColor: '#ffd700', strokeColor: '#ffd700',
-            },
-            {
-                type: 'special', render: 'wild', label: 'WILD',
-                gradientColors: ['#fff8dc', '#daa520'],
-                strokeColor: '#8b6914', textColor: '#222',
-            },
-            {
-                type: 'special', render: 'scatter', label: 'SCATTER',
-                gradientColors: ['#ffffaa', '#ffd700'],
-                strokeColor: '#c8a830', textColor: '#333', innerText: 'FREE',
-            },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 0, label: 'Apple' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 1, label: 'Orange' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 2, label: 'Lemon' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 3, label: 'Grapes' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 4, label: 'Cherry' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 5, label: 'Bell' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 6, label: 'BAR' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 7, label: 'Seven' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 8, label: 'Wild' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 9, label: 'Free Spin' },
         ],
     },
 
@@ -74,100 +60,7 @@ const themes = {
     neon: {
         id: 'neon',
         name: 'Neon Arcade',
-        description: 'Cyberpunk neon glow on dark.',
-
-        colors: {
-            feltColor: '#0a0a2a',
-            feltDark: '#050518',
-            reelBackground: '#08081e',
-            frameColor: '#00ffff',
-            frameDarkColor: '#0088aa',
-            frameBronze: '#ff00ff',
-            dividerColor: '#1a1a4a',
-            highlightWin: 'rgba(0, 255, 255, 0.5)',
-            textPrimary: '#00ffff',
-            textWhite: '#e0e0ff',
-            textLoss: '#ff4488',
-            textWin: '#44ffaa',
-            bannerBackground: '#0a002a',
-            bannerBackgroundEnd: '#060018',
-            motionBlurOverlay: 'rgba(5, 5, 24, 0.5)',
-            paylineColors: ['#ff0066', '#00ff99', '#00ccff', '#ff9900', '#cc44ff'],
-        },
-
-        symbols: [
-            { type: 'emoji', text: '\u{1F34E}', label: 'Apple' },
-            { type: 'emoji', text: '\u{1F34A}', label: 'Orange' },
-            { type: 'emoji', text: '\u{1F34B}', label: 'Lemon' },
-            { type: 'emoji', text: '\u{1F347}', label: 'Grapes' },
-            { type: 'emoji', text: '\u{1F352}', label: 'Cherry' },
-            { type: 'emoji', text: '\u{1F514}', label: 'Bell' },
-            {
-                type: 'special', render: 'bar', label: 'BAR',
-                gradientColors: ['#444', '#00ffff', '#444'],
-                textColor: '#050518', strokeColor: '#0088aa',
-            },
-            {
-                type: 'special', render: 'seven', label: 'Seven',
-                fillColor: '#00ffff', glowColor: '#ff00ff', strokeColor: '#ff00ff',
-            },
-            {
-                type: 'special', render: 'wild', label: 'WILD',
-                gradientColors: ['#ccffff', '#0088ff'],
-                strokeColor: '#0044aa', textColor: '#050518',
-            },
-            {
-                type: 'special', render: 'scatter', label: 'SCATTER',
-                gradientColors: ['#ffccff', '#ff00ff'],
-                strokeColor: '#aa0088', textColor: '#1a001a', innerText: 'FREE',
-            },
-        ],
-    },
-
-    // ─── Feudal Japan ─────────────────────────────────────────────────
-    feudalJapan: {
-        id: 'feudalJapan',
-        name: 'Feudal Japan',
-        description: 'Rich dark red and black felt with gold accents.',
-
-        colors: {
-            feltColor: '#4a0000',
-            feltDark: '#2a0000',
-            reelBackground: '#1a0000',
-            frameColor: '#ffd700',
-            frameDarkColor: '#c8a830',
-            frameBronze: '#8b6914',
-            dividerColor: '#3a0000',
-            highlightWin: 'rgba(255, 215, 0, 0.6)',
-            textPrimary: '#ffd700',
-            textWhite: '#ffffff',
-            textLoss: '#ff4444',
-            textWin: '#44ff44',
-            bannerBackground: '#000000',
-            bannerBackgroundEnd: '#1a0000',
-            motionBlurOverlay: 'rgba(26, 0, 0, 0.5)',
-            paylineColors: ['#ff0000', '#ffd700', '#ffffff', '#ffaa00', '#aa0000'],
-        },
-
-        symbols: [
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'bamboo.png'), label: 'Bamboo' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'torii.png'), label: 'Torii Gate' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'hanafuda.png'), label: 'Hanafuda' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'castle.png'), label: 'Castle' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'blossom.png'), label: 'Blossom' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'dolls.png'), label: 'Dolls' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'katana.png'), label: 'Katana' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'dragon.png'), label: 'Dragon' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'fan.png'), label: 'Fan' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'feudalJapan', 'lantern.png'), label: 'Lantern' },
-        ],
-    },
-
-    // ─── Mystic (image-based demo) ───────────────────────────────────
-    mystic: {
-        id: 'mystic',
-        name: 'Mystic Realm',
-        description: 'Dark arcane theme with custom symbols.',
+        description: 'A vibrant neon theme with glowing symbols.',
 
         colors: {
             feltColor: '#1a0a2e',
@@ -189,25 +82,256 @@ const themes = {
         },
 
         symbols: [
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'apple.png'), label: 'Apple' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'orange.png'), label: 'Orange' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'lemon.png'), label: 'Lemon' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'grapes.png'), label: 'Grapes' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'cherry.png'), label: 'Cherry' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'bell.png'), label: 'Bell' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'bar.png'), label: 'BAR' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'seven.png'), label: 'Seven' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'wild.png'), label: 'WILD' },
-            { type: 'image', path: path.join(ASSETS_BASE, 'mystic', 'scatter.png'), label: 'SCATTER' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 0, label: 'Cherry' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 1, label: 'Bell' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 2, label: 'Lemon' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 3, label: 'Grapes' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 4, label: 'Orange' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 5, label: 'Apple' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 6, label: 'BAR' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 7, label: 'Seven' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 8, label: 'Wild' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 9, label: 'Bonus' },
         ],
-    }
+    },
+
+    // ─── Feudal Japan ─────────────────────────────────────────────────
+    feudalJapan: {
+        id: 'feudalJapan',
+        name: 'Feudal Japan',
+        description: 'Traditional Japanese theme with feudal symbols.',
+
+        colors: {
+            feltColor: '#4a0000',
+            feltDark: '#2a0000',
+            reelBackground: '#1a0000',
+            frameColor: '#ffd700',
+            frameDarkColor: '#c8a830',
+            frameBronze: '#8b6914',
+            dividerColor: '#3a0000',
+            highlightWin: 'rgba(255, 215, 0, 0.6)',
+            textPrimary: '#ffd700',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#000000',
+            bannerBackgroundEnd: '#1a0000',
+            motionBlurOverlay: 'rgba(26, 0, 0, 0.5)',
+            paylineColors: ['#ff0000', '#ffd700', '#ffffff', '#ffaa00', '#aa0000'],
+        },
+
+        symbols: [
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 0, label: 'Bamboo' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 1, label: 'Torii Gate' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 2, label: 'Hanafuda' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 3, label: 'Castle' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 4, label: 'Blossom' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 5, label: 'Dolls' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 6, label: 'Katana' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 7, label: 'Dragon' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 8, label: 'Fan' },
+            { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 9, label: 'Lantern' },
+        ],
+    },
+
+    // ─── Minimal Test Theme ──────────────────────────────────────────────
+    minimal: {
+        id: 'minimal',
+        name: 'Minimal Test',
+        description: 'A theme that tests fallbacks by only defining one color.',
+        colors: {
+            feltColor: '#ff00ff', // Neon Pink
+        },
+        // symbols is omitted to test fallback to classic
+    },
+
+    // ─── Color-Based Themes ────────────────────────────────────────────────
+
+    midnight: {
+        id: 'midnight',
+        name: 'Midnight',
+        description: 'Deep navy and silver. A sleek, cooler-toned alternative to classic.',
+        colors: {
+            feltColor: '#000033',
+            feltDark: '#00001a',
+            reelBackground: '#000022',
+            frameColor: '#c0c0c0',
+            frameDarkColor: '#808080',
+            frameBronze: '#a0a0a0',
+            dividerColor: '#000044',
+            highlightWin: 'rgba(192, 192, 192, 0.6)',
+            textPrimary: '#c0c0c0',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#000022',
+            bannerBackgroundEnd: '#000011',
+            motionBlurOverlay: 'rgba(0, 0, 34, 0.45)',
+            paylineColors: ['#c0c0c0', '#ffffff', '#a0a0a0', '#808080', '#606060'],
+        },
+    },
+
+    cherryPop: {
+        id: 'cherryPop',
+        name: 'Cherry Pop',
+        description: 'Hot pink and white felt with red accents. Fun and arcade-y.',
+        colors: {
+            feltColor: '#ff69b4',
+            feltDark: '#c71585',
+            reelBackground: '#ffb6c1',
+            frameColor: '#ff0000',
+            frameDarkColor: '#b22222',
+            frameBronze: '#ffc0cb',
+            dividerColor: '#ff1493',
+            highlightWin: 'rgba(255, 20, 147, 0.6)',
+            textPrimary: '#ffffff',
+            textWhite: '#ffffff',
+            textLoss: '#8b0000',
+            textWin: '#00ff00',
+            bannerBackground: '#ff1493',
+            bannerBackgroundEnd: '#c71585',
+            motionBlurOverlay: 'rgba(255, 105, 180, 0.45)',
+            paylineColors: ['#ff1493', '#ff69b4', '#ff0000', '#ffc0cb', '#ffb6c1'],
+        },
+    },
+
+    emerald: {
+        id: 'emerald',
+        name: 'Emerald',
+        description: 'Richer, deeper greens than Classic. A premium classic tier.',
+        colors: {
+            feltColor: '#004d00',
+            feltDark: '#003300',
+            reelBackground: '#002200',
+            frameColor: '#ffd700',
+            frameDarkColor: '#c8a830',
+            frameBronze: '#8b6914',
+            dividerColor: '#006600',
+            highlightWin: 'rgba(255, 215, 0, 0.6)',
+            textPrimary: '#ffd700',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#002200',
+            bannerBackgroundEnd: '#001100',
+            motionBlurOverlay: 'rgba(0, 77, 0, 0.45)',
+            paylineColors: ['#00ff00', '#ffd700', '#ffffff', '#adff2f', '#006400'],
+        },
+    },
+
+    ocean: {
+        id: 'ocean',
+        name: 'Ocean',
+        description: 'Teal and deep blue felt with seafoam highlights.',
+        colors: {
+            feltColor: '#008080',
+            feltDark: '#004d4d',
+            reelBackground: '#003333',
+            frameColor: '#ff7f50',
+            frameDarkColor: '#cd853f',
+            frameBronze: '#f4a460',
+            dividerColor: '#00cccc',
+            highlightWin: 'rgba(127, 255, 212, 0.6)',
+            textPrimary: '#e0ffff',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#004d4d',
+            bannerBackgroundEnd: '#002222',
+            motionBlurOverlay: 'rgba(0, 128, 128, 0.45)',
+            paylineColors: ['#00ffff', '#40e0d0', '#ffffff', '#afeeee', '#008080'],
+        },
+    },
+
+    ember: {
+        id: 'ember',
+        name: 'Ember',
+        description: 'Deep charcoal felt with orange and amber frame colors.',
+        colors: {
+            feltColor: '#333333',
+            feltDark: '#1a1a1a',
+            reelBackground: '#222222',
+            frameColor: '#ff8c00',
+            frameDarkColor: '#cc7a00',
+            frameBronze: '#8b4513',
+            dividerColor: '#444444',
+            highlightWin: 'rgba(255, 140, 0, 0.6)',
+            textPrimary: '#ffae42',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#442200',
+            bannerBackgroundEnd: '#221100',
+            motionBlurOverlay: 'rgba(50, 50, 50, 0.45)',
+            paylineColors: ['#ff4500', '#ff8c00', '#ffa500', '#ffcc00', '#ffaa00'],
+        },
+    },
+
+    frost: {
+        id: 'frost',
+        name: 'Frost',
+        description: 'Icy pale blue and white with silver frames.',
+        colors: {
+            feltColor: '#afeaea',
+            feltDark: '#b0e0e6',
+            reelBackground: '#f0ffff',
+            frameColor: '#c0c0c0',
+            frameDarkColor: '#808080',
+            frameBronze: '#a9a9a9',
+            dividerColor: '#add8e6',
+            highlightWin: 'rgba(0, 255, 255, 0.6)',
+            textPrimary: '#4682b4',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#b0e0e6',
+            bannerBackgroundEnd: '#87ceeb',
+            motionBlurOverlay: 'rgba(224, 255, 255, 0.45)',
+            paylineColors: ['#00ffff', '#afeeee', '#ffffff', '#b0c4de', '#add8e6'],
+        },
+    },
+
+    royalPurple: {
+        id: 'royalPurple',
+        name: 'Royal Purple',
+        description: 'Deep purple felt with gold frames. A premium combination.',
+        colors: {
+            feltColor: '#4b0082',
+            feltDark: '#2e0054',
+            reelBackground: '#3b006b',
+            frameColor: '#ffd700',
+            frameDarkColor: '#c8a830',
+            frameBronze: '#8b6914',
+            dividerColor: '#6a0dad',
+            highlightWin: 'rgba(255, 215, 0, 0.6)',
+            textPrimary: '#ffd700',
+            textWhite: '#ffffff',
+            textLoss: '#ff4444',
+            textWin: '#44ff44',
+            bannerBackground: '#2e0054',
+            bannerBackgroundEnd: '#1a0033',
+            motionBlurOverlay: 'rgba(75, 0, 130, 0.45)',
+            paylineColors: ['#ffd700', '#ffffff', '#da70d6', '#ba55d3', '#9370db'],
+        },
+    },
 };
 
 /**
  * Get a theme by ID, falling back to classic if not found.
  */
 function getTheme(themeId) {
-    return themes[themeId] || themes.classic;
+    const theme = themes[themeId] || themes.classic;
+
+    return {
+        ...theme,
+        colors: {
+            ...themes.classic.colors,
+            ...theme.colors,
+        },
+        symbols: (theme.symbols && theme.symbols.length > 0)
+            ? [...theme.symbols]
+            : [...themes.classic.symbols],
+    };
 }
 
 /**
