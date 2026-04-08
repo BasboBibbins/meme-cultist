@@ -2,9 +2,10 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME, SLOTS_MAX_LINES } = require("../../config.js");
+const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
+const { getTheme, getThemeList } = require('../../utils/slotsThemes');
 const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
@@ -33,7 +34,28 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('daily')
-                .setDescription(`Use your daily free spins.`)),
+                .setDescription(`Use your daily free spins.`))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('theme')
+                .setDescription('Change your slots visual theme.')
+                .addStringOption(option =>
+                    option.setName('theme_name')
+                        .setDescription('The theme to use.')
+                        .setRequired(true)
+                        .setAutocomplete(true))),
+    async autocomplete(interaction) {
+        const focused = interaction.options.getFocused();
+        const list = getThemeList();
+        const filtered = list
+            .filter(t =>
+                t.name.toLowerCase().startsWith(focused.toLowerCase()) ||
+                t.id.toLowerCase().startsWith(focused.toLowerCase()))
+            .slice(0, 25);
+        await interaction.respond(
+            filtered.map(t => ({ name: `${t.name} \u2014 ${t.description}`, value: t.id }))
+        );
+    },
     async execute(interaction) {
         const user = interaction.user;
         const option = interaction.options.getSubcommand();
@@ -48,8 +70,30 @@ module.exports = {
                 await generatePaytable(interaction);
                 break;
 
+            case 'theme':
+                const themeId = interaction.options.getString('theme_name');
+                const selectedTheme = getTheme(themeId);
+                if (selectedTheme.id !== themeId) {
+                    const list = getThemeList();
+                    const available = list.map(t => `\`${t.id}\` - ${t.name}`).join('\n');
+                    const embed = new EmbedBuilder()
+                        .setDescription(`Unknown theme \`${themeId}\`.\n\n**Available themes:**\n${available}`)
+                        .setColor(0xFF0000)
+                        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                        .setTimestamp();
+                    return await interaction.reply({ embeds: [embed], ephemeral: true });
+                }
+                await db.set(`${user.id}.slots.theme`, themeId);
+                const themeEmbed = new EmbedBuilder()
+                    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                    .setDescription(`Slots theme set to **${selectedTheme.name}**!\n${selectedTheme.description}`)
+                    .setColor(0x00FF00)
+                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setTimestamp();
+                await interaction.reply({ embeds: [themeEmbed], ephemeral: true });
+                break;
+
             case 'daily':
-                const cooldown = 1000; // 24 hours = 8.64e+7
                 if (dbUser.cooldowns.freespins > Date.now()) {
                     const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
                     logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${await formatTimeLeft(timeLeft)}`)
@@ -62,7 +106,7 @@ module.exports = {
                     return await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
                     logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
-                    await db.set(`${user.id}.cooldowns.freespins`, Date.now() + cooldown);
+                    await db.set(`${user.id}.cooldowns.freespins`, Date.now() + SLOTS_DAILY_COOLDOWN);
                     await interaction.deferReply();
                     await playSlots(interaction, 0, user, { lines: 3 });
                 }

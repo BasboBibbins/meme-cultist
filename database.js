@@ -76,6 +76,9 @@ async function getDefaultDB(user) {
             "largestBalance": 0,
             "largestBank": 0,
         },
+        "slots": {
+            "theme": "classic",
+        },
         "chatbot": {
             messageCount: 0,
             summaries: [],

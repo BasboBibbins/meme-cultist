@@ -83,7 +83,8 @@ const config = {
     SLOTS_NEAR_MISS_CHANCE: 0.15,
     SLOTS_BONUS_FREE_SPINS: 3,
     SLOTS_BONUS_MULTIPLIER: 2,
-
+    SLOTS_DAILY_COOLDOWN: 8.64e7, // 24 hours
+    
     // Jackpot settings
     JACKPOT_SEED: 1000000,
     JACKPOT_CONTRIBUTION_RATE: 0.02,

@@ -7,19 +7,20 @@ const wait = require('node:timers/promises').setTimeout;
 const logger = require('../utils/logger');
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('./jackpot');
 const { drawSlotMachine, drawSpinAnimation, drawPaytable, PAYLINES } = require('./slotsCanvas');
+const { getTheme } = require('./slotsThemes');
 
-// Symbol definitions: index, name, weights, multipliers
+// Symbol definitions: index, weights, multipliers
 const SYMBOLS = [
-    { index: 0, name: 'Apple',   emoji: ':apple:',    weight: 20, multiplier: 2,   partial: 1 },
-    { index: 1, name: 'Orange',  emoji: ':tangerine:', weight: 18, multiplier: 3,   partial: 1.5 },
-    { index: 2, name: 'Lemon',   emoji: ':lemon:',     weight: 16, multiplier: 5,   partial: 2 },
-    { index: 3, name: 'Grapes',  emoji: ':grapes:',    weight: 12, multiplier: 8,   partial: 3 },
-    { index: 4, name: 'Cherry',  emoji: ':cherries:',  weight: 10, multiplier: 12,  partial: 5 },
-    { index: 5, name: 'Bell',    emoji: ':bell:',      weight: 8,  multiplier: 20,  partial: 8 },
-    { index: 6, name: 'BAR',     emoji: 'BAR',         weight: 4,  multiplier: 50,  partial: 15 },
-    { index: 7, name: 'Seven',   emoji: '7',           weight: 2,  multiplier: 100, partial: 30 },
-    { index: 8, name: 'WILD',    emoji: 'WILD',        weight: 6,  multiplier: 0,   partial: 0 },
-    { index: 9, name: 'SCATTER', emoji: 'SCATTER',     weight: 4,  multiplier: 0,   partial: 0 },
+    { index: 0, emoji: ':apple:',    weight: 20, multiplier: 2,   partial: 1 },
+    { index: 1, emoji: ':tangerine:', weight: 18, multiplier: 3,   partial: 1.5 },
+    { index: 2, emoji: ':lemon:',     weight: 16, multiplier: 5,   partial: 2 },
+    { index: 3, emoji: ':grapes:',    weight: 12, multiplier: 8,   partial: 3 },
+    { index: 4, emoji: ':cherries:',  weight: 10, multiplier: 12,  partial: 5 },
+    { index: 5, emoji: ':bell:',      weight: 8,  multiplier: 20,  partial: 8 },
+    { index: 6, emoji: 'BAR',         weight: 4,  multiplier: 50,  partial: 15 },
+    { index: 7, emoji: '7',           weight: 2,  multiplier: 100, partial: 30 },
+    { index: 8, emoji: 'WILD',        weight: 6,  multiplier: 0,   partial: 0 },
+    { index: 9, emoji: 'SCATTER',     weight: 4,  multiplier: 0,   partial: 0 },
 ];
 
 const WILD_INDEX = 8;
@@ -181,7 +182,7 @@ function applyNearMiss(grid, activeLines) {
  * Execute a single spin: generate grid, calculate wins, show animation + result.
  * Returns { totalWin, winResults, isJackpot, jackpotAmount, triggersBonus, scatterCount, failed }
  */
-async function executeSpin(interaction, user, options = {}) {
+async function executeSpin(interaction, user, options = {}, themeOverride = null) {
     const {
         actualBet,
         lines = 1,
@@ -193,7 +194,10 @@ async function executeSpin(interaction, user, options = {}) {
 
     const jackpotDisplayStr = await getJackpotDisplay();
 
-    logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName}`);
+    const themeId = await db.get(`${user.id}.slots.theme`) || 'classic';
+    const theme = getTheme(themeId);
+
+    logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName} [theme: ${themeId}]`);
 
     // Generate grid
     let grid = spinGrid();
@@ -235,6 +239,7 @@ async function executeSpin(interaction, user, options = {}) {
         jackpotDisplay: jackpotDisplayStr,
         activeLines: lines,
         bet: actualBet,
+        theme,
     });
 
     let ok = await retryDiscord(
@@ -277,6 +282,7 @@ async function executeSpin(interaction, user, options = {}) {
         winResults,
         isBonus,
         bonusSpinsLeft: 0,
+        theme,
     });
 
     // Build per-spin embed
@@ -294,8 +300,8 @@ async function executeSpin(interaction, user, options = {}) {
         embed.setTitle(`You won!${isFreePlay ? ' (Free spin)' : ''}${isBonus ? ` (Bonus x${bonusMultiplier})` : ''}`);
         let desc = `You won **${totalWin.toLocaleString()}** ${CURRENCY_NAME}!`;
         for (const win of winResults) {
-            const sym = SYMBOLS[win.matchSymbol];
-            desc += `\nLine ${win.line + 1}: ${win.count}x ${sym.name}${win.isWild ? ' (w/ Wild)' : ''} = ${Math.floor(actualBet * win.multiplier * bonusMultiplier).toLocaleString()} ${CURRENCY_NAME}`;
+            const sym = theme.symbols[win.matchSymbol] || SYMBOLS[win.matchSymbol];
+            desc += `\nLine ${win.line + 1}: ${win.count}x ${sym.label || sym.name}${win.isWild ? ' (w/ Wild)' : ''} = ${Math.floor(actualBet * win.multiplier * bonusMultiplier).toLocaleString()} ${CURRENCY_NAME}`;
         }
         desc += `\nBalance: **${currentBalance.toLocaleString()}** ${CURRENCY_NAME}`;
         embed.setDescription(desc);
@@ -339,7 +345,7 @@ async function executeSpin(interaction, user, options = {}) {
 /**
  * Build a summary embed for a multi-spin sequence (free spins or bonus).
  */
-function buildSummaryEmbed(user, spinResults, label, interaction) {
+function buildSummaryEmbed(user, spinResults, label, interaction, theme) {
     const grandTotal = spinResults.reduce((sum, r) => sum + r.totalWin, 0);
     const totalSpins = spinResults.length;
     const winningSpins = spinResults.filter(r => r.totalWin > 0).length;
@@ -356,8 +362,8 @@ function buildSummaryEmbed(user, spinResults, label, interaction) {
         if (r.totalWin > 0) {
             let lineDetail = '';
             for (const win of r.winResults) {
-                const sym = SYMBOLS[win.matchSymbol];
-                lineDetail += ` (${win.count}x ${sym.name}${win.isWild ? ' w/ Wild' : ''})`;
+                const sym = theme.symbols[win.matchSymbol] || SYMBOLS[win.matchSymbol];
+                lineDetail += ` (${win.count}x ${sym.label || sym.name}${win.isWild ? ' w/ Wild' : ''})`;
             }
             if (r.isJackpot) {
                 desc += `**Spin ${i + 1}:** \u{1F3B0} **JACKPOT ${r.jackpotAmount.toLocaleString()}** ${CURRENCY_NAME}\n`;
@@ -380,7 +386,7 @@ function buildSummaryEmbed(user, spinResults, label, interaction) {
 /**
  * Run a bonus spin sequence and return collected results.
  */
-async function runBonusSpins(interaction, actualBet, user, lines) {
+async function runBonusSpins(interaction, actualBet, user, lines, theme) {
     const results = [];
     for (let i = 0; i < SLOTS_BONUS_FREE_SPINS; i++) {
         await wait(3000);
@@ -390,7 +396,7 @@ async function runBonusSpins(interaction, actualBet, user, lines) {
             bonusMultiplier: SLOTS_BONUS_MULTIPLIER,
             isBonus: true,
             spinLabel: `(BONUS ${i + 1}/${SLOTS_BONUS_FREE_SPINS}) `,
-        });
+        }, theme);
         results.push(result);
         if (result.failed) break;
     }
@@ -403,6 +409,9 @@ async function runBonusSpins(interaction, actualBet, user, lines) {
  */
 async function playSlots(interaction, bet, user, options = {}) {
     const { lines = 1 } = options;
+
+    const themeId = await db.get(`${user.id}.slots.theme`) || 'classic';
+    const theme = getTheme(themeId);
 
     const freePlay = bet === 0;
     const actualBet = freePlay ? 100 : bet;
@@ -419,16 +428,16 @@ async function playSlots(interaction, bet, user, options = {}) {
                 lines,
                 isFreePlay: true,
                 spinLabel: `(FREE ${i + 1}/${totalFreeSpins}) `,
-            });
+            }, theme);
             spinResults.push(result);
             if (result.failed) break;
 
             // Handle bonus trigger during free spins
             if (result.triggersBonus) {
-                const bonusResults = await runBonusSpins(interaction, actualBet, user, lines);
+                const bonusResults = await runBonusSpins(interaction, actualBet, user, lines, theme);
                 // Show bonus summary inline
                 if (bonusResults.length > 0 && !bonusResults[bonusResults.length - 1].failed) {
-                    const bonusSummary = buildSummaryEmbed(user, bonusResults, 'Bonus Spins', interaction);
+                    const bonusSummary = buildSummaryEmbed(user, bonusResults, 'Bonus Spins', interaction, theme);
                     await retryDiscord(
                         () => interaction.followUp({ embeds: [bonusSummary] }),
                         'bonus summary during free spins'
@@ -439,7 +448,7 @@ async function playSlots(interaction, bet, user, options = {}) {
 
         // Send free spins summary
         if (spinResults.length > 0 && !spinResults[spinResults.length - 1].failed) {
-            const summary = buildSummaryEmbed(user, spinResults, 'Daily Free Spins', interaction);
+            const summary = buildSummaryEmbed(user, spinResults, 'Daily Free Spins', interaction, theme);
             await retryDiscord(
                 () => interaction.followUp({ embeds: [summary] }),
                 'free spins summary'
@@ -457,7 +466,7 @@ async function playSlots(interaction, bet, user, options = {}) {
         actualBet,
         lines,
         spinLabel: '',
-    });
+    }, theme);
 
     if (result.failed) {
         await handleFailure(user, bet, lines);
@@ -466,9 +475,9 @@ async function playSlots(interaction, bet, user, options = {}) {
 
     // Handle bonus trigger from a paid spin
     if (result.triggersBonus) {
-        const bonusResults = await runBonusSpins(interaction, actualBet, user, lines);
+        const bonusResults = await runBonusSpins(interaction, actualBet, user, lines, theme);
         if (bonusResults.length > 0 && !bonusResults[bonusResults.length - 1].failed) {
-            const summary = buildSummaryEmbed(user, bonusResults, 'Bonus Spins', interaction);
+            const summary = buildSummaryEmbed(user, bonusResults, 'Bonus Spins', interaction, theme);
             await retryDiscord(
                 () => interaction.followUp({ embeds: [summary] }),
                 'bonus summary'
@@ -491,8 +500,10 @@ async function handleFailure(user, bet, lines) {
 }
 
 async function generatePaytable(interaction) {
+    const themeId = await db.get(`${interaction.user.id}.slots.theme`) || 'classic';
+    const theme = getTheme(themeId);
     const jackpotDisplayStr = await getJackpotDisplay();
-    const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS);
+    const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS, theme);
     await interaction.reply({ files: [attachment] });
 }
 
