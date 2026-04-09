@@ -6,6 +6,7 @@ const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES 
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
 const { getTheme, getThemeList } = require('../../utils/slotsThemes');
+const { equipTheme } = require('../../themes/manager');
 const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
@@ -72,21 +73,30 @@ module.exports = {
 
             case 'theme':
                 const themeId = interaction.options.getString('theme_name');
-                const selectedTheme = getTheme(themeId);
-                if (selectedTheme.id !== themeId) {
+                const result = await equipTheme(user.id, themeId);
+
+                if (!result.success) {
                     const list = getThemeList();
-                    const available = list.map(t => `\`${t.id}\` - ${t.name}`).join('\n');
+                    let desc;
+                    if (result.error === 'unknown_theme') {
+                        const available = list.map(t => `\`${t.id}\` - ${t.name}`).join('\n');
+                        desc = `Unknown theme \`${themeId}\`.\n\n**Available themes:**\n${available}`;
+                    } else {
+                        const theme = list.find(t => t.id === themeId);
+                        desc = `You don't own **${theme?.name || themeId}**.\nCheck the shop to purchase it!`;
+                    }
                     const embed = new EmbedBuilder()
-                        .setDescription(`Unknown theme \`${themeId}\`.\n\n**Available themes:**\n${available}`)
+                        .setDescription(desc)
                         .setColor(0xFF0000)
                         .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                         .setTimestamp();
                     return await interaction.reply({ embeds: [embed], ephemeral: true });
                 }
-                await db.set(`${user.id}.slots.theme`, themeId);
+
+                const selectedTheme = getTheme(themeId);
                 const themeEmbed = new EmbedBuilder()
                     .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(`Slots theme set to **${selectedTheme.name}**!\n${selectedTheme.description}`)
+                    .setDescription(`Theme set to **${selectedTheme.name}**!\n${selectedTheme.description}`)
                     .setColor(0x00FF00)
                     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                     .setTimestamp();

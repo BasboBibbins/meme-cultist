@@ -5,6 +5,8 @@ const { addNewDBUser } = require('../../database');
 const { CURRENCY_NAME, ROULETTE_MIN_BET, ROULETTE_MAX_BET, ROULETTE_BETTING_TIME } = require('../../config.js');
 const { parseBet } = require('../../utils/betparse');
 const { drawRouletteTable, drawResult, spinWheel, calculateWinnings, getRedBlack, getNumberPosition } = require('../../utils/roulette');
+const { getEquippedTheme } = require('../../themes/manager');
+const { getThemeColors } = require('../../themes/resolver');
 const logger = require('../../utils/logger');
 const { randomHexColor } = require('../../utils/randomcolor');
 const wait = require('node:timers/promises').setTimeout;
@@ -148,7 +150,11 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
     const chipColor = user.accentColor ? user.accentColor : (fetchUserFromGuild && fetchUserFromGuild.displayHexColor && fetchUserFromGuild.displayHexColor !== '#000000' ? fetchUserFromGuild.displayHexColor : '#888888');
     const bets = [{ number: chipNumber, amount: bet, userId: user.id, username: user.displayName, type: betType, numberValue: parsedNumber }];
 
-    const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl }, { [user.id]: chipColor });
+    // Resolve the game creator's theme for all canvas rendering
+    const themeId = await getEquippedTheme(user.id);
+    const themeColors = getThemeColors(themeId, 'roulette');
+
+    const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl }, { [user.id]: chipColor }, themeColors);
 
     const row = new ActionRowBuilder()
         .addComponents(
@@ -182,6 +188,7 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
         bets: bets,
         userAvatars: { [user.id]: avatarUrl },
         userColors: { [user.id]: chipColor },
+        themeColors: themeColors,
         status: 'betting',
         createdAt: Date.now(),
         endTime: Date.now() + ROULETTE_BETTING_TIME,
@@ -317,7 +324,7 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
 
     game.endTime = Date.now() + ROULETTE_BETTING_TIME;
 
-    const tableFile = await drawRouletteTable(game.bets, game.userAvatars, game.userColors);
+    const tableFile = await drawRouletteTable(game.bets, game.userAvatars, game.userColors, game.themeColors);
 
     const betsDescription = buildBetsDescription(game.bets);
 
@@ -366,15 +373,16 @@ async function resolveGame(client, channel, message, game) {
         .setTimestamp()
         .setImage('attachment://roulette.png');
 
+    const tc = game.themeColors;
     const timeBetweenSpins = 500;
     for (let i = 0; i < 5; i++) {
         const randomNum = Math.floor(Math.random() * 37);
-        const resultFile = await drawResult(randomNum, 0, false, game.bets, game.userAvatars, game.userColors);
+        const resultFile = await drawResult(randomNum, 0, false, game.bets, game.userAvatars, game.userColors, tc);
         await message.edit({ embeds: [embed.setTitle('Spinning...')], files: [resultFile] });
         await wait(timeBetweenSpins);
     }
 
-    const winningNumberFile = await drawResult(winningNumber, 0, false, game.bets, game.userAvatars, game.userColors);
+    const winningNumberFile = await drawResult(winningNumber, 0, false, game.bets, game.userAvatars, game.userColors, tc);
     await message.edit({ embeds: [embed.setTitle(`Result: ${winningNumber}...`)], files: [winningNumberFile] });
     await wait(800);
 
@@ -411,7 +419,7 @@ async function resolveGame(client, channel, message, game) {
     }
 
     const totalWinnings = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
-    const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars, game.userColors);
+    const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars, game.userColors, tc);
 
     const resultEmbed = new EmbedBuilder()
         .setAuthor({ name: `${game.creatorUsername}'s Roulette Game`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })

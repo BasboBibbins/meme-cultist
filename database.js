@@ -76,6 +76,12 @@ async function getDefaultDB(user) {
             "largestBalance": 0,
             "largestBank": 0,
         },
+        "profile": {
+            "theme": {
+                "equipped": "classic",
+                "owned": [],
+            },
+        },
         "slots": {
             "theme": "classic",
         },

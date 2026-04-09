@@ -10,6 +10,8 @@ const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');
 const { getCard, canvasHand, pokerScore } = require('../../utils/poker');
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('../../utils/jackpot');
+const { getEquippedTheme } = require('../../themes/manager');
+const { getThemeColors } = require('../../themes/resolver');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -94,6 +96,10 @@ module.exports = {
         await db.sub(`${user.id}.balance`, bet);
         await contributeToJackpot(bet);
 
+        // Resolve user's theme for canvas rendering
+        const themeId = await getEquippedTheme(user.id);
+        const pokerColors = getThemeColors(themeId, 'poker');
+
         const embed = new EmbedBuilder()
             .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
@@ -134,7 +140,7 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji(heldCards[4].emoji),
             );
-        let file = await canvasHand(heldCards, heldCards.score);
+        let file = await canvasHand(heldCards, heldCards.score, pokerColors);
 
         const draw_row = new ActionRowBuilder()
             .addComponents(
@@ -163,7 +169,7 @@ module.exports = {
                         hold_row.components[0].setStyle(ButtonStyle.Secondary);
                         hold_row.components[0].setLabel(`${heldCards[0].value} HOLDING`);
                     }
-                    file = await canvasHand(heldCards, heldCards.score);
+                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
                     i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                     break;
                 case 'card2':
@@ -176,7 +182,7 @@ module.exports = {
                         hold_row.components[1].setStyle(ButtonStyle.Secondary);
                         hold_row.components[1].setLabel(`${heldCards[1].value} HOLDING`);
                     }
-                    file = await canvasHand(heldCards, heldCards.score);
+                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
                     i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                     break;
                 case 'card3':
@@ -189,7 +195,7 @@ module.exports = {
                         hold_row.components[2].setStyle(ButtonStyle.Secondary);
                         hold_row.components[2].setLabel(`${heldCards[2].value} HOLDING`);
                     }
-                    file = await canvasHand(heldCards, heldCards.score);
+                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
                     i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                     break;
                 case 'card4':
@@ -202,7 +208,7 @@ module.exports = {
                         hold_row.components[3].setStyle(ButtonStyle.Secondary);
                         hold_row.components[3].setLabel(`${heldCards[3].value} HOLDING`);
                     }
-                    file = await canvasHand(heldCards, heldCards.score);
+                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
                     i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                     break;
                 case 'card5':
@@ -215,7 +221,7 @@ module.exports = {
                         hold_row.components[4].setStyle(ButtonStyle.Secondary);
                         hold_row.components[4].setLabel(`${heldCards[4].value} HOLDING`);
                     }
-                    file = await canvasHand(heldCards, heldCards.score);
+                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
                     i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                     break;
                 case 'draw':
@@ -226,7 +232,7 @@ module.exports = {
                     }
                     logger.debug(`${heldCards[0].code} | ${heldCards[1].code} | ${heldCards[2].code} | ${heldCards[3].code} | ${heldCards[4].code}`)
                     heldCards.score = await pokerScore(heldCards);
-                    file = await canvasHand(heldCards, heldCards.score);
+                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
                     i.editReply({ components: [], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                     return collector.stop(heldCards.score);
                 }

@@ -194,7 +194,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
 
     const jackpotDisplayStr = await getJackpotDisplay();
 
-    const themeId = await db.get(`${user.id}.slots.theme`) || 'classic';
+    const themeId = await db.get(`${user.id}.profile.theme.equipped`) || 'classic';
     const theme = getTheme(themeId);
 
     logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName} [theme: ${themeId}]`);
@@ -411,7 +411,7 @@ async function runBonusSpins(interaction, actualBet, user, lines, theme) {
 async function playSlots(interaction, bet, user, options = {}) {
     const { lines = 1 } = options;
 
-    const themeId = await db.get(`${user.id}.slots.theme`) || 'classic';
+    const themeId = await db.get(`${user.id}.profile.theme.equipped`) || 'classic';
     const theme = getTheme(themeId);
 
     const freePlay = bet === 0;
@@ -501,7 +501,7 @@ async function handleFailure(user, bet, lines) {
 }
 
 async function generatePaytable(interaction) {
-    const themeId = await db.get(`${interaction.user.id}.slots.theme`) || 'classic';
+    const themeId = await db.get(`${interaction.user.id}.profile.theme.equipped`) || 'classic';
     const theme = getTheme(themeId);
     const jackpotDisplayStr = await getJackpotDisplay();
     const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS, theme);

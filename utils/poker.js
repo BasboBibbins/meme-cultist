@@ -2,16 +2,14 @@ const { drawCard } = require('./deckofcards');
 const { createCanvas, loadImage } = require('canvas');
 const logger = require("./logger");
 const { AttachmentBuilder } = require('discord.js');
+const { getThemeColors } = require('../themes/resolver');
 
 // Canvas dimensions matching roulette aesthetic
 const CANVAS_W = 600;
 const CANVAS_H = 320;
 
-// Felt green matching roulette table
-const FELT_BG = '#0f4c25';
-const FELT_GREEN = '#1a6b35';
-const GOLD = '#ffd700';
-const GOLD_BORDER = '#c8a830';
+// Default poker colors (classic theme fallback)
+const DEFAULT_COLORS = getThemeColors('classic', 'poker');
 
 function roundRect(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -121,17 +119,17 @@ module.exports = {
             return null;
         }
     },
-    canvasHand: async (hand, score) => {
+    canvasHand: async (hand, score, colors = DEFAULT_COLORS) => {
         try {
             const canvas = createCanvas(CANVAS_W, CANVAS_H);
             const ctx = canvas.getContext('2d');
 
-            // Felt background matching roulette table
-            ctx.fillStyle = FELT_BG;
+            // Felt background
+            ctx.fillStyle = colors.feltColor;
             ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
             // Draw title with gold styling
-            ctx.fillStyle = GOLD;
+            ctx.fillStyle = colors.gold;
             ctx.font = 'bold 28px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -140,10 +138,10 @@ module.exports = {
             // Card area background with rounded corners
             const cardAreaX = 30, cardAreaY = 70;
             const cardAreaW = CANVAS_W - 60, cardAreaH = 200;
-            ctx.fillStyle = FELT_GREEN;
+            ctx.fillStyle = colors.tableGreen;
             roundRect(ctx, cardAreaX, cardAreaY, cardAreaW, cardAreaH, 12);
             ctx.fill();
-            ctx.strokeStyle = GOLD_BORDER;
+            ctx.strokeStyle = colors.goldDark;
             ctx.lineWidth = 3;
             roundRect(ctx, cardAreaX, cardAreaY, cardAreaW, cardAreaH, 12);
             ctx.stroke();
@@ -170,7 +168,7 @@ module.exports = {
 
                 // Gold border on held cards
                 if (hand[i].hold) {
-                    ctx.strokeStyle = GOLD;
+                    ctx.strokeStyle = colors.gold;
                     ctx.lineWidth = 4;
                     roundRect(ctx, cardX - 2, cardY - 2, cardW + 4, cardH + 4, 10);
                     ctx.stroke();
@@ -181,7 +179,7 @@ module.exports = {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
                     ctx.fillText('HOLD', cardX + cardW / 2, cardY - 6);
-                    ctx.fillStyle = GOLD;
+                    ctx.fillStyle = colors.gold;
                     ctx.fillText('HOLD', cardX + cardW / 2 + 1, cardY - 5);
                 }
             }
@@ -193,12 +191,12 @@ module.exports = {
                 roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
                 ctx.fill();
 
-                ctx.strokeStyle = GOLD;
+                ctx.strokeStyle = colors.gold;
                 ctx.lineWidth = 2;
                 roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
                 ctx.stroke();
 
-                ctx.fillStyle = GOLD;
+                ctx.fillStyle = colors.gold;
                 ctx.font = 'bold 22px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
