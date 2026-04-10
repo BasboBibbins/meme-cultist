@@ -124,9 +124,18 @@ module.exports = {
             const canvas = createCanvas(CANVAS_W, CANVAS_H);
             const ctx = canvas.getContext('2d');
 
-            // Felt background
-            ctx.fillStyle = colors.feltColor;
-            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+            if (colors.background) {
+                try {
+                    const bgImg = await loadImage(colors.background);
+                    ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H);
+                } catch (err) {
+                    ctx.fillStyle = colors.feltColor;
+                    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+                }
+            } else {
+                ctx.fillStyle = colors.feltColor;
+                ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+            }
 
             // Draw title with gold styling
             ctx.fillStyle = colors.gold;

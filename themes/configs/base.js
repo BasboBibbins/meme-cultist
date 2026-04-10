@@ -23,6 +23,10 @@ module.exports = {
 
     // ── Shared palette (colorway themes override these) ─────────────
     colors: {
+        // Background image URL (or local path) for full themes. Set to null for solid color.
+        // Recommended resolution: 1100x420 — this covers all three game canvases
+        // (slots: 600x420, poker: 600x320, roulette: 1100x400) without cropping.
+        background: null,
         feltColor:   '#0f4c25',
         feltDark:    '#0a3a1a',
         tableGreen:  '#1a6b35',

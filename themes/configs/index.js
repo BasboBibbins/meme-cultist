@@ -14,6 +14,7 @@ const path = require('path');
 const classic = require('./base');
 
 const ASSETS_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
+const BACKGROUND_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'themes');
 
 // ── Helper: build a colorway (palette-only, all games) ──────────────
 function colorway(id, name, description, price, colors) {
@@ -35,6 +36,7 @@ const themes = {
         game: 'slots',
 
         colors: {
+            background:  path.join(BACKGROUND_BASE, 'neon.png'),
             feltColor:   '#1a0a2e',
             feltDark:    '#0f0520',
             tableGreen:  '#2a1a4a',
@@ -119,9 +121,10 @@ const themes = {
         game: 'slots',
 
         colors: {
-            feltColor:   '#4a0000',
-            feltDark:    '#2a0000',
-            tableGreen:  '#3a0000',
+            background:  path.join(BACKGROUND_BASE, 'feudalJapan.png'),
+            feltColor:   'rgba(74, 0, 0, 0.8)',
+            feltDark:    'rgba(42, 0, 0, 0.8)',
+            tableGreen:  'rgba(58, 0, 0, 0.5)',
             gold:        '#ffd700',
             goldDark:    '#c8a830',
             goldBronze:  '#8b6914',
@@ -168,15 +171,15 @@ const themes = {
                 winnerHighlight: '#ffd700',
                 textBlack: '#2d1503',
                 textWhite: '#ffffff',
-                feltInner: '#4a0000',
-                feltMid: '#6a0000',
-                feltOuter: '#3a0000',
+                feltInner: 'rgba(74, 0, 0, 0.8)',
+                feltMid: 'rgba(106, 0, 0, 0.8)',
+                feltOuter: 'rgba(58, 0, 0, 0.8)',
                 spokeColor: '#ffd700',
                 hubLight: '#ffd700',
                 hubMid: '#c8a830',
                 hubDark: '#8b6914',
                 hubStroke: '#ffffff',
-                tableGreen: '#3a0000',
+                tableGreen: 'rgba(58, 0, 0, 0.5)',
                 zeroGreen: '#006400',
                 numberRed: '#cc0000',
                 numberBlack: '#1a1a1a',
@@ -186,8 +189,8 @@ const themes = {
                 resultBorder: '#ffd700',
             },
             poker: {
-                feltColor: '#4a0000',
-                tableGreen: '#3a0000',
+                feltColor: 'rgba(74, 0, 0, 0.8)',
+                tableGreen: 'rgba(58, 0, 0, 0.5)',
                 gold: '#ffd700',
                 goldDark: '#c8a830',
             },

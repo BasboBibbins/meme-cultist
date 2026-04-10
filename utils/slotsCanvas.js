@@ -234,14 +234,24 @@ function drawScatter(ctx, cx, cy, size, sym) {
 
 // ─── Frame and grid drawing ──────────────────────────────────────────
 
-function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout) {
+async function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout) {
     const { W, H, FRAME_X, FRAME_Y, FRAME_W, FRAME_H, CELL_W, CELL_H } = layout;
     const c = theme.colors;
     const plColors = getPaylineColors(theme);
 
     // Background
-    ctx.fillStyle = c.feltDark;
-    ctx.fillRect(0, 0, W, H);
+    if (c.background) {
+        try {
+            const bgImg = await loadImage(c.background);
+            ctx.drawImage(bgImg, 0, 0, W, H);
+        } catch (err) {
+            ctx.fillStyle = c.feltDark;
+            ctx.fillRect(0, 0, W, H);
+        }
+    } else {
+        ctx.fillStyle = c.feltDark;
+        ctx.fillRect(0, 0, W, H);
+    }
 
     // Main felt area
     roundRect(ctx, 10, 10, W - 20, H - 20, 16);
@@ -452,7 +462,7 @@ async function drawSlotMachine(grid, options = {}) {
     const hasWins = winResults.length > 0;
 
     if (!hasWins) {
-        drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+        await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
         drawGrid(ctx, grid, theme, layout);
         drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
         encoder.setDelay(1000);
@@ -460,21 +470,21 @@ async function drawSlotMachine(grid, options = {}) {
     } else {
         const blinkCycles = 3;
         for (let cycle = 0; cycle < blinkCycles; cycle++) {
-            drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+            await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
             drawGrid(ctx, grid, theme, layout);
             drawWinningLines(ctx, winResults, activeLines, theme, layout);
             drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
             encoder.setDelay(400);
             encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
 
-            drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+            await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
             drawGrid(ctx, grid, theme, layout);
             drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
             encoder.setDelay(250);
             encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
         }
 
-        drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+        await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
         drawGrid(ctx, grid, theme, layout);
         drawWinningLines(ctx, winResults, activeLines, theme, layout);
         drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
@@ -518,7 +528,7 @@ async function drawSpinAnimation(finalGrid, options = {}) {
     const symCount = theme.symbols.length;
 
     for (let frame = 0; frame < totalFrames; frame++) {
-        drawFrame(ctx, jackpotDisplay, activeLines, bet, false, false, theme, layout);
+        await drawFrame(ctx, jackpotDisplay, activeLines, bet, false, false, theme, layout);
 
         for (let col = 0; col < 3; col++) {
             const lockFrame = lockFrames[col];

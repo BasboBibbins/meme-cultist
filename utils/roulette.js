@@ -470,8 +470,18 @@ async function drawRouletteTable(bets = [], userAvatars = {}, userColors = {}, c
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
-    ctx.fillStyle = colors.feltColor;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    if (colors.background) {
+        try {
+            const bgImg = await loadImage(colors.background);
+            ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H);
+        } catch (err) {
+            ctx.fillStyle = colors.feltColor;
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        }
+    } else {
+        ctx.fillStyle = colors.feltColor;
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
 
     drawWheel(ctx, null, colors);
     drawBettingTable(ctx, null, colors);
@@ -519,8 +529,18 @@ async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [],
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
-    ctx.fillStyle = colors.feltColor;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    if (colors.background) {
+        try {
+            const bgImg = await loadImage(colors.background);
+            ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H);
+        } catch (err) {
+            ctx.fillStyle = colors.feltColor;
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        }
+    } else {
+        ctx.fillStyle = colors.feltColor;
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
 
     drawWheel(ctx, number, colors);
     drawBallOnWheel(ctx, number);
