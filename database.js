@@ -41,6 +41,7 @@ async function getDefaultDB(user) {
                 "blackjacks": 0,
                 "biggestWin": 0,
                 "biggestLoss": 0,
+                "profit": 0,
             },
             "slots": {
                 "wins": 0,
@@ -48,12 +49,14 @@ async function getDefaultDB(user) {
                 "jackpots": 0,
                 "biggestWin": 0,
                 "biggestLoss": 0,
+                "profit": 0,
             },
             "flip": {
                 "wins": 0,
                 "losses": 0,
                 "biggestWin": 0,
                 "biggestLoss": 0,
+                "profit": 0,
             },
             "roulette": {
                 "wins": 0,
@@ -61,6 +64,7 @@ async function getDefaultDB(user) {
                 "biggestWin": 0,
                 "biggestLoss": 0,
                 "totalBet": 0,
+                "profit": 0,
             },
             "race": {
                 "wins": 0,
@@ -68,10 +72,20 @@ async function getDefaultDB(user) {
                 "biggestWin": 0,
                 "biggestLoss": 0,
                 "totalBet": 0,
+                "profit": 0,
+            },
+            "poker": {
+                "wins": 0,
+                "losses": 0,
+                "royals": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+                "profit": 0,
             },
             "begs": {
                 "wins": 0,
                 "losses": 0,
+                "profit": 0,
             },
             "largestBalance": 0,
             "largestBank": 0,

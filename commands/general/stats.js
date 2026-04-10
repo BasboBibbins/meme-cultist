@@ -23,13 +23,13 @@ function buildDesc(lines) {
 // Fetch all game stats in a single batch to reduce db calls
 async function getGameStats(userId) {
     const paths = [
-        'blackjack.wins', 'blackjack.losses', 'blackjack.ties', 'blackjack.blackjacks', 'blackjack.biggestWin', 'blackjack.biggestLoss',
-        'slots.wins', 'slots.losses', 'slots.jackpots', 'slots.biggestWin', 'slots.biggestLoss',
-        'flip.wins', 'flip.losses', 'flip.biggestWin', 'flip.biggestLoss',
-        'begs.wins', 'begs.losses',
-        'roulette.wins', 'roulette.losses', 'roulette.totalBet', 'roulette.biggestWin', 'roulette.biggestLoss',
-        'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss',
-        'poker.wins', 'poker.losses', 'poker.royals', 'poker.biggestWin', 'poker.biggestLoss'
+        'blackjack.wins', 'blackjack.losses', 'blackjack.ties', 'blackjack.blackjacks', 'blackjack.biggestWin', 'blackjack.biggestLoss', 'blackjack.profit',
+        'slots.wins', 'slots.losses', 'slots.jackpots', 'slots.biggestWin', 'slots.biggestLoss', 'slots.profit',
+        'flip.wins', 'flip.losses', 'flip.biggestWin', 'flip.biggestLoss', 'flip.profit',
+        'begs.wins', 'begs.losses', 'begs.profit',
+        'roulette.wins', 'roulette.losses', 'roulette.totalBet', 'roulette.biggestWin', 'roulette.biggestLoss', 'roulette.profit',
+        'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss', 'race.profit',
+        'poker.wins', 'poker.losses', 'poker.royals', 'poker.biggestWin', 'poker.biggestLoss', 'poker.profit'
     ];
 
     const results = await Promise.all(
@@ -60,6 +60,27 @@ function calcWinRate(gameStats, gameName) {
     const wins = gameStats[gameName]?.wins || 0;
     if (total === 0) return '0.00';
     return ((wins / total) * 100).toFixed(2);
+}
+
+function formatProfit(value) {
+    if (value > 0) return `+${value.toLocaleString()}`;
+    if (value < 0) return `${value.toLocaleString()}`;
+    return '0';
+}
+
+function formatCooldown(timestamp) {
+    if (!timestamp || timestamp <= Date.now()) return '**Available now!**';
+    const diff = timestamp - Date.now();
+    const seconds = Math.round(diff / 1000);
+    const minutes = Math.round(diff / 60000);
+    const hours = Math.round(diff / 3600000);
+    const days = Math.round(diff / 86400000);
+    let relative;
+    if (days > 1) relative = `${days} day${days !== 1 ? 's' : ''}`;
+    else if (hours > 1) relative = `${hours} hour${hours !== 1 ? 's' : ''}`;
+    else if (minutes > 1) relative = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    else relative = `${seconds} second${seconds !== 1 ? 's' : ''}`;
+    return `${new Date(timestamp).toLocaleString()} (~${relative})`;
 }
 
 async function generateStatsEmbed(page, interaction, user) {
@@ -119,11 +140,11 @@ async function generateStatsEmbed(page, interaction, user) {
                     `*Total Claimed:* **${dailies.claimed ?? 0}**`,
                     `*Current Streak:* **${dailies.currentStreak ?? 0}**`,
                     `*Longest Streak:* **${dailies.longestStreak ?? 0}**`,
-                    `*Next Available:* **${cooldowns.daily ? new Date(cooldowns.daily).toLocaleString() : 'Now!'}**`
+                    `*Next Available:* ${formatCooldown(cooldowns.daily)}`
                 ]), inline: true },
                 { name: "Weeklies", value: buildDesc([
                     `*Total Claimed:* **${weeklies.claimed ?? 0}**`,
-                    `*Next Available:* **${cooldowns.weekly ? new Date(cooldowns.weekly).toLocaleString() : 'Now!'}**`
+                    `*Next Available:* ${formatCooldown(cooldowns.weekly)}`
                 ]), inline: true },
             );
             break;
@@ -146,26 +167,30 @@ async function generateStatsEmbed(page, interaction, user) {
                     `*Win Rate:* **${calcWinRate(gameStats, 'blackjack')}%**`,
                     bj.blackjacks && `*Blackjacks:* **${bj.blackjacks}**`,
                     bj.biggestWin && `*Biggest Win:* **${bj.biggestWin}**`,
-                    bj.biggestLoss && `*Biggest Loss:* **${bj.biggestLoss}**`
+                    bj.biggestLoss && `*Biggest Loss:* **${bj.biggestLoss}**`,
+                    `*Net Profit:* **${formatProfit(bj.profit || 0)}**`
                 ]), inline: true },
                 { name: "Slots", value: buildDesc([
                     `*Games Played:* **${calcTotalGames(gameStats, 'slots')}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'slots')}%**`,
-                    `*Next Free Spin:* **${cooldowns.freespins ? new Date(cooldowns.freespins).toLocaleString() : 'Now!'}**`,
+                    `*Next Free Spin:* ${formatCooldown(cooldowns.freespins)}`,
                     sl.jackpots && `*Jackpots:* **${sl.jackpots}**`,
                     sl.biggestWin && `*Biggest Win:* **${sl.biggestWin}**`,
-                    sl.biggestLoss && `*Biggest Loss:* **${sl.biggestLoss}**`
+                    sl.biggestLoss && `*Biggest Loss:* **${sl.biggestLoss}**`,
+                    `*Net Profit:* **${formatProfit(sl.profit || 0)}**`
                 ]), inline: true },
                 { name: " ", value: " ", inline: false},
                 { name: "Flip", value: buildDesc([
                     `*Total Flips:* **${calcTotalGames(gameStats, 'flip')}**`,
                     `*Success Rate:* **${calcWinRate(gameStats, 'flip')}%**`,
                     fl.biggestWin && `*Biggest Win:* **${fl.biggestWin}**`,
-                    fl.biggestLoss && `*Biggest Loss:* **${fl.biggestLoss}**`
+                    fl.biggestLoss && `*Biggest Loss:* **${fl.biggestLoss}**`,
+                    `*Net Profit:* **${formatProfit(fl.profit || 0)}**`
                 ]), inline: true },
                 { name: "Beg", value: buildDesc([
                     `*Total Begs:* **${calcTotalGames(gameStats, 'begs')}**`,
-                    `*Success Rate:* **${calcWinRate(gameStats, 'begs')}%**`
+                    `*Success Rate:* **${calcWinRate(gameStats, 'begs')}%**`,
+                    `*Net Profit:* **${formatProfit(bg.profit || 0)}**`
                 ]), inline: true },
                 { name: " ", value: " ", inline: false},
                 { name: "Roulette", value: buildDesc([
@@ -173,14 +198,16 @@ async function generateStatsEmbed(page, interaction, user) {
                     `*Win Rate:* **${calcWinRate(gameStats, 'roulette')}%**`,
                     rl.totalBet && `*Total Bet:* **${rl.totalBet}**`,
                     rl.biggestWin && `*Biggest Win:* **${rl.biggestWin}**`,
-                    rl.biggestLoss && `*Biggest Loss:* **${rl.biggestLoss}**`
+                    rl.biggestLoss && `*Biggest Loss:* **${rl.biggestLoss}**`,
+                    `*Net Profit:* **${formatProfit(rl.profit || 0)}**`
                 ]), inline: true },
                 { name: "Race", value: buildDesc([
                     `*Races:* **${calcTotalGames(gameStats, 'race')}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'race')}%**`,
                     rc.totalBet && `*Total Bet:* **${rc.totalBet}**`,
                     rc.biggestWin && `*Biggest Win:* **${rc.biggestWin}**`,
-                    rc.biggestLoss && `*Biggest Loss:* **${rc.biggestLoss}**`
+                    rc.biggestLoss && `*Biggest Loss:* **${rc.biggestLoss}**`,
+                    `*Net Profit:* **${formatProfit(rc.profit || 0)}**`
                 ]), inline: true },
             );
             if (pk.wins || pk.losses) {
@@ -190,7 +217,8 @@ async function generateStatsEmbed(page, interaction, user) {
                         `*Win Rate:* **${calcWinRate(gameStats, 'poker')}%**`,
                         pk.royals && `*Royal Flushes:* **${pk.royals}**`,
                         pk.biggestWin && `*Biggest Win:* **${pk.biggestWin}**`,
-                        pk.biggestLoss && `*Biggest Loss:* **${pk.biggestLoss}**`
+                        pk.biggestLoss && `*Biggest Loss:* **${pk.biggestLoss}**`,
+                        `*Net Profit:* **${formatProfit(pk.profit || 0)}**`
                     ]), inline: true },
                 );
             }

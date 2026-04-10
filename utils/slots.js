@@ -253,6 +253,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
     await wait(2800);
 
     // Update balance and stats
+    const totalCost = isFreePlay || isBonus ? 0 : actualBet * lines;
     if (totalWin > 0) {
         await db.add(`${user.id}.balance`, totalWin);
         await db.add(`${user.id}.stats.slots.wins`, 1);
@@ -262,12 +263,14 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         if (isJackpot) {
             await db.add(`${user.id}.stats.slots.jackpots`, 1);
         }
+        await db.add(`${user.id}.stats.slots.profit`, totalWin - totalCost);
     } else if (!isFreePlay && !isBonus) {
         await db.add(`${user.id}.stats.slots.losses`, 1);
         const currentLoss = actualBet * lines;
         if (currentLoss > (await db.get(`${user.id}.stats.slots.biggestLoss`) || 0)) {
             await db.set(`${user.id}.stats.slots.biggestLoss`, currentLoss);
         }
+        await db.sub(`${user.id}.stats.slots.profit`, currentLoss);
     }
 
     const currentBalance = await db.get(`${user.id}.balance`);

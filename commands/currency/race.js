@@ -480,6 +480,12 @@ async function resolveRace(client, channel, message, game) {
         });
     }
 
+    // Track profit per user
+    for (const result of results) {
+        const net = result.won ? (result.winnings - result.amount) : -result.amount;
+        await db.add(`${result.userId}.stats.race.profit`, net);
+    }
+
     const totalWagered = game.bets.reduce((sum, b) => sum + b.amount, 0);
     const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 

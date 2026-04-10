@@ -76,6 +76,7 @@ module.exports = {
             await db.add(`${user.id}.balance`, amount);
             await logger.info(`Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
             await db.add(`${stats}.wins`, 1);
+            await db.add(`${stats}.profit`, amount);
             await interaction.reply({embeds: [embed]});
         } else {
             embed.setColor("#ff0000");

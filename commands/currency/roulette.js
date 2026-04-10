@@ -418,6 +418,16 @@ async function resolveGame(client, channel, message, game) {
         });
     }
 
+    // Track profit per user
+    const profitByUser = {};
+    for (const result of results) {
+        if (!profitByUser[result.userId]) profitByUser[result.userId] = 0;
+        profitByUser[result.userId] += result.won ? (result.winnings - result.amount) : -result.amount;
+    }
+    for (const [userId, profit] of Object.entries(profitByUser)) {
+        await db.add(`${userId}.stats.roulette.profit`, profit);
+    }
+
     const totalWinnings = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
     const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars, game.userColors, tc);
 

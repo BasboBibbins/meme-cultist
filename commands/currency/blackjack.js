@@ -83,6 +83,7 @@ module.exports = {
                 // Push - both have natural blackjack
                 await db.add(`${stats}.ties`, 1);
                 await db.add(`${user.id}.balance`, originalBet);
+                // Net 0 for a push, no profit change
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                     .setTitle(`Push!`)
@@ -97,6 +98,7 @@ module.exports = {
             await db.add(`${stats}.wins`, 1);
             await db.add(`${stats}.blackjacks`, 1);
             if (winnings > await db.get(`${stats}.biggestWin`)) await db.set(`${stats}.biggestWin`, winnings);
+            await db.add(`${stats}.profit`, winnings - originalBet);
             const embed = new EmbedBuilder()
                 .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setTitle(`Blackjack!`)
@@ -452,6 +454,10 @@ module.exports = {
                     await db.set(`${stats}.biggestLoss`, biggestHandLoss);
                 }
             }
+
+            // Track net profit/loss for this game
+            const netProfit = totalWinnings - totalBets;
+            await db.add(`${stats}.profit`, netProfit);
 
             const finalEmbed = new EmbedBuilder()
                 .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })

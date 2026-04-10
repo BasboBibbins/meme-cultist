@@ -59,6 +59,7 @@ module.exports = {
             embed.setDescription(`You won **${bet}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet)}** ${CURRENCY_NAME}.`);
             await db.add(`${interaction.user.id}.balance`, bet);
             await db.add(`${interaction.user.id}.stats.flip.wins`, 1);
+            await db.add(`${interaction.user.id}.stats.flip.profit`, bet);
             if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestWin`)) {
                 await db.set(`${interaction.user.id}.stats.flip.biggestWin`, bet);
             }
@@ -69,6 +70,7 @@ module.exports = {
             embed.setDescription(`I'll be taking **${bet}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet)}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? `You're now broke!` : ''}`);
             await db.sub(`${interaction.user.id}.balance`, bet);
             await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
+            await db.sub(`${interaction.user.id}.stats.flip.profit`, bet);
             if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
                 await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);
             }

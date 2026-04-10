@@ -245,6 +245,7 @@ module.exports = {
             await wait(1000);
             if (reason === 'time') {
                 await db.add(`${stats}.losses`, 1);
+                await db.sub(`${stats}.profit`, bet);
                 embed.setColor(0xFF0000)
                     .setTitle(`Time's up! You forfeit.`)
                     .setDescription(`You lost **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
@@ -259,6 +260,7 @@ module.exports = {
                     await db.add(`${user.id}.balance`, winnings);
                     await db.add(`${stats}.wins`, 1);
                     await db.add(`${stats}.royals`, 1);
+                    await db.add(`${stats}.profit`, winnings - bet);
                     if (winnings > await db.get(`${stats}.biggestWin`)) {
                         await db.set(`${stats}.biggestWin`, winnings);
                     }
@@ -275,6 +277,7 @@ module.exports = {
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
                 await db.add(`${stats}.royals`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -288,6 +291,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 50);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -300,6 +304,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 25);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -312,6 +317,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 9);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -324,6 +330,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 6);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -336,6 +343,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 4);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -348,6 +356,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 3);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -360,6 +369,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 2);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -372,6 +382,7 @@ module.exports = {
                 winnings = Math.ceil(bet * 1);
                 await db.add(`${user.id}.balance`, winnings);
                 await db.add(`${stats}.wins`, 1);
+                await db.add(`${stats}.profit`, winnings - bet);
                 if (winnings > await db.get(`${stats}.biggestWin`)) {
                     await db.set(`${stats}.biggestWin`, winnings);
                 }
@@ -382,6 +393,7 @@ module.exports = {
                 return;
             } else {
                 await db.add(`${stats}.losses`, 1);
+                await db.sub(`${stats}.profit`, bet);
                 embed.setColor(0xFF0000)
                     .setTitle(`You lost!`)
                     .setDescription(`You lost **${bet}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
