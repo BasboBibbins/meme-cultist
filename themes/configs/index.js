@@ -37,7 +37,7 @@ const themes = {
 
         colors: {
             background:  path.join(BACKGROUND_BASE, 'neon.png'),
-            feltColor:   '#1a0a2e',
+            feltColor:   'rgba(26, 10, 46, 0.8)',
             feltDark:    '#0f0520',
             tableGreen:  '#2a1a4a',
             gold:        '#c0c0c0',
@@ -51,7 +51,7 @@ const themes = {
 
         overrides: {
             slots: {
-                reelBackground:      '#120828',
+                reelBackground:      'rgba(18, 8, 40, 0.75)',
                 frameColor:          '#c0c0c0',
                 frameDarkColor:      '#808080',
                 frameBronze:         '#6a6a6a',
@@ -104,7 +104,7 @@ const themes = {
                 resultBorder: '#00ffcc',
             },
             poker: {
-                feltColor: '#1a0a2e',
+                feltColor: 'rgba(26, 10, 46, 0.8)',
                 tableGreen: '#2a1a4a',
                 gold: '#c0c0c0',
                 goldDark: '#808080',
@@ -136,7 +136,7 @@ const themes = {
 
         overrides: {
             slots: {
-                reelBackground:      '#1a0000',
+                reelBackground:      'rgba(26, 0, 0, 0.75)',
                 frameColor:          '#ffd700',
                 frameDarkColor:      '#c8a830',
                 frameBronze:         '#8b6914',
@@ -207,7 +207,7 @@ const themes = {
 
         colors: {
             background:  path.join(BACKGROUND_BASE, 'cosmic.png'),
-            feltColor:   '#0a0e1a',
+            feltColor:   'rgba(10, 14, 26, 0.8)',
             feltDark:    '#060a14',
             tableGreen:  '#121830',
             gold:        '#b8c0d0',
@@ -223,7 +223,7 @@ const themes = {
 
         overrides: {
             slots: {
-                reelBackground:      '#080c18',
+                reelBackground:      'rgba(8, 12, 24, 0.75)',
                 frameColor:          '#b8c0d0',
                 frameDarkColor:      '#7a8090',
                 frameBronze:         '#5a6478',
@@ -276,10 +276,97 @@ const themes = {
                 resultBorder:    '#00ccff',
             },
             poker: {
-                feltColor:  '#0a0e1a',
+                feltColor:  'rgba(10, 14, 26, 0.8)',
                 tableGreen: '#121830',
                 gold:       '#b8c0d0',
                 goldDark:   '#7a8090',
+            },
+        },
+    },
+
+    dessert: {
+        id: 'dessert',
+        name: 'Sweet Tooth',
+        description: 'A candy land of chocolate, bubblegum, and sweets.',
+        tier: 'full',
+        price: 500000,
+        game: null,
+
+        colors: {
+            background:  path.join(BACKGROUND_BASE, 'dessert.png'),
+            feltColor:   'rgba(59, 26, 10, 0.8)',
+            feltDark:    '#2a1008',
+            tableGreen:  '#4e2212',
+            gold:        '#f5e0c0',
+            goldDark:    '#c8a87a',
+            goldBronze:  '#8b6540',
+            textWhite:   '#fff5f0',
+            textBlack:   '#1a0a04',
+            textWin:     '#ff88cc',
+            textLoss:    '#cc4444',
+            textPrimary: '#f7c8d8',
+            embedColor:  0x3b1a0a,
+        },
+
+        overrides: {
+            slots: {
+                reelBackground:      'rgba(42, 16, 8, 0.75)',
+                frameColor:          '#f5e0c0',
+                frameDarkColor:      '#c8a87a',
+                frameBronze:         '#8b6540',
+                dividerColor:        '#5c3018',
+                highlightWin:        'rgba(255, 136, 204, 0.55)',
+                bannerBackground:    '#2a0a10',
+                bannerBackgroundEnd: '#1a0608',
+                motionBlurOverlay:   'rgba(42, 16, 8, 0.5)',
+                paylineColors:       ['#ff69b4', '#66d98e', '#f5d742', '#e84040', '#8fd4f5'],
+
+                symbols: [
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 0, label: 'Lollipop' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 1, label: 'Cupcake' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 2, label: 'Candy Cane' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 3, label: 'Gummy Bear' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 4, label: 'Chocolate' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 5, label: 'Candy' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 6, label: 'BAR' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 7, label: 'Jawbreaker' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 8, label: 'Wild' },
+                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 9, label: 'Golden Ticket' },
+                ],
+            },
+            roulette: {
+                woodInner:       '#5c2e14',
+                woodMid:         '#3b1a0a',
+                woodOuter:       '#2a1008',
+                goldRim:         '#f5e0c0',
+                pocketRed:       '#e84040',
+                pocketBlack:     '#2a1008',
+                pocketGreen:     '#66d98e',
+                winnerHighlight: '#ff88cc',
+                textBlack:       '#1a0a04',
+                textWhite:       '#fff5f0',
+                feltInner:       '#4e2212',
+                feltMid:         '#5c3018',
+                feltOuter:       '#3b1a0a',
+                spokeColor:      '#f5e0c0',
+                hubLight:        '#fff5f0',
+                hubMid:          '#f5e0c0',
+                hubDark:         '#c8a87a',
+                hubStroke:       '#ff88cc',
+                tableGreen:      '#4e2212',
+                zeroGreen:       '#66d98e',
+                numberRed:       '#e84040',
+                numberBlack:     '#2a1008',
+                betArea:         '#5c3018',
+                betBorder:       '#f5e0c0',
+                resultOverlay:   'rgba(42, 16, 8, 0.85)',
+                resultBorder:    '#ff88cc',
+            },
+            poker: {
+                feltColor:  'rgba(59, 26, 10, 0.8)',
+                tableGreen: '#4e2212',
+                gold:       '#f5e0c0',
+                goldDark:   '#c8a87a',
             },
         },
     },
