@@ -87,6 +87,11 @@ async function getDefaultDB(user) {
                 "losses": 0,
                 "profit": 0,
             },
+            "shop": {
+                "purchases": 0,
+                "spent": 0,
+                "biggestPurchase": 0,
+            },
             "largestBalance": 0,
             "largestBank": 0,
         },

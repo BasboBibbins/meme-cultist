@@ -127,6 +127,7 @@ async function generateStatsEmbed(page, interaction, user) {
         case 3: {
             const dailies = stats?.stats?.dailies || {};
             const weeklies = stats?.stats?.weeklies || {};
+            const shop = stats?.stats?.shop || {};
             const cooldowns = stats?.cooldowns || {};
             embed.setTitle(`${user.displayName }'s Currency Stats`)
             embed.setFields(
@@ -145,6 +146,12 @@ async function generateStatsEmbed(page, interaction, user) {
                 { name: "Weeklies", value: buildDesc([
                     `*Total Claimed:* **${weeklies.claimed ?? 0}**`,
                     `*Next Available:* ${formatCooldown(cooldowns.weekly)}`
+                ]), inline: true },
+                { name: " ", value: " ", inline: false},
+                { name: "Shop", value: buildDesc([
+                    `*Purchases:* **${shop.purchases ?? 0}**`,
+                    `*Total Spent:* **${(shop.spent ?? 0).toLocaleString()} ${CURRENCY_NAME}**`,
+                    `*Biggest Purchase:* **${(shop.biggestPurchase ?? 0).toLocaleString()} ${CURRENCY_NAME}**`,
                 ]), inline: true },
             );
             break;

@@ -1,8 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getThemeList } = require('../../themes/configs');
 const { getThemeColors } = require('../../themes/resolver');
-const { getEquippedTheme, getOwnedThemes, ownsTheme, equipTheme } = require('../../themes/manager');
+const { getEquippedTheme, getOwnedThemes, ownsTheme } = require('../../themes/manager');
 const { CURRENCY_NAME } = require('../../config.js');
+const { RARITY, RARITY_ORDER, equipItem, getItemById } = require('../../utils/inventory');
 const logger = require('../../utils/logger');
 
 const TIER_LABELS = {
@@ -10,8 +11,6 @@ const TIER_LABELS = {
     styled:   'Styled',
     full:     'Full',
 };
-
-const TIER_ORDER = ['full', 'styled', 'colorway'];
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -49,7 +48,7 @@ module.exports = {
                 t.id.toLowerCase().startsWith(focused.toLowerCase()))
             .slice(0, 25);
         await interaction.respond(
-            filtered.map(t => ({ name: `${t.name} \u2014 ${t.description}`, value: t.id }))
+            filtered.map(t => ({ name: `${t.emoji ? `${t.emoji} ` : ''}${t.name} \u2014 ${t.description}`, value: t.id }))
         );
     },
 
@@ -66,18 +65,17 @@ module.exports = {
             // ── /theme set ──────────────────────────────────────────
             case 'set': {
                 const themeId = interaction.options.getString('theme_name');
-                const result = await equipTheme(user.id, themeId);
+                const result = await equipItem(user.id, themeId);
 
                 if (!result.success) {
-                    const allThemes = getThemeList();
-                    const theme = allThemes.find(t => t.id === themeId);
-
+                    const item = getItemById(themeId);
                     let desc;
-                    if (result.error === 'unknown_theme') {
+                    if (result.error === 'unknown_item' || result.error === 'unknown_theme') {
                         desc = `Unknown theme \`${themeId}\`.`;
+                    } else if (result.error === 'not_owned') {
+                        desc = `You don't own ${item?.emoji ? `${item.emoji} ` : ''}**${item?.name || themeId}**.\nCheck \`/shop browse\` to purchase it!`;
                     } else {
-                        desc = `You don't own **${theme?.name || themeId}**.`
-                             + `\nCheck the shop to purchase it!`;
+                        desc = `Equip failed: \`${result.error}\`.`;
                     }
 
                     const embed = new EmbedBuilder()
@@ -88,11 +86,10 @@ module.exports = {
                     return interaction.reply({ embeds: [embed], ephemeral: true });
                 }
 
-                const allThemes = getThemeList();
-                const theme = allThemes.find(t => t.id === themeId);
+                const item = getItemById(themeId);
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(`Theme set to **${theme?.name || themeId}**!\n${theme?.description || ''}`)
+                    .setDescription(`Theme set to ${item?.emoji ? `${item.emoji} ` : ''}**${item?.name || themeId}**!\n${item?.description || ''}`)
                     .setColor(0x00FF00)
                     .setFooter(footer)
                     .setTimestamp();
@@ -105,23 +102,33 @@ module.exports = {
                 const owned = await getOwnedThemes(user.id);
                 const equipped = await getEquippedTheme(user.id);
 
+                // Group by rarity (derived from weight). Classic/minimal
+                // have weight 0 and go into an "Unlisted" bucket.
                 const grouped = {};
-                for (const tier of TIER_ORDER) grouped[tier] = [];
                 for (const t of allThemes) {
-                    (grouped[t.tier] || (grouped[t.tier] = [])).push(t);
+                    const item = getItemById(t.id);
+                    const bucket = item?.rarity || 'unlisted';
+                    (grouped[bucket] || (grouped[bucket] = [])).push(t);
                 }
 
-                let desc = '';
-                for (const tier of TIER_ORDER) {
-                    const items = grouped[tier];
-                    if (!items || items.length === 0) continue;
+                const order = [...RARITY_ORDER, 'unlisted'];
 
-                    desc += `**${TIER_LABELS[tier] || tier} Themes**\n`;
+                let desc = '';
+                for (const bucket of order) {
+                    const items = grouped[bucket];
+                    if (!items || items.length === 0) continue;
+                    const label = bucket === 'unlisted' ? 'Default' : RARITY[bucket].label;
+                    desc += `**${label}**\n`;
                     for (const t of items) {
                         const isOwned = owned.includes(t.id);
                         const isEquipped = t.id === equipped;
-                        const status = isEquipped ? ' \u2705' : isOwned ? ' \u2714\uFE0F' : ` \u{1F512} ${t.price.toLocaleString()} ${CURRENCY_NAME}`;
-                        desc += `\`${t.id}\` **${t.name}**${status}\n`;
+                        const status = isEquipped
+                            ? ' \u2705'
+                            : isOwned
+                                ? ' \u2714\uFE0F'
+                                : ` \u{1F512} ${t.price.toLocaleString()} ${CURRENCY_NAME}`;
+                        const prefix = t.emoji ? `${t.emoji} ` : '';
+                        desc += `${prefix}**${t.name}**${status}\n`;
                     }
                     desc += '\n';
                 }
@@ -138,10 +145,9 @@ module.exports = {
             // ── /theme info ─────────────────────────────────────────
             case 'info': {
                 const themeId = interaction.options.getString('theme_name');
-                const allThemes = getThemeList();
-                const theme = allThemes.find(t => t.id === themeId);
+                const item = getItemById(themeId);
 
-                if (!theme) {
+                if (!item) {
                     const embed = new EmbedBuilder()
                         .setDescription(`Unknown theme \`${themeId}\`.`)
                         .setColor(0xFF0000)
@@ -158,17 +164,20 @@ module.exports = {
                     .map(c => `\`${c}\``)
                     .join('  ');
 
-                let desc = `${theme.description}\n\n`;
-                desc += `**Tier:** ${TIER_LABELS[theme.tier] || theme.tier}\n`;
-                desc += `**Price:** ${theme.price === 0 ? 'Free' : `${theme.price.toLocaleString()} ${CURRENCY_NAME}`}\n`;
+                const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Default';
+                const styleLabel = TIER_LABELS[item.tier] || item.tier;
+
+                let desc = `${item.description}\n\n`;
+                desc += `**Rarity:** ${rarityLabel}\n`;
+                desc += `**Style:** ${styleLabel}\n`;
+                desc += `**Price:** ${item.price === 0 ? 'Free' : `${item.price.toLocaleString()} ${CURRENCY_NAME}`}\n`;
                 desc += `**Status:** ${isOwned ? 'Owned' : 'Locked'}\n`;
                 desc += `\n**Sample Colors:**\n${swatch}`;
 
-                // Use the theme's feltColor as embed accent if it looks like a hex
                 const embedColor = colors.embedColor || parseInt(String(colors.feltColor).replace('#', ''), 16) || 0x5865F2;
 
                 const embed = new EmbedBuilder()
-                    .setTitle(theme.name)
+                    .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
                     .setDescription(desc)
                     .setColor(embedColor)
                     .setFooter(footer)
@@ -196,7 +205,8 @@ module.exports = {
                 let desc = '';
                 for (const t of ownedThemes) {
                     const isEquipped = t.id === equipped;
-                    desc += `\`${t.id}\` **${t.name}**${isEquipped ? ' \u2705 Equipped' : ''}\n`;
+                    const prefix = t.emoji ? `${t.emoji} ` : '';
+                    desc += `${prefix}**${t.name}**${isEquipped ? ' \u2705 Equipped' : ''}\n`;
                 }
 
                 const embed = new EmbedBuilder()

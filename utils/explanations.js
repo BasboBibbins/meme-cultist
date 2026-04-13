@@ -6,7 +6,7 @@ module.exports = {
         name: CURRENCY_NAME_CAPITALIZED,
         description: `
             ${CURRENCY_NAME_CAPITALIZED} is the currency used by the bot. You can earn ${CURRENCY_NAME} in a variety of ways, such as gambling, claiming dailies, and even stealing from other users.
-            It currently has no use outside of gambling, but that will change in the future!
+            Spend it on gambling games or on cosmetic items in the daily \`/shop\`.
 
             There are two places to store your ${CURRENCY_NAME}: your wallet and your bank. Your wallet is where you store the ${CURRENCY_NAME} you spend on things like gambling, and your bank is where you store the ${CURRENCY_NAME} that you want to keep safe.
             You can transfer ${CURRENCY_NAME} from your wallet to your bank and vice versa using \`/bank [deposit|withdraw] [amount]\`. You can also see how much ${CURRENCY_NAME} you have in your wallet and bank using \`/balance\`.
@@ -191,6 +191,34 @@ module.exports = {
             Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.
             Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.
             For age-restricted YouTube videos, the bot owner can configure cookies in a \`.cookies\` file.`,
+    },
+    shop: {
+        name: "Shop",
+        description: `
+            The shop sells cosmetic items (themes today, more later) in exchange for ${CURRENCY_NAME}.
+
+            Each server has its own stock of items that **rotates every day at midnight UTC**. Use \`/shop browse\` to see what's available today, \`/shop preview <item>\` to see an item's details before buying, and \`/shop buy <item>\` to purchase it.
+
+            Items are grouped by **rarity**:
+            • **Common** \u2014 shows up often, usually cheap colorways
+            • **Uncommon** \u2014 rotates in less frequently
+            • **Rare** \u2014 high-effort themes that rarely appear
+            • **Legendary** \u2014 only occasionally spotted in the wild
+
+            Once bought, items go to your \`/inventory\` and are yours forever. The daily rotation only controls *what you can buy today*, not what you can use.
+            `,
+        note: `
+            The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
+    },
+    inventory: {
+        name: "Inventory",
+        description: `
+            Your inventory holds every item you own across every category (themes today, more later). Use \`/inventory view\` to see everything you own, grouped by category and rarity.
+
+            Use \`/inventory equip <item>\` to equip an item. For themes specifically, \`/theme set <theme>\` does the same thing \u2014 they share code, pick whichever feels natural.
+
+            You can only own each item once; the shop will tell you if an item is already yours.
+            `,
     },
     chatbot: {
         name: "Chatbot",

@@ -17,8 +17,8 @@ const ASSETS_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
 const BACKGROUND_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'themes');
 
 // ── Helper: build a colorway (palette-only, all games) ──────────────
-function colorway(id, name, description, price, colors) {
-    return { id, name, description, tier: 'colorway', price, game: null, colors, overrides: {} };
+function colorway(id, name, description, price, weight, emoji, colors) {
+    return { id, name, description, tier: 'colorway', price, weight, emoji, game: null, colors, overrides: {} };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -33,6 +33,8 @@ const themes = {
         description: 'A vibrant neon theme with glowing symbols.',
         tier: 'styled',
         price: 150000,
+        weight: 20,
+        emoji: '🪩',
         game: 'slots',
 
         colors: {
@@ -118,6 +120,8 @@ const themes = {
         description: 'Traditional Japanese theme with feudal symbols.',
         tier: 'styled',
         price: 250000,
+        weight: 20,
+        emoji: '🎋',
         game: 'slots',
 
         colors: {
@@ -203,6 +207,8 @@ const themes = {
         description: 'A extraterrestrial theme with cosmic symbols and a starry background.',
         tier: 'full',
         price: 500000,
+        weight: 5,
+        emoji: '🌌',
         game: null,
 
         colors: {
@@ -290,6 +296,8 @@ const themes = {
         description: 'A candy land of chocolate, bubblegum, and sweets.',
         tier: 'full',
         price: 500000,
+        weight: 5,
+        emoji: '🍰',
         game: null,
 
         colors: {
@@ -375,7 +383,7 @@ const themes = {
 
     midnight: colorway('midnight', 'Midnight',
         'Deep navy and silver. A sleek, cooler-toned alternative to classic.',
-        10000,
+        10000, 60, '🌙',
         {
             feltColor:   '#000033',
             feltDark:    '#00001a',
@@ -393,7 +401,7 @@ const themes = {
 
     cherryPop: colorway('cherryPop', 'Cherry Pop',
         'Rich rose and soft pink frames. Fun and retro.',
-        10000,
+        10000, 60, '🍒',
         {
             feltColor:   '#8b2252',
             feltDark:    '#6b1a3e',
@@ -411,7 +419,7 @@ const themes = {
 
     emerald: colorway('emerald', 'Emerald',
         'Richer, deeper greens than Classic. A premium classic tier.',
-        10000,
+        10000, 60, '💚',
         {
             feltColor:   '#004d00',
             feltDark:    '#003300',
@@ -429,7 +437,7 @@ const themes = {
 
     ocean: colorway('ocean', 'Ocean',
         'Deep teal felt with warm coral accents and seafoam highlights.',
-        10000,
+        10000, 60, '🌊',
         {
             feltColor:   '#0a4f5c',
             feltDark:    '#063840',
@@ -447,7 +455,7 @@ const themes = {
 
     ember: colorway('ember', 'Ember',
         'Deep charcoal felt with orange and amber frame colors.',
-        10000,
+        10000, 60, '🔥',
         {
             feltColor:   '#333333',
             feltDark:    '#1a1a1a',
@@ -465,7 +473,7 @@ const themes = {
 
     frost: colorway('frost', 'Frost',
         'Icy steel-blue felt with pale silver frames.',
-        10000,
+        10000, 60, '❄️',
         {
             feltColor:   '#3a5a70',
             feltDark:    '#2a4050',
@@ -483,7 +491,7 @@ const themes = {
 
     royalPurple: colorway('royalPurple', 'Royal Purple',
         'Deep purple felt with gold frames. A premium combination.',
-        10000,
+        10000, 60, '👑',
         {
             feltColor:   '#4b0082',
             feltDark:    '#2e0054',
@@ -501,7 +509,7 @@ const themes = {
 
     mocha: colorway('mocha', 'Mocha',
         'Rich espresso felt with creamy latte frames. Warm and smooth.',
-        10000,
+        10000, 60, '☕',
         {
             feltColor:   '#2c1a0e',
             feltDark:    '#1a0f08',
@@ -525,6 +533,8 @@ const themes = {
         description: 'A theme that tests fallbacks by only defining one color.',
         tier: 'colorway',
         price: 0,
+        weight: 0,
+        emoji: '⬛',
         game: null,
         colors: {
             feltColor: '#ff00ff',
@@ -561,6 +571,8 @@ function getThemeList() {
             description: t.description,
             tier:        t.tier,
             price:       t.price,
+            weight:      t.weight ?? 0,
+            emoji:       t.emoji || '',
         }));
 }
 

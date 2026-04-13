@@ -19,6 +19,8 @@ module.exports = {
     description: 'The default green felt casino look.',
     tier: 'full',
     price: 0,
+    weight: 0,
+    emoji: '🎰',
     game: null,
 
     // ── Shared palette (colorway themes override these) ─────────────

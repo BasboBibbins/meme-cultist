@@ -1,15 +1,14 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const { getThemeList } = require('../../themes/configs');
-const { grantTheme } = require('../../themes/manager');
+const { getAllItems, grantItem } = require('../../utils/inventory');
 const logger = require('../../utils/logger');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('unlockall')
-        .setDescription('Unlock all themes for a user (Admins only).')
+        .setDescription('Unlock all purchasable items for a user (Admins only).')
         .addUserOption(opt =>
             opt.setName('target')
-                .setDescription('The user to unlock all themes for.')
+                .setDescription('The user to unlock all items for.')
                 .setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
@@ -23,16 +22,15 @@ module.exports = {
         };
 
         try {
-            const allThemes = getThemeList();
-            const themeIds = allThemes.map(t => t.id);
+            const items = getAllItems().filter(i => i.weight > 0);
 
-            for (const themeId of themeIds) {
-                await grantTheme(targetUser.id, themeId);
+            for (const item of items) {
+                await grantItem(targetUser.id, item.id);
             }
 
             const embed = new EmbedBuilder()
-                .setAuthor({ name: `Unlock All Themes`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                .setDescription(`Successfully unlocked all ${themeIds.length} themes for **${targetUser.username}**!`)
+                .setAuthor({ name: `Unlock All Items`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .setDescription(`Successfully unlocked all ${items.length} items for **${targetUser.username}**!`)
                 .setColor(0x00FF00)
                 .setFooter(footer)
                 .setTimestamp();
@@ -45,7 +43,7 @@ module.exports = {
             logger.error(`Error executing /unlockall: ${error}`);
 
             const errorEmbed = new EmbedBuilder()
-                .setDescription(`An error occurred while unlocking themes for ${targetUser.username}.`)
+                .setDescription(`An error occurred while unlocking items for ${targetUser.username}.`)
                 .setColor(0xFF0000)
                 .setFooter(footer)
                 .setTimestamp();
