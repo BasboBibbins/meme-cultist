@@ -15,6 +15,11 @@ const {
   SUMMARY_MAX_PROMPT_TOKENS,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT,
   INCLUDE_USER_FACTS_IN_PROMPT,
+  IMMEDIATE_FACTS_ENABLED,
+  IMMEDIATE_FACTS_MIN_LENGTH,
+  IMMEDIATE_FACTS_DEBOUNCE_MS,
+  MAX_FACTS_IN_PROMPT,
+  FACT_CONFIDENCE_THRESHOLD,
 } = require("../config.js");
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
@@ -156,10 +161,436 @@ function buildSummaryBlock(tag, summaryObject) {
   return `[${tag} age=${age}]\n${summaryObject.context}`;
 }
 
+function isCoreIdentityKey(key) {
+  return /^(name|age|location|job|language)(_|$)/.test(key || "");
+}
+
+function scoreFacts(facts, now = Date.now()) {
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  return facts.map(f => {
+    const age = Math.max(0, now - (f.updatedAt || 0));
+    const recencyScore = Math.max(0, 1 - age / ninetyDaysMs);
+    const reinforced = f.reinforcedCount || 1;
+    const reinforceNorm = Math.min(1, reinforced / 5);
+    const _score = reinforceNorm * 0.4 + recencyScore * 0.6;
+    return { ...f, _score };
+  });
+}
+
 function buildFactsBlock(tag, factsArray) {
   if (!factsArray || !Array.isArray(factsArray) || factsArray.length === 0) return "";
-  const factsBody = factsArray.map(f => `${f.key}: ${f.value}`).join('\n');
-  return `[${tag} n=${factsArray.length}]\n${factsBody}`;
+
+  const filtered = factsArray.filter(f => {
+    if (!f) return false;
+    if (f.confidence === "low" && (f.reinforcedCount || 1) < FACT_CONFIDENCE_THRESHOLD) return false;
+    return true;
+  });
+  if (filtered.length === 0) return "";
+
+  const core = filtered.filter(f => isCoreIdentityKey(f.key));
+  const rest = filtered.filter(f => !isCoreIdentityKey(f.key));
+  const scored = scoreFacts(rest).sort((a, b) => b._score - a._score);
+  const slots = Math.max(0, (MAX_FACTS_IN_PROMPT || filtered.length) - core.length);
+  const selected = [...core, ...scored.slice(0, slots)];
+
+  const factsBody = selected.map(f => `${f.key}: ${f.value}`).join('\n');
+  logger.debug(`[Facts] buildFactsBlock ${tag}: total=${factsArray.length} filtered=${filtered.length} core=${core.length} selected=${selected.length} (slots=${slots})`);
+  return `[${tag} n=${selected.length}]\n${factsBody}`;
+}
+
+const STOPWORDS = new Set([
+  "a","an","the","and","or","but","of","to","in","on","at","is","are","was","were",
+  "i","im","me","my","you","your","it","its","this","that","for","with","as","be","do",
+  "does","did","not","no","so","if","than","then","from","by","he","she","they","we"
+]);
+
+function tokenizeValue(v) {
+  return (v || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(t => t && t.length > 1 && !STOPWORDS.has(t));
+}
+
+function normalizeFactKey(rawKey) {
+  return String(rawKey || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function detectConfidence(text) {
+  if (!text) return "high";
+  if (/\b(lol|jk|haha+|maybe|i think|sort of|kinda)\b|\/s\b/i.test(text)) return "low";
+  return "high";
+}
+
+function referencesOtherUser(message) {
+  if (!message) return false;
+  try {
+    if (message.mentions?.users && message.mentions.users.size > 0) {
+      for (const [uid] of message.mentions.users) {
+        if (uid !== message.author?.id) return true;
+      }
+    }
+  } catch (_) {}
+  try {
+    const guildMembers = message.guild?.members?.cache;
+    if (guildMembers && message.content) {
+      const content = message.content.toLowerCase();
+      for (const [, member] of guildMembers) {
+        if (member.id === message.author?.id) continue;
+        const name = (member.displayName || member.user?.username || "").toLowerCase();
+        if (name && name.length > 2 && content.includes(name)) return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+const USER_KEYWORDS = /\b(i|i'?m|my|mine|me|myself)\b|\b(like|love|hate|prefer|enjoy|work|live|study|play|watch|read|am|use|own|have|listen|speak|born|grew)\b/i;
+const CHANNEL_KEYWORDS = /\b(tomorrow|tonight|today|yesterday|next\s+week|meeting|event|everyone|we\s+should|let'?s|scheduled|plan(ning)?|party|hangout|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+
+function shouldSkipImmediate(text, scope) {
+  if (!text || text.length < (IMMEDIATE_FACTS_MIN_LENGTH || 0)) return true;
+  if (scope === "user") return !USER_KEYWORDS.test(text);
+  if (scope === "channel") return !CHANNEL_KEYWORDS.test(text);
+  return false;
+}
+
+function valueOverlapsExisting(newValue, existingFacts, threshold = 0.6) {
+  const newTokens = new Set(tokenizeValue(newValue));
+  if (newTokens.size === 0) return null;
+  for (const f of existingFacts) {
+    const existingTokens = new Set(tokenizeValue(f.value));
+    if (existingTokens.size === 0) continue;
+    let intersect = 0;
+    for (const t of newTokens) if (existingTokens.has(t)) intersect++;
+    const union = new Set([...newTokens, ...existingTokens]).size;
+    if (union === 0) continue;
+    const jaccard = intersect / union;
+    if (jaccard >= threshold) return f;
+  }
+  return null;
+}
+
+function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
+  let combined = Array.isArray(existingFacts) ? existingFacts.map(f => ({
+    key: f.key,
+    value: f.value,
+    updatedAt: f.updatedAt ?? Date.now(),
+    confidence: f.confidence || "high",
+    extractedFrom: f.extractedFrom || "",
+    reinforcedCount: f.reinforcedCount || 1,
+  })) : [];
+
+  combined = cleanupExpiredFacts(combined);
+
+  const snippet = (sourceSnippet || "").slice(0, 80);
+
+  for (const raw of parsedFacts) {
+    const key = normalizeFactKey(raw.key);
+    const value = (raw.value ?? "").toString().trim();
+    if (!key) continue;
+
+    if (value === "__deleted__") {
+      const idx = combined.findIndex(f => f.key === key);
+      if (idx !== -1) {
+        combined.splice(idx, 1);
+        logger.debug(`[Facts] Deleted: ${key}`);
+      }
+      continue;
+    }
+
+    if (value.length < 2) continue;
+
+    const keyIdx = combined.findIndex(f => f.key === key);
+    if (keyIdx !== -1) {
+      if (combined[keyIdx].value === value) {
+        combined[keyIdx].reinforcedCount = (combined[keyIdx].reinforcedCount || 1) + 1;
+        combined[keyIdx].updatedAt = Date.now();
+        if (raw.confidence === "high") combined[keyIdx].confidence = "high";
+      } else {
+        const old = combined[keyIdx].value;
+        combined[keyIdx] = {
+          key,
+          value,
+          updatedAt: Date.now(),
+          confidence: raw.confidence || "high",
+          extractedFrom: snippet,
+          reinforcedCount: 1,
+        };
+        logger.log(`[Facts] Updated: ${key} "${old}" -> "${value}"`);
+      }
+      continue;
+    }
+
+    const overlap = valueOverlapsExisting(value, combined);
+    if (overlap) {
+      overlap.reinforcedCount = (overlap.reinforcedCount || 1) + 1;
+      overlap.updatedAt = Date.now();
+      logger.debug(`[Facts] Overlap reinforcement: new "${key}=${value}" -> existing "${overlap.key}=${overlap.value}"`);
+      continue;
+    }
+
+    combined.push({
+      key,
+      value,
+      updatedAt: Date.now(),
+      confidence: raw.confidence || "high",
+      extractedFrom: snippet,
+      reinforcedCount: 1,
+    });
+    logger.debug(`[Facts] Added: ${key}=${value} (confidence=${raw.confidence || "high"})`);
+  }
+
+  return combined;
+}
+
+async function compressFacts(facts, key, scope = "channel") {
+  if (!Array.isArray(facts) || facts.length === 0) return facts;
+  try {
+    const openai = getOpenAIClient(key);
+    const groups = new Map();
+    for (const f of facts) {
+      const prefix = (f.key.split("_")[0] || f.key).toLowerCase();
+      if (!groups.has(prefix)) groups.set(prefix, []);
+      groups.get(prefix).push(f);
+    }
+    const dupGroups = [...groups.entries()].filter(([, arr]) => arr.length >= 2);
+    logger.debug(`[Facts] compressFacts ${scope}: input=${facts.length} prefixGroups=${groups.size} duplicateGroups=${dupGroups.length}`);
+    const grouped = dupGroups
+      .map(([prefix, arr]) => `# ${prefix}\n${arr.map(f => `${f.key}=${f.value}`).join("\n")}`)
+      .join("\n\n");
+    if (!grouped) {
+      logger.debug(`[Facts] compressFacts ${scope}: no duplicates, skipping LLM call`);
+      return facts;
+    }
+
+    const prompt = [
+      `You are merging redundant facts in a ${scope}-level memory store.`,
+      `For each group below, output the CANONICAL merged facts in key=value form, one per line.`,
+      `Combine semantically duplicate facts. Preserve distinct facts. Do NOT add commentary.`,
+      ``,
+      grouped,
+      ``,
+      `[Merged Facts]`,
+    ].join("\n");
+
+    const res = await withTimeout(
+      openai.createChatCompletion({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: "You compress and deduplicate memory facts. Respond only with key=value lines." },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 512,
+        temperature: 0,
+      }),
+      30_000,
+      "Deepseek (compressFacts) took too long"
+    );
+    const out = res?.data?.choices?.[0]?.message?.content?.trim() || "";
+    const lines = out.split("\n").map(l => l.trim()).filter(l => l.includes("="));
+    if (lines.length === 0) return facts;
+
+    const compressedKeyed = lines.map(line => {
+      const [rawKey, ...rest] = line.split("=");
+      return {
+        key: normalizeFactKey(rawKey),
+        value: rest.join("=").trim(),
+      };
+    }).filter(f => f.key && f.value.length >= 2);
+
+    const groupedKeySet = new Set();
+    for (const [, arr] of groups) {
+      if (arr.length >= 2) for (const f of arr) groupedKeySet.add(f.key);
+    }
+
+    const kept = facts.filter(f => !groupedKeySet.has(f.key));
+    const mergedIn = compressedKeyed.map(c => ({
+      key: c.key,
+      value: c.value,
+      updatedAt: Date.now(),
+      confidence: "high",
+      extractedFrom: "compressed",
+      reinforcedCount: 1,
+    }));
+    const result = [...kept, ...mergedIn];
+    logger.log(`[Facts] compressFacts ${scope}: ${facts.length} -> ${result.length} (replaced ${groupedKeySet.size} grouped with ${mergedIn.length} merged)`);
+    return result;
+  } catch (err) {
+    logger.warn(`[Facts] compressFacts failed: ${err.message}`);
+    return facts;
+  }
+}
+
+function sortAndPruneFacts(combined) {
+  combined.sort((a, b) => {
+    const aTime = a.updatedAt || 0;
+    const bTime = b.updatedAt || 0;
+    if (aTime !== bTime) return bTime - aTime;
+    return a.key.localeCompare(b.key);
+  });
+  if (combined.length > MAX_FACTS) combined = combined.slice(0, MAX_FACTS);
+  return combined;
+}
+
+async function runImmediateClassifier(text, scope, key) {
+  const openai = getOpenAIClient(key);
+  const userSysPrompt = [
+    "Extract permanent, first-person, self-referential facts from the message.",
+    "Output key=value, one per line. Empty response if none.",
+    "DO NOT extract: temporary states (tired/hungry/bored), hypotheticals, sarcasm (lol/jk//s), or facts about other people.",
+    "Use key=__deleted__ if the user negates or retracts a prior fact.",
+    "",
+    "Examples:",
+    '"I work as a nurse in Boston" -> job=nurse\\nlocation=Boston',
+    '"I love ramen" -> favorite_food=ramen',
+    '"I\'m tired" -> (empty)',
+    '"lol maybe I like pineapple pizza" -> (empty)',
+    '"I don\'t play tennis anymore" -> sport=__deleted__',
+  ].join("\n");
+
+  const channelSysPrompt = [
+    "Extract shared-context facts from the message: events, plans, group preferences, recurring activities.",
+    "Output key=value, one per line. Empty if none.",
+    "DO NOT extract: personal/first-person facts, temporary states, hypotheticals, sarcasm.",
+    "Use key=__deleted__ for retractions.",
+    "",
+    "Examples:",
+    '"Meeting tomorrow at 5pm" -> meeting_tomorrow=5pm',
+    '"Let\'s do game night on Friday" -> event_game_night=friday',
+    '"I feel tired" -> (empty)',
+    '"jk about the party" -> event_party=__deleted__',
+  ].join("\n");
+
+  const sys = scope === "user" ? userSysPrompt : channelSysPrompt;
+
+  const res = await withTimeout(
+    openai.createChatCompletion({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: text }
+      ],
+      max_tokens: 200,
+      temperature: 0,
+    }),
+    20_000,
+    `Deepseek (immediate ${scope} classifier) took too long`
+  );
+  const content = res?.data?.choices?.[0]?.message?.content?.trim() || "";
+  const usage = res?.data?.usage;
+  if (usage) {
+    logger.debug(`[ImmediateFacts] classifier (${scope}) tokens: prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} total=${usage.total_tokens}`);
+  }
+  if (!content) {
+    logger.debug(`[ImmediateFacts] classifier (${scope}) empty response`);
+    return [];
+  }
+  logger.debug(`[ImmediateFacts] classifier (${scope}) raw: ${content.replace(/\n/g, " | ")}`);
+  return content.split("\n")
+    .map(l => l.trim())
+    .filter(l => l.includes("="))
+    .map(line => {
+      const [rawKey, ...rest] = line.split("=");
+      return { key: rawKey.trim(), value: rest.join("=").trim() };
+    })
+    .filter(f => f.key);
+}
+
+function checkDebounce(client, bucketKey) {
+  if (!client?.immediateFactsDebounce) return true;
+  const now = Date.now();
+  const last = client.immediateFactsDebounce.get(bucketKey) || 0;
+  if (now - last < (IMMEDIATE_FACTS_DEBOUNCE_MS || 0)) return false;
+  client.immediateFactsDebounce.set(bucketKey, now);
+  return true;
+}
+
+async function extractImmediateFacts(message, userId, key) {
+  if (!IMMEDIATE_FACTS_ENABLED) return;
+  const text = message?.content || "";
+  if (shouldSkipImmediate(text, "user")) {
+    logger.debug(`[ImmediateFacts] user [${userId}] skipped: gate (len=${text.length}, keyword match=${USER_KEYWORDS.test(text)})`);
+    return;
+  }
+  if (referencesOtherUser(message)) {
+    logger.debug(`[ImmediateFacts] user [${userId}] skipped: references other user`);
+    return;
+  }
+
+  const chatbotData = await getUserChatbotData(userId);
+  const incognitoChannels = Array.isArray(chatbotData.incognitoChannels) ? chatbotData.incognitoChannels : [];
+  if (chatbotData.incognitoMode || incognitoChannels.includes(message.channel?.id)) {
+    logger.debug(`[ImmediateFacts] user [${userId}] skipped: incognito (global=${!!chatbotData.incognitoMode})`);
+    return;
+  }
+
+  if (!checkDebounce(message.client, `user:${userId}`)) {
+    logger.debug(`[ImmediateFacts] user [${userId}] skipped: debounce`);
+    return;
+  }
+
+  logger.debug(`[ImmediateFacts] user [${userId}] running classifier (len=${text.length})`);
+  const parsed = await runImmediateClassifier(text, "user", key);
+  if (parsed.length === 0) {
+    logger.debug(`[ImmediateFacts] user [${userId}] classifier returned 0 facts`);
+    return;
+  }
+
+  const confidence = detectConfidence(text);
+  const tagged = parsed.map(f => ({ ...f, confidence }));
+  const before = (chatbotData.facts || []).length;
+  const merged = mergeFacts(chatbotData.facts || [], tagged, text);
+  const pruned = sortAndPruneFacts(merged);
+  await updateUserChatbotData(userId, { facts: pruned });
+  logger.debug(`[ImmediateFacts] user [${userId}] +${parsed.length} parsed (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${parsed.map(f => f.key).join(",")}]`);
+}
+
+async function extractImmediateChannelFacts(message, channelId, key) {
+  if (!IMMEDIATE_FACTS_ENABLED) return;
+  const text = message?.content || "";
+  if (shouldSkipImmediate(text, "channel")) {
+    logger.debug(`[ImmediateFacts] channel [${channelId}] skipped: gate (len=${text.length}, keyword match=${CHANNEL_KEYWORDS.test(text)})`);
+    return;
+  }
+
+  const userId = message?.author?.id;
+  if (userId) {
+    const chatbotData = await getUserChatbotData(userId);
+    const incognitoChannels = Array.isArray(chatbotData.incognitoChannels) ? chatbotData.incognitoChannels : [];
+    if (chatbotData.incognitoMode || incognitoChannels.includes(channelId)) {
+      logger.debug(`[ImmediateFacts] channel [${channelId}] skipped: author incognito`);
+      return;
+    }
+  }
+
+  if (!checkDebounce(message.client, `channel:${channelId}`)) {
+    logger.debug(`[ImmediateFacts] channel [${channelId}] skipped: debounce`);
+    return;
+  }
+
+  const channel = message.client?.channels?.cache?.get(channelId) || message.channel;
+  if (!channel) return;
+  const context = await getThreadContext(channel);
+  const existingFacts = context.facts || [];
+
+  logger.debug(`[ImmediateFacts] channel [${channelId}] running classifier (len=${text.length})`);
+  const parsed = await runImmediateClassifier(text, "channel", key);
+  if (parsed.length === 0) {
+    logger.debug(`[ImmediateFacts] channel [${channelId}] classifier returned 0 facts`);
+    return;
+  }
+
+  const confidence = detectConfidence(text);
+  const tagged = parsed.map(f => ({ ...f, confidence }));
+  const before = existingFacts.length;
+  const merged = mergeFacts(existingFacts, tagged, text);
+  const pruned = sortAndPruneFacts(merged);
+  await updateThreadContext(channel, { facts: pruned });
+  logger.debug(`[ImmediateFacts] channel [${channelId}] +${parsed.length} parsed (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${parsed.map(f => f.key).join(",")}]`);
 }
 
 function isValidMessage(message) {
@@ -434,48 +865,21 @@ async function generateFacts(thread, key) {
     const parsedFacts = factLines.map(line => {
       const [rawKey, ...rest] = line.split("=");
       return {
-        key: rawKey.trim().toLowerCase().replace(/\s+/g, "_"), // normalize key
+        key: rawKey.trim(),
         value: rest.join("=").trim(),
-        updatedAt: Date.now(),
+        confidence: "high",
       };
     });
 
-    let combinedFacts  = Array.isArray(existingFacts) ? [...existingFacts] : [];
+    let combinedFacts = mergeFacts(existingFacts, parsedFacts, latestSummary || "");
 
-    // Clean up expired facts before adding new ones
-    combinedFacts = cleanupExpiredFacts(combinedFacts);
-
-    for (const fact of parsedFacts) {
-      const existingIndex = combinedFacts.findIndex(f => f.key === fact.key);
-      if (existingIndex !== -1) {
-        combinedFacts[existingIndex] = {
-          ...combinedFacts[existingIndex],
-          ...fact,
-          updatedAt: Date.now(),
-        };
-      } else {
-        combinedFacts.push(fact);
-      }
+    if (combinedFacts.length >= MAX_FACTS - 3) {
+      combinedFacts = await compressFacts(combinedFacts, key, "channel");
     }
-
-    combinedFacts = combinedFacts.map(f => ({
-      ...f,
-      updatedAt: f.updatedAt ?? Date.now(),
-    }));
-
-    combinedFacts.sort((a, b) => {
-      const aTime = a.updatedAt || 0;
-      const bTime = b.updatedAt || 0;
-      if (aTime !== bTime) return bTime - aTime; // newest first
-      return a.key.localeCompare(b.key);
-    });
-
-    if (combinedFacts.length > MAX_FACTS) {
-      combinedFacts = combinedFacts.slice(0, MAX_FACTS);
-    }
+    combinedFacts = sortAndPruneFacts(combinedFacts);
 
     logger.log(`Extracted ${combinedFacts.length} facts from the output.`);
-    await updateThreadContext(thread, {facts: combinedFacts}) 
+    await updateThreadContext(thread, {facts: combinedFacts})
     logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
   }
 }
@@ -514,39 +918,15 @@ async function generateUserFacts(userId, userMessages, key) {
     const factLines = output.split("\n").filter(line => line.includes("="));
     const newFacts = factLines.map(line => {
       const [rawKey, ...rest] = line.split("=");
-      return { key: rawKey.trim().toLowerCase().replace(/\s+/g, "_"), value: rest.join("=").trim(), updatedAt: Date.now() };
+      return { key: rawKey.trim(), value: rest.join("=").trim(), confidence: "high" };
     });
-    let combinedFacts = Array.isArray(existingFacts) ? [...existingFacts] : [];
 
-    // Clean up expired facts before adding new ones
-    combinedFacts = cleanupExpiredFacts(combinedFacts);
+    let combinedFacts = mergeFacts(existingFacts, newFacts, latestSummary || "");
 
-    for (const fact of newFacts) {
-      const idx = combinedFacts.findIndex(f => f.key === fact.key);
-      if (idx !== -1) {
-        combinedFacts[idx] = {
-          ...combinedFacts[idx],
-          ...fact,
-          updatedAt: Date.now(),
-        };
-      } else {
-        combinedFacts.push(fact);
-      }
+    if (combinedFacts.length >= MAX_FACTS - 3) {
+      combinedFacts = await compressFacts(combinedFacts, key, "user");
     }
-
-    combinedFacts = combinedFacts.map(f => ({
-      ...f,
-      updatedAt: f.updatedAt ?? Date.now(),
-    }));
-
-    combinedFacts.sort((a, b) => {
-      const aTime = a.updatedAt || 0;
-      const bTime = b.updatedAt || 0;
-      if (aTime !== bTime) return bTime - aTime; // newest first
-      return a.key.localeCompare(b.key);
-    });
-
-    if (combinedFacts.length > MAX_FACTS) combinedFacts = combinedFacts.slice(0, MAX_FACTS);
+    combinedFacts = sortAndPruneFacts(combinedFacts);
 
     await updateUserChatbotData(userId, { facts: combinedFacts });
     logger.log(`Extracted ${combinedFacts.length} user facts for [${userId}].`);
@@ -1097,6 +1477,12 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     // Skip memory accumulation for one-off mentions
     if (!isMention) {
       await tickMessageCount(targetChannel, validMessages, key, message.author.id);
+      if (IMMEDIATE_FACTS_ENABLED && message?.author && !message.author.bot) {
+        extractImmediateFacts(message, message.author.id, key)
+          .catch(err => logger.error(`[ImmediateFacts] user: ${err.message}`));
+        extractImmediateChannelFacts(message, targetChannel.id, key)
+          .catch(err => logger.error(`[ImmediateFacts] channel: ${err.message}`));
+      }
     }
   } catch (error) {
     targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
@@ -1120,5 +1506,6 @@ module.exports = {
   updateThreadContext, addNewThreadContext, getThreadContext,
   deleteThreadContext, getValidMessages, summarizeMessages, generateFacts,
   getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
-  getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts
+  getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts,
+  extractImmediateFacts, extractImmediateChannelFacts
 };
