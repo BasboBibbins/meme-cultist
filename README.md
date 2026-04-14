@@ -8,6 +8,7 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 - AI-powered conversations using DeepSeek API (OpenAI SDK v3 compatible)
 - Thread-based and channel-based context management
 - Rolling summaries and fact extraction for persistent memory
+- Immediate/real-time fact extraction with debouncing
 - User-level memory and statistics tracking
 - Roleplay mode with customizable character attributes
 - Incognito mode for privacy
@@ -18,16 +19,26 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 - **Daily/Weekly Claims**: Random rewards with streak bonuses
 - **Bank**: Deposit/withdraw with daily interest at midnight
 - **Games**:
-  - Blackjack (with double down)
-  - Slots (with free daily spins)
+  - Blackjack (with double down and splitting up to 4 hands)
+  - Slots (canvas-rendered, themed, free daily spins, progressive jackpot)
   - Coin flip (50/50)
   - Roulette (multi-player with betting timer)
-  - Horse racing (multi-player with odds)
-  - Poker (video poker style)
+  - Horse racing (multi-player with win/place/show bets)
+  - Poker (video poker style, progressive jackpot)
   - Craps (experimental)
+- **Progressive Jackpot**: Cross-game jackpot fed by slots and poker bets (use `/jackpot` to check)
 - **Rob**: Steal from other users (25% success rate, 5min cooldown)
 - **Give**: Transfer koku to other users
 - **Leaderboard**: Top 10 by bank balance (current and all-time)
+
+### Themes & Shop
+- **Shop** (`/shop browse/buy/preview`): Rotating daily stock of cosmetic items, seeded per guild per day
+- **Inventory** (`/inventory view/equip`): View and equip owned items
+- **Themes** (`/theme set/list/info/owned`): Casino visual themes with three tiers:
+  - **Colorway** — palette swap
+  - **Styled** — one game with custom sprites
+  - **Full** — all games with custom sprites
+- Item rarities: Common, Uncommon, Rare, Legendary
 
 ### Music
 - YouTube playback via discord-player with YoutubeiExtractor
@@ -146,6 +157,7 @@ node bot.js debug
 | `/koku remove` | Remove currency from user | `user`, `amount` |
 | `/koku set` | Set user's bank balance | `user`, `amount` |
 | `/restart` | Restart the bot (admin only) | — |
+| `/unlockall` | Unlock all items for a user (admin only) | `target` |
 | `/embed` | Embed an image with title | `image`, `title?` |
 
 ### Economy Commands
@@ -161,21 +173,37 @@ node bot.js debug
 | `/rob` | Attempt to rob a user (25% success, 5m cooldown) | `user` |
 | `/beg` | Beg for koku (only when broke, 25% success) | — |
 | `/leaderboard` | View top 10 by bank balance | — |
-| `/stats` | View user statistics (5 pages: general, commands, currency, games, chatbot) | `user?`, `details?` |
+| `/stats` | View user statistics (5 pages: general, commands, currency, games, chatbot) — includes net profit per game and shop purchase stats | `user?`, `details?` |
 
 ### Gambling Commands
 
 | Command | Description | Options |
 |---------|-------------|---------|
-| `/blackjack` | Play blackjack | `bet` |
+| `/blackjack` | Play blackjack (supports splitting) | `bet` |
 | `/slots bet` | Play slot machine | `amount` |
 | `/slots daily` | Free daily spin | — |
 | `/slots paytable` | View slot payouts | — |
 | `/flip` | Coin flip (50/50) | `bet` |
 | `/roulette` | Multi-player roulette | `type`, `amount`, `number?` |
 | `/race start` | Start a horse race | — |
-| `/race bet` | Bet on current race | `horse` (1-8), `amount` |
-| `/poker` | Video poker | `bet` (use `paytable` for payouts) |
+| `/race bet` | Bet on current race | `horse` (1-8), `amount`, `type?` (`win`/`place`/`show`) |
+| `/poker` | Video poker (progressive jackpot) | `bet` (use `paytable` for payouts) |
+| `/craps` | Roll dice (experimental) | `bet` |
+| `/jackpot` | Check progressive jackpot amount | — |
+
+### Shop & Theme Commands
+
+| Command | Description | Options |
+|---------|-------------|---------|
+| `/shop browse` | View today's rotating shop stock | — |
+| `/shop buy` | Purchase an item from today's shop | `item` (autocomplete) |
+| `/shop preview` | Preview an item before buying | `item` (autocomplete) |
+| `/inventory view` | View all owned items | — |
+| `/inventory equip` | Equip an owned item | `item` (autocomplete) |
+| `/theme set` | Equip an owned theme | `theme_name` (autocomplete) |
+| `/theme list` | View all available themes | — |
+| `/theme info` | Preview a theme's details | `theme_name` (autocomplete) |
+| `/theme owned` | View your owned themes | — |
 
 ### Chatbot Commands
 
@@ -231,31 +259,42 @@ node bot.js debug
 ```
 meme-cultist/
 ├── bot.js                 # Entry point, client setup, event handlers
-├── config.json            # Server IDs, feature flags, tuning params
+├── config.js              # Server IDs, feature flags, tuning params
 ├── database.js            # User DB schema and CRUD helpers
 ├── package.json           # Dependencies
 ├── .env                   # Secrets (TOKEN, API keys, etc.)
 ├── db/
 │   ├── users.sqlite       # User data (balance, stats, cooldowns)
-│   └── thread_contexts.sqlite  # Chatbot context/memory
+│   ├── thread_contexts.sqlite  # Chatbot context/memory
+│   ├── jackpot.sqlite     # Progressive jackpot state
+│   └── feedback.sqlite    # User feedback storage
 ├── commands/
-│   ├── admin/             # db, koku (database/currency management)
-│   ├── chatbot/            # context, refresh, incognito
-│   ├── currency/           # balance, bank, daily, weekly, games...
-│   ├── fun/                # 8ball, avatar, caption, memegen...
-│   ├── general/            # help, ping, uptime, stats, feedback
-│   ├── music/              # play, queue, filter, lyrics
-│   └── nsfw/               # booru (image search)
+│   ├── admin/             # db, koku, unlockall
+│   ├── chatbot/           # context, refresh, incognito
+│   ├── currency/          # balance, bank, daily, weekly, games, shop, inventory, theme
+│   ├── fun/               # 8ball, avatar, caption, memegen...
+│   ├── general/           # help, ping, uptime, stats, feedback
+│   ├── music/             # play, queue, filter, lyrics
+│   └── nsfw/              # booru (image search)
+├── themes/
+│   ├── configs/           # Theme definitions (index.js, base.js)
+│   ├── manager.js          # Theme ownership and equipping logic
+│   └── resolver.js         # Theme color/style resolution
 ├── utils/
 │   ├── openai.js           # DeepSeek chatbot logic, memory management
 │   ├── openai-tools.js     # Tool functions for AI function calling
 │   ├── bank.js             # Interest, deposits, withdrawals
 │   ├── betparse.js         # Bet string parsing (all, half, math)
-│   ├── blackjack.js        # Blackjack game logic
+│   ├── blackjack.js        # Blackjack game logic (with splitting)
 │   ├── poker.js            # Video poker logic
 │   ├── roulette.js         # Roulette wheel, table rendering
-│   ├── race.js             # Horse racing game logic
+│   ├── race.js             # Horse racing logic (win/place/show)
 │   ├── slots.js            # Slot machine logic
+│   ├── slotsCanvas.js      # Canvas rendering for slots
+│   ├── slotsThemes.js      # Slot theme color/style mapping
+│   ├── inventory.js         # Item ownership, daily shop, equipping
+│   ├── jackpot.js           # Progressive jackpot state and interest
+│   ├── channels.js         # Chatbot channel helpers
 │   ├── Canvas.js           # Image manipulation helpers
 │   ├── musicPlayer.js      # discord-player event handlers
 │   ├── welcome.js          # Member join/leave messages
@@ -291,15 +330,21 @@ meme-cultist/
      id, name, balance, bank, inventory,
      cooldowns: { daily, weekly, rob, freespins },
      stats: {
-       commands: { daily, monthly, yearly, total },
+       commands: { daily, monthly, yearly, total, dailyReset, monthlyReset, yearlyReset },
        dailies: { claimed, currentStreak, longestStreak },
        weeklies: { claimed },
-       blackjack: { wins, losses, ties, blackjacks, biggestWin, biggestLoss },
-       slots: { wins, losses, jackpots, biggestWin, biggestLoss },
-       // ... game-specific stats
+       blackjack: { wins, losses, ties, blackjacks, biggestWin, biggestLoss, profit },
+       slots: { wins, losses, jackpots, biggestWin, biggestLoss, profit },
+       flip: { wins, losses, biggestWin, biggestLoss, profit },
+       roulette: { wins, losses, totalBet, biggestWin, biggestLoss, profit },
+       race: { wins, losses, totalBet, biggestWin, biggestLoss, profit },
+       poker: { wins, losses, royals, biggestWin, biggestLoss, profit },
+       begs: { wins, losses, profit },
+       shop: { purchases, spent, biggestPurchase },
        largestBalance, largestBank
      },
-     chatbot: { messageCount, summaries, facts, incognitoMode, incognitoChannels }
+     profile: { theme: { equipped, owned } },
+     chatbot: { messageCount, summaries, facts, messagesSinceLastSummary, messagesSinceLastFacts, incognitoMode, incognitoChannels }
    }
    ```
 
@@ -310,6 +355,7 @@ client.slashcommands        // Collection of loaded commands
 client.contextResetPoints   // Map<channelId, messageId> for /refresh
 client.rouletteGames        // Map<channelId, game> for active roulette
 client.raceGames            // Map<channelId, game> for active races
+client.immediateFactsDebounce // Map for debouncing immediate fact extraction
 client.player              // discord-player instance
 ```
 

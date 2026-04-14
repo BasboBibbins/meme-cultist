@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX } = require('../config.js');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS } = require('../config.js');
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(', ');
 
@@ -49,6 +49,8 @@ module.exports = {
 
             If you choose to double down, you will double your bet and be given one more card. You will then be forced to stand.
             You can only double down on the first two cards.
+
+            You can also split your hand if you are dealt two cards of the same value. Splitting creates two separate hands, each with their own bet. You can split up to ${BLACKJACK_MAX_HANDS || 4} times.
             `,
         rules: `
             1. The goal of blackjack is to beat the dealer's hand without going over 21.
@@ -59,7 +61,8 @@ module.exports = {
             6. If you are dealt 21 from the start (Ace & 10), you got a blackjack.
             7. Blackjack means you win 1.5 the amount of your bet.
             8. Dealer will hit until their cards total 17 or higher.
-            9. Doubling is like a hit, only the bet is doubled and you only get one more card.`
+            9. Doubling is like a hit, only the bet is doubled and you only get one more card.
+            10. Splitting is available when your first two cards have the same value. Each split hand gets a new card and plays independently.`
     },
     slots: {
         name: "Slots",
@@ -148,18 +151,26 @@ module.exports = {
             • 🔴 **Outsider** - Lowest chance, highest payout
 
             The race is animated with each horse progressing toward the finish line. First horse to cross wins!
-            Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is 10%.`,
+
+            **Bet Types:**
+            • **Win** — Horse must finish 1st. Full odds payout.
+            • **Place** — Horse must finish 1st or 2nd. Reduced payout (45% of win odds).
+            • **Show** — Horse must finish 1st, 2nd, or 3rd. Further reduced payout (28% of win odds).
+
+            Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is 5%.`,
         rules: `
             1. Use \`/race start\` to create a new race. Anyone in the channel can then place bets.
             2. Use \`/race bet [horse] [amount]\` to bet on a horse (1-8). You can only place one bet per race.
-            3. Each horse shows odds (e.g., "2.5x") and a chance indicator (Favorite, Contender, Longshot, Outsider).
-            4. The race creator can start early with "Start Now" or wait for the betting timer to expire.
-            5. Winners receive their payout via DM. The house takes a 10% cut of winnings.
-            6. You can only bet from your wallet, not your bank.`,
+            3. Use the \`type\` option to choose Win, Place, or Show (default: Win).
+            4. Each horse shows odds (e.g., "2.5x") and a chance indicator (Favorite, Contender, Longshot, Outsider).
+            5. The race creator can start early with "Start Now" or wait for the betting timer to expire.
+            6. Winners receive their payout via DM. The house takes a 5% cut of winnings.
+            7. You can only bet from your wallet, not your bank.`,
         example: `
             \`/race start\` - Start a new race (becomes the game host)
-            \`/race bet 3 500\` - Bet 500 on horse number 3
-            \`/race bet 7 all\` - Bet all your wallet balance on horse 7`,
+            \`/race bet 3 500\` - Bet 500 on horse 3 to win
+            \`/race bet 5 300 type:place\` - Bet 300 on horse 5 to place (1st or 2nd)
+            \`/race bet 7 all type:show\` - Bet all your wallet on horse 7 to show (1st, 2nd, or 3rd)`,
         note: `
             Only one race per channel at a time. Each player can only bet once per race.
             The winner is pre-determined when the race starts, but the animation shows all horses racing.
@@ -207,6 +218,8 @@ module.exports = {
             • **Legendary** \u2014 only occasionally spotted in the wild
 
             Once bought, items go to your \`/inventory\` and are yours forever. The daily rotation only controls *what you can buy today*, not what you can use.
+
+            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots or a royal flush on poker wins it (minimum bet of 10 ${CURRENCY_NAME} required).
             `,
         note: `
             The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
@@ -220,6 +233,38 @@ module.exports = {
 
             You can only own each item once; the shop will tell you if an item is already yours.
             `,
+    },
+    theme: {
+        name: "Themes",
+        description: `
+            Themes change the visual style of casino games (slots, roulette, poker, etc.). Use \`/theme list\` to see all available themes, \`/theme info <theme>\` to preview one, and \`/theme set <theme>\` to equip a theme you own.
+
+            Themes come in three tiers:
+            • **Colorway** \u2014 swaps the color palette of the default layout
+            • **Styled** \u2014 customizes one game with unique colors and sprites
+            • **Full** \u2014 reskins all games with custom colors, sprites, and backgrounds
+
+            Themes are purchased in the daily \`/shop\`. Once you own a theme, it's yours forever \u2014 equip and swap as often as you like.
+            `,
+        note: `
+            The "Classic" theme is always available and free. New themes rotate through the shop, so check back daily.
+            Higher-tier themes (Styled, Full) include more custom artwork and game-specific overrides.`
+    },
+    jackpot: {
+        name: "Progressive Jackpot",
+        description: `
+            The progressive jackpot is a shared prize pool that grows with every qualifying bet on slots and poker.
+
+            • Every bet contributes 2% to the jackpot pool
+            • **Slots:** Triple 7s wins the jackpot (minimum 10 ${CURRENCY_NAME} bet required)
+            • **Poker:** A royal flush wins the jackpot (minimum 10 ${CURRENCY_NAME} bet required)
+            • Bets below the minimum still contribute to the jackpot but receive a reduced fixed payout instead
+            • The jackpot also earns daily interest, growing even when no one is playing
+
+            Use \`/jackpot\` to check the current jackpot amount and last winner.
+            `,
+        note: `
+            The jackpot starts at 1,000,000 ${CURRENCY_NAME} if it ever resets. Minimum qualifying bet is 1,000 ${CURRENCY_NAME} for full jackpot eligibility (10 ${CURRENCY_NAME} for slots/poker).`
     },
     chatbot: {
         name: "Chatbot",
@@ -242,7 +287,7 @@ module.exports = {
 
             If you want to say something out-of-character that the bot doesn't use or react to, prefix your message with "${OOC_PREFIX}" and the bot will ignore it completely.
 
-            Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions.
+            Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions. Facts are extracted both periodically from summaries and in real-time as you chat.
             If you want your thread to be more roleplay-focused, modify the settings tagged **[RP]** when using \`/context set\`.
 
             The bot may reject or defer your request if it's in violation of **[Deepseek Terms of Use](https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html)**.
