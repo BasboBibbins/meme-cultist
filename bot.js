@@ -10,11 +10,12 @@ const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNELS, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
+const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
+const { isChatbotChannel } = require("./utils/channels")
 const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
@@ -342,7 +343,7 @@ if (DELETE_SLASH) {
     // Chatbot events
     client.on(Events.ThreadCreate, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}.`);
-        if (CHATBOT_CHANNELS.includes(thread.parentId)) {
+        if (isChatbotChannel(thread.parentId)) {
             await addNewThreadContext(thread);
         } 
     });
@@ -350,7 +351,7 @@ if (DELETE_SLASH) {
     client.on(Events.ThreadDelete, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
         client.contextResetPoints.delete(thread.id);
-        if (CHATBOT_CHANNELS.includes(thread.parentId)) {
+        if (isChatbotChannel(thread.parentId)) {
             await deleteThreadContext(thread);
         }
     });
@@ -376,16 +377,16 @@ if (DELETE_SLASH) {
         }
 
         const isMentioned = message.mentions.has(client.user, { ignoreEveryone: true, ignoreRoles: true });
-        const isChatbotChannel = CHATBOT_CHANNELS.includes(message.channel.parentId) || CHATBOT_CHANNELS.includes(message.channel.id);
+        const isChatbotChannelResult = isChatbotChannel(message.channel.id, message.channel.parentId);
 
-        if (!isChatbotChannel && !isMentioned) return;
+        if (!isChatbotChannelResult && !isMentioned) return;
 
-        const { allowed, reason } = rateLimiter.canProceed(client, message.author.id, isMentioned && !isChatbotChannel);
+        const { allowed, reason } = rateLimiter.canProceed(client, message.author.id, isMentioned && !isChatbotChannelResult);
         if (!allowed) {
             return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
         }
 
-        if (isChatbotChannel && !APRIL_FOOLS_MODE) {
+        if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
             await handleBotMessage(client, message, OPENAI_API_KEY);
         } else if (isMentioned) {
             await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true);
