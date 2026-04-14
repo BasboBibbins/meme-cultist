@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { updateThreadContext, getThreadContext } = require('../../utils/openai.js');
 const { EmbedBuilder } = require("@discordjs/builders");
-const { CHATBOT_CHANNEL } = require('../../config.js');
 const logger = require('../../utils/logger.js');
 
 module.exports = {

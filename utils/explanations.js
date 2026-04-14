@@ -1,5 +1,6 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNEL, OOC_PREFIX } = require('../config.js');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX } = require('../config.js');
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
+const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(', ');
 
 module.exports = {
     currency: {
@@ -223,10 +224,10 @@ module.exports = {
     chatbot: {
         name: "Chatbot",
         description: `
-            Sending a message in <#${CHATBOT_CHANNEL}> will start a conversation with the bot. The bot uses a GPT-like model to generate responses based on the context of the conversation.
+            Sending a message in ${chatbotChannelList} will start a conversation with the bot. The bot uses a GPT-like model to generate responses based on the context of the conversation.
             The bot is designed to have open-ended conversations that are engaging and interactive. You can use it to ask questions, share information, or just chat with the bot.
 
-            Threads, public or private, can be used in <#${CHATBOT_CHANNEL}> to create a more personalized conversation with the bot.
+            Threads, public or private, can be used in ${chatbotChannelList} to create a more personalized conversation with the bot.
             Each thread has its own context and history, which will update as you interact with the bot in that thread.
 
             The \`/context\` command provides various features for managing the chatbot within a thread, including viewing, modifying, and resetting the thread context used for generating responses.
@@ -235,7 +236,7 @@ module.exports = {
         note: `
             As this is a ChatGPT-like model, it's important to keep in mind that the bot ***may not always respond as expected or accurately***.
 
-            The bot reacts to any message within <#${CHATBOT_CHANNEL}>, meaning there is no need to mention the bot.
+            The bot reacts to any message within ${chatbotChannelList}, meaning there is no need to mention the bot.
 
             Responses are generated based on how you communicate with it. Previous messages are used as context, alongside context saved based on your interactions and settings.
 

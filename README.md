@@ -97,7 +97,7 @@ Edit `config.json`:
 | `TESTING_MODE` | Restrict bot to testers with TESTING_ROLE |
 | `CHATBOT_ENABLED` | Enable/disable AI chatbot |
 | `CHATBOT_LOCAL` | Route API to localhost:3000/v1/ |
-| `CHATBOT_CHANNEL` | Parent channel for chatbot threads |
+| `CHATBOT_CHANNELS` | Comma-separated list of chatbot channel IDs |
 | `PAST_MESSAGES` | Context window size (default: 15) |
 | `SUMMARY_INTERVAL` | Messages before summarizing (default: 25) |
 | `FACTS_INTERVAL` | Messages before fact extraction (default: 15) |

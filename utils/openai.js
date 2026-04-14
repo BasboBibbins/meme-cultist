@@ -2,7 +2,7 @@ const { OpenAIApi, Configuration } = require("openai");
 const {
   PAST_MESSAGES,
   CHATBOT_LOCAL,
-  CHATBOT_CHANNEL,
+  CHATBOT_CHANNELS,
   BANNED_ROLE,
   OOC_PREFIX,
   CLIENT_ID,
@@ -1193,9 +1193,14 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           ]
           sys_prompt = lines.filter(Boolean).join('\n');
         } else if (isMention) {
-          const mentionChannelId = CHATBOT_CHANNEL;
-          const mentionChannel = client.channels.cache.get(mentionChannelId);
-          const mentionChannelMention = mentionChannel ? `<#${mentionChannelId}>` : `the dedicated bot channel`;
+          const mentionChannelIds = CHATBOT_CHANNELS;
+          const mentionChannelMentions = mentionChannelIds
+            .map(id => client.channels.cache.get(id))
+            .filter(Boolean)
+            .map(ch => `<#${ch.id}>`);
+          const mentionChannelMention = mentionChannelMentions.length > 0
+            ? mentionChannelMentions.join(', ')
+            : `the dedicated bot channel`;
           const lines = [
             `You are ${client.user.displayName}, a helpful AI assistant in a Discord server called ${message.guild.name}. A user has mentioned you in a channel.`,
             `Current time: ${now} UTC.`,

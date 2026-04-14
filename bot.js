@@ -10,7 +10,7 @@ const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
 const { QuickDB } = require("quick.db")
 const { initDB } = require("./database")
-const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNEL, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
+const { GUILD_ID, CLIENT_ID, CHATBOT_CHANNELS, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
@@ -342,7 +342,7 @@ if (DELETE_SLASH) {
     // Chatbot events
     client.on(Events.ThreadCreate, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] created in ${thread.guild.name}.`);
-        if (thread.parentId === CHATBOT_CHANNEL) {
+        if (CHATBOT_CHANNELS.includes(thread.parentId)) {
             await addNewThreadContext(thread);
         } 
     });
@@ -350,7 +350,7 @@ if (DELETE_SLASH) {
     client.on(Events.ThreadDelete, async (thread) => {
         logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
         client.contextResetPoints.delete(thread.id);
-        if (thread.parentId === CHATBOT_CHANNEL) {
+        if (CHATBOT_CHANNELS.includes(thread.parentId)) {
             await deleteThreadContext(thread);
         }
     });
@@ -376,7 +376,7 @@ if (DELETE_SLASH) {
         }
 
         const isMentioned = message.mentions.has(client.user, { ignoreEveryone: true, ignoreRoles: true });
-        const isChatbotChannel = message.channel.parentId == CHATBOT_CHANNEL || message.channel.id == CHATBOT_CHANNEL;
+        const isChatbotChannel = CHATBOT_CHANNELS.includes(message.channel.parentId) || CHATBOT_CHANNELS.includes(message.channel.id);
 
         if (!isChatbotChannel && !isMentioned) return;
 

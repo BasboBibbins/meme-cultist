@@ -21,7 +21,10 @@ const config = {
     WELCOME_CHANNEL_NAME: "welcome",
     RIP_CHANNEL_ID: process.env.RIP_CHANNEL_ID || "YOUR_RIP_CHANNEL_ID_HERE",
     RIP_CHANNEL_NAME: "rip",
-    CHATBOT_CHANNEL: process.env.CHATBOT_CHANNEL || "YOUR_CHATBOT_CHANNEL_ID_HERE",
+    CHATBOT_CHANNELS: (process.env.CHATBOT_CHANNELS || process.env.CHATBOT_CHANNEL || "YOUR_CHATBOT_CHANNEL_ID_HERE")
+        .split(",")
+        .map(id => id.trim())
+        .filter(Boolean),
 
     // April Fools configuration
     APRILFOOLS_ROLE: "Fwen",
