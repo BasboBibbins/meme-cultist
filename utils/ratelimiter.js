@@ -3,10 +3,11 @@ const { formatChatbotChannelMentions } = require("./channels");
 
 const userCooldowns = new Map();
 const mentionCooldowns = new Map();
+const imageGenTimestamps = new Map();
 let requestTimestamps = [];
 let requestCount = 0;
 
-const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE} = require("../config.js")
+const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, IMAGE_GEN_LIMIT, IMAGE_GEN_WINDOW} = require("../config.js")
 
 function cleanupTimestamps() {
   const now = Date.now();
@@ -59,7 +60,28 @@ function canProceed(client, userId, isMention = false) {
   return { allowed: true };
 }
 
+function canGenerateImage(userId) {
+  const now = Date.now();
+  const windowMs = IMAGE_GEN_WINDOW * 1000;
+  const history = (imageGenTimestamps.get(userId) || []).filter(ts => now - ts < windowMs);
+
+  if (history.length >= IMAGE_GEN_LIMIT) {
+    const retryIn = Math.ceil((windowMs - (now - history[0])) / 1000);
+    imageGenTimestamps.set(userId, history);
+    return {
+      allowed: false,
+      reason: `Image generation limit reached (${IMAGE_GEN_LIMIT} per ${Math.round(IMAGE_GEN_WINDOW / 60)} min). Try again in ${retryIn}s.`,
+      retryIn,
+    };
+  }
+
+  history.push(now);
+  imageGenTimestamps.set(userId, history);
+  return { allowed: true };
+}
+
 module.exports = {
   canProceed,
   cleanupTimestamps,
+  canGenerateImage,
 };

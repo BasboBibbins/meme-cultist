@@ -4,6 +4,7 @@ const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
 const { generateImage } = require("./gemini");
+const { canGenerateImage } = require("./ratelimiter");
 const { CURRENCY_NAME } = require("../config.js");
 
 // Tool definitions for DeepSeek function calling
@@ -318,6 +319,10 @@ async function handleGetBotInfo(args, message, client) {
 
 async function handleGenerateImage(args, message, client, toolCtx) {
   if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
+  const rateCheck = canGenerateImage(message.author.id);
+  if (!rateCheck.allowed) {
+    return { error: rateCheck.reason };
+  }
   try {
     const { buffer, mimeType } = await generateImage(args.prompt);
     if (toolCtx) {
