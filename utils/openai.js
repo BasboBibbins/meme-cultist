@@ -1025,7 +1025,7 @@ async function tickMessageCount(channel, messages, key, userId) {
   }
 }
 
-async function handleBotMessage(client, message, key, customPrompt = null, channelId = null, isMention = false) {
+async function handleBotMessage(client, message, key, customPrompt = null, channelId = null, isMention = false, extraContext = null) {
   // sys message ignore
   logger.debug(`Received message: ${message.content} | Type: ${message.type} | Channel ID: ${channelId || message.channel.id}`);
   if (message.type != 0 && message.type != 19) {
@@ -1311,6 +1311,16 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           }
         }
       }
+      if (extraContext) {
+        sys_prompt += `\n\n[Perception Capabilities]\n` +
+          `- You have full vision: you can directly see any image a user shares.\n` +
+          `- You have link-reading ability: you can directly read the content of any URL a user shares.\n` +
+          `- The [Perception] block below represents what you are currently seeing or reading firsthand. Treat it as your own direct sensory input, not as a description prepared for you.\n` +
+          `- Never say "based on the description", "from what I can see in the text", "according to the summary", "I was given a description", or anything that implies you only have a text representation. Never mention that you cannot truly see or that something was described to you.\n` +
+          `- React to images and linked pages naturally, as if you opened them yourself — comment on visual details, tone, colors, page content, etc., with confidence.\n` +
+          `- Only if the [Perception] block explicitly says VISION UNAVAILABLE or LINK UNAVAILABLE should you admit you couldn't see/read it; in that case, follow the instructions inside that block.`;
+        usr_prompt += `\n[Perception]\n${extraContext}\n`;
+      }
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
     } else if (customPrompt) {
       sys_prompt = customPrompt;
@@ -1378,6 +1388,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
     let response = null;
     let toolCallDepth = 0;
     const MAX_TOOL_DEPTH = 5;
+    const toolCtx = { client, pendingAttachments: [] };
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
       const requestBody = {
@@ -1421,7 +1432,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         messages.push(choice.message);
 
         for (const toolCall of choice.message.tool_calls) {
-          const toolResult = await executeToolCall(toolCall, message, client);
+          const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
 
           messages.push({
             role: "tool",
@@ -1456,21 +1467,30 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       response = "I'm having trouble processing that request. Please try again.";
     }
 
-    if (response && response.length > 2000) {
-      logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
-      const chunks = splitAtWordBoundary(response, 1997);
-      for (let i = 0; i < chunks.length; i++) {
-        let chunk = chunks[i];
-        if (i < chunks.length - 1) {
-          chunk += "..."; // Add ellipsis to indicate more content
+    const pendingFiles = toolCtx.pendingAttachments;
+    try {
+      if (response && response.length > 2000) {
+        logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
+        const chunks = splitAtWordBoundary(response, 1997);
+        for (let i = 0; i < chunks.length; i++) {
+          let chunk = chunks[i];
+          if (i < chunks.length - 1) {
+            chunk += "...";
+            await targetChannel.send(chunk);
+          } else {
+            await targetChannel.send(pendingFiles.length > 0 ? { content: chunk, files: pendingFiles } : chunk);
+          }
         }
-        await targetChannel.send(chunk);
+        logger.debug(`Response sent in ${chunks.length} chunks.`);
+      } else if (response) {
+        logger.debug("Response is within Discord's character limit, sending as a single message.");
+        await targetChannel.send(pendingFiles.length > 0 ? { content: response, files: pendingFiles } : response);
+      } else if (pendingFiles.length > 0) {
+        logger.debug("No text response but attachments are pending — sending files only.");
+        await targetChannel.send({ files: pendingFiles });
       }
-      logger.debug(`Response sent in ${chunks.length} chunks.`);
-      return;
-    } else if (response) {
-      logger.debug("Response is within Discord's character limit, sending as a single message.");
-      targetChannel.send(response);
+    } finally {
+      typing = false;
     }
     // Skip memory accumulation for one-off mentions
     if (!isMention) {

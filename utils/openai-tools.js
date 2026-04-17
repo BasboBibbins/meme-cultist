@@ -1,7 +1,9 @@
 const { QuickDB } = require("quick.db");
+const { AttachmentBuilder } = require("discord.js");
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
+const { generateImage } = require("./gemini");
 const { CURRENCY_NAME } = require("../config.js");
 
 // Tool definitions for DeepSeek function calling
@@ -83,6 +85,40 @@ const TOOLS = [
         type: "object",
         properties: {},
         required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description:
+        "Generate a brand-new image from a text prompt and attach it to the reply. " +
+        "STRICT CALLING RULES — you MUST satisfy ALL of the following before calling this tool:\n" +
+        "  1. The user's MOST RECENT message contains an explicit, direct imperative request to create/produce a new image, " +
+        "     using a verb like: generate, make, create, draw, paint, render, design, produce, or an unambiguous synonym.\n" +
+        "  2. That verb is directly paired with an image noun like: image, picture, pic, photo, drawing, painting, meme, artwork, illustration, render, or poster.\n" +
+        "  3. The request is addressed to you (the bot). Requests about what someone else should draw do NOT count.\n" +
+        "DO NOT call this tool when:\n" +
+        "  - The user is merely discussing, describing, reacting to, or talking about an image, meme, or visual concept.\n" +
+        "  - The user posted an image in this conversation (you already see it via perception; you do not need to regenerate it).\n" +
+        "  - The user says words like 'imagine', 'picture this', 'visualize', or uses 'image/picture' metaphorically.\n" +
+        "  - The user asks a question about an image, asks for feedback on one, or references one that already exists.\n" +
+        "  - The conversation is about art, memes, or visuals in general without a direct 'make me one' request.\n" +
+        "  - You are tempted to call it 'just in case' or to enhance your reply. If in doubt, DO NOT CALL.\n" +
+        "Examples that SHOULD trigger: 'draw me a cat', 'generate an image of a sunset', 'make a meme about X', '/imagine a dragon', 'can you create a picture of Y?'.\n" +
+        "Examples that should NOT trigger: 'that image is cool', 'I drew something yesterday', 'imagine if X happened', 'what do you think of this meme', 'describe the picture', 'I love memes'.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: {
+            type: "string",
+            description:
+              "The user's direct image request, rewritten as a detailed visual description for the image generator. " +
+              "Include subject, style, setting, composition, and mood. Do not invent a request the user did not make."
+          }
+        },
+        required: ["prompt"]
       }
     }
   }
@@ -280,16 +316,37 @@ async function handleGetBotInfo(args, message, client) {
   };
 }
 
+async function handleGenerateImage(args, message, client, toolCtx) {
+  if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
+  try {
+    const { buffer, mimeType } = await generateImage(args.prompt);
+    if (toolCtx) {
+      const ext = mimeType?.includes("png") ? "png" : "jpg";
+      toolCtx.pendingAttachments.push(
+        new AttachmentBuilder(buffer).setName(`generated.${ext}`)
+      );
+    }
+    return {
+      success: true,
+      note: "Image generated and attached to the reply. Respond with a short caption or nothing."
+    };
+  } catch (err) {
+    logger.error(`[generate_image] ${err.message}`);
+    return { error: `Image generation failed: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
   get_user_stats: handleGetUserStats,
   get_guild_info: handleGetGuildInfo,
   get_user_info: handleGetUserInfo,
-  get_bot_info: handleGetBotInfo
+  get_bot_info: handleGetBotInfo,
+  generate_image: handleGenerateImage
 };
 
-async function executeToolCall(toolCall, message, client) {
+async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const fnName = toolCall.function.name;
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
 
@@ -301,7 +358,7 @@ async function executeToolCall(toolCall, message, client) {
     if (!handler) {
       result = { error: `Unknown function: ${fnName}` };
     } else {
-      result = await handler(fnArgs, message, client);
+      result = await handler(fnArgs, message, client, toolCtx);
     }
   } catch (err) {
     logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);

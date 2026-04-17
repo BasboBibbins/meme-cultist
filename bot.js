@@ -15,6 +15,8 @@ const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
+const { describeImage } = require("./utils/gemini")
+const { extractFirstUrl, fetchPageText } = require("./utils/urlContext")
 const { isChatbotChannel } = require("./utils/channels")
 const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
 const moment = require("dayjs")
@@ -386,10 +388,34 @@ if (DELETE_SLASH) {
             return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
         }
 
+        let extraContext = null;
+        const imageAttachment = message.attachments.find(a => a.contentType?.startsWith("image/"));
+        if (imageAttachment) {
+            message.channel.sendTyping().catch(() => {});
+            const displayName = message.member?.displayName || message.author.username;
+            const result = await describeImage(imageAttachment.url, message.content || null);
+            if (result?.description) {
+                extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
+            } else if (result?.error) {
+                extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user your vision failed and briefly mention why. Do NOT pretend to see the image.`;
+            }
+        } else {
+            const url = extractFirstUrl(message.content);
+            if (url) {
+                message.channel.sendTyping().catch(() => {});
+                const page = await fetchPageText(url);
+                if (page?.text) {
+                    extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+                } else if (page?.error) {
+                    extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly mention why. Do NOT pretend to have read it.`;
+                }
+            }
+        }
+
         if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
-            await handleBotMessage(client, message, OPENAI_API_KEY);
+            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, false, extraContext);
         } else if (isMentioned) {
-            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true);
+            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true, extraContext);
         }
     })
 
