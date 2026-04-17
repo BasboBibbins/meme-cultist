@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const logger = require("../../utils/logger");
+const { randomHexColor } = require("../../utils/randomcolor");
 const { generateImage } = require("../../utils/gemini");
 
 module.exports = {
@@ -19,11 +20,27 @@ module.exports = {
     try {
       const { buffer, mimeType } = await generateImage(prompt);
       const ext = mimeType?.includes("png") ? "png" : "jpg";
-      const attachment = new AttachmentBuilder(buffer).setName(`generated.${ext}`);
-      await interaction.editReply({ content: prompt, files: [attachment] });
+      const fileName = `generated.${ext}`;
+      const attachment = new AttachmentBuilder(buffer).setName(fileName);
+
+      const embed = new EmbedBuilder()
+        .setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+        .setColor(randomHexColor())
+        .setDescription(prompt)
+        .setImage(`attachment://${fileName}`)
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed], files: [attachment] });
     } catch (err) {
       logger.error(`[/generate] ${err.message}`);
-      await interaction.editReply({ content: `Image generation failed: ${err.message}` });
+      const embed = new EmbedBuilder()
+        .setTitle('Error')
+        .setDescription('Image generation failed. Please try again later.')
+        .setColor(0xff0000)
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+      await interaction.editReply({ embeds: [embed] });
     }
   }
 };
