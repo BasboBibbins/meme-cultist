@@ -6,6 +6,9 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 
 ### Chatbot
 - AI-powered conversations using DeepSeek API (OpenAI SDK v3 compatible)
+- **Gemini Vision** — the bot can see and understand images you share (via Google Gemini)
+- **URL Context** — the bot reads web pages when you share links
+- **Image Generation** — the bot can generate images via `/generate` or by asking in conversation
 - Thread-based and channel-based context management
 - Rolling summaries and fact extraction for persistent memory
 - Immediate/real-time fact extraction with debouncing
@@ -49,6 +52,7 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 
 ### Fun Commands
 - Image manipulation: `caption`, `memegen`, `speechbubble`, `rip`
+- Image generation: `generate` (AI-generated images via Gemini)
 - Random utilities: `8ball`, `choose`, `roll`, `avatar`
 - Booru image search (NSFW and safe boorus)
 
@@ -65,6 +69,7 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 - FFmpeg (for audio playback)
 - Discord bot token
 - DeepSeek API key (for chatbot)
+- Google Gemini API key (for image understanding and image generation)
 - YouTube cookies (optional, for age-restricted videos)
 - Genius API key (optional, for lyrics)
 - GitHub token (optional, for feedback command)
@@ -84,6 +89,7 @@ Create a `.env` file in the project root:
 ```env
 TOKEN=your_discord_bot_token
 OPENAI_API_KEY=your_deepseek_api_key
+GEMINI_API_KEY=your_gemini_api_key
 COOKIE=your_youtube_cookies_optional
 GENIUS_API_KEY=your_genius_api_key_optional
 GITHUB_TOKEN=your_github_token_optional
@@ -240,6 +246,7 @@ node bot.js debug
 | `/rip` | Generate RIP message (admin only) | `user`, `prompt?` |
 | `/roll` | Roll dice | `dice?` (sides), `number?` (count) |
 | `/speechbubble` | Add speech bubble to image | `image?`, `user?`, `x?`, `y?` |
+| `/generate` | Generate an AI image via Gemini | `prompt` (required, max 1000 chars) |
 | `/booru` | Search image booru sites | Various subcommands (e6, r34, gelbooru, etc.) |
 
 ### General Commands
@@ -283,6 +290,8 @@ meme-cultist/
 ├── utils/
 │   ├── openai.js           # DeepSeek chatbot logic, memory management
 │   ├── openai-tools.js     # Tool functions for AI function calling
+│   ├── gemini.js           # Gemini vision (image description) and image generation
+│   ├── urlContext.js       # URL extraction and web page text fetching
 │   ├── bank.js             # Interest, deposits, withdrawals
 │   ├── betparse.js         # Bet string parsing (all, half, math)
 │   ├── blackjack.js        # Blackjack game logic (with splitting)
@@ -313,10 +322,12 @@ meme-cultist/
 
 2. **Chatbot Flow**:
    - Message received → rate limit check → context fetch
+   - If image attached: Gemini describes it and passes as vision context
+   - If URL found: page text is fetched and passed as link context
    - Build system prompt (roleplay, topic, facts, summaries)
-   - Call DeepSeek API with conversation history
-   - Handle tool calls if model requests them
-   - Send response, update message counts
+   - Call DeepSeek API with conversation history + extra context
+   - Handle tool calls if model requests them (including `generate_image`)
+   - Send response (with any generated image attachments), update message counts
    - Periodically summarize and extract facts
 
 3. **Music Playback**:

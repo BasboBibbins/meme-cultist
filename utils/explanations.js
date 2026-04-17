@@ -316,5 +316,50 @@ module.exports = {
             Basbo: "Do you think there is something more between us?"
             Chatbot: "I've been thinking about that too. I like being around you—more than just a friend would. Maybe we've both been waiting for the right moment?"
         `
+    },
+    vision: {
+        name: "Image Vision",
+        description: `
+            The chatbot can see and understand images you share. Simply attach an image to your message in a chatbot channel and the bot will describe it, answer questions about it, or react to it naturally.
+
+            If you include text with your image, the bot will use it as a hint — for example, attaching a screenshot and asking "What's wrong with this code?" will get you a focused answer about the image.
+
+            Vision uses Google Gemini (gemini-2.5-flash). If the Gemini API key is not configured, the bot will let you know it can't see the image.
+        `,
+        note: `
+            The bot treats images as its own direct sensory input — it won't say "based on the description" or mention that it received a text summary. It reacts as if it opened the image itself.
+
+            If vision is unavailable (no API key, filtered content, or a fetch error), the bot will honestly tell you it couldn't see the image rather than pretending.
+        `
+    },
+    urlcontext: {
+        name: "URL Context",
+        description: `
+            When you share a link in a chatbot channel, the bot will automatically read the page content so it can discuss it with you. It extracts the page title and body text, then includes it as context in its response.
+
+            This works for any HTML page — articles, documentation, blog posts, etc. The bot will naturally reference and discuss the content as if it read the page itself.
+        `,
+        note: `
+            Only the first URL in your message is fetched. Non-HTML content (images, videos, PDFs) is not supported — use image attachments instead.
+
+            Pages larger than 2MB are skipped, and the text is capped at 4000 characters. Fetch requests time out after 8 seconds.
+        `
+    },
+    generate: {
+        name: "Image Generation",
+        description: `
+            You can generate AI images using Gemini in two ways:
+
+            **1. Slash Command** — Use \`/generate [prompt]\` to create an image from a text description. The bot will respond with the generated image attached.
+
+            **2. In Conversation** — Ask the chatbot to create an image directly in conversation (e.g., "draw me a cat", "generate an image of a sunset"). The bot will use the \`generate_image\` tool and attach the result to its reply.
+
+            Image generation uses Google Gemini (gemini-2.5-flash-image). The prompt can be up to 1000 characters.
+        `,
+        note: `
+            The chatbot has strict rules about when to generate images — it only triggers on direct, explicit requests to create/produce an image, not when you're just talking about images or using "imagine" metaphorically.
+
+            If the Gemini API key is not configured, the \`/generate\` command will return an error and the chatbot's image generation tool will be unavailable.
+        `
     }
 }
