@@ -3,13 +3,14 @@ const { getThemeList } = require('../../themes/configs');
 const { getThemeColors } = require('../../themes/resolver');
 const { getEquippedTheme, getOwnedThemes, ownsTheme } = require('../../themes/manager');
 const { CURRENCY_NAME } = require('../../config.js');
-const { RARITY, RARITY_ORDER, equipItem, getItemById } = require('../../utils/inventory');
+const { RARITY, RARITY_ORDER, equipItem, getItemById, isThemeAvailable, formatAvailability } = require('../../utils/inventory');
 const logger = require('../../utils/logger');
 
 const TIER_LABELS = {
     colorway: 'Colorway',
     styled:   'Styled',
     full:     'Full',
+    limited:  'Limited',
 };
 
 module.exports = {
@@ -170,6 +171,10 @@ module.exports = {
                 let desc = `${item.description}\n\n`;
                 desc += `**Rarity:** ${rarityLabel}\n`;
                 desc += `**Style:** ${styleLabel}\n`;
+                if (item.tier === 'limited' && item.availability) {
+                    desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
+                    desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
+                }
                 desc += `**Price:** ${item.price === 0 ? 'Free' : `${item.price.toLocaleString()} ${CURRENCY_NAME}`}\n`;
                 desc += `**Status:** ${isOwned ? 'Owned' : 'Locked'}\n`;
                 desc += `\n**Sample Colors:**\n${swatch}`;

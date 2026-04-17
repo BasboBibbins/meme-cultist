@@ -21,6 +21,7 @@ const {
 // Higher weight = more common in the shop.  Rarity is walked
 // descending by `min`; first match wins.
 const RARITY = {
+    limited:   { label: 'Limited',   color: 0xe74c3c, order: 4, min: null },
     legendary: { label: 'Legendary', color: 0xf59e0b, order: 3, min: 1  },
     rare:      { label: 'Rare',      color: 0x3b82f6, order: 2, min: 3  },
     uncommon:  { label: 'Uncommon',  color: 0x3fa34d, order: 1, min: 15 },
@@ -33,6 +34,7 @@ const SHOP_SIZE = 6;
 const _shopCache = new Map(); // key: `${guildId}:${dateKey}` -> item[]
 
 function getRarity(weight) {
+    if (weight === null || weight === undefined) return 'limited';
     if (!weight || weight <= 0) return null;
     // Walk by ascending `min` so "common" (largest min) is matched first for
     // high-weight items.  Rarity buckets are: legendary<rare<uncommon<common
@@ -56,9 +58,10 @@ function collectThemeItems() {
         category:    'theme',
         tier:        t.tier,
         price:       t.price,
-        weight:      t.weight ?? 0,
+        weight:      t.weight,
         emoji:       t.emoji || '',
-        rarity:      getRarity(t.weight ?? 0),
+        rarity:      getRarity(t.weight),
+        availability: t.availability || null,
         raw:         t,
     }));
 }
@@ -73,8 +76,13 @@ function getItemById(id) {
     return getAllItems().find(item => item.id === id) || null;
 }
 
-function getPurchasableItems() {
-    return getAllItems().filter(i => i.weight > 0 && i.price > 0);
+function getPurchasableItems(date = new Date()) {
+    return getAllItems().filter(i => {
+        if (i.tier === 'limited') {
+            return i.price > 0 && i.availability && isThemeAvailable(i.availability, date);
+        }
+        return i.weight > 0 && i.price > 0;
+    });
 }
 
 // ── Category dispatch ───────────────────────────────────────────────
@@ -126,6 +134,66 @@ async function getEquipped(userId) {
     return {
         theme: await getEquippedTheme(userId),
     };
+}
+
+// ── Availability helpers (limited themes) ─────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function isThemeAvailable(availability, date = new Date()) {
+    if (!availability) return false;
+    const { start, end } = availability;
+    const y = date.getUTCFullYear();
+    const m = date.getUTCMonth() + 1;
+    const d = date.getUTCDate();
+
+    const startYear = start.year ?? y;
+    const endYear = end.year ?? (start.year ? end.year ?? start.year : y);
+
+    const startMonth = start.month;
+    const startDay = start.day ?? 1;
+    const endMonth = end.month;
+    const endDay = end.day ?? new Date(endYear, endMonth, 0).getUTCDate();
+
+    const startMs = Date.UTC(startYear, startMonth - 1, startDay);
+    const endMs = Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+    const nowMs = Date.UTC(y, m - 1, d);
+
+    // Year-wrap: e.g. Dec 20 → Jan 5
+    if (startMs > endMs) {
+        return nowMs >= startMs || nowMs <= endMs;
+    }
+    return nowMs >= startMs && nowMs <= endMs;
+}
+
+function formatAvailability(availability) {
+    if (!availability) return '';
+    const { start, end } = availability;
+    const hasYear = start.year != null || end.year != null;
+    const hasDay = start.day != null && end.day != null;
+    const isYearly = !hasYear;
+
+    const fmtStart = start.day
+        ? `${MONTHS[start.month - 1]} ${start.day}`
+        : MONTHS[start.month - 1];
+    const fmtEnd = end.day
+        ? `${MONTHS[end.month - 1]} ${end.day}`
+        : MONTHS[end.month - 1];
+
+    let str;
+    if (fmtStart === fmtEnd) {
+        str = fmtStart;
+    } else {
+        str = `${fmtStart} - ${fmtEnd}`;
+    }
+
+    if (hasYear) {
+        const yr = end.year || start.year;
+        str += `, ${yr}`;
+    } else if (isYearly) {
+        str += ' (yearly)';
+    }
+
+    return str;
 }
 
 // ── Daily shop stock ────────────────────────────────────────────────
@@ -186,20 +254,27 @@ function getDailyShopStock(guildId, date = new Date()) {
     const key = `${guildId}:${dateKey(date)}`;
     if (_shopCache.has(key)) return _shopCache.get(key);
 
-    const pool = getPurchasableItems();
+    const allPurchasable = getPurchasableItems(date);
+
+    // Weighted pool: only items with numeric weight > 0
+    const weightedPool = allPurchasable.filter(i => i.weight > 0);
     const seed = cyrb53(key);
     const rng = mulberry32(seed);
-    const picked = weightedSample(pool, SHOP_SIZE, rng);
+    const picked = weightedSample(weightedPool, SHOP_SIZE, rng);
 
-    picked.sort((a, b) => {
+    // Limited items: currently in-season, always appear (additive, don't consume a slot)
+    const limitedItems = allPurchasable.filter(i => i.tier === 'limited');
+
+    const stock = [...limitedItems, ...picked];
+    stock.sort((a, b) => {
         const ar = RARITY[a.rarity]?.order ?? -1;
         const br = RARITY[b.rarity]?.order ?? -1;
         if (br !== ar) return br - ar;
         return a.name.localeCompare(b.name);
     });
 
-    _shopCache.set(key, picked);
-    return picked;
+    _shopCache.set(key, stock);
+    return stock;
 }
 
 function msUntilNextShopReset(date = new Date()) {
@@ -213,6 +288,10 @@ function msUntilNextShopReset(date = new Date()) {
 async function purchaseItem(userId, guildId, itemId) {
     const item = getItemById(itemId);
     if (!item) return { success: false, error: 'unknown_item' };
+
+    if (item.tier === 'limited' && item.availability && !isThemeAvailable(item.availability)) {
+        return { success: false, error: 'not_in_season', item };
+    }
 
     const stock = getDailyShopStock(guildId);
     if (!stock.some(s => s.id === itemId)) {
@@ -248,6 +327,8 @@ module.exports = {
     RARITY_ORDER,
     SHOP_SIZE,
     getRarity,
+    isThemeAvailable,
+    formatAvailability,
     getAllItems,
     getItemById,
     getPurchasableItems,

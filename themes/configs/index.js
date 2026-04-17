@@ -8,6 +8,7 @@
  *   colorway  - palette swap only, no custom art
  *   styled    - custom sprites for ONE game
  *   full      - custom sprites for ALL canvas games
+ *   limited   - seasonal/event availability, determined by date range
  */
 
 const path = require('path');
@@ -19,6 +20,11 @@ const BACKGROUND_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'them
 // ── Helper: build a colorway (palette-only, all games) ──────────────
 function colorway(id, name, description, price, weight, emoji, colors) {
     return { id, name, description, tier: 'colorway', price, weight, emoji, game: null, colors, overrides: {} };
+}
+
+// ── Helper: build a limited theme (date-range availability) ─────────
+function limited(id, name, description, price, emoji, availability, colors) {
+    return { id, name, description, tier: 'limited', price, weight: null, emoji, game: null, colors, overrides: {}, availability };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -614,6 +620,27 @@ const themes = {
         },
     ),
 
+    // ── Limited themes (date-range availability) ────────────────────
+
+    pokerNight: limited('pokerNight', 'Poker Night',
+        'Hemp-green felt on a dark, smoky table. A back-room classic.',
+        25000, '🃏',
+        { start: { month: 4, day: 14 }, end: { month: 4, day: 20 } },
+        {
+            feltColor:   '#2d4a2e',
+            feltDark:    '#1a2e1b',
+            tableGreen:  '#3a5c3b',
+            gold:        '#c8b870',
+            goldDark:    '#9a8a4a',
+            goldBronze:  '#6e6230',
+            textWhite:   '#d8d0c0',
+            textWin:     '#88cc66',
+            textLoss:    '#cc6644',
+            textPrimary: '#c8b870',
+            embedColor:  0x2d4a2e,
+        },
+    ),
+
     // ── Test theme ──────────────────────────────────────────────────
 
     minimal: {
@@ -660,8 +687,9 @@ function getThemeList() {
             description: t.description,
             tier:        t.tier,
             price:       t.price,
-            weight:      t.weight ?? 0,
+            weight:      t.weight,
             emoji:       t.emoji || '',
+            availability: t.availability || null,
         }));
 }
 

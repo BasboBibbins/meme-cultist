@@ -22,7 +22,7 @@ module.exports = {
         };
 
         try {
-            const items = getAllItems().filter(i => i.weight > 0);
+            const items = getAllItems().filter(i => i.weight > 0 || i.tier === 'limited');
 
             for (const item of items) {
                 await grantItem(targetUser.id, item.id);

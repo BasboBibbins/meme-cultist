@@ -8,6 +8,7 @@ const {
     getItemById, getAllItems,
     getDailyShopStock, msUntilNextShopReset,
     ownsItem, purchaseItem,
+    isThemeAvailable, formatAvailability,
 } = require('../../utils/inventory');
 
 function buildFooter(interaction) {
@@ -126,6 +127,7 @@ module.exports = {
                     switch (result.error) {
                         case 'unknown_item':       desc = `Unknown item \`${itemId}\`.`; break;
                         case 'not_in_stock':       desc = `**${name}** is not in today's shop. Try \`/shop browse\`.`; break;
+                        case 'not_in_season':      desc = `**${name}** is not currently available. Check back during its availability window.`; break;
                         case 'already_owned':      desc = `You already own **${name}**.`; break;
                         case 'insufficient_funds': desc = `You need **${formatPrice(result.item.price)}** but only have **${(result.balance ?? 0).toLocaleString()} ${CURRENCY_NAME}**.`; break;
                         default:                   desc = `Purchase failed: \`${result.error}\`.`;
@@ -173,6 +175,10 @@ module.exports = {
 
                 let desc = `${item.description}\n\n`;
                 desc += `**Rarity:** ${rarityLabel}\n`;
+                if (item.tier === 'limited' && item.availability) {
+                    desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
+                    desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
+                }
                 desc += `**Price:** ${formatPrice(item.price)}\n`;
                 desc += `**Status:** ${isOwned ? 'Owned' : 'Not Owned'}\n`;
 
