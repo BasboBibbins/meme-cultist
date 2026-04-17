@@ -328,7 +328,7 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     }
     return {
       success: true,
-      note: "Image generated and attached to the reply. Respond with a short caption or nothing."
+      note: "Image generated and attached to the reply. Respond to the user with a message acknowledging the image generation, but do NOT include the image data in the response. The image will be attached separately by the caller."
     };
   } catch (err) {
     logger.error(`[generate_image] ${err.message}`);
