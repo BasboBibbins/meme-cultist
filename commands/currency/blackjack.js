@@ -109,6 +109,13 @@ module.exports = {
             return await interaction.editReply({ embeds: [embed], components: [] });
         }
 
+        // TODO: Create an option for late surrender. After the dealer checks their hand and for natural blackjack:
+        // If dealer does NOT have natural blackjack:
+        // Create option 'forfeit' which forces the user to forfeit ther hand, returning half their bet back.
+        // Reveal dealer hand. Disable the option after player hits/double-down.
+        // Think about split logic: should users be allowed to forfeit hands after split? Can user forfeit individual hands or does it affect all hands?
+        // Compare to online casino blackjack rules to determine best implementation.
+
         // Build the hand description for embeds (dealer hole card hidden)
         async function buildDescription(activeHandIndex) {
             let desc = `**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n`;
