@@ -22,14 +22,47 @@ function withTimeout(promise, ms, err = "Request timed out") {
 }
 
 const ADJECTIVES = [
+    // Generic
     'Royal', 'Noble', 'Silver', 'Golden', 'Dark', 'Swift', 'Bold', 'Wild', 'Iron',
     'Midnight', 'Crimson', 'Blazing', 'Ancient', 'Sacred', 'Mighty', 'Phantom',
     'Eternal', 'Raging', 'Frozen', 'Thunder', 'Shadow',
     'Crusty', 'Wobbly', 'Sleepy', 'Soggy', 'Grumpy', 'Chonky', 'Dusty', 'Sneaky',
     'Hangry', 'Discount', 'Cursed', 'Broke', 'Slightly', 'Suspiciously',
-    'Aggressively', 'Mediocre', 'Confused', 'Retired', 'Certified', 'Definitely-Not-A',
-    'Special', 'Silence', 'Daiwa', 'Mejiro', 'Narita', 'Symboli', 'Mihono',
+    'Aggressively', 'Mediocre', 'Confused', 'Retired', 'Certified', 
+    'Special', 'Silence', 'Fwenly', 'Definitely-Not-A',
+    // Sethja Additions
+    'Door', 'Jovial', 'Downtown', 'Superstitional',
+    'Cyan', 'Resolute', 'Comely', 'Material', 'A-Mysterious', 
+    'Garbage', 'Nighttime', 'Kidslookn', 'Hell', 'Undead', 
+    'Nice', 'Matikane', 'Mikus-Favorite', 'Big', 'Desert', 
+    'Dream', 'Gold', 'Go', 'Gun', 'Hurricane', 
+    'Hearts', 'My-Lucky', 'King', 'Super', 'Night', 
+    'Lady', 'Maximum', 'Mr', 'Nakayama', 'Opera', 
+    'Peter', 'Pretty', 'Red', 'Blue', 'Green', 
+    'White', 'Regret', 'Stay', 'Rapist', 'War', 
+    'Wishing', 'Wonder', 'Admire', 'Empire', 'Assault', 
+    'Best', 'Joe', 'John', 'Master', 'Flying', 
+    'Falling', 'Jumping', 'Racing', 'Running', 'Funny', 
+    'Forever', 'Grey', 'Justify', 'Kissin', 'Over', 
+    'Thanks', 'The', 'Just-Wanna', 'Queen', 'Rice', 
+    'Seize-The', 'Saint', 'Vodka', 'Not', 'Italian', 
+    'Zippy', 'Silly', 'Goofy', 'Dilly-Dally', 'Willy', 
+    'Your', 'Helluva', 'Piss', 'Shit', 'Ass', 
+    'Chinese', 'Succulent', 'Democracy', 'Cute', 'Feminine', 
+    'Half-Retard', 'SPED', 'Corporate', 'Minecraft', 'Pinball', 
+    'Underage', 'Overage', 'Melodic', 'Saucy', 'Cheeky', 
+    'Onion', 'Spicy', '2nd-Hand', 'Cauliflower', 'No', 
+    'Grand', 'Mariors', 'Luigirs', 'Fightan', 'Anime', 
+    'Hazbin', 'Tic-Toc', 'Family-Guy', 'A.I.', 'Falling',
+    'My-Beautiful-Dark-Twisted', 
+    // Umamusume
+    'Daiwa', 'Mejiro', 'Narita', 'Symboli', 'Mihono',
     'Satono', 'Kitasan', 'Marvelous', 'Winning', 'Maruzen',
+    'Bulletin', 'Lightning',
+    // Rikishi
+    'Yokozuna', 'Ozeki', 'Sekiwake', 'Komusubui', 'Maegashira', 
+    // TMC Members
+    'Bball', 'Clean', 'Confirmed', 'Top', 'Fwen', 
 ];
 
 const NOUNS = [
@@ -39,9 +72,45 @@ const NOUNS = [
     'Noodle', 'Bucket', 'Socks', 'Muffin', 'Goblin', 'Potato', 'Biscuit', 'Waffle',
     'Accountant', 'Conspiracy', 'Refund', 'Intern', 'Napkin', 'Horoscope',
     'Regret', 'Situation', 'Vibez', 'Agenda', 'Omen', 'Opinion',
+    // Sethja Additions
+    'Board', 'Strikes', 'Strikes Thrice', 'Realism', 
+    'Let-Loose', 'Touchable', 'Knob', 'Merryment', 'Skybox', 
+    'Mind', 'Afternoon', 'Material', 'Morning', 'Figure', 
+    'Bin', 'Knifemare', 'Nightmare', 'Nature', 'Fukukitaru', 
+    'Tannhauser', 'Chocolatier', 'Caviar', 'Cigar', 'Gold', 
+    'Journey', 'Ship', 'Man-Go', 'Squid', 'Battle-Golf', 
+    'Heart', 'Spade', 'Club', 'Diamond', 'Security', 
+    'Needles', 'Pan', 'Griffin', 'Derby', 'Simp', 
+    'Koku', 'Game', 'In-Love', 'Gold', 'Heat', 
+    'Chippy', 'Zooplegloop', 'Stage', 'Tahiti', 'BloonsMonkeySex', 
+    'Horse', 'Rapist', 'Rape', 'Wishes', 'Mate', 
+    'Ben', 'Burrow', 'Vista', 'XP', 'The-Twelfth', 
+    'Cigarette', 'Crisp', 'Dick', 'Penis', 'Young', 
+    'Hound', 'Lucky', 'Chief', 'Dancer', 'Nice', 
+    'Dose', 'Doc', 'Drink', 'Cup', 'Parfait', 
+    'Juicebox', 'Videogames', 'Gin', 'Beer', 'Opera-O', 
+    'Rosso', 'Brother', 'Pasta', 'Tomato', 'Colors', 
+    'Wash', 'Suckin', 'Name', 'Pomni', 'Shower', 
+    'Manifest', 'Steve', 'Hitler', 'Evil-Hitler-Ghost', 'Adolf', 
+    'Watanabe', 'Bebop', 'Dad', 'Council', 'Ring', 
+    'Meatball', 'Repossession', 'Clone', 'Oil', 'Sexo-Sexo', 
+    'Pickaxe', 'Axe', 'Hotel', 'Funny-Moments', 'Slop', 
+    'Edge', 'Kart', 'Missile', 'Fantasy',
+    // Umamusume
     'Suzuka', 'Scarlet', 'McQueen', 'Turbo', 'Bourbon', 'Teio', 'Rudolf',
-    'Vodka', 'Tachyon', 'Falcon', 'Hayahide', 'Brian', 'Cap', 'Helios',
+    'Vodka', 'Tachyon', 'Falcon', 'Yayahide', 'Brian', 'Cap', 'Helios',
     'Shakur', 'Taiki', 'Creek', 'Ticket', 'Sky',
+    // Rikishi
+    'Hoshoryu', 'Aonishki', 'Kirishima', 'Wakamotoharu', 'Wakatakakage', 
+    'Abi', 'Ura', 'Gonoyama', '#Tobizaru', 'Ichiyamamoto', 
+    // TMC Members
+    'Spook', 'Merlington', 'Hayes', 'Seth', 'Ja8', 
+    'Maestro', 'Marshall', 'Night-Hawk', '5hine', 'Akula', 
+    'Ballin', 'Basbo', 'Jake', 'Toast', 'Proctor', 
+    'Falcon', 'Fuzzles', 'Sean', 'Racer', 'Laser', 
+    'Mammut', 'Monty', 'Joe', 'Finger', 'Coco', 
+    'Pepper', 'Public', 'Notch', 'Top-Notch', 'Yeet', 
+    'Damon', 'Bot', 'Sev'
 ];
 
 const EMOJIS = ['🏇', '🐎', '🦄', '🦓', '🦌', '🐴', '🎠', '⭐'];
