@@ -243,7 +243,12 @@ async function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreeP
     if (c.background) {
         try {
             const bgImg = await loadImage(c.background);
-            ctx.drawImage(bgImg, 0, 0, W, H);
+            const scale = Math.max(W / bgImg.width, H / bgImg.height);
+            const drawW = bgImg.width * scale;
+            const drawH = bgImg.height * scale;
+            const dx = (W - drawW) / 2;
+            const dy = (H - drawH) / 2;
+            ctx.drawImage(bgImg, dx, dy, drawW, drawH);
         } catch (err) {
             ctx.fillStyle = c.feltDark;
             ctx.fillRect(0, 0, W, H);
