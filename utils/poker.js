@@ -110,6 +110,22 @@ async function pokerScore(hand) {
 }
 
 
+const ROYAL_FLUSH_HAND = [
+    { image: 'https://deckofcardsapi.com/static/img/0S.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/JS.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/QS.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/KS.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/AS.png', hold: true },
+];
+
+/**
+ * Generate a royal flush hand preview PNG for the shop.
+ */
+async function pokerPreview(themeId) {
+    const colors = getThemeColors(themeId, 'poker');
+    return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors);
+}
+
 module.exports = {
     pokerScore: async (hand) => {
         try {
@@ -127,8 +143,14 @@ module.exports = {
             if (colors.background) {
                 try {
                     const bgImg = await loadImage(colors.background);
-                    ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H);
+                    const scale = Math.max(CANVAS_W / bgImg.width, CANVAS_H / bgImg.height);
+                    const drawW = bgImg.width * scale;
+                    const drawH = bgImg.height * scale;
+                    const dx = (CANVAS_W - drawW) / 2;
+                    const dy = (CANVAS_H - drawH) / 2;
+                    ctx.drawImage(bgImg, dx, dy, drawW, drawH);
                 } catch (err) {
+                    logger.warn('Failed to load poker background image, using fallback color', { error: err });
                     ctx.fillStyle = colors.feltColor;
                     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
                 }
@@ -229,5 +251,6 @@ module.exports = {
             logger.error(err);
             return null;
         }
-    }
+    },
+    pokerPreview
 }

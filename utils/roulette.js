@@ -1,6 +1,7 @@
 const { createCanvas, loadImage } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
 const { getThemeColors } = require('../themes/resolver');
+const logger = require('./logger');
 
 // Resolve classic roulette colors as the default fallback
 const DEFAULT_COLORS = getThemeColors('classic', 'roulette');
@@ -473,8 +474,14 @@ async function drawRouletteTable(bets = [], userAvatars = {}, userColors = {}, c
     if (colors.background) {
         try {
             const bgImg = await loadImage(colors.background);
-            ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H);
+            const scale = Math.max(CANVAS_W / bgImg.width, CANVAS_H / bgImg.height);
+            const drawW = bgImg.width * scale;
+            const drawH = bgImg.height * scale;
+            const dx = (CANVAS_W - drawW) / 2;
+            const dy = (CANVAS_H - drawH) / 2;
+            ctx.drawImage(bgImg, dx, dy, drawW, drawH);
         } catch (err) {
+            logger.warn('Failed to load roulette background image, using fallback color', { error: err });
             ctx.fillStyle = colors.feltColor;
             ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
         }
@@ -691,6 +698,14 @@ function calculateWinnings(betType, betNumber, betAmount, winningNumber) {
     return won ? betAmount * multiplier : 0;
 }
 
+/**
+ * Generate an empty-bet roulette table preview PNG for the shop.
+ */
+async function roulettePreview(themeId) {
+    const colors = getThemeColors(themeId, 'roulette');
+    return drawRouletteTable([], {}, {}, colors);
+}
+
 module.exports = {
     drawRouletteTable,
     drawBall,
@@ -699,6 +714,7 @@ module.exports = {
     calculateWinnings,
     getRedBlack,
     getNumberPosition,
+    roulettePreview,
     ROULETTE_NUMBERS,
     RED_NUMBERS
 };

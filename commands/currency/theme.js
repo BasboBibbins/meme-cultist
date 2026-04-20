@@ -42,14 +42,11 @@ module.exports = {
 
     async autocomplete(interaction) {
         const focused = interaction.options.getFocused();
-        const list = getThemeList();
-        const filtered = list
-            .filter(t =>
-                t.name.toLowerCase().startsWith(focused.toLowerCase()) ||
-                t.id.toLowerCase().startsWith(focused.toLowerCase()))
-            .slice(0, 25);
-        await interaction.respond(
-            filtered.map(t => ({ name: `${t.emoji ? `${t.emoji} ` : ''}${t.name} \u2014 ${t.description}`, value: t.id }))
+        const list = await getOwnedThemes(interaction.user.id);
+        logger.debug(`Autocomplete for user ${interaction.user.username} (${interaction.user.id}), focused: "${focused}", owned themes: ${list.join(', ')}`);
+        return interaction.respond(
+            list.filter(t => t.startsWith(focused))
+                .map(t => ({ name: getItemById(t)?.name || t, value: t }))
         );
     },
 

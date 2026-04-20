@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { CURRENCY_NAME } = require('../../config.js');
 const { getThemeColors } = require('../../themes/resolver');
 const logger = require('../../utils/logger');
@@ -10,6 +10,9 @@ const {
     ownsItem, purchaseItem,
     isThemeAvailable, formatAvailability,
 } = require('../../utils/inventory');
+const { slotsPreview } = require('../../utils/slotsCanvas');
+const { roulettePreview } = require('../../utils/roulette');
+const { pokerPreview } = require('../../utils/poker');
 
 function buildFooter(interaction) {
     return {
@@ -31,6 +34,55 @@ function renderThemeSwatch(themeId) {
         .join('  ');
     const embedColor = colors.embedColor || parseInt(String(colors.feltColor).replace('#', ''), 16) || 0x5865F2;
     return { swatch, embedColor };
+}
+
+// ── Game preview pagination ──────────────────────────────────────────
+const previewCache = new Map();
+const PREVIEW_GAMES = ['slots', 'roulette', 'poker'];
+const GAME_LABELS = { slots: 'Slots', roulette: 'Roulette', poker: 'Poker' };
+const GAME_EMOJIS = { slots: '\u{1F3B0}', roulette: '\u{1F3B2}', poker: '\u{1F0CF}' };
+const GAME_FILES = { slots: 'slots-spin.gif', roulette: 'roulette.png', poker: 'hand.png' };
+
+async function getPreviewAttachment(themeId, game) {
+    const key = `${themeId}-${game}`;
+    if (previewCache.has(key)) return previewCache.get(key);
+    let attachment = null;
+    try {
+        switch (game) {
+            case 'slots':    attachment = await slotsPreview(themeId); break;
+            case 'roulette': attachment = await roulettePreview(themeId); break;
+            case 'poker':    attachment = await pokerPreview(themeId); break;
+        }
+    } catch (err) {
+        logger.error(`Preview generation failed for ${key}: ${err.message}`);
+    }
+    previewCache.set(key, attachment);
+    return attachment;
+}
+
+function buildPreviewEmbed(item, isOwned, embedColor, game) {
+    const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Unlisted';
+    let desc = `${item.description}\n\n`;
+    desc += `**Rarity:** ${rarityLabel}\n`;
+    if (item.tier === 'limited' && item.availability) {
+        desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
+        desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
+    }
+    desc += `**Price:** ${formatPrice(item.price)}\n`;
+    desc += `**Status:** ${isOwned ? 'Owned' : 'Not Owned'}\n`;
+    if (item.category === 'theme') {
+        const { swatch } = renderThemeSwatch(item.id);
+        desc += `\n**Sample Colors:**\n${swatch}`;
+    }
+    const embed = new EmbedBuilder()
+        .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
+        .setDescription(desc)
+        .setColor(embedColor)
+        .setTimestamp();
+    if (game) {
+        embed.setFooter({ text: `${GAME_EMOJIS[game]} ${GAME_LABELS[game]} Preview | Page ${PREVIEW_GAMES.indexOf(game) + 1}/${PREVIEW_GAMES.length}` });
+    }
+    return embed;
 }
 
 module.exports = {
@@ -70,7 +122,7 @@ module.exports = {
                 i.id.toLowerCase().startsWith(focused) ||
                 i.name.toLowerCase().startsWith(focused))
             .slice(0, 25)
-            .map(i => ({ name: `${i.emoji ? `${i.emoji} ` : ''}${i.name} \u2014 ${formatPrice(i.price)}`, value: i.id }));
+            .map(i => ({ name: `${i.name} ${sub === 'buy' ? `\u2014 ${formatPrice(i.price)}` : ''}`, value: i.id }));
 
         await interaction.respond(filtered);
     },
@@ -170,32 +222,110 @@ module.exports = {
                 }
 
                 const isOwned = await ownsItem(user.id, itemId);
-                const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Unlisted';
-                const rarityColor = item.rarity ? RARITY[item.rarity].color : 0x5865F2;
 
-                let desc = `${item.description}\n\n`;
-                desc += `**Rarity:** ${rarityLabel}\n`;
-                if (item.tier === 'limited' && item.availability) {
-                    desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
-                    desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
+                // Non-theme items: static embed (unchanged)
+                if (item.category !== 'theme') {
+                    const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Unlisted';
+                    const rarityColor = item.rarity ? RARITY[item.rarity].color : 0x5865F2;
+
+                    let desc = `${item.description}\n\n`;
+                    desc += `**Rarity:** ${rarityLabel}\n`;
+                    if (item.tier === 'limited' && item.availability) {
+                        desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
+                        desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
+                    }
+                    desc += `**Price:** ${formatPrice(item.price)}\n`;
+                    desc += `**Status:** ${isOwned ? 'Owned' : 'Not Owned'}\n`;
+
+                    const embed = new EmbedBuilder()
+                        .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
+                        .setDescription(desc)
+                        .setColor(rarityColor)
+                        .setFooter(footer)
+                        .setTimestamp();
+                    return interaction.reply({ embeds: [embed], ephemeral: true });
                 }
-                desc += `**Price:** ${formatPrice(item.price)}\n`;
-                desc += `**Status:** ${isOwned ? 'Owned' : 'Not Owned'}\n`;
 
-                let embedColor = rarityColor;
-                if (item.category === 'theme') {
-                    const { swatch, embedColor: tColor } = renderThemeSwatch(itemId);
-                    desc += `\n**Sample Colors:**\n${swatch}`;
-                    embedColor = tColor;
+                // Theme items: paginated game previews
+                const { embedColor } = renderThemeSwatch(itemId);
+                await interaction.deferReply({ ephemeral: true });
+
+                const attachments = {};
+                for (const game of PREVIEW_GAMES) {
+                    attachments[game] = await getPreviewAttachment(itemId, game);
                 }
 
-                const embed = new EmbedBuilder()
-                    .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
-                    .setDescription(desc)
-                    .setColor(embedColor)
-                    .setFooter(footer)
-                    .setTimestamp();
-                return interaction.reply({ embeds: [embed], ephemeral: true });
+                let currentPage = 0;
+                let currentGame = PREVIEW_GAMES[currentPage];
+
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('prev_game')
+                            .setLabel(`${GAME_EMOJIS[PREVIEW_GAMES[0]]} ${GAME_LABELS[PREVIEW_GAMES[0]]}`)
+                            .setStyle(ButtonStyle.Primary)
+                            .setDisabled(true),
+                        new ButtonBuilder()
+                            .setCustomId('next_game')
+                            .setLabel(`${GAME_EMOJIS[PREVIEW_GAMES[1]]} ${GAME_LABELS[PREVIEW_GAMES[1]]}`)
+                            .setStyle(ButtonStyle.Primary),
+                    );
+
+                const embed = buildPreviewEmbed(item, isOwned, embedColor, currentGame);
+                const currentAttachment = attachments[currentGame];
+                if (currentAttachment) {
+                    embed.setImage(`attachment://${GAME_FILES[currentGame]}`);
+                }
+
+                const msg = await interaction.editReply({
+                    embeds: [embed],
+                    components: [row],
+                    files: currentAttachment ? [currentAttachment] : [],
+                });
+
+                const filter = i => (i.customId === 'prev_game' || i.customId === 'next_game')
+                    && i.user.id === interaction.user.id;
+                const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+
+                collector.on('collect', async i => {
+                    await i.deferUpdate();
+
+                    if (i.customId === 'prev_game') currentPage--;
+                    else if (i.customId === 'next_game') currentPage++;
+                    currentPage = Math.max(0, Math.min(PREVIEW_GAMES.length - 1, currentPage));
+                    currentGame = PREVIEW_GAMES[currentPage];
+
+                    row.components[0]
+                        .setDisabled(currentPage === 0)
+                        .setLabel(currentPage > 0
+                            ? `${GAME_EMOJIS[PREVIEW_GAMES[currentPage - 1]]} ${GAME_LABELS[PREVIEW_GAMES[currentPage - 1]]}`
+                            : `${GAME_EMOJIS[PREVIEW_GAMES[0]]} ${GAME_LABELS[PREVIEW_GAMES[0]]}`);
+                    row.components[1]
+                        .setDisabled(currentPage === PREVIEW_GAMES.length - 1)
+                        .setLabel(currentPage < PREVIEW_GAMES.length - 1
+                            ? `${GAME_EMOJIS[PREVIEW_GAMES[currentPage + 1]]} ${GAME_LABELS[PREVIEW_GAMES[currentPage + 1]]}`
+                            : `${GAME_EMOJIS[PREVIEW_GAMES[2]]} ${GAME_LABELS[PREVIEW_GAMES[2]]}`);
+
+                    const newEmbed = buildPreviewEmbed(item, isOwned, embedColor, currentGame);
+                    const newAttachment = attachments[currentGame];
+                    if (newAttachment) {
+                        newEmbed.setImage(`attachment://${GAME_FILES[currentGame]}`);
+                    }
+
+                    collector.resetTimer();
+                    i.editReply({
+                        embeds: [newEmbed],
+                        components: [row],
+                        files: newAttachment ? [newAttachment] : [],
+                    });
+                });
+
+                collector.on('end', (collected, reason) => {
+                    logger.debug(`Shop preview collector ended: ${reason}`);
+                    interaction.deleteReply().catch(() => {});
+                });
+
+                return;
             }
         }
     },

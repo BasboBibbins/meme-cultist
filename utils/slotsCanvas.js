@@ -250,6 +250,7 @@ async function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreeP
             const dy = (H - drawH) / 2;
             ctx.drawImage(bgImg, dx, dy, drawW, drawH);
         } catch (err) {
+            logger.warn('Failed to load slot background image, using fallback color', { error: err });
             ctx.fillStyle = c.feltDark;
             ctx.fillRect(0, 0, W, H);
         }
@@ -738,10 +739,22 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
     return new AttachmentBuilder(buffer, { name: 'paytable.png' });
 }
 
+/**
+ * Generate a deterministic slots spin preview GIF for the shop.
+ * Row 0 is three cherries (index 4) — a guaranteed winning line.
+ */
+async function slotsPreview(themeId) {
+    const theme = getTheme(themeId);
+    await preloadThemeImages(theme);
+    const grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
+    return drawSpinAnimation(grid, { jackpotDisplay: '0 koku', activeLines: 1, bet: 0, theme });
+}
+
 module.exports = {
     drawSlotMachine,
     drawSpinAnimation,
     drawPaytable,
+    slotsPreview,
     PAYLINES,
     PAYLINE_COLORS,
 };

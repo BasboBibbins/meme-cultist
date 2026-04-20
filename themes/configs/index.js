@@ -40,7 +40,7 @@ const themes = {
         tier: 'limited',
         price: 1000000,
         weight: null,
-        emoji: ':',
+        emoji: '<:mlgdoge:1495823525250863236>',
         game: null,
         availability: { start: { month: 4, day: 20 }, end: { month: 4, day: 30 } },
 
