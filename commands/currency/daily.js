@@ -55,7 +55,7 @@ module.exports = {
 
         const embed = new EmbedBuilder()
             .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-            .setDescription(`You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus)}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
+            .setDescription(`You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus).toLocaleString('en-US')}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:'' + streakprompt}`)
             .setColor(0x00FF00)
             .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
             .setTimestamp();

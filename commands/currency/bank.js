@@ -69,9 +69,9 @@ module.exports = {
                     embed.setDescription(`You don't have enough ${CURRENCY_NAME} to deposit!`);
                     embed.setColor("#FF0000");
                 } else {
-                    logger.info(`Depositing ${amount} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet to their bank...`);
+                    logger.info(`Depositing ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet to their bank...`);
                     await deposit(user.id, amount);
-                    embed.setDescription(`Successfully deposited ${amount} ${CURRENCY_NAME} into your bank!`);
+                    embed.setDescription(`Successfully deposited ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} into your bank!`);
                     embed.setColor("#00FF00");
                 }
                 await interaction.editReply({embeds: [embed]});
@@ -86,7 +86,7 @@ module.exports = {
                 } else {
                     logger.info(`Withdrawing ${amount} ${CURRENCY_NAME} from ${user.username} (${user.id})'s bank to their wallet...`);
                     await withdraw(user.id, amount);
-                    embed.setDescription(`Successfully withdrew ${amount} ${CURRENCY_NAME} from your bank!`);
+                    embed.setDescription(`Successfully withdrew ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from your bank!`);
                     embed.setColor("#00FF00");
                 }
                 await interaction.editReply({embeds: [embed]});

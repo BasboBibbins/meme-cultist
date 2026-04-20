@@ -72,7 +72,7 @@ module.exports = {
             
         if (chance > 75) {
             embed.setColor("#00ff00");
-            embed.setDescription(`Fine, here's **${amount}** ${CURRENCY_NAME}. Now stop annoying me.`);
+            embed.setDescription(`Fine, here's **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME}. Now stop annoying me.`);
             await db.add(`${user.id}.balance`, amount);
             await logger.info(`Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
             await db.add(`${stats}.wins`, 1);

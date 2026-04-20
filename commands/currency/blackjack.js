@@ -87,7 +87,7 @@ module.exports = {
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                     .setTitle(`Push!`)
-                    .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nBoth have blackjack! It's a push!\nYour balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`)
+                    .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nBoth have blackjack! It's a push!\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
                     .setColor(0xFFFF00)
                     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                     .setTimestamp();
@@ -102,9 +102,9 @@ module.exports = {
             const embed = new EmbedBuilder()
                 .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setTitle(`Blackjack!`)
-                .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')} (${dealerTotal})\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${originalBet * 1.5}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`)
+                .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')} (${dealerTotal})\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${(originalBet * 1.5).toLocaleString('en-US')}** ${CURRENCY_NAME}!\nYour new balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
                 .setColor(0x00AE86)
-                .setFooter({ text: `Bet: ${originalBet} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
             return await interaction.editReply({ embeds: [embed], components: [] });
         }
@@ -168,7 +168,7 @@ module.exports = {
                     .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                     .setTitle(hands.length > 1 ? `Hand ${handIndex + 1} of ${hands.length}` : `Good luck!`)
                     .setColor(randomHexColor())
-                    .setFooter({ text: `Bet: ${hand.bet} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                    .setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                     .setTimestamp();
 
                 embed.setDescription(await buildDescription(handIndex));
@@ -271,7 +271,7 @@ module.exports = {
                         } else {
                             embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Double Down (${newVal})` : `Double Down (${newVal})`);
                         }
-                        embed.setFooter({ text: `Bet: ${hand.bet} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+                        embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
                         await i.update({ embeds: [embed], components: [] });
                         collector.stop('double');
                     } else if (i.customId === 'split') {
@@ -439,7 +439,7 @@ module.exports = {
                 const marker = hand.isDoubled ? ' 💵' : '';
                 const tag = handStatus === 'bust' ? ' 💥' : handStatus === 'blackjack' ? ' 🃏' : '';
                 const label = hands.length > 1 ? `Hand ${i + 1}:` : `Your hand:`;
-                resultLines.push(`**${label}** ${hand.cards.map(card => `\`${card.char}\``).join(' ')} (${handTotal})${marker}${tag} → ${handResult}${winnings > 0 ? ` (+${winnings})` : ''}`);
+                resultLines.push(`**${label}** ${hand.cards.map(card => `\`${card.char}\``).join(' ')} (${handTotal})${marker}${tag} → ${handResult}${winnings > 0 ? ` (+${winnings.toLocaleString('en-US')})` : ''}`);
             }
 
             // Add winnings
@@ -469,7 +469,7 @@ module.exports = {
             const finalEmbed = new EmbedBuilder()
                 .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setTitle(dealerStatus === 'bust' ? 'Dealer busts!' : `Dealer: ${dealerTotal}`)
-                .setDescription(`${finalDescription}${resultLines.join('\n')}\n\n${totalWinnings > totalBets ? `You won **${totalWinnings - totalBets}** ${CURRENCY_NAME}!` : totalWinnings === totalBets ? `You broke even.` : `You lost **${totalBets - totalWinnings}** ${CURRENCY_NAME}.`}\nYour balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`)
+                .setDescription(`${finalDescription}${resultLines.join('\n')}\n\n${totalWinnings > totalBets ? `You won **${(totalWinnings - totalBets).toLocaleString('en-US')}** ${CURRENCY_NAME}!` : totalWinnings === totalBets ? `You broke even.` : `You lost **${(totalBets - totalWinnings).toLocaleString('en-US')}** ${CURRENCY_NAME}.`}\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
                 .setColor(totalWinnings > totalBets ? 0x00AE86 : (totalWinnings > 0 ? 0xFFFF00 : 0xFF0000))
                 .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();

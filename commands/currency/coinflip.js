@@ -56,7 +56,7 @@ module.exports = {
         if (chance > 50) {
             embed.setColor(0x00FF00);
             embed.setTitle('Congratulations!')
-            embed.setDescription(`You won **${bet}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet)}** ${CURRENCY_NAME}.`);
+            embed.setDescription(`You won **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
             await db.add(`${interaction.user.id}.balance`, bet);
             await db.add(`${interaction.user.id}.stats.flip.wins`, 1);
             await db.add(`${interaction.user.id}.stats.flip.profit`, bet);
@@ -67,7 +67,7 @@ module.exports = {
         } else {
             embed.setColor(0xFF0000);
             embed.setTitle('You lose!')
-            embed.setDescription(`I'll be taking **${bet}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet)}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? `You're now broke!` : ''}`);
+            embed.setDescription(`I'll be taking **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet).toLocaleString('en-US')}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? `You're now broke!` : ''}`);
             await db.sub(`${interaction.user.id}.balance`, bet);
             await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
             await db.sub(`${interaction.user.id}.stats.flip.profit`, bet);

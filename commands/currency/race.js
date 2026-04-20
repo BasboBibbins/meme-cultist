@@ -278,10 +278,10 @@ async function handleBet(interaction, client, user) {
         return await interaction.reply({ embeds: [errorEmbed(`You must bet a whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (RACE_MIN_BET && bet < RACE_MIN_BET) {
-        return await interaction.reply({ embeds: [errorEmbed(`Minimum bet is ${RACE_MIN_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
+        return await interaction.reply({ embeds: [errorEmbed(`Minimum bet is ${RACE_MIN_BET.toLocaleString('en-US')} ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (RACE_MAX_BET && bet > RACE_MAX_BET) {
-        return await interaction.reply({ embeds: [errorEmbed(`Maximum bet is ${RACE_MAX_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
+        return await interaction.reply({ embeds: [errorEmbed(`Maximum bet is ${RACE_MAX_BET.toLocaleString('en-US')} ${CURRENCY_NAME}!`)], ephemeral: true });
     }
 
     let dbUser = await db.get(user.id);
@@ -295,7 +295,7 @@ async function handleBet(interaction, client, user) {
         const embed = new EmbedBuilder()
             .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(0xFF0000)
-            .setDescription(`Insufficient funds! You have **${currentBalance}** ${CURRENCY_NAME}.`)
+            .setDescription(`Insufficient funds! You have **${currentBalance.toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
             .setTimestamp();
         return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
@@ -342,11 +342,11 @@ async function handleBet(interaction, client, user) {
     const confirmEmbed = new EmbedBuilder()
         .setAuthor({ name: 'Bet Placed!', iconURL: user.displayAvatarURL({ dynamic: true }) })
         .setDescription([
-            `You bet **${bet}** ${CURRENCY_NAME} on:`,
+            `You bet **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME} on:`,
             `**Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
             `**Odds:** ${horse.displayOdds}x`,
             `**Bet Type:** ${betType.charAt(0).toUpperCase() + betType.slice(1)}`,
-            `**Potential win:** ${calculatePayout(bet, horse.displayOdds, HOUSE_EDGE, betType)} ${CURRENCY_NAME}`
+            `**Potential win:** ${calculatePayout(bet, horse.displayOdds, HOUSE_EDGE, betType).toLocaleString('en-US')} ${CURRENCY_NAME}`
         ].join('\n'))
         .setColor(randomHexColor())
         .setTimestamp();
@@ -518,9 +518,9 @@ async function resolveRace(client, channel, message, game) {
             const betTypeLabel = (result.betType || 'win').charAt(0).toUpperCase() + (result.betType || 'win').slice(1);
             const positionLabel = result.horsePosition === 0 ? '🥇' : (result.horsePosition === 1 ? '🥈' : (result.horsePosition === 2 ? '🥉' : ''));
             if (result.won) {
-                resultsLines.push(`${positionLabel}✅ <@${result.userId}> won **${result.winnings}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})!`);
+                resultsLines.push(`${positionLabel}✅ <@${result.userId}> won **${result.winnings.toLocaleString('en-US')}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})!`);
             } else {
-                resultsLines.push(`❌ <@${result.userId}> lost **${result.amount}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})`);
+                resultsLines.push(`❌ <@${result.userId}> lost **${result.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})`);
             }
         }
     }
@@ -545,13 +545,13 @@ async function resolveRace(client, channel, message, game) {
                 .setDescription([
                     `**Horse:** ${horse.number}. ${horse.name} ${horse.emoji}`,
                     `**Odds:** ${horse.displayOdds}x`,
-                    `**Bet:** ${result.amount} ${CURRENCY_NAME}`,
+                    `**Bet:** ${result.amount.toLocaleString('en-US')} ${CURRENCY_NAME}`,
                     `**Bet Type:** ${betTypeLabel}`,
                     `**Finish:** ${positionText}`,
                     `**Result:** ${result.won ? 'Won!' : 'Lost'}`,
                     '',
-                    `**Net:** ${net >= 0 ? '+' : ''}${net} ${CURRENCY_NAME}`,
-                    `**New balance:** ${result.newBalance} ${CURRENCY_NAME}`
+                    `**Net:** ${net >= 0 ? '+' : ''}${net.toLocaleString('en-US')} ${CURRENCY_NAME}`,
+                    `**New balance:** ${result.newBalance.toLocaleString('en-US')} ${CURRENCY_NAME}`
                 ].join('\n'))
                 .setColor(result.won ? 0x00AA00 : 0xFF0000)
                 .setTimestamp();

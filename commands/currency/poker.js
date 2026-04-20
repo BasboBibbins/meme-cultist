@@ -54,7 +54,7 @@ module.exports = {
                     1x`, inline: true }
             );
             paytable.addFields(
-                { name: '🎰 Progressive Jackpot', value: `**${jackpot.amount.toLocaleString()} ${CURRENCY_NAME}**\nMinimum bet: ${MIN_BET} ${CURRENCY_NAME}`, inline: false }
+                { name: '🎰 Progressive Jackpot', value: `**${jackpot.amount.toLocaleString('en-US')} ${CURRENCY_NAME}**\nMinimum bet: ${MIN_BET.toLocaleString('en-US')} ${CURRENCY_NAME}`, inline: false }
             );
             return interaction.reply({ embeds: [paytable], ephemeral: true });
         }
@@ -104,7 +104,7 @@ module.exports = {
             .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setTitle(`Good luck!`)
             .setColor(randomHexColor())
-            .setFooter({ text: `Bet: ${bet} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `Bet: ${bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
         const deck = await newDeck();
@@ -153,253 +153,109 @@ module.exports = {
         embed.setImage(`attachment://hand.png`);
         msg = await interaction.editReply({ embeds: [embed], components: [hold_row, draw_row], fetchReply: true, files: [file] });
 
+        const PAYOUTS = {
+            'Straight Flush':  { mult: 50, title: 'You got a Straight Flush!' },
+            'Four of a Kind':  { mult: 25, title: 'You got Four of a Kind!' },
+            'Full House':      { mult: 9,  title: 'You got a Full House!' },
+            'Flush':           { mult: 6,  title: 'You got a Flush!' },
+            'Straight':        { mult: 4,  title: 'You got a Straight!' },
+            'Three of a Kind': { mult: 3,  title: 'You got Three of a Kind!' },
+            'Two Pair':        { mult: 2,  title: 'You got Two Pair!' },
+            'Jacks or Better': { mult: 1,  title: 'You got a Pair of Jacks or Better!' },
+        };
+
+        const applyWin = async (winnings, { isRoyal = false } = {}) => {
+            await db.add(`${user.id}.balance`, winnings);
+            await db.add(`${stats}.wins`, 1);
+            if (isRoyal) await db.add(`${stats}.royals`, 1);
+            await db.add(`${stats}.profit`, winnings - bet);
+            if (winnings > await db.get(`${stats}.biggestWin`)) {
+                await db.set(`${stats}.biggestWin`, winnings);
+            }
+            return (await db.get(`${user.id}.balance`)).toLocaleString('en-US');
+        };
+
         const filter = i => i.user.id === user.id;
         const collector = msg.createMessageComponentCollector({ filter, time: 30000 });
 
         collector.on('collect', async i => {
             await i.deferUpdate();
-            switch (i.customId) {
-                case 'card1':
-                    if (heldCards[0].hold) {
-                        heldCards[0].hold = false;
-                        hold_row.components[0].setStyle(ButtonStyle.Primary);
-                        hold_row.components[0].setLabel(`${heldCards[0].value} HOLD`)
-                    } else {
-                        heldCards[0].hold = true;
-                        hold_row.components[0].setStyle(ButtonStyle.Secondary);
-                        hold_row.components[0].setLabel(`${heldCards[0].value} HOLDING`);
-                    }
-                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
-                    i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
-                    break;
-                case 'card2':
-                    if (heldCards[1].hold) {
-                        heldCards[1].hold = false;
-                        hold_row.components[1].setStyle(ButtonStyle.Primary);
-                        hold_row.components[1].setLabel(`${heldCards[1].value} HOLD`);
-                    } else {
-                        heldCards[1].hold = true;
-                        hold_row.components[1].setStyle(ButtonStyle.Secondary);
-                        hold_row.components[1].setLabel(`${heldCards[1].value} HOLDING`);
-                    }
-                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
-                    i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
-                    break;
-                case 'card3':
-                    if (heldCards[2].hold) {
-                        heldCards[2].hold = false;
-                        hold_row.components[2].setStyle(ButtonStyle.Primary);
-                        hold_row.components[2].setLabel(`${heldCards[2].value} HOLD`);
-                    } else {
-                        heldCards[2].hold = true;
-                        hold_row.components[2].setStyle(ButtonStyle.Secondary);
-                        hold_row.components[2].setLabel(`${heldCards[2].value} HOLDING`);
-                    }
-                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
-                    i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
-                    break;
-                case 'card4':
-                    if (heldCards[3].hold) {
-                        heldCards[3].hold = false;
-                        hold_row.components[3].setStyle(ButtonStyle.Primary);
-                        hold_row.components[3].setLabel(`${heldCards[3].value} HOLD`);
-                    } else {
-                        heldCards[3].hold = true;
-                        hold_row.components[3].setStyle(ButtonStyle.Secondary);
-                        hold_row.components[3].setLabel(`${heldCards[3].value} HOLDING`);
-                    }
-                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
-                    i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
-                    break;
-                case 'card5':
-                    if (heldCards[4].hold) {
-                        heldCards[4].hold = false;
-                        hold_row.components[4].setStyle(ButtonStyle.Primary);
-                        hold_row.components[4].setLabel(`${heldCards[4].value} HOLD`);
-                    } else {
-                        heldCards[4].hold = true;
-                        hold_row.components[4].setStyle(ButtonStyle.Secondary);
-                        hold_row.components[4].setLabel(`${heldCards[4].value} HOLDING`);
-                    }
-                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
-                    i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
-                    break;
-                case 'draw':
-                    for (let i = 0; i < 5; i++) {
-                        if (!heldCards[i].hold) {
-                            heldCards[i] = await drawCard(deck);
-                        }
-                    }
-                    logger.debug(`${heldCards[0].code} | ${heldCards[1].code} | ${heldCards[2].code} | ${heldCards[3].code} | ${heldCards[4].code}`)
-                    heldCards.score = await pokerScore(heldCards);
-                    file = await canvasHand(heldCards, heldCards.score, pokerColors);
-                    i.editReply({ components: [], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
-                    return collector.stop(heldCards.score);
+
+            if (i.customId === 'draw') {
+                for (let j = 0; j < 5; j++) {
+                    if (!heldCards[j].hold) heldCards[j] = await drawCard(deck);
                 }
-            logger.debug(`card1: ${heldCards[0].hold}, card2: ${heldCards[1].hold}, card3: ${heldCards[2].hold}, card4: ${heldCards[3].hold}, card5: ${heldCards[4].hold}`)
+                logger.debug(heldCards.map(c => c.code).join(' | '));
+                heldCards.score = await pokerScore(heldCards);
+                file = await canvasHand(heldCards, heldCards.score, pokerColors);
+                i.editReply({ components: [], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
+                return collector.stop(heldCards.score);
+            }
+
+            const idx = Number(i.customId.slice(4)) - 1;
+            const card = heldCards[idx];
+            card.hold = !card.hold;
+            hold_row.components[idx]
+                .setStyle(card.hold ? ButtonStyle.Secondary : ButtonStyle.Primary)
+                .setLabel(`${card.value} ${card.hold ? 'HOLDING' : 'HOLD'}`);
+            file = await canvasHand(heldCards, heldCards.score, pokerColors);
+            i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
+            logger.debug(heldCards.map((c, k) => `card${k + 1}: ${c.hold}`).join(', '));
             collector.resetTimer();
         });
+
         collector.on('end', async (collected, reason) => {
             logger.debug(`Poker: Collected ${collected.size} interactions. Reason: ${reason}`);
-            let winnings = Number(bet);
             await wait(1000);
+
             if (reason === 'time') {
                 await db.add(`${stats}.losses`, 1);
                 await db.sub(`${stats}.profit`, bet);
+                const balance = (await db.get(`${user.id}.balance`)).toLocaleString('en-US');
                 embed.setColor(0xFF0000)
                     .setTitle(`Time's up! You forfeit.`)
-                    .setDescription(`You lost **${bet}** ${CURRENCY_NAME}.\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
+                    .setDescription(`You lost **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour new balance is **${balance}** ${CURRENCY_NAME}.`);
+                return interaction.editReply({ components: [], embeds: [embed] });
+            }
 
-            } else if (reason === 'Royal Flush') {
-                // Check if bet qualifies for jackpot
+            if (reason === 'Royal Flush') {
                 if (!isJackpotEligible(bet)) {
-                    // Fallback payout for sub-minimum bet
-                    winnings = Math.ceil(bet * 50);
-                    await db.add(`${user.id}.balance`, winnings);
-                    await db.add(`${stats}.wins`, 1);
-                    await db.add(`${stats}.royals`, 1);
-                    await db.add(`${stats}.profit`, winnings - bet);
-                    if (winnings > await db.get(`${stats}.biggestWin`)) {
-                        await db.set(`${stats}.biggestWin`, winnings);
-                    }
+                    const winnings = Math.ceil(bet * 50);
+                    const balance = await applyWin(winnings, { isRoyal: true });
                     embed.setColor(0x00AE86)
                         .setTitle(`You got a Royal Flush!`)
-                        .setDescription(`You won **${winnings}** ${CURRENCY_NAME}! (Reduced payout - bet below ${MIN_BET} ${CURRENCY_NAME} for jackpot)\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                    await interaction.editReply({ components: [], embeds: [embed] });
-                    return;
+                        .setDescription(`You won **${winnings.toLocaleString('en-US')}** ${CURRENCY_NAME}! (Reduced payout - bet below ${MIN_BET.toLocaleString('en-US')} ${CURRENCY_NAME} for jackpot)\nYour new balance is **${balance}** ${CURRENCY_NAME}.`);
+                    return interaction.editReply({ components: [], embeds: [embed] });
                 }
 
-                // WIN PROGRESSIVE JACKPOT
                 const jackpotResult = await winJackpot(user.id, user.displayName);
-                winnings = jackpotResult.amount;
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.royals`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
+                const winnings = jackpotResult.amount;
+                const balance = await applyWin(winnings, { isRoyal: true });
                 embed.setColor(0xFFD700)
                     .setTitle(`🎰 JACKPOT! 🎰`)
-                    .setDescription(`You got a Royal Flush and won the **Progressive Jackpot**!\nYou won **${winnings.toLocaleString()}** ${CURRENCY_NAME}!\nYour new balance is **${(await db.get(`${user.id}.balance`)).toLocaleString()}** ${CURRENCY_NAME}.`);
+                    .setDescription(`You got a Royal Flush and won the **Progressive Jackpot**!\nYou won **${winnings.toLocaleString('en-US')}** ${CURRENCY_NAME}!\nYour new balance is **${balance}** ${CURRENCY_NAME}.`);
                 await interaction.editReply({ components: [], embeds: [embed] });
-                await interaction.followUp({ content: `@everyone **${user.displayName}** just won the JACKPOT with a Royal Flush! 🎰 **${winnings.toLocaleString()}** ${CURRENCY_NAME}!`, allowedMentions: { parse: ['everyone'] }});
-                return;
-            } else if (reason === 'Straight Flush') {
-                winnings = Math.ceil(bet * 50);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got a Straight Flush!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });  
-                return;
-            } else if (reason === 'Four of a Kind') {
-                winnings = Math.ceil(bet * 25);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got Four of a Kind!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else if (reason === 'Full House') {
-                winnings = Math.ceil(bet * 9);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got a Full House!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else if (reason === 'Flush') {
-                winnings = Math.ceil(bet * 6);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got a Flush!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else if (reason === 'Straight') {
-                winnings = Math.ceil(bet * 4);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got a Straight!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else if (reason === 'Three of a Kind') {
-                winnings = Math.ceil(bet * 3);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got Three of a Kind!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else if (reason === 'Two Pair') {
-                winnings = Math.ceil(bet * 2);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got Two Pair!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else if (reason === 'Jacks or Better') {
-                winnings = Math.ceil(bet * 1);
-                await db.add(`${user.id}.balance`, winnings);
-                await db.add(`${stats}.wins`, 1);
-                await db.add(`${stats}.profit`, winnings - bet);
-                if (winnings > await db.get(`${stats}.biggestWin`)) {
-                    await db.set(`${stats}.biggestWin`, winnings);
-                }
-                embed.setColor(0x00AE86)
-                    .setTitle(`You got a Pair of Jacks or Better!`)
-                    .setDescription(`You won **${winnings}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
-                return;
-            } else {
-                await db.add(`${stats}.losses`, 1);
-                await db.sub(`${stats}.profit`, bet);
-                embed.setColor(0xFF0000)
-                    .setTitle(`You lost!`)
-                    .setDescription(`You lost **${bet}** ${CURRENCY_NAME}!\nYour new balance is **${await db.get(`${user.id}.balance`)}** ${CURRENCY_NAME}.`);
-                await interaction.editReply({ components: [], embeds: [embed] });
+                await interaction.followUp({ content: `@everyone **${user.displayName}** just won the JACKPOT with a Royal Flush! 🎰 **${winnings.toLocaleString('en-US')}** ${CURRENCY_NAME}!`, allowedMentions: { parse: ['everyone'] }});
                 return;
             }
+
+            const payout = PAYOUTS[reason];
+            if (payout) {
+                const winnings = Math.ceil(bet * payout.mult);
+                const balance = await applyWin(winnings);
+                embed.setColor(0x00AE86)
+                    .setTitle(payout.title)
+                    .setDescription(`You won **${winnings.toLocaleString('en-US')}** ${CURRENCY_NAME}!\nYour new balance is **${balance}** ${CURRENCY_NAME}.`);
+                return interaction.editReply({ components: [], embeds: [embed] });
+            }
+
+            await db.add(`${stats}.losses`, 1);
+            await db.sub(`${stats}.profit`, bet);
+            const balance = (await db.get(`${user.id}.balance`)).toLocaleString('en-US');
+            embed.setColor(0xFF0000)
+                .setTitle(`You lost!`)
+                .setDescription(`You lost **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME}!\nYour new balance is **${balance}** ${CURRENCY_NAME}.`);
+            await interaction.editReply({ components: [], embeds: [embed] });
         });
     }
 }

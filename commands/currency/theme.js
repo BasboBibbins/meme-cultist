@@ -127,7 +127,7 @@ module.exports = {
                             ? ' \u2705'
                             : isOwned
                                 ? ' \u2714\uFE0F'
-                                : ` \u{1F512} ${t.price.toLocaleString()} ${CURRENCY_NAME}`;
+                                : ` \u{1F512} ${t.price.toLocaleString('en-US')} ${CURRENCY_NAME}`;
                         const prefix = t.emoji ? `${t.emoji} ` : '';
                         desc += `${prefix}**${t.name}**${status}\n`;
                     }
@@ -175,7 +175,7 @@ module.exports = {
                     desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
                     desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
                 }
-                desc += `**Price:** ${item.price === 0 ? 'Free' : `${item.price.toLocaleString()} ${CURRENCY_NAME}`}\n`;
+                desc += `**Price:** ${item.price === 0 ? 'Free' : `${item.price.toLocaleString('en-US')} ${CURRENCY_NAME}`}\n`;
                 desc += `**Status:** ${isOwned ? 'Owned' : 'Locked'}\n`;
                 desc += `\n**Sample Colors:**\n${swatch}`;
 

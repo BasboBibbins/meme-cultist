@@ -73,12 +73,12 @@ module.exports = {
             await db.add(`${user.id}.balance`, amount);
             await db.sub(`${victim.id}.balance`, amount);
             embed.setColor("#00ff00");
-            embed.setDescription(`${user.displayName } has successfully robbed **${amount}** ${CURRENCY_NAME} from ${victim.displayName }!`);
+            embed.setDescription(`${user.displayName } has successfully robbed **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} from ${victim.displayName }!`);
             await interaction.editReply({ embeds: [embed] });
             await victim.send({ embeds: [new EmbedBuilder()
                 .setTitle("Oh no!")
                 .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }))
-                .setDescription(`**${user.displayName }** just robbed you of **${amount}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\nBe sure to keep your ${CURRENCY_NAME} safe by depositing it into your bank next time!`)
+                .setDescription(`**${user.displayName }** just robbed you of **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\nBe sure to keep your ${CURRENCY_NAME} safe by depositing it into your bank next time!`)
                 .setColor("#ff0000")
                 .setTimestamp()
                 .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })] });

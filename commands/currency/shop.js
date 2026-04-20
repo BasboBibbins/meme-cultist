@@ -19,7 +19,7 @@ function buildFooter(interaction) {
 }
 
 function formatPrice(price) {
-    return price === 0 ? 'Free' : `${price.toLocaleString()} ${CURRENCY_NAME}`;
+    return price === 0 ? 'Free!' : `${price.toLocaleString('en-US')} ${CURRENCY_NAME}`;
 }
 
 // Shared swatch renderer for item previews (themes only for now).
@@ -129,7 +129,7 @@ module.exports = {
                         case 'not_in_stock':       desc = `**${name}** is not in today's shop. Try \`/shop browse\`.`; break;
                         case 'not_in_season':      desc = `**${name}** is not currently available. Check back during its availability window.`; break;
                         case 'already_owned':      desc = `You already own **${name}**.`; break;
-                        case 'insufficient_funds': desc = `You need **${formatPrice(result.item.price)}** but only have **${(result.balance ?? 0).toLocaleString()} ${CURRENCY_NAME}**.`; break;
+                        case 'insufficient_funds': desc = `You need **${formatPrice(result.item.price)}** but only have **${(result.balance ?? 0).toLocaleString('en-US')} ${CURRENCY_NAME}**.`; break;
                         default:                   desc = `Purchase failed: \`${result.error}\`.`;
                     }
                     const embed = new EmbedBuilder()
@@ -147,7 +147,7 @@ module.exports = {
                     .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
                     .setDescription(
                         `Purchased ${prefix}**${result.item.name}** for **${formatPrice(result.item.price)}**!\n`
-                        + `New balance: **${result.newBalance.toLocaleString()} ${CURRENCY_NAME}**\n\n`
+                        + `New balance: **${result.newBalance.toLocaleString('en-US')} ${CURRENCY_NAME}**\n\n`
                         + `Use \`/inventory equip ${result.item.id}\` to equip it.`
                     )
                     .setColor(0x00FF00)

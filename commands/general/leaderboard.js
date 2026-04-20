@@ -24,7 +24,7 @@ function topBy(users, getValue, limit = 5) {
 function formatTopList(top, unit = '') {
     if (!top.length) return '*No entries yet*';
     const suffix = unit ? ` ${unit}` : '';
-    return top.map((u, i) => `${i + 1}. <@${u.id}> — ${u.value.toLocaleString()}${suffix}`).join('\n');
+    return top.map((u, i) => `${i + 1}. <@${u.id}> — ${u.value.toLocaleString('en-US')}${suffix}`).join('\n');
 }
 
 async function generateLeaderboardEmbed(page, interaction, allUsers) {
@@ -40,8 +40,8 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
             const current = await getCurrentTopUsers();
             const allTime = await getAllTimeTopUsers();
             embed.addFields(
-                { name: "Current Top 10 Banks", value: current.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.bank} ${CURRENCY_NAME}`).join("\n"), inline: true },
-                { name: "All Time Top 10 Banks", value: allTime.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.stats.largestBank} ${CURRENCY_NAME}`).join("\n"), inline: true }
+                { name: "Current Top 10 Banks", value: current.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.bank.toLocaleString('en-US')} ${CURRENCY_NAME}`).join("\n"), inline: true },
+                { name: "All Time Top 10 Banks", value: allTime.map((user, index) => `${index + 1}. <@${user.id}> - ${user.value.stats.largestBank.toLocaleString('en-US')} ${CURRENCY_NAME}`).join("\n"), inline: true }
             );
             break;
         }

@@ -85,10 +85,10 @@ module.exports = {
             return await interaction.reply({ embeds: [errorEmbed(`You must bet in whole numbers!`)], ephemeral: true });
         }
         if (ROULETTE_MIN_BET && bet < ROULETTE_MIN_BET) {
-            return await interaction.reply({ embeds: [errorEmbed(`You must bet at least ${ROULETTE_MIN_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
+            return await interaction.reply({ embeds: [errorEmbed(`You must bet at least ${ROULETTE_MIN_BET.toLocaleString('en-US')} ${CURRENCY_NAME}!`)], ephemeral: true });
         }
         if (ROULETTE_MAX_BET && bet > ROULETTE_MAX_BET) {
-            return await interaction.reply({ embeds: [errorEmbed(`You can bet at most ${ROULETTE_MAX_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
+            return await interaction.reply({ embeds: [errorEmbed(`You can bet at most ${ROULETTE_MAX_BET.toLocaleString('en-US')} ${CURRENCY_NAME}!`)], ephemeral: true });
         }
 
         let parsedNumber = null;
@@ -339,7 +339,7 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
 
     const localEmbed = new EmbedBuilder()
         .setAuthor({ name: `Good luck!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-        .setDescription(`Bet placed: ${bet} on ${formatBetType(betType, parsedNumber)}`)
+        .setDescription(`Bet placed: ${bet.toLocaleString('en-US')} on ${formatBetType(betType, parsedNumber)}`)
         .setColor(randomHexColor())
         .setFooter({ text: `${client.user.username} | Version ${require('../../package.json').version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
@@ -434,7 +434,7 @@ async function resolveGame(client, channel, message, game) {
     const resultEmbed = new EmbedBuilder()
         .setAuthor({ name: `${game.creatorUsername}'s Roulette Game`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTitle(`Winning Number: ${winningNumber} (${color})`)
-        .setDescription(`Total pool: ${game.bets.reduce((sum, b) => sum + b.amount, 0)} ${CURRENCY_NAME}\nTotal winnings paid: ${totalWinnings} ${CURRENCY_NAME}`)
+        .setDescription(`Total pool: ${game.bets.reduce((sum, b) => sum + b.amount, 0).toLocaleString('en-US')} ${CURRENCY_NAME}\nTotal winnings paid: ${totalWinnings.toLocaleString('en-US')} ${CURRENCY_NAME}`)
         .setColor(color === 'red' ? 0xFF0000 : (color === 'black' ? 0x000000 : 0x00AA00))
         .setTimestamp()
         .setImage('attachment://roulette.png');
@@ -472,10 +472,10 @@ async function sendResultDM(client, userResults, winningNumber, color) {
         const betLines = userResults.map(r => {
             const desc = formatBetType(r.type, r.numberValue);
             const outcome = r.won ? `W` : `L`;
-            return `• ${r.amount} ${CURRENCY_NAME} on ${desc} **(${outcome})**`;
+            return `• ${r.amount.toLocaleString('en-US')} ${CURRENCY_NAME} on ${desc} **(${outcome})**`;
         }).join('\n');
 
-        const summary = `${userResults.length > 0 ? `**Total bet:** ${totalBet} ${CURRENCY_NAME}\n` : ''}**Total won:** ${totalWon} ${CURRENCY_NAME}\n**Net:** ${net >= 0 ? '+' : ''}${net} ${CURRENCY_NAME}\n\nYour new balance is **${newBalance}** ${CURRENCY_NAME}.`;
+        const summary = `${userResults.length > 0 ? `**Total bet:** ${totalBet.toLocaleString('en-US')} ${CURRENCY_NAME}\n` : ''}**Total won:** ${totalWon.toLocaleString('en-US')} ${CURRENCY_NAME}\n**Net:** ${net >= 0 ? '+' : ''}${net.toLocaleString('en-US')} ${CURRENCY_NAME}\n\nYour new balance is **${newBalance.toLocaleString('en-US')}** ${CURRENCY_NAME}.`;
         const description = `Winning Number: ${winningNumber} (${color})\n\n**Your bet${userResults.length > 1 ? 's' : ''}:**\n${betLines}\n\n${summary}`;
 
         const embed = new EmbedBuilder()
@@ -516,12 +516,12 @@ function buildBetsDescription(bets) {
             byUser[bet.userId] = { displayName: bet.username, total: 0, bets: [] };
         }
         byUser[bet.userId].total += bet.amount;
-        byUser[bet.userId].bets.push(`${formatBetType(bet.type, bet.numberValue)} (${bet.amount})`);
+        byUser[bet.userId].bets.push(`${formatBetType(bet.type, bet.numberValue)} (${bet.amount.toLocaleString('en-US')} ${CURRENCY_NAME})`);
     }
 
     let desc = '';
     for (const [userId, data] of Object.entries(byUser)) {
-        desc += `• ${data.displayName}: ${data.total} on ${data.bets.join(', ')}\n`;
+        desc += `• ${data.displayName}: ${data.total.toLocaleString('en-US')} on ${data.bets.join(', ')}\n`;
     }
     return desc || 'No bets yet';
 }

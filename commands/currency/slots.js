@@ -151,7 +151,7 @@ module.exports = {
                 const totalCost = bet * lines;
                 const balance = await db.get(`${interaction.user.id}.balance`);
                 if (totalCost > balance) {
-                    error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}! (Need ${totalCost.toLocaleString()}, have ${balance.toLocaleString()})`);
+                    error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}! (Need ${totalCost.toLocaleString('en-US')}, have ${balance.toLocaleString('en-US')})`);
                     await interaction.reply({ embeds: [error_embed], ephemeral: true });
                     break;
                 }
