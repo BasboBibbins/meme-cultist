@@ -1,6 +1,7 @@
-const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
+const {SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits} = require('discord.js');
 const { QuickDB } = require("quick.db");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB } = require("../../database");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("../../utils/logger");
 const wait = require('util').promisify(setTimeout);
@@ -77,7 +78,10 @@ module.exports = {
             .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
 
-        if (!interaction.member.permissions.has('ADMINISTRATOR')) {
+        const isOwner = interaction.user.id === OWNER_ID;
+        const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+        const allowed = isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
+        if (!allowed) {
             error_embed.setDescription(`You do not have permission to use this command.`);
             return await interaction.reply({embeds: [error_embed], ephemeral: true});
         }

@@ -26,6 +26,9 @@ const config = {
         .map(id => id.trim())
         .filter(Boolean),
 
+    // Admin configuration
+    ADMIN_COMMANDS_OWNER_ONLY: true, // true = only OWNER_ID can use admin commands, false = users with 'administrator' permission can use admin commands
+
     // April Fools configuration
     APRILFOOLS_ROLE: "Fwen",
     APRIL_FOOLS_MODE: false,

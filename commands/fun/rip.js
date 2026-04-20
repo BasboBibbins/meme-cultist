@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { rip } = require("../../utils/welcome");
 const { RIP_CHANNEL_ID } = require("../../config.js");
 
@@ -15,7 +15,7 @@ module.exports = {
                 .setDescription('The prompt for the RIP.')
                 .setRequired(false)),
     async execute(interaction) {
-        if (!interaction.member.permissions.has("ADMINISTRATOR")) {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             await interaction.reply({ content: "You do not have permission to use this command!", ephemeral: true });
             return;
         }

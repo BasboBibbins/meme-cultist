@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { getAllItems, grantItem } = require('../../utils/inventory');
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require('../../config.js');
 const logger = require('../../utils/logger');
 
 module.exports = {
@@ -9,10 +10,17 @@ module.exports = {
         .addUserOption(opt =>
             opt.setName('target')
                 .setDescription('The user to unlock all items for.')
-                .setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+                .setRequired(true)),
 
     async execute(interaction) {
+        const isOwner = interaction.user.id === OWNER_ID;
+        const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+        const allowed = isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
+        if (!allowed) {
+            await interaction.reply({ content: `You do not have permission to use this command.`, ephemeral: true });
+            return;
+        }
+
         const targetUser = interaction.options.getUser('target');
         const admin = interaction.user;
 
