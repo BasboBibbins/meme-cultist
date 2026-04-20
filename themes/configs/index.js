@@ -6,8 +6,8 @@
  *
  * Theme tiers:
  *   colorway  - palette swap only, no custom art
- *   styled    - custom sprites for ONE game
- *   full      - custom sprites for ALL canvas games
+ *   styled    - palette swap and background images, but default sprites
+ *   full      - custom sprites, background images, and colors for all games
  *   limited   - seasonal/event availability, determined by date range
  */
 
@@ -17,50 +17,142 @@ const classic = require('./base');
 const ASSETS_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
 const BACKGROUND_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'themes');
 
-// ── Helper: build a colorway (palette-only, all games) ──────────────
-function colorway(id, name, description, price, weight, emoji, colors) {
-    return { id, name, description, tier: 'colorway', price, weight, emoji, game: null, colors, overrides: {} };
+// ── Helpers for defining themes with less boilerplate ─────────────────────────────
+function colorway(id, name, description, price, weight, emoji, colors, overrides) {
+    return { id, name, description, tier: 'colorway', price, weight, emoji, game: null, colors, overrides: overrides || {} };
 }
 
-// ── Helper: build a limited theme (date-range availability) ─────────
-function limited(id, name, description, price, emoji, availability, colors) {
-    return { id, name, description, tier: 'limited', price, weight: null, emoji, game: null, colors, overrides: {}, availability };
+function styled(id, name, description, price, weight, emoji, colors, overrides) {
+    return { id, name, description, tier: 'styled', price, weight, emoji, game: null, colors, overrides: overrides || {} };
 }
+
+function full(id, name, description, price, weight, emoji, colors, overrides, game) {
+    return { id, name, description, tier: 'full', price, weight, emoji, game: game || null, colors, overrides };
+}
+
+function limited(id, name, description, price, emoji, availability, colors, overrides) {
+    return { id, name, description, tier: 'limited', price, weight: null, emoji, game: null, colors, overrides: overrides || {}, availability };
+}
+
+function sprites(themeId, labels) {
+    return labels.map((label, index) => ({
+        type: 'sprite',
+        path: path.join(ASSETS_BASE, `${themeId}.png`),
+        index,
+        label,
+    }));
+}
+
+function poker(colors, overrides) {
+    return { feltColor: colors.feltColor, tableGreen: colors.tableGreen, gold: colors.gold, goldDark: colors.goldDark, ...overrides };
+}
+
+// ── Theme color palettes (pre-declared so poker() can reuse them) ─────────────────
+
+const memecultColors = {
+    background:  path.join(BACKGROUND_BASE, 'memecult.png'),
+    feltColor:   'rgb(42, 40, 38, 0.7)',
+    feltDark:    'rgb(26, 24, 22, 0.85)',
+    tableGreen:  '#4a5a28',
+    gold:        '#9ab55c',
+    goldDark:    '#7a8a3e',
+    goldBronze:  '#5a6a2e',
+    textWhite:   '#d0ccc0',
+    textBlack:   '#0a0908',
+    textWin:     '#a8c06a',
+    textLoss:    '#c85a3a',
+    textPrimary: '#9ab55c',
+    embedColor:  0x2a2826,
+};
+
+const neonColors = {
+    background:  path.join(BACKGROUND_BASE, 'neon.png'),
+    feltColor:   'rgba(26, 10, 46, 0.8)',
+    feltDark:    '#0f0520',
+    tableGreen:  '#2a1a4a',
+    gold:        '#c0c0c0',
+    goldDark:    '#808080',
+    goldBronze:  '#6a6a6a',
+    textWhite:   '#e0d8f0',
+    textWin:     '#88ffaa',
+    textLoss:    '#ff6688',
+    textPrimary: '#c0c0c0',
+};
+
+const feudalJapanColors = {
+    background:  path.join(BACKGROUND_BASE, 'feudalJapan.png'),
+    feltColor:   'rgba(74, 0, 0, 0.8)',
+    feltDark:    'rgba(42, 0, 0, 0.8)',
+    tableGreen:  'rgba(58, 0, 0, 0.5)',
+    gold:        '#ffd700',
+    goldDark:    '#c8a830',
+    goldBronze:  '#8b6914',
+    textWhite:   '#ffffff',
+    textWin:     '#44ff44',
+    textLoss:    '#ff4444',
+    textPrimary: '#ffd700',
+};
+
+const cosmicColors = {
+    background:  path.join(BACKGROUND_BASE, 'cosmic.png'),
+    feltColor:   'rgba(10, 14, 26, 0.8)',
+    feltDark:    '#060a14',
+    tableGreen:  '#121830',
+    gold:        '#b8c0d0',
+    goldDark:    '#7a8090',
+    goldBronze:  '#5a6478',
+    textWhite:   '#e0e8ff',
+    textBlack:   '#050810',
+    textWin:     '#88ff44',
+    textLoss:    '#ff3388',
+    textPrimary: '#00ccff',
+    embedColor:  0x0a0e1a,
+};
+
+const dessertColors = {
+    background:  path.join(BACKGROUND_BASE, 'dessert.png'),
+    feltColor:   'rgba(59, 26, 10, 0.8)',
+    feltDark:    '#2a1008',
+    tableGreen:  '#4e2212',
+    gold:        '#f5e0c0',
+    goldDark:    '#c8a87a',
+    goldBronze:  '#8b6540',
+    textWhite:   '#fff5f0',
+    textBlack:   '#1a0a04',
+    textWin:     '#ff88cc',
+    textLoss:    '#cc4444',
+    textPrimary: '#f7c8d8',
+    embedColor:  0x3b1a0a,
+};
+
+const deepSeaColors = {
+    background:  path.join(BACKGROUND_BASE, 'deepSea.png'),
+    feltColor:   'rgba(8, 14, 42, 0.8)',
+    feltDark:    '#050a28',
+    tableGreen:  '#0c1638',
+    gold:        '#5a9a8a',
+    goldDark:    '#3e7a6a',
+    goldBronze:  '#2a5a4e',
+    textWhite:   '#d0e8f0',
+    textBlack:   '#040818',
+    textWin:     '#00ffd0',
+    textLoss:    '#ff6b8a',
+    textPrimary: '#80d8c0',
+    embedColor:  0x080e2a,
+};
 
 // ─────────────────────────────────────────────────────────────────────
 const themes = {
     classic,
 
-        // ── Limited themes (date-range availability; extremely rare) ────────────────────
+    // ── Limited themes (date-range availability; extremely rare) ────────────────────
 
-    memecult: {
-        id: 'memecult',
-        name: 'Meme Cult',
-        description: 'A launch-exclusive theme representing the Meme Cult hierarchy. TMC forever!',
-        tier: 'limited',
-        price: 1000000,
-        weight: null,
-        emoji: '<:mlgdoge:1495823525250863236>',
-        game: null,
-        availability: { start: { month: 4, day: 20 }, end: { month: 4, day: 30 } },
-
-        colors: {
-            background:  path.join(BACKGROUND_BASE, 'memecult.png'),
-            feltColor:   'rgb(42, 40, 38, 0.7)',
-            feltDark:    'rgb(26, 24, 22, 0.85)',
-            tableGreen:  '#4a5a28',
-            gold:        '#9ab55c',
-            goldDark:    '#7a8a3e',
-            goldBronze:  '#5a6a2e',
-            textWhite:   '#d0ccc0',
-            textBlack:   '#0a0908',
-            textWin:     '#a8c06a',
-            textLoss:    '#c85a3a',
-            textPrimary: '#9ab55c',
-            embedColor:  0x2a2826,
-        },
-
-        overrides: {
+    memecult: limited('memecult', 'Meme Cult',
+        'A launch-exclusive theme representing the Meme Cult hierarchy. TMC forever!',
+        1000000, '<:mlgdoge:1495823525250863236>',
+        { start: { month: 4, day: 20, year: 2026 }, end: { month: 4, day: 30, year: 2026 } },
+        memecultColors,
+        {
             slots: {
                 reelBackground:      'rgb(26, 24, 22, 0.85)',
                 frameColor:          '#9ab55c',
@@ -72,18 +164,7 @@ const themes = {
                 bannerBackgroundEnd: '#141210',
                 motionBlurOverlay:   'rgba(42, 40, 38, 0.5)',
                 paylineColors:       ['#9ab55c', '#c8b870', '#c85a3a', '#7a8a3e', '#d0ccc0'],
-                symbols: [
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 0, label: 'Peasant' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 1, label: 'Worshipper' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 2, label: 'Priest' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 3, label: 'Bishop' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 4, label: 'Archbishop' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 5, label: 'Cardinal' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 6, label: 'Pope' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 7, label: 'MLG Doge' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 8, label: 'OTTO!' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'memecult.png'), index: 9, label: 'DARK OTTO!' },
-                ],
+                symbols: sprites('memecult', ['Peasant', 'Worshipper', 'Priest', 'Bishop', 'Archbishop', 'Cardinal', 'Pope', 'MLG Doge', 'OTTO!', 'DARK OTTO!']),
             },
             roulette: {
                 woodInner:       '#3a3836',
@@ -113,42 +194,29 @@ const themes = {
                 resultOverlay:   'rgba(42, 40, 38, 0.85)',
                 resultBorder:    '#9ab55c',
             },
-            poker: {
-                feltColor:  'rgba(42, 40, 38, 0.85)',
-                tableGreen: '#4a5a28',
-                gold:       '#9ab55c',
-                goldDark:   '#7a8a3e',
-            },
+            poker: poker(memecultColors, { feltColor: 'rgba(42, 40, 38, 0.85)' }),
         },
-    },
+    ),
+    /*
+        * TODO: List of limited themes I want to create post-launch:
+        - Fwen Cult (June 11-June 18): Celebrating this iteration of the Discord, featuring new-gen memecult culture and the fwen mascot (miku plushie).
+        - Halloween (Oct 1-Oct 31): A spooky theme with Halloween symbols and a dark color palette.
+        - Christmas (Dec 1-Dec 31): A festive theme with Christmas symbols and a red/green color palette.
+        - New Year (Jan 1-Jan 7): A celebratory theme with fireworks and a vibrant color palette.
+        - Valentine's Day (Feb 1-Feb 14): A romantic theme with hearts and a pink/red color palette.
+        - St. Patrick's Day (Mar 1-Mar 17): A lucky theme with shamrocks and a green/gold color palette.
+        - July 4th (June 28-July 7): An American Independence Day theme with patriotic symbols and a red/white/blue color palette.
+        - Easter (April 1-April 15): A springtime theme with Easter eggs and a pastel color palette.
+        - Miku Day (Aug 31-Sept 7): A theme celebrating Hatsune Miku's birthday, featuring Miku-themed symbols and a teal color palette.
+        - Precision (June 23-June 30): A theme inspired by the Precision Roleplay DarkRP server. Dark color with yellow-green accents.
+    */
 
-    // ── Styled themes (one game, custom sprites) ────────────────────
+    // ── Full themes (custom sprites + colors for all games) ─────────────────────────
 
-    neon: {
-        id: 'neon',
-        name: 'Neon Arcade',
-        description: 'A vibrant neon theme with glowing symbols.',
-        tier: 'styled',
-        price: 150000,
-        weight: 20,
-        emoji: '🪩',
-        game: 'slots',
-
-        colors: {
-            background:  path.join(BACKGROUND_BASE, 'neon.png'),
-            feltColor:   'rgba(26, 10, 46, 0.8)',
-            feltDark:    '#0f0520',
-            tableGreen:  '#2a1a4a',
-            gold:        '#c0c0c0',
-            goldDark:    '#808080',
-            goldBronze:  '#6a6a6a',
-            textWhite:   '#e0d8f0',
-            textWin:     '#88ffaa',
-            textLoss:    '#ff6688',
-            textPrimary: '#c0c0c0',
-        },
-
-        overrides: {
+    neon: full('neon', 'Neon Arcade',
+        'A vibrant neon theme with glowing symbols.',
+        150000, 10, '🪩', neonColors,
+        {
             slots: {
                 reelBackground:      'rgba(18, 8, 40, 0.75)',
                 frameColor:          '#c0c0c0',
@@ -160,19 +228,7 @@ const themes = {
                 bannerBackgroundEnd: '#0f001a',
                 motionBlurOverlay:   'rgba(15, 5, 32, 0.5)',
                 paylineColors:       ['#ff5577', '#55ff99', '#5588ff', '#ffaa44', '#cc55ff'],
-
-                symbols: [
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 0, label: 'Cherry' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 1, label: 'Bell' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 2, label: 'Lemon' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 3, label: 'Grapes' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 4, label: 'Orange' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 5, label: 'Apple' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 6, label: 'BAR' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 7, label: 'Seven' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 8, label: 'Wild' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'neon.png'), index: 9, label: 'Bonus' },
-                ],
+                symbols: sprites('neon', ['Cherry', 'Bell', 'Lemon', 'Grapes', 'Orange', 'Apple', 'BAR', 'Seven', 'Wild', 'Bonus']),
             },
             roulette: {
                 woodInner: '#2e1a4a',
@@ -202,40 +258,15 @@ const themes = {
                 resultOverlay: 'rgba(26, 10, 46, 0.85)',
                 resultBorder: '#00ffcc',
             },
-            poker: {
-                feltColor: 'rgba(26, 10, 46, 0.8)',
-                tableGreen: '#2a1a4a',
-                gold: '#c0c0c0',
-                goldDark: '#808080',
-            },
+            poker: poker(neonColors),
         },
-    },
+        'slots',
+    ),
 
-    feudalJapan: {
-        id: 'feudalJapan',
-        name: 'Feudal Japan',
-        description: 'Traditional Japanese theme with feudal symbols.',
-        tier: 'styled',
-        price: 250000,
-        weight: 20,
-        emoji: '🎋',
-        game: 'slots',
-
-        colors: {
-            background:  path.join(BACKGROUND_BASE, 'feudalJapan.png'),
-            feltColor:   'rgba(74, 0, 0, 0.8)',
-            feltDark:    'rgba(42, 0, 0, 0.8)',
-            tableGreen:  'rgba(58, 0, 0, 0.5)',
-            gold:        '#ffd700',
-            goldDark:    '#c8a830',
-            goldBronze:  '#8b6914',
-            textWhite:   '#ffffff',
-            textWin:     '#44ff44',
-            textLoss:    '#ff4444',
-            textPrimary: '#ffd700',
-        },
-
-        overrides: {
+    feudalJapan: full('feudalJapan', 'Feudal Japan',
+        'Traditional Japanese theme with feudal symbols.',
+        250000, 10, '🎋', feudalJapanColors,
+        {
             slots: {
                 reelBackground:      'rgba(26, 0, 0, 0.75)',
                 frameColor:          '#ffd700',
@@ -247,19 +278,7 @@ const themes = {
                 bannerBackgroundEnd: '#1a0000',
                 motionBlurOverlay:   'rgba(26, 0, 0, 0.5)',
                 paylineColors:       ['#ff0000', '#ffd700', '#ffffff', '#ffaa00', '#aa0000'],
-
-                symbols: [
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 0, label: 'Bamboo' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 1, label: 'Torii Gate' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 2, label: 'Hanafuda' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 3, label: 'Castle' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 4, label: 'Blossom' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 5, label: 'Dolls' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 6, label: 'Katana' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 7, label: 'Dragon' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 8, label: 'Fan' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'feudalJapan.png'), index: 9, label: 'Lantern' },
-                ],
+                symbols: sprites('feudalJapan', ['Bamboo', 'Torii Gate', 'Hanafuda', 'Castle', 'Blossom', 'Dolls', 'Katana', 'Dragon', 'Fan', 'Lantern']),
             },
             roulette: {
                 woodInner: '#5d2906',
@@ -289,42 +308,15 @@ const themes = {
                 resultOverlay: 'rgba(74, 0, 0, 0.85)',
                 resultBorder: '#ffd700',
             },
-            poker: {
-                feltColor: 'rgba(74, 0, 0, 0.8)',
-                tableGreen: 'rgba(58, 0, 0, 0.5)',
-                gold: '#ffd700',
-                goldDark: '#c8a830',
-            },
+            poker: poker(feudalJapanColors),
         },
-    },
+        'slots',
+    ),
 
-    cosmic: {
-        id: 'cosmic',
-        name: 'Cosmic',
-        description: 'A extraterrestrial theme with cosmic symbols and a starry background.',
-        tier: 'full',
-        price: 500000,
-        weight: 5,
-        emoji: '🌌',
-        game: null,
-
-        colors: {
-            background:  path.join(BACKGROUND_BASE, 'cosmic.png'),
-            feltColor:   'rgba(10, 14, 26, 0.8)',
-            feltDark:    '#060a14',
-            tableGreen:  '#121830',
-            gold:        '#b8c0d0',
-            goldDark:    '#7a8090',
-            goldBronze:  '#5a6478',
-            textWhite:   '#e0e8ff',
-            textBlack:   '#050810',
-            textWin:     '#88ff44',
-            textLoss:    '#ff3388',
-            textPrimary: '#00ccff',
-            embedColor:  0x0a0e1a,
-        },
-
-        overrides: {
+    cosmic: full('cosmic', 'Cosmic',
+        'A extraterrestrial theme with cosmic symbols and a starry background.',
+        500000, 5, '🌌', cosmicColors,
+        {
             slots: {
                 reelBackground:      'rgba(8, 12, 24, 0.75)',
                 frameColor:          '#b8c0d0',
@@ -336,19 +328,7 @@ const themes = {
                 bannerBackgroundEnd: '#050010',
                 motionBlurOverlay:   'rgba(10, 14, 26, 0.5)',
                 paylineColors:       ['#00ccff', '#ff3388', '#88ff44', '#ff8800', '#aa44ff'],
-
-                symbols: [
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 0, label: 'Planet' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 1, label: 'Rocket' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 2, label: 'Asteroid' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 3, label: 'Alien' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 4, label: 'Sattelite' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 5, label: 'Star' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 6, label: 'Nebula' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 7, label: 'Comet' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 8, label: 'Galaxy' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'cosmic.png'), index: 9, label: 'Bonus' },
-                ],
+                symbols: sprites('cosmic', ['Planet', 'Rocket', 'Asteroid', 'Alien', 'Sattelite', 'Star', 'Nebula', 'Comet', 'Galaxy', 'Bonus']),
             },
             roulette: {
                 woodInner:       '#2a3050',
@@ -378,42 +358,14 @@ const themes = {
                 resultOverlay:   'rgba(10, 14, 26, 0.85)',
                 resultBorder:    '#00ccff',
             },
-            poker: {
-                feltColor:  'rgba(10, 14, 26, 0.8)',
-                tableGreen: '#121830',
-                gold:       '#b8c0d0',
-                goldDark:   '#7a8090',
-            },
+            poker: poker(cosmicColors),
         },
-    },
+    ),
 
-    dessert: {
-        id: 'dessert',
-        name: 'Sweet Tooth',
-        description: 'A candy land of chocolate, bubblegum, and sweets.',
-        tier: 'full',
-        price: 500000,
-        weight: 5,
-        emoji: '🍰',
-        game: null,
-
-        colors: {
-            background:  path.join(BACKGROUND_BASE, 'dessert.png'),
-            feltColor:   'rgba(59, 26, 10, 0.8)',
-            feltDark:    '#2a1008',
-            tableGreen:  '#4e2212',
-            gold:        '#f5e0c0',
-            goldDark:    '#c8a87a',
-            goldBronze:  '#8b6540',
-            textWhite:   '#fff5f0',
-            textBlack:   '#1a0a04',
-            textWin:     '#ff88cc',
-            textLoss:    '#cc4444',
-            textPrimary: '#f7c8d8',
-            embedColor:  0x3b1a0a,
-        },
-
-        overrides: {
+    dessert: full('dessert', 'Sweet Tooth',
+        'A candy land of chocolate, bubblegum, and sweets.',
+        500000, 5, '🍰', dessertColors,
+        {
             slots: {
                 reelBackground:      'rgba(42, 16, 8, 0.75)',
                 frameColor:          '#f5e0c0',
@@ -425,19 +377,7 @@ const themes = {
                 bannerBackgroundEnd: '#1a0608',
                 motionBlurOverlay:   'rgba(42, 16, 8, 0.5)',
                 paylineColors:       ['#ff69b4', '#66d98e', '#f5d742', '#e84040', '#8fd4f5'],
-
-                symbols: [
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 0, label: 'Lollipop' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 1, label: 'Cupcake' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 2, label: 'Candy Cane' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 3, label: 'Gummy Bear' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 4, label: 'Chocolate' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 5, label: 'Candy' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 6, label: 'BAR' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 7, label: 'Jawbreaker' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 8, label: 'Wild' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'dessert.png'), index: 9, label: 'Golden Ticket' },
-                ],
+                symbols: sprites('dessert', ['Lollipop', 'Cupcake', 'Candy Cane', 'Gummy Bear', 'Chocolate', 'Candy', 'BAR', 'Jawbreaker', 'Wild', 'Golden Ticket']),
             },
             roulette: {
                 woodInner:       '#5c2e14',
@@ -467,42 +407,14 @@ const themes = {
                 resultOverlay:   'rgba(42, 16, 8, 0.85)',
                 resultBorder:    '#ff88cc',
             },
-            poker: {
-                feltColor:  'rgba(59, 26, 10, 0.8)',
-                tableGreen: '#4e2212',
-                gold:       '#f5e0c0',
-                goldDark:   '#c8a87a',
-            },
+            poker: poker(dessertColors),
         },
-    },
+    ),
 
-    deepSea: {
-        id: 'deepSea',
-        name: 'Deep Sea',
-        description: 'Bioluminescent deep ocean with midnight blues, electric teal, and coral pink accents.',
-        tier: 'full',
-        price: 500000,
-        weight: 5,
-        emoji: '🪸',
-        game: null,
-
-        colors: {
-            background:  path.join(BACKGROUND_BASE, 'deepSea.png'),
-            feltColor:   'rgba(8, 14, 42, 0.8)',
-            feltDark:    '#050a28',
-            tableGreen:  '#0c1638',
-            gold:        '#5a9a8a',
-            goldDark:    '#3e7a6a',
-            goldBronze:  '#2a5a4e',
-            textWhite:   '#d0e8f0',
-            textBlack:   '#040818',
-            textWin:     '#00ffd0',
-            textLoss:    '#ff6b8a',
-            textPrimary: '#80d8c0',
-            embedColor:  0x080e2a,
-        },
-
-        overrides: {
+    deepSea: full('deepSea', 'Deep Sea',
+        'Bioluminescent deep ocean with midnight blues, electric teal, and coral pink accents.',
+        500000, 5, '🪸', deepSeaColors,
+        {
             slots: {
                 reelBackground:      'rgba(6, 10, 32, 0.75)',
                 frameColor:          '#5a9a8a',
@@ -514,19 +426,7 @@ const themes = {
                 bannerBackgroundEnd: '#050320',
                 motionBlurOverlay:   'rgba(8, 14, 42, 0.5)',
                 paylineColors:       ['#00ffd0', '#b388ff', '#ff7b8a', '#80d8c0', '#6a8aff'],
-
-                symbols: [
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 0, label: 'Anglerfish' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 1, label: 'Jellyfish' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 2, label: 'Seahorse' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 3, label: 'Coral' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 4, label: 'Pearl' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 5, label: 'Shell' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 6, label: 'BAR' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 7, label: 'Trident' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 8, label: 'Wild' },
-                    { type: 'sprite', path: path.join(ASSETS_BASE, 'deepSea.png'), index: 9, label: 'Treasure' },
-                ],
+                symbols: sprites('deepSea', ['Anglerfish', 'Jellyfish', 'Seahorse', 'Coral', 'Pearl', 'Shell', 'BAR', 'Trident', 'Wild', 'Treasure']),
             },
             roulette: {
                 woodInner:       '#142838',
@@ -556,14 +456,57 @@ const themes = {
                 resultOverlay:   'rgba(8, 14, 42, 0.85)',
                 resultBorder:    '#00ffd0',
             },
-            poker: {
-                feltColor:  'rgba(8, 14, 42, 0.8)',
-                tableGreen: '#0c1638',
-                gold:       '#5a9a8a',
-                goldDark:   '#3e7a6a',
+            poker: poker(deepSeaColors),
+        },
+    ),
+
+    /*
+        * TODO: List of full themes I want to create post-launch (with custom slot symbols, roulette textures, and poker cards):
+        - Cabaret: Wood and velvet textures with deep reds, golds, and purples. Slot symbols could be cabaret-themed (top hat, cane, showgirl, etc). Roulette could have a luxurious wood grain and gold accents.
+        - Sparkle: PICMIX/BLINGEE-inspired theme with gaudy sparkles, rhinestones, and glitter textures. Bright colors like hot pink, electric blue, and lime green. Slot symbols could be sparkly objects (diamond, star, heart, etc). Roulette could have a glittery background and sparkling highlights.
+        - Bling: Similar to Sparkle but gold/white/light blue color palette and more focused on a luxurious, ostentatious aesthetic. Slot symbols could be blinged-out versions of classic symbols (diamond cherry, gold bell, etc). Roulette could have a shiny metallic finish and diamond accents.
+        - Bloons: A fun, colorful theme inspired by the Bloons Tower Defense game series. Slot symbols could be different colored bloons and monkey towers. Roulette could have a bright, playful design with balloon motifs and vibrant colors.
+        - Airshow: Think Top Gun on NES: a retro 80s aviation theme with pixel art slot symbols (fighter jet, pilot helmet, missile, etc) and a runway-inspired roulette design. Colors could be navy, gray, and red with neon accents.
+        - Y2K: A blobject-inspired theme with glossy, futuristic textures and a color palette of silver, black, and electric blue. Slot symbols could be Y2K-themed objects (floppy disk, old cell phone, CD, etc). Roulette could have a sleek, metallic design with digital-style numbers and accents.
+        - Touhou: A theme based on the Touhou Project bullet hell games, featuring slot symbols of popular characters and a roulette design inspired by the games' aesthetic. Colors could be a mix of dark and vibrant tones to capture the series' unique style.
+        - Glass: A Liquid Glass-inspired theme similar to iOS 26s new design language, with frosted glass textures, soft shadows, and a color palette of cool blues, grays, and whites. Slot symbols could be glassy versions of classic symbols (glass cherry, frosted bell, etc). Roulette could have a sleek, transparent design with subtle reflections and highlights.
+        - Term: A terminal/command-line-inspired theme with a dark background, green text, and pixelated slot symbols (like ASCII art). Roulette could have a retro computer design with a monochrome color scheme and pixelated numbers.
+    */
+
+    // ── Styled themes (palette swap + background image, default sprites) ────────────
+
+    sunset: styled('sunset', 'Sunset',
+        'Warm gradient background with orange, pink, and purple hues. A vibrant, eye-catching design.',
+        50000, 20, '🌅',
+        {
+            background:  path.join(BACKGROUND_BASE, 'sunset.png'),
+            feltColor:   'rgba(26, 10, 46, 0.8)',
+            feltDark:    'rgba(26, 10, 46, 0.8)',
+            tableGreen:  'rgba(26, 10, 46, 0.8)',
+            gold:        '#c0c0c0',
+            goldDark:    '#808080',
+            goldBronze:  '#a0a0a0',
+            textWhite:   '#ffffff',
+            textWin:     '#88cc88',
+            textLoss:    '#ff6677',
+            textPrimary: '#c0c0c0',
+            embedColor:  0x1a0a2e,
+        },
+        {
+            slots: {
+                reelBackground:      'rgba(26, 10, 46, 0.75)',
+                frameColor:          '#c0c0c0',
+                frameDarkColor:      '#808080',
+                frameBronze:         '#a0a0a0',
+                dividerColor:        '#1a0a2e',
+                highlightWin:        'rgba(136, 204, 136, 0.5)',
+                bannerBackground:    '#1a0a2e',
+                bannerBackgroundEnd: '#0d0517',
+                motionBlurOverlay:   'rgba(26, 10, 46, 0.5)',
+                paylineColors:       ['#88cc88', '#ff6677', '#c0c0c0', '#ffcc00', '#66dd88'],
             },
         },
-    },
+    ),
 
     // ── Colorway themes (palette only, all games) ───────────────────
 
@@ -605,7 +548,7 @@ const themes = {
 
     emerald: colorway('emerald', 'Emerald',
         'Richer, deeper greens than Classic. A premium classic tier.',
-        10000, 60, '💚',
+        7500, 60, '💚',
         {
             feltColor:   '#004d00',
             feltDark:    '#003300',
@@ -710,23 +653,195 @@ const themes = {
             embedColor:  0x2c1a0e,
         },
     ),
+    banana: colorway('banana', 'Creamy Banana',
+        'Soft pale-yellow palette with warm amber accents. A bright, buttery break from the usual darks.',
+        15000, 40, '🍌',
+        {
+            feltColor:   '#fff68f',
+            feltDark:    '#c8c05a',
+            tableGreen:  '#e8c86a',
+            gold:        '#c89a30',
+            goldDark:    '#8b6e20',
+            goldBronze:  '#5a4818',
+            textWhite:   '#2a2010',
+            textBlack:   '#000000',
+            textWin:     '#2a7a1a',
+            textLoss:    '#b0301a',
+            textPrimary: '#3e3a21',
+            embedColor:  0xffff8f,
+        },
+        {
+            slots: {
+                bannerBackground:    '#fff0aa',
+                bannerBackgroundEnd: '#e8c86a',
+            },
+            roulette: {
+                textWhite: '#ffffff',
+            },
+        },
+    ),
+    washed: colorway('washed', 'Washed Out',
+        'A greenish-gray felt with faded, vintage-style frames. A worn-in, nostalgic look.',
+        15000, 40, '🎨',
+        {
+            feltColor:   '#333218',
+            feltDark:    '#1a190c',
+            tableGreen:  '#4a4930',
+            gold:        '#c0c0a0',
+            goldDark:    '#808070',
+            goldBronze:  '#a0a080',
+            textWhite:   '#f0f0e0',
+            textWin:     '#88cc88',
+            textLoss:    '#cc6666',
+            textPrimary: '#c0c0a0',
+            embedColor:  0x333218,
+        },
+    ),
+    lilac: colorway('lilac', 'Lilac',
+        'Soft purple felt with deep plum accents. Light and whimsical with just enough bite to read clearly.',
+        15000, 40, '💜',
+        {
+            feltColor:   '#c8a0c8',
+            feltDark:    '#986098',
+            tableGreen:  '#b080b8',
+            gold:        '#8a5a9a',
+            goldDark:    '#5a3a6a',
+            goldBronze:  '#3a2a4a',
+            textWhite:   '#2a1a3a',
+            textBlack:   '#2a1a3a',
+            textWin:     '#2a7a4a',
+            textLoss:    '#a03050',
+            textPrimary: '#5a3a6a',
+            embedColor:  0xc8a0c8,
+        },
+        {
+            slots: {
+                bannerBackground:    '#e8d0e8',
+                bannerBackgroundEnd: '#c8a0c8',
+            },
+            roulette: {
+                textWhite: '#ffffff',
+            },
+        },
+    ),
+    noir: colorway('noir', 'Noir',
+        'Classic black felt with white and gray frames. A timeless, elegant look.',
+        15000, 40, '🖤',
+        {
+            feltColor:   '#000000',
+            feltDark:    '#000000',
+            tableGreen:  '#1a1a1a',
+            gold:        '#c0c0c0',
+            goldDark:    '#808080',
+            goldBronze:  '#a0a0a0',
+            textWhite:   '#ffffff',
+            textWin:     '#88cc88',
+            textLoss:    '#ff6677',
+            textPrimary: '#c0c0c0',
+            embedColor:  0x000000,
+        },
+    ),
+    crimson: colorway('crimson', 'Crimson',
+        'Deep crimson felt with dark red frames and gold accents. A bold yet classic casino look.',
+        15000, 40, '🩸',
+        {
+            feltColor:   '#6b0f1a',
+            feltDark:    '#4a0810',
+            tableGreen:  '#8b1a28',
+            gold:        '#ffd700',
+            goldDark:    '#c8a830',
+            goldBronze:  '#8b6914',
+            textWhite:   '#ffffff',
+            textBlack:   '#1a0408',
+            textWin:     '#66dd66',
+            textLoss:    '#ffb366',
+            textPrimary: '#ffd700',
+            embedColor:  0x6b0f1a,
+        },
+    ),
+    roseGold: colorway('roseGold', 'Rose Gold',
+        'Pink-tinted gold frames on a dark mauve felt. Popular and stylish with a modern, feminine flair.',
+        15000, 40, '🌹',
+        {
+            feltColor:   '#4a2838',
+            feltDark:    '#2e1824',
+            tableGreen:  '#5a3444',
+            gold:        '#e8a59f',
+            goldDark:    '#b07670',
+            goldBronze:  '#8b4a48',
+            textWhite:   '#ffffff',
+            textBlack:   '#1a0a14',
+            textWin:     '#88dd88',
+            textLoss:    '#ff8899',
+            textPrimary: '#e8a59f',
+            embedColor:  0x4a2838,
+        },
+    ),
+    mint: colorway('mint', 'Mint',
+        'Mint-green felt with pastel frames. A fresh, lighthearted theme with a cool, refreshing vibe.',
+        15000, 40, '🍃',
+        {
+            feltColor:   '#2a5a4a',
+            feltDark:    '#1a4030',
+            tableGreen:  '#3a6a5a',
+            gold:        '#b8e8d0',
+            goldDark:    '#88b8a0',
+            goldBronze:  '#5a8070',
+            textWhite:   '#ffffff',
+            textBlack:   '#0a1a14',
+            textWin:     '#aaffcc',
+            textLoss:    '#ff8888',
+            textPrimary: '#b8e8d0',
+            embedColor:  0x2a5a4a,
+        },
+    ),
+    oliveDrab: colorway('oliveDrab', 'Olive Drab',
+        'Military-inspired olive green with khaki and bronze frames. A rugged, utilitarian look with a nod to classic army aesthetics.',
+        15000, 40, '🫒',
+        {
+            feltColor:   '#4a4a28',
+            feltDark:    '#2a2a18',
+            tableGreen:  '#5a5a30',
+            gold:        '#c8b878',
+            goldDark:    '#8b7a48',
+            goldBronze:  '#5a4a28',
+            textWhite:   '#ffffff',
+            textBlack:   '#141408',
+            textWin:     '#b8cc68',
+            textLoss:    '#cc6644',
+            textPrimary: '#c8b878',
+            embedColor:  0x4a4a28,
+        },
+    ),
+    slate: colorway('slate', 'Slate',
+        'A blue-grey slate felt with steel frames sits between classic and modern. A versatile, understated theme with a cool, professional look.',
+        15000, 40, '🪨',
+        {
+            feltColor:   '#2a3a4a',
+            feltDark:    '#1a2838',
+            tableGreen:  '#3a4a5a',
+            gold:        '#c0c8d0',
+            goldDark:    '#8a929a',
+            goldBronze:  '#5a626a',
+            textWhite:   '#ffffff',
+            textBlack:   '#0a1218',
+            textWin:     '#66dd99',
+            textLoss:    '#ff7788',
+            textPrimary: '#c0c8d0',
+            embedColor:  0x2a3a4a,
+        },
+    ),
+
 
     // ── Test theme ──────────────────────────────────────────────────
 
-    minimal: {
-        id: 'minimal',
-        name: 'Minimal Test',
-        description: 'A theme that tests fallbacks by only defining one color.',
-        tier: 'colorway',
-        price: 0,
-        weight: 0,
-        emoji: '⬛',
-        game: null,
-        colors: {
+    minimal: colorway('minimal', 'Minimal Test',
+        'A theme that tests fallbacks by only defining one color.',
+        0, 0, '⬛',
+        {
             feltColor: '#ff00ff',
         },
-        overrides: {},
-    },
+    ),
 };
 
 // ─────────────────────────────────────────────────────────────────────

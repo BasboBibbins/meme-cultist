@@ -21,7 +21,7 @@ const {
 // Higher weight = more common in the shop.  Rarity is walked
 // descending by `min`; first match wins.
 const RARITY = {
-    limited:   { label: 'Limited',   color: 0xe74c3c, order: 4, min: null },
+    limited:   { label: 'LIMITED!',   color: 0xe74c3c, order: 4, min: null },
     legendary: { label: 'Legendary', color: 0xf59e0b, order: 3, min: 1  },
     rare:      { label: 'Rare',      color: 0x3b82f6, order: 2, min: 3  },
     uncommon:  { label: 'Uncommon',  color: 0x3fa34d, order: 1, min: 15 },

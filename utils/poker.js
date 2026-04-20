@@ -218,19 +218,21 @@ module.exports = {
             // Score display at bottom
             if (score) {
                 const scoreY = CANVAS_H - 35;
-                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                ctx.fillStyle = colors.tableGreen;
                 roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
                 ctx.fill();
 
-                ctx.strokeStyle = colors.gold;
+                ctx.strokeStyle = colors.goldDark;
                 ctx.lineWidth = 2;
                 roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
                 ctx.stroke();
 
-                ctx.fillStyle = colors.gold;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
                 ctx.font = 'bold 22px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
+                ctx.fillText(score, CANVAS_W / 2 + 2, scoreY + 2);
+                ctx.fillStyle = colors.gold;
                 ctx.fillText(score, CANVAS_W / 2, scoreY);
             }
 

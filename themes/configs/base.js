@@ -46,7 +46,6 @@ module.exports = {
     overrides: {
         // ── Slots ───────────────────────────────────────────────────
         slots: {
-            reelBackground:     '#0a2a14',
             frameColor:         '#ffd700',
             frameDarkColor:     '#c8a830',
             frameBronze:        '#8b6914',

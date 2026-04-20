@@ -278,7 +278,7 @@ async function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreeP
 
     // Reel background
     roundRect(ctx, FRAME_X, FRAME_Y, FRAME_W, FRAME_H, 6);
-    ctx.fillStyle = c.reelBackground;
+    ctx.fillStyle = c.reelBackground || c.feltDark;
     ctx.fill();
 
     // Grid dividers
