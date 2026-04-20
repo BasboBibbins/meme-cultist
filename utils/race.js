@@ -102,7 +102,7 @@ const NOUNS = [
     'Shakur', 'Taiki', 'Creek', 'Ticket', 'Sky',
     // Rikishi
     'Hoshoryu', 'Aonishki', 'Kirishima', 'Wakamotoharu', 'Wakatakakage', 
-    'Abi', 'Ura', 'Gonoyama', '#Tobizaru', 'Ichiyamamoto', 
+    'Abi', 'Ura', 'Gonoyama', 'Tobizaru', 'Ichiyamamoto', 
     // TMC Members
     'Spook', 'Merlington', 'Hayes', 'Seth', 'Ja8', 
     'Maestro', 'Marshall', 'Night-Hawk', '5hine', 'Akula', 
