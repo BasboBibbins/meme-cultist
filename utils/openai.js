@@ -594,9 +594,11 @@ async function extractImmediateChannelFacts(message, channelId, key) {
 }
 
 function isValidMessage(message) {
+  logger.debug(`Checking message ${message.id} for validity: content="${message.content}" length=${message.content?.length} hasThread=${message.hasThread} startsWithOOC=${message.content?.startsWith(OOC_PREFIX)} startsWithHourglass=${message.content?.startsWith('⏳')} memberRoles=${message.member?.roles?.cache?.map(r => r.id).join(",")}`);
   return (
     message &&
     message.member &&
+    message.content.length > 0 &&
     !message.hasThread &&
     !message.content.startsWith(OOC_PREFIX) &&
     !message.content.startsWith('⏳') &&
@@ -1281,8 +1283,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         const latestUserSummaryObject = userChatbotData.summaries[userChatbotData.summaries.length - 1];
         const latestUserSummary = latestUserSummaryObject ? latestUserSummaryObject.context : null;
         const latestUserFacts = userChatbotData.facts;
-        logger.debug(`Latest user summary: ${latestUserSummary}`);
-        logger.debug(`Latest user facts: ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join('; ')}`);
+        logger.debug(`Latest user summary:\x1b[31m ${latestUserSummary}`);
+        logger.debug(`Latest user facts:\x1b[31m ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join('; ')}`);
         if (latestUserSummaryObject) {
           const userSummaryBlock = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
           if (userSummaryBlock) {
@@ -1303,7 +1305,6 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       } else {
         const effectiveHistory = validMessages.slice(0, PAST_MESSAGES);
         for (const m of effectiveHistory.reverse()) {
-          logger.debug(` ${m.member.displayName}: ${m.content}`);
           if (m.member.id === client.user.id) {
             conversationHistory.push({ role: 'assistant', content: m.content });
           } else {
@@ -1319,6 +1320,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           `- Never say "based on the description", "from what I can see in the text", "according to the summary", "I was given a description", or anything that implies you only have a text representation. Never mention that you cannot truly see or that something was described to you.\n` +
           `- React to images and linked pages naturally, as if you opened them yourself — comment on visual details, tone, colors, page content, etc., with confidence.\n` +
           `- Only if the [Perception] block explicitly says VISION UNAVAILABLE or LINK UNAVAILABLE should you admit you couldn't see/read it; in that case, follow the instructions inside that block.`;
+          `- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.`
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
@@ -1373,10 +1375,6 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
       conversationHistory.length = 0;
       conversationHistory.push(...trimmedHistory);
     }
-
-    const fullPrompt = buildPromptForEstimate();
-
-    logger.debug(`Full prompt sent to Deepseek:\x1b[31m${fullPrompt}`);
     logger.debug(`Estimated token count: ${estimatedTokens} tokens`);
 
     let messages = [
