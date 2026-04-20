@@ -98,7 +98,7 @@ const NOUNS = [
     'Edge', 'Kart', 'Missile', 'Fantasy',
     // Umamusume
     'Suzuka', 'Scarlet', 'McQueen', 'Turbo', 'Bourbon', 'Teio', 'Rudolf',
-    'Vodka', 'Tachyon', 'Falcon', 'Yayahide', 'Brian', 'Cap', 'Helios',
+    'Vodka', 'Tachyon', 'Yayahide', 'Brian', 'Cap', 'Helios',
     'Shakur', 'Taiki', 'Creek', 'Ticket', 'Sky',
     // Rikishi
     'Hoshoryu', 'Aonishki', 'Kirishima', 'Wakamotoharu', 'Wakatakakage', 
