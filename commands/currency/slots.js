@@ -157,7 +157,7 @@ module.exports = {
                 }
 
                 await interaction.deferReply();
-                await db.set(`${user.id}.balance`, balance - totalCost);
+                await db.sub(`${user.id}.balance`, totalCost);
                 await playSlots(interaction, bet, user, { lines });
                 break;
         }
