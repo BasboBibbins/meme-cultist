@@ -1319,7 +1319,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           `- The [Perception] block below represents what you are currently seeing or reading firsthand. Treat it as your own direct sensory input, not as a description prepared for you.\n` +
           `- Never say "based on the description", "from what I can see in the text", "according to the summary", "I was given a description", or anything that implies you only have a text representation. Never mention that you cannot truly see or that something was described to you.\n` +
           `- React to images and linked pages naturally, as if you opened them yourself — comment on visual details, tone, colors, page content, etc., with confidence.\n` +
-          `- Only if the [Perception] block explicitly says VISION UNAVAILABLE or LINK UNAVAILABLE should you admit you couldn't see/read it; in that case, follow the instructions inside that block.`;
+          `- Only if the [Perception] block explicitly says VISION UNAVAILABLE or LINK UNAVAILABLE should you admit you couldn't see/read it; in that case, follow the instructions inside that block.` +
           `- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.`
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
