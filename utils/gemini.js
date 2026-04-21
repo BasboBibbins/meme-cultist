@@ -1,5 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 const logger = require("./logger");
+const { isSafeUrl } = require("./ssrf");
 
 const VISION_MODEL = "gemini-2.5-flash";
 /**
@@ -32,6 +33,11 @@ async function describeImage(imageUrl, userHint = null) {
   const ai = getGeminiClient();
   if (!ai) return { error: "Vision is unavailable (GEMINI_API_KEY not configured)." };
   try {
+    const urlCheck = isSafeUrl(imageUrl);
+    if (!urlCheck.safe) {
+      logger.warn(`[Gemini] Blocked unsafe image URL: ${imageUrl} (${urlCheck.reason})`);
+      return { error: `Image URL is not allowed: ${urlCheck.reason}` };
+    }
     const res = await fetch(imageUrl);
     if (!res.ok) {
       logger.warn(`[Gemini] Failed to fetch image (${res.status}): ${imageUrl}`);

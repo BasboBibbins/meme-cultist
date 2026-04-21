@@ -1,5 +1,6 @@
 const cheerio = require("cheerio");
 const logger = require("./logger");
+const { isSafeUrl } = require("./ssrf");
 
 const URL_REGEX = /(https?:\/\/[^\s<>"']+)/i;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -14,6 +15,11 @@ async function fetchPageText(url, maxChars = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
   try {
+    const urlCheck = isSafeUrl(url);
+    if (!urlCheck.safe) {
+      logger.debug(`[urlContext] blocked unsafe URL: ${url} (${urlCheck.reason})`);
+      return { url, error: urlCheck.reason };
+    }
     const res = await fetch(url, {
       headers: {
         "user-agent": "meme-cultist/1.0",
