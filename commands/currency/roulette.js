@@ -311,7 +311,7 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
             number: chipNumber,
             amount: bet,
             userId: user.id,
-            username: user.username,
+            username: user.displayName,
             type: betType,
             numberValue: parsedNumber
         });
