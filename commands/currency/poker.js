@@ -75,7 +75,7 @@ module.exports = {
             .setTimestamp();
 
         if (!dbUser) {
-            await addNewDBUser(user.id);
+            await addNewDBUser(user);
             error_embed.setDescription(`You don't have an account! Please try using the \`daily\` command and then try again.`);
             return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
@@ -92,7 +92,7 @@ module.exports = {
             return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
         
-        let msg = await interaction.deferReply(interaction);
+        let msg = await interaction.deferReply().then(() => interaction.fetchReply());
         await db.sub(`${user.id}.balance`, bet);
         await contributeToJackpot(bet);
 

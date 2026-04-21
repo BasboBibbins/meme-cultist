@@ -36,7 +36,7 @@ module.exports = {
             .setTimestamp();
 
         if (!dbUser) {
-            await addNewDBUser(user.id);
+            await addNewDBUser(user);
             error_embed.setDescription(`You don't have an account! Please try using the \`daily\` command and then try again.`);
             return interaction.reply({ embeds: [error_embed], ephemeral: true });
         }
@@ -93,7 +93,7 @@ module.exports = {
                     .setTimestamp();
                 return await interaction.editReply({ embeds: [embed], components: [] });
             }
-            let winnings = Math.ceil(originalBet * 1.5);
+            let winnings = originalBet + Math.ceil(originalBet * 1.5);
             await db.add(`${user.id}.balance`, winnings);
             await db.add(`${stats}.wins`, 1);
             await db.add(`${stats}.blackjacks`, 1);
