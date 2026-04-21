@@ -56,11 +56,11 @@ Empty: < 5 characters of content.`;
         });
 
         const content = response.data.choices[0]?.message?.content?.trim();
-        if (!content) return { valid: true, reason: "Empty response", category: "unknown" };
+        if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
         return JSON.parse(content);
     } catch (error) {
         logger.error(`[Feedback] Validation error: ${error.message}`);
-        return { valid: true, reason: "Validation failed", category: "error" };
+        return { valid: false, reason: "Validation failed", category: "error" }; 
     }
 }
 
