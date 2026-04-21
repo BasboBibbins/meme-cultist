@@ -8,10 +8,13 @@
  * dispatches to the right manager based on the item's `category`.
  */
 
+const { EmbedBuilder } = require('discord.js');
 const { QuickDB } = require('quick.db');
 const db = new QuickDB({ filePath: './db/users.sqlite' });
 
+const { CURRENCY_NAME } = require('../config.js');
 const { getThemeList, getTheme } = require('../themes/configs');
+const { getThemeColors } = require('../themes/resolver');
 const {
     equipTheme, grantTheme, revokeTheme, ownsTheme,
     getOwnedThemes, getEquippedTheme,
@@ -329,11 +332,163 @@ async function purchaseItem(userId, guildId, itemId) {
     return { success: true, item, newBalance };
 }
 
+// ── Shared command helpers ────────────────────────────────────────────
+
+function buildFooter(interaction) {
+    return {
+        text: `${interaction.client.user.username} | Version ${require('../package.json').version}`,
+        iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }),
+    };
+}
+
+function formatPrice(price) {
+    return price === 0 ? 'Free!' : `${price.toLocaleString('en-US')} ${CURRENCY_NAME}`;
+}
+
+const TIER_LABELS = {
+    colorway: 'Colorway',
+    styled:   'Styled',
+    full:     'Full',
+    limited:  'Limited',
+};
+
+const CATEGORY_LABELS = {
+    theme: 'Themes',
+};
+
+function renderThemeSwatch(themeId) {
+    const colors = getThemeColors(themeId, 'slots');
+    const swatch = [colors.feltColor, colors.gold, colors.textWin, colors.textLoss]
+        .filter(Boolean)
+        .map(c => `\`${c}\``)
+        .join('  ');
+    const embedColor = colors.embedColor || parseInt(String(colors.feltColor).replace('#', ''), 16) || 0x5865F2;
+    return { swatch, embedColor };
+}
+
+function buildThemeInfoEmbed({ item, isOwned, footer }) {
+    const { swatch, embedColor } = renderThemeSwatch(item.id);
+    const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Default';
+    const styleLabel = TIER_LABELS[item.tier] || item.tier;
+
+    let desc = `${item.description}\n\n`;
+    desc += `**Rarity:** ${rarityLabel}\n`;
+    desc += `**Style:** ${styleLabel}\n`;
+    if (item.tier === 'limited' && item.availability) {
+        desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
+        desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
+    }
+    desc += `**Price:** ${formatPrice(item.price)}\n`;
+    desc += `**Status:** ${isOwned ? 'Owned' : 'Not Owned'}\n`;
+    desc += `\n**Sample Colors:**\n${swatch}`;
+
+    const embed = new EmbedBuilder()
+        .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
+        .setDescription(desc)
+        .setColor(embedColor)
+        .setTimestamp();
+    if (footer) embed.setFooter(footer);
+    return embed;
+}
+
+function buildEquipResultEmbed({ result, itemId, user, footer }) {
+    const item = getItemById(itemId);
+    const name = item?.name || itemId;
+    const prefix = item?.emoji ? `${item.emoji} ` : '';
+
+    if (!result.success) {
+        let desc;
+        switch (result.error) {
+            case 'unknown_item':
+            case 'unknown_theme':  desc = `Unknown item \`${itemId}\`.`; break;
+            case 'not_owned':      desc = `You don't own ${prefix}**${name}**.\nCheck \`/shop browse\` to purchase it!`; break;
+            case 'unknown_category': desc = `**${name}** can't be equipped.`; break;
+            default:               desc = `Equip failed: \`${result.error}\`.`;
+        }
+        const embed = new EmbedBuilder()
+            .setDescription(desc)
+            .setColor(0xFF0000)
+            .setTimestamp();
+        if (footer) embed.setFooter(footer);
+        return { embed, ephemeral: true };
+    }
+
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setDescription(`Equipped ${prefix}**${name}**!${item?.description ? `\n${item.description}` : ''}`)
+        .setColor(0x00FF00)
+        .setTimestamp();
+    if (footer) embed.setFooter(footer);
+    return { embed, ephemeral: true };
+}
+
+async function respondThemeAutocomplete(interaction, { onlyOwned = false } = {}) {
+    const focused = interaction.options.getFocused().toLowerCase();
+    const pool = onlyOwned
+        ? await getOwnedThemes(interaction.user.id)
+        : getThemeList().map(t => t.id);
+    const filtered = pool
+        .filter(id => id.toLowerCase().startsWith(focused))
+        .slice(0, 25)
+        .map(id => {
+            const item = getItemById(id);
+            return { name: item?.name || id, value: id };
+        });
+    await interaction.respond(filtered);
+}
+
+// ── Game preview helpers (shared by /theme info and /shop preview) ─────
+
+const PREVIEW_GAMES = ['slots', 'roulette', 'poker'];
+const GAME_LABELS = { slots: 'Slots', roulette: 'Roulette', poker: 'Poker' };
+const GAME_EMOJIS = { slots: '\u{1F3B0}', roulette: '\u{1F3B2}', poker: '\u{1F0CF}' };
+const GAME_FILES = { slots: 'slots-spin.gif', roulette: 'roulette.png', poker: 'hand.png' };
+
+const MAX_PREVIEW_CACHE = 50;
+const _previewCache = new Map();
+
+async function getPreviewAttachment(themeId, game) {
+    const key = `${themeId}-${game}`;
+    if (_previewCache.has(key)) return _previewCache.get(key);
+    let attachment = null;
+    try {
+        const { slotsPreview } = require('./slotsCanvas');
+        const { roulettePreview } = require('./roulette');
+        const { pokerPreview } = require('./poker');
+        switch (game) {
+            case 'slots':    attachment = await slotsPreview(themeId); break;
+            case 'roulette': attachment = await roulettePreview(themeId); break;
+            case 'poker':    attachment = await pokerPreview(themeId); break;
+        }
+    } catch (err) {
+        // Lazy-load may fail if canvas deps are missing; non-fatal
+    }
+    _previewCache.set(key, attachment);
+    if (_previewCache.size > MAX_PREVIEW_CACHE) {
+        const oldest = _previewCache.keys().next().value;
+        _previewCache.delete(oldest);
+    }
+    return attachment;
+}
+
 module.exports = {
     RARITY,
     RARITY_ORDER,
     SHOP_SIZE,
+    TIER_LABELS,
+    CATEGORY_LABELS,
+    PREVIEW_GAMES,
+    GAME_LABELS,
+    GAME_EMOJIS,
+    GAME_FILES,
     getRarity,
+    buildFooter,
+    formatPrice,
+    renderThemeSwatch,
+    buildThemeInfoEmbed,
+    buildEquipResultEmbed,
+    respondThemeAutocomplete,
+    getPreviewAttachment,
     isThemeAvailable,
     formatAvailability,
     getAllItems,

@@ -5,8 +5,6 @@ const { addNewDBUser, setDBValue } = require("../../database");
 const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
-const { getTheme, getThemeList } = require('../../utils/slotsThemes');
-const { equipTheme } = require('../../themes/manager');
 const { formatTimeLeft } = require('../../utils/time')
 const logger = require("../../utils/logger");
 
@@ -35,28 +33,7 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('daily')
-                .setDescription(`Use your daily free spins.`))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('theme')
-                .setDescription('Change your slots visual theme.')
-                .addStringOption(option =>
-                    option.setName('theme_name')
-                        .setDescription('The theme to use.')
-                        .setRequired(true)
-                        .setAutocomplete(true))),
-    async autocomplete(interaction) {
-        const focused = interaction.options.getFocused();
-        const list = getThemeList();
-        const filtered = list
-            .filter(t =>
-                t.name.toLowerCase().startsWith(focused.toLowerCase()) ||
-                t.id.toLowerCase().startsWith(focused.toLowerCase()))
-            .slice(0, 25);
-        await interaction.respond(
-            filtered.map(t => ({ name: `${t.name} \u2014 ${t.description}`, value: t.id }))
-        );
-    },
+                .setDescription(`Use your daily free spins.`)),
     async execute(interaction) {
         const user = interaction.user;
         const option = interaction.options.getSubcommand();
@@ -69,38 +46,6 @@ module.exports = {
         switch (option) {
             case 'paytable':
                 await generatePaytable(interaction);
-                break;
-
-            case 'theme':
-                const themeId = interaction.options.getString('theme_name');
-                const result = await equipTheme(user.id, themeId);
-
-                if (!result.success) {
-                    const list = getThemeList();
-                    let desc;
-                    if (result.error === 'unknown_theme') {
-                        const available = list.map(t => `\`${t.id}\` - ${t.name}`).join('\n');
-                        desc = `Unknown theme \`${themeId}\`.\n\n**Available themes:**\n${available}`;
-                    } else {
-                        const theme = list.find(t => t.id === themeId);
-                        desc = `You don't own **${theme?.name || themeId}**.\nCheck the shop to purchase it!`;
-                    }
-                    const embed = new EmbedBuilder()
-                        .setDescription(desc)
-                        .setColor(0xFF0000)
-                        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                        .setTimestamp();
-                    return await interaction.reply({ embeds: [embed], ephemeral: true });
-                }
-
-                const selectedTheme = getTheme(themeId);
-                const themeEmbed = new EmbedBuilder()
-                    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(`Theme set to **${selectedTheme.name}**!\n${selectedTheme.description}`)
-                    .setColor(0x00FF00)
-                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                    .setTimestamp();
-                await interaction.reply({ embeds: [themeEmbed], ephemeral: true });
                 break;
 
             case 'daily':

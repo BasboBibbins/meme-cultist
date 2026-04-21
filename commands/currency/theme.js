@@ -1,17 +1,15 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getThemeList } = require('../../themes/configs');
-const { getThemeColors } = require('../../themes/resolver');
-const { getEquippedTheme, getOwnedThemes, ownsTheme } = require('../../themes/manager');
-const { CURRENCY_NAME } = require('../../config.js');
-const { RARITY, RARITY_ORDER, equipItem, getItemById, isThemeAvailable, formatAvailability } = require('../../utils/inventory');
+const { getOwnedThemes, getEquippedTheme } = require('../../themes/manager');
+const {
+    RARITY, RARITY_ORDER,
+    equipItem, getItemById, ownsItem,
+    buildFooter, formatPrice, buildThemeInfoEmbed, buildEquipResultEmbed,
+    respondThemeAutocomplete,
+    PREVIEW_GAMES, GAME_LABELS, GAME_EMOJIS, GAME_FILES,
+    getPreviewAttachment,
+} = require('../../utils/inventory');
 const logger = require('../../utils/logger');
-
-const TIER_LABELS = {
-    colorway: 'Colorway',
-    styled:   'Styled',
-    full:     'Full',
-    limited:  'Limited',
-};
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -30,68 +28,34 @@ module.exports = {
                 .setDescription('View all available themes.'))
         .addSubcommand(sub =>
             sub.setName('info')
-                .setDescription('Preview a theme\'s details.')
+                .setDescription('Preview a theme with game images.')
                 .addStringOption(opt =>
                     opt.setName('theme_name')
                         .setDescription('The theme to preview.')
                         .setRequired(true)
-                        .setAutocomplete(true)))
-        .addSubcommand(sub =>
-            sub.setName('owned')
-                .setDescription('View your owned themes.')),
+                        .setAutocomplete(true))),
 
     async autocomplete(interaction) {
-        const focused = interaction.options.getFocused();
-        const list = await getOwnedThemes(interaction.user.id);
-        logger.debug(`Autocomplete for user ${interaction.user.username} (${interaction.user.id}), focused: "${focused}", owned themes: ${list.join(', ')}`);
-        return interaction.respond(
-            list.filter(t => t.startsWith(focused))
-                .map(t => ({ name: getItemById(t)?.name || t, value: t }))
-        );
+        const sub = interaction.options.getSubcommand();
+        if (sub === 'set') {
+            return respondThemeAutocomplete(interaction, { onlyOwned: true });
+        }
+        // 'info' and fallback: show all themes
+        return respondThemeAutocomplete(interaction, { onlyOwned: false });
     },
 
     async execute(interaction) {
         const user = interaction.user;
         const sub = interaction.options.getSubcommand();
-
-        const footer = {
-            text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`,
-            iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }),
-        };
+        const footer = buildFooter(interaction);
 
         switch (sub) {
             // ── /theme set ──────────────────────────────────────────
             case 'set': {
                 const themeId = interaction.options.getString('theme_name');
                 const result = await equipItem(user.id, themeId);
-
-                if (!result.success) {
-                    const item = getItemById(themeId);
-                    let desc;
-                    if (result.error === 'unknown_item' || result.error === 'unknown_theme') {
-                        desc = `Unknown theme \`${themeId}\`.`;
-                    } else if (result.error === 'not_owned') {
-                        desc = `You don't own ${item?.emoji ? `${item.emoji} ` : ''}**${item?.name || themeId}**.\nCheck \`/shop browse\` to purchase it!`;
-                    } else {
-                        desc = `Equip failed: \`${result.error}\`.`;
-                    }
-
-                    const embed = new EmbedBuilder()
-                        .setDescription(desc)
-                        .setColor(0xFF0000)
-                        .setFooter(footer)
-                        .setTimestamp();
-                    return interaction.reply({ embeds: [embed], ephemeral: true });
-                }
-
-                const item = getItemById(themeId);
-                const embed = new EmbedBuilder()
-                    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(`Theme set to ${item?.emoji ? `${item.emoji} ` : ''}**${item?.name || themeId}**!\n${item?.description || ''}`)
-                    .setColor(0x00FF00)
-                    .setFooter(footer)
-                    .setTimestamp();
-                return interaction.reply({ embeds: [embed], ephemeral: true });
+                const { embed, ephemeral } = buildEquipResultEmbed({ result, itemId: themeId, user, footer });
+                return interaction.reply({ embeds: [embed], ephemeral });
             }
 
             // ── /theme list ─────────────────────────────────────────
@@ -100,8 +64,6 @@ module.exports = {
                 const owned = await getOwnedThemes(user.id);
                 const equipped = await getEquippedTheme(user.id);
 
-                // Group by rarity (derived from weight). Classic/minimal
-                // have weight 0 and go into an "Unlisted" bucket.
                 const grouped = {};
                 for (const t of allThemes) {
                     const item = getItemById(t.id);
@@ -121,10 +83,10 @@ module.exports = {
                         const isOwned = owned.includes(t.id);
                         const isEquipped = t.id === equipped;
                         const status = isEquipped
-                            ? ' \u2705'
+                            ? ' ✅'
                             : isOwned
-                                ? ' \u2714\uFE0F'
-                                : ` \u{1F512} ${t.price.toLocaleString('en-US')} ${CURRENCY_NAME}`;
+                                ? ' ✔️'
+                                : ` 🔒 ${formatPrice(t.price)}`;
                         const prefix = t.emoji ? `${t.emoji} ` : '';
                         desc += `${prefix}**${t.name}**${status}\n`;
                     }
@@ -140,7 +102,7 @@ module.exports = {
                 return interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
-            // ── /theme info ─────────────────────────────────────────
+            // ── /theme info (with game preview pagination) ──────────
             case 'info': {
                 const themeId = interaction.options.getString('theme_name');
                 const item = getItemById(themeId);
@@ -154,70 +116,85 @@ module.exports = {
                     return interaction.reply({ embeds: [embed], ephemeral: true });
                 }
 
-                const isOwned = await ownsTheme(user.id, themeId);
-                const colors = getThemeColors(themeId, 'slots');
+                const isOwned = await ownsItem(user.id, themeId);
+                const embed = buildThemeInfoEmbed({ item, isOwned, footer });
+                await interaction.deferReply({ ephemeral: true });
 
-                const swatch = [colors.feltColor, colors.gold, colors.textWin, colors.textLoss]
-                    .filter(Boolean)
-                    .map(c => `\`${c}\``)
-                    .join('  ');
-
-                const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Default';
-                const styleLabel = TIER_LABELS[item.tier] || item.tier;
-
-                let desc = `${item.description}\n\n`;
-                desc += `**Rarity:** ${rarityLabel}\n`;
-                desc += `**Style:** ${styleLabel}\n`;
-                if (item.tier === 'limited' && item.availability) {
-                    desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
-                    desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
-                }
-                desc += `**Price:** ${item.price === 0 ? 'Free' : `${item.price.toLocaleString('en-US')} ${CURRENCY_NAME}`}\n`;
-                desc += `**Status:** ${isOwned ? 'Owned' : 'Locked'}\n`;
-                desc += `\n**Sample Colors:**\n${swatch}`;
-
-                const embedColor = colors.embedColor || parseInt(String(colors.feltColor).replace('#', ''), 16) || 0x5865F2;
-
-                const embed = new EmbedBuilder()
-                    .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
-                    .setDescription(desc)
-                    .setColor(embedColor)
-                    .setFooter(footer)
-                    .setTimestamp();
-                return interaction.reply({ embeds: [embed], ephemeral: true });
-            }
-
-            // ── /theme owned ────────────────────────────────────────
-            case 'owned': {
-                const allThemes = getThemeList();
-                const owned = await getOwnedThemes(user.id);
-                const equipped = await getEquippedTheme(user.id);
-
-                const ownedThemes = allThemes.filter(t => owned.includes(t.id));
-
-                if (ownedThemes.length === 0) {
-                    const embed = new EmbedBuilder()
-                        .setDescription('You only have the **Classic** theme. Check the shop for more!')
-                        .setColor(0xFFAA00)
-                        .setFooter(footer)
-                        .setTimestamp();
-                    return interaction.reply({ embeds: [embed], ephemeral: true });
+                const attachments = {};
+                for (const game of PREVIEW_GAMES) {
+                    attachments[game] = await getPreviewAttachment(themeId, game);
                 }
 
-                let desc = '';
-                for (const t of ownedThemes) {
-                    const isEquipped = t.id === equipped;
-                    const prefix = t.emoji ? `${t.emoji} ` : '';
-                    desc += `${prefix}**${t.name}**${isEquipped ? ' \u2705 Equipped' : ''}\n`;
+                let currentPage = 0;
+                let currentGame = PREVIEW_GAMES[currentPage];
+
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('prev_game')
+                            .setLabel(`${GAME_EMOJIS[PREVIEW_GAMES[0]]} ${GAME_LABELS[PREVIEW_GAMES[0]]}`)
+                            .setStyle(ButtonStyle.Primary)
+                            .setDisabled(true),
+                        new ButtonBuilder()
+                            .setCustomId('next_game')
+                            .setLabel(`${GAME_EMOJIS[PREVIEW_GAMES[1]]} ${GAME_LABELS[PREVIEW_GAMES[1]]}`)
+                            .setStyle(ButtonStyle.Primary),
+                    );
+
+                const currentAttachment = attachments[currentGame];
+                if (currentAttachment) {
+                    embed.setImage(`attachment://${GAME_FILES[currentGame]}`);
                 }
 
-                const embed = new EmbedBuilder()
-                    .setAuthor({ name: `${user.displayName} | Owned Themes`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setDescription(desc.trim())
-                    .setColor(0x5865F2)
-                    .setFooter(footer)
-                    .setTimestamp();
-                return interaction.reply({ embeds: [embed], ephemeral: true });
+                const msg = await interaction.editReply({
+                    embeds: [embed],
+                    components: [row],
+                    files: currentAttachment ? [currentAttachment] : [],
+                });
+
+                const filter = i => (i.customId === 'prev_game' || i.customId === 'next_game')
+                    && i.user.id === interaction.user.id;
+                const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
+
+                collector.on('collect', async i => {
+                    await i.deferUpdate();
+
+                    if (i.customId === 'prev_game') currentPage--;
+                    else if (i.customId === 'next_game') currentPage++;
+                    currentPage = Math.max(0, Math.min(PREVIEW_GAMES.length - 1, currentPage));
+                    currentGame = PREVIEW_GAMES[currentPage];
+
+                    row.components[0]
+                        .setDisabled(currentPage === 0)
+                        .setLabel(currentPage > 0
+                            ? `${GAME_EMOJIS[PREVIEW_GAMES[currentPage - 1]]} ${GAME_LABELS[PREVIEW_GAMES[currentPage - 1]]}`
+                            : `${GAME_EMOJIS[PREVIEW_GAMES[0]]} ${GAME_LABELS[PREVIEW_GAMES[0]]}`);
+                    row.components[1]
+                        .setDisabled(currentPage === PREVIEW_GAMES.length - 1)
+                        .setLabel(currentPage < PREVIEW_GAMES.length - 1
+                            ? `${GAME_EMOJIS[PREVIEW_GAMES[currentPage + 1]]} ${GAME_LABELS[PREVIEW_GAMES[currentPage + 1]]}`
+                            : `${GAME_EMOJIS[PREVIEW_GAMES[2]]} ${GAME_LABELS[PREVIEW_GAMES[2]]}`);
+
+                    const pageEmbed = buildThemeInfoEmbed({ item, isOwned, footer });
+                    const newAttachment = attachments[currentGame];
+                    if (newAttachment) {
+                        pageEmbed.setImage(`attachment://${GAME_FILES[currentGame]}`);
+                    }
+                    pageEmbed.setFooter({ text: `${footer.text} | ${GAME_EMOJIS[currentGame]} ${GAME_LABELS[currentGame]} Preview | Page ${currentPage + 1}/${PREVIEW_GAMES.length}`, iconURL: footer.iconURL });
+
+                    collector.resetTimer();
+                    i.editReply({
+                        embeds: [pageEmbed],
+                        components: [row],
+                        files: newAttachment ? [newAttachment] : [],
+                    });
+                });
+
+                collector.on('end', () => {
+                    interaction.deleteReply().catch(() => {});
+                });
+
+                return;
             }
         }
     },

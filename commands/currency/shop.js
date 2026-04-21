@@ -1,95 +1,17 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { CURRENCY_NAME } = require('../../config.js');
-const { getThemeColors } = require('../../themes/resolver');
 const logger = require('../../utils/logger');
 const { formatTimeSince } = require('../../utils/time');
 const {
     RARITY, RARITY_ORDER,
-    getItemById, getAllItems,
+    getItemById,
     getDailyShopStock, msUntilNextShopReset,
     ownsItem, purchaseItem,
     isThemeAvailable, formatAvailability,
+    buildFooter, formatPrice, buildThemeInfoEmbed,
+    PREVIEW_GAMES, GAME_LABELS, GAME_EMOJIS, GAME_FILES,
+    getPreviewAttachment,
 } = require('../../utils/inventory');
-const { slotsPreview } = require('../../utils/slotsCanvas');
-const { roulettePreview } = require('../../utils/roulette');
-const { pokerPreview } = require('../../utils/poker');
-
-function buildFooter(interaction) {
-    return {
-        text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`,
-        iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }),
-    };
-}
-
-function formatPrice(price) {
-    return price === 0 ? 'Free!' : `${price.toLocaleString('en-US')} ${CURRENCY_NAME}`;
-}
-
-// Shared swatch renderer for item previews (themes only for now).
-function renderThemeSwatch(themeId) {
-    const colors = getThemeColors(themeId, 'slots');
-    const swatch = [colors.feltColor, colors.gold, colors.textWin, colors.textLoss]
-        .filter(Boolean)
-        .map(c => `\`${c}\``)
-        .join('  ');
-    const embedColor = colors.embedColor || parseInt(String(colors.feltColor).replace('#', ''), 16) || 0x5865F2;
-    return { swatch, embedColor };
-}
-
-// ── Game preview pagination ──────────────────────────────────────────
-const MAX_PREVIEW_CACHE = 50;
-const previewCache = new Map();
-const PREVIEW_GAMES = ['slots', 'roulette', 'poker'];
-const GAME_LABELS = { slots: 'Slots', roulette: 'Roulette', poker: 'Poker' };
-const GAME_EMOJIS = { slots: '\u{1F3B0}', roulette: '\u{1F3B2}', poker: '\u{1F0CF}' };
-const GAME_FILES = { slots: 'slots-spin.gif', roulette: 'roulette.png', poker: 'hand.png' };
-
-async function getPreviewAttachment(themeId, game) {
-    const key = `${themeId}-${game}`;
-    if (previewCache.has(key)) return previewCache.get(key);
-    let attachment = null;
-    try {
-        switch (game) {
-            case 'slots':    attachment = await slotsPreview(themeId); break;
-            case 'roulette': attachment = await roulettePreview(themeId); break;
-            case 'poker':    attachment = await pokerPreview(themeId); break;
-        }
-    } catch (err) {
-        logger.error(`Preview generation failed for ${key}: ${err.message}`);
-    }
-    previewCache.set(key, attachment);
-    // Evict oldest entries if cache exceeds limit
-    if (previewCache.size > MAX_PREVIEW_CACHE) {
-        const oldest = previewCache.keys().next().value;
-        previewCache.delete(oldest);
-    }
-    return attachment;
-}
-
-function buildPreviewEmbed(item, isOwned, embedColor, game) {
-    const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Unlisted';
-    let desc = `${item.description}\n\n`;
-    desc += `**Rarity:** ${rarityLabel}\n`;
-    if (item.tier === 'limited' && item.availability) {
-        desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
-        desc += `**Season:** ${isThemeAvailable(item.availability) ? 'In Season' : 'Out of Season'}\n`;
-    }
-    desc += `**Price:** ${formatPrice(item.price)}\n`;
-    desc += `**Status:** ${isOwned ? 'Owned' : 'Not Owned'}\n`;
-    if (item.category === 'theme') {
-        const { swatch } = renderThemeSwatch(item.id);
-        desc += `\n**Sample Colors:**\n${swatch}`;
-    }
-    const embed = new EmbedBuilder()
-        .setTitle(`${item.emoji ? `${item.emoji} ` : ''}${item.name}`)
-        .setDescription(desc)
-        .setColor(embedColor)
-        .setTimestamp();
-    if (game) {
-        embed.setFooter({ text: `${GAME_EMOJIS[game]} ${GAME_LABELS[game]} Preview | Page ${PREVIEW_GAMES.indexOf(game) + 1}/${PREVIEW_GAMES.length}` });
-    }
-    return embed;
-}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -119,16 +41,15 @@ module.exports = {
         const sub = interaction.options.getSubcommand();
         const focused = interaction.options.getFocused().toLowerCase();
 
-        const pool = sub === 'buy'
-            ? getDailyShopStock(interaction.guildId)
-            : getAllItems();
+        // Both /shop buy and /shop preview only show items currently in the shop
+        const pool = getDailyShopStock(interaction.guildId);
 
         const filtered = pool
             .filter(i =>
                 i.id.toLowerCase().startsWith(focused) ||
                 i.name.toLowerCase().startsWith(focused))
             .slice(0, 25)
-            .map(i => ({ name: `${i.name} ${sub === 'buy' ? `\u2014 ${formatPrice(i.price)}` : ''}`, value: i.id }));
+            .map(i => ({ name: `${i.name} ${sub === 'buy' ? `— ${formatPrice(i.price)}` : ''}`, value: i.id }));
 
         await interaction.respond(filtered);
     },
@@ -156,9 +77,9 @@ module.exports = {
                     if (!items || items.length === 0) continue;
                     desc += `**${RARITY[rarity].label}**\n`;
                     for (const i of items) {
-                        const mark = i.owned ? ' \u2705' : '';
+                        const mark = i.owned ? ' ✅' : '';
                         const prefix = i.emoji ? `${i.emoji} ` : '';
-                        desc += `${prefix}**${i.name}** \u00b7 ${formatPrice(i.price)}${mark}\n`;
+                        desc += `${prefix}**${i.name}** · ${formatPrice(i.price)}${mark}\n`;
                     }
                     desc += '\n';
                 }
@@ -166,7 +87,7 @@ module.exports = {
 
                 const resetIn = await formatTimeSince(msUntilNextShopReset());
                 const embed = new EmbedBuilder()
-                    .setAuthor({ name: `Daily Shop \u2014 ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                    .setAuthor({ name: `Daily Shop — ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
                     .setDescription(desc.trim())
                     .setFooter({ ...footer, text: `${footer.text} | Resets in ${resetIn}` })
                     .setColor(0x5865F2)
@@ -229,7 +150,7 @@ module.exports = {
 
                 const isOwned = await ownsItem(user.id, itemId);
 
-                // Non-theme items: static embed (unchanged)
+                // Non-theme items: static embed
                 if (item.category !== 'theme') {
                     const rarityLabel = item.rarity ? RARITY[item.rarity].label : 'Unlisted';
                     const rarityColor = item.rarity ? RARITY[item.rarity].color : 0x5865F2;
@@ -253,7 +174,7 @@ module.exports = {
                 }
 
                 // Theme items: paginated game previews
-                const { embedColor } = renderThemeSwatch(itemId);
+                const embed = buildThemeInfoEmbed({ item, isOwned, footer });
                 await interaction.deferReply({ ephemeral: true });
 
                 const attachments = {};
@@ -277,7 +198,6 @@ module.exports = {
                             .setStyle(ButtonStyle.Primary),
                     );
 
-                const embed = buildPreviewEmbed(item, isOwned, embedColor, currentGame);
                 const currentAttachment = attachments[currentGame];
                 if (currentAttachment) {
                     embed.setImage(`attachment://${GAME_FILES[currentGame]}`);
@@ -312,15 +232,16 @@ module.exports = {
                             ? `${GAME_EMOJIS[PREVIEW_GAMES[currentPage + 1]]} ${GAME_LABELS[PREVIEW_GAMES[currentPage + 1]]}`
                             : `${GAME_EMOJIS[PREVIEW_GAMES[2]]} ${GAME_LABELS[PREVIEW_GAMES[2]]}`);
 
-                    const newEmbed = buildPreviewEmbed(item, isOwned, embedColor, currentGame);
+                    const pageEmbed = buildThemeInfoEmbed({ item, isOwned, footer });
                     const newAttachment = attachments[currentGame];
                     if (newAttachment) {
-                        newEmbed.setImage(`attachment://${GAME_FILES[currentGame]}`);
+                        pageEmbed.setImage(`attachment://${GAME_FILES[currentGame]}`);
                     }
+                    pageEmbed.setFooter({ text: `${footer.text} | ${GAME_EMOJIS[currentGame]} ${GAME_LABELS[currentGame]} Preview | Page ${currentPage + 1}/${PREVIEW_GAMES.length}`, iconURL: footer.iconURL });
 
                     collector.resetTimer();
                     i.editReply({
-                        embeds: [newEmbed],
+                        embeds: [pageEmbed],
                         components: [row],
                         files: newAttachment ? [newAttachment] : [],
                     });
