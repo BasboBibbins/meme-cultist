@@ -10,10 +10,13 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 - **URL Context** — the bot reads web pages when you share links
 - **Image Generation** — the bot can generate images via `/generate` or by asking in conversation
 - Thread-based and channel-based context management
+- **Multi-channel support** — chatbot operates across multiple configured channels with per-channel context
 - Rolling summaries and fact extraction for persistent memory
 - Immediate/real-time fact extraction with debouncing
 - User-level memory and statistics tracking
-- Roleplay mode with customizable character attributes
+- Roleplay mode with customizable character attributes (`/context set`)
+- Admin-only channel context modification, thread owners can customize their own threads
+- Paginated viewing of summaries and facts (`/context summary`, `/context facts`)
 - Incognito mode for privacy
 - Rate limiting per-user and global
 
@@ -22,8 +25,8 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 - **Daily/Weekly Claims**: Random rewards with streak bonuses
 - **Bank**: Deposit/withdraw with daily interest at midnight
 - **Games**:
-  - Blackjack (with double down and splitting up to 4 hands)
-  - Slots (canvas-rendered, themed, free daily spins, progressive jackpot)
+  - Blackjack (with double down, splitting up to 4 hands, and late surrender)
+  - Slots (canvas-rendered, themed, free daily spins, wild icons, free spin bonus, progressive jackpot)
   - Coin flip (50/50)
   - Roulette (multi-player with betting timer)
   - Horse racing (multi-player with win/place/show bets)
@@ -33,14 +36,16 @@ A Discord bot for the Meme Cult server, built with discord.js v14. Features incl
 - **Rob**: Steal from other users (25% success rate, 5min cooldown)
 - **Give**: Transfer koku to other users
 - **Leaderboard**: Top 10 by bank balance (current and all-time)
+- **Net profit tracking**: See your overall profit/loss per game in `/stats`
 
 ### Themes & Shop
 - **Shop** (`/shop browse/buy/preview`): Rotating daily stock of cosmetic items, seeded per guild per day
 - **Inventory** (`/inventory view/equip`): View and equip owned items
-- **Themes** (`/theme set/list/info/owned`): Casino visual themes with three tiers:
+- **Themes** (`/theme set/list/info/owned`): Casino visual themes with four tiers:
   - **Colorway** — palette swap
   - **Styled** — one game with custom sprites
   - **Full** — all games with custom sprites
+  - **Limited** — seasonal/special themes with availability windows
 - Item rarities: Common, Uncommon, Rare, Legendary
 
 ### Music
@@ -178,14 +183,14 @@ node bot.js debug
 | `/give` | Transfer koku to another user | `user`, `amount` |
 | `/rob` | Attempt to rob a user (25% success, 5m cooldown) | `user` |
 | `/beg` | Beg for koku (only when broke, 25% success) | — |
-| `/leaderboard` | View top 10 by bank balance | — |
+| `/leaderboard` | View top 10 by balance (current and all-time), per-game profit leaderboards | — |
 | `/stats` | View user statistics (5 pages: general, commands, currency, games, chatbot) — includes net profit per game and shop purchase stats | `user?`, `details?` |
 
 ### Gambling Commands
 
 | Command | Description | Options |
 |---------|-------------|---------|
-| `/blackjack` | Play blackjack (supports splitting) | `bet` |
+| `/blackjack` | Play blackjack (supports splitting and late surrender) | `bet` |
 | `/slots bet` | Play slot machine | `amount` |
 | `/slots daily` | Free daily spin | — |
 | `/slots paytable` | View slot payouts | — |
@@ -215,11 +220,11 @@ node bot.js debug
 
 | Command | Description | Options |
 |---------|-------------|---------|
-| `/context set` | Set roleplay options / topic | `characteristics?`, `personality?`, `preferences?`, `dialog?`, `boundaries?`, `topic?` |
+| `/context set` | Set roleplay options / topic (admins for channels, thread owners for threads) | `characteristics?`, `personality?`, `preferences?`, `dialog?`, `boundaries?`, `topic?` |
 | `/context get` | View current context data | — |
-| `/context summary` | View conversation summaries | `number?` |
-| `/context facts` | View stored facts | — |
-| `/context reset` | Reset context to default | — |
+| `/context summary` | View conversation summaries (paginated) | `scope?` (`channel`/`user`), `page?` |
+| `/context facts` | View stored facts (paginated) | `scope?` (`channel`/`user`), `page?` |
+| `/context reset` | Reset context to default (same permissions as set) | — |
 | `/refresh` | Reset chatbot context point | — |
 | `/incognito` | Toggle incognito mode | `scope?` (`channel`/`global`) |
 
@@ -308,6 +313,7 @@ meme-cultist/
 │   ├── musicPlayer.js      # discord-player event handlers
 │   ├── welcome.js          # Member join/leave messages
 │   ├── ratelimiter.js      # Per-user and global rate limiting
+│   ├── ssrf.js             # URL validation to prevent SSRF attacks
 │   ├── logger.js           # Console + file logging
 │   └── ...
 └── logs/                   # Daily log files (YYYY/MM/DD.txt)
@@ -322,13 +328,14 @@ meme-cultist/
 
 2. **Chatbot Flow**:
    - Message received → rate limit check → context fetch
-   - If image attached: Gemini describes it and passes as vision context
-   - If URL found: page text is fetched and passed as link context
+   - If image attached: Gemini describes it and passes as vision context (SSRF-protected URL validation)
+   - If URL found: page text is fetched and passed as link context (SSRF-protected)
    - Build system prompt (roleplay, topic, facts, summaries)
    - Call DeepSeek API with conversation history + extra context
    - Handle tool calls if model requests them (including `generate_image`)
    - Send response (with any generated image attachments), update message counts
    - Periodically summarize and extract facts
+   - Immediate fact extraction with debouncing for real-time learning
 
 3. **Music Playback**:
    - `/play` → search query → discord-player queue

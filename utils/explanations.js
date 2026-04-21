@@ -47,10 +47,11 @@ module.exports = {
             If you go over 21, you bust and lose. If the dealer busts, you win. If you have a higher total than the dealer you win, and if you have a lower total than the dealer you lose.
             If you have the same total as the dealer, it is a tie.
 
-            If you choose to double down, you will double your bet and be given one more card. You will then be forced to stand.
-            You can only double down on the first two cards.
+            **Double Down:** Double your bet and receive exactly one more card, then stand. Only available on the first two cards.
 
-            You can also split your hand if you are dealt two cards of the same value. Splitting creates two separate hands, each with their own bet. You can split up to ${BLACKJACK_MAX_HANDS || 4} times.
+            **Split:** If you are dealt two cards of the same value, you can split them into two separate hands, each with their own bet. You can split up to ${BLACKJACK_MAX_HANDS || 4} times.
+
+            **Late Surrender:** After the dealer checks for blackjack, you can choose to surrender and forfeit half your bet, keeping the other half. Useful when you have a weak hand against a strong dealer upcard.
             `,
         rules: `
             1. The goal of blackjack is to beat the dealer's hand without going over 21.
@@ -62,24 +63,29 @@ module.exports = {
             7. Blackjack means you win 1.5 the amount of your bet.
             8. Dealer will hit until their cards total 17 or higher.
             9. Doubling is like a hit, only the bet is doubled and you only get one more card.
-            10. Splitting is available when your first two cards have the same value. Each split hand gets a new card and plays independently.`
+            10. Splitting is available when your first two cards have the same value. Each split hand gets a new card and plays independently.
+            11. Late surrender lets you forfeit half your bet after the dealer checks for blackjack, keeping the other half.`
     },
     slots: {
         name: "Slots",
         description: `
-            Slots is a game where you spin a slot machine and try to get three of the same symbol.
-            There are 8 symbols, each with a different multiplier. You can see the paytable by using \`/slots paytable\`.
+            Slots is a game where you spin a slot machine and try to line up matching symbols across paylines. The game uses canvas-based rendering with visual themes — equip a theme with \`/theme set\` to change how it looks.
 
-            You can also get free daily spins using \`/slots daily\` (resets daily at midnight).
+            **Wild Icons:** Wild symbols count as any symbol when on an active payline, making it easier to form winning combinations.
+
+            **Free Spins:** Land 3 or more scatter icons to trigger the Free Spin Bonus — you get free spins with no cost to your balance.
+
+            You can see the paytable by using \`/slots paytable\`. Free daily spins are available with \`/slots daily\` (resets at midnight).
 
             **Progressive Jackpot:** Triple 7s wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 ${CURRENCY_NAME} to qualify for the jackpot.
             `,
         rules: `
-            1. The goal of slots is to get three of the same symbol.
-            2. There are 8 symbols, each with a different multiplier.
-            3. Getting a single cherry will return your bet. Two cherries will return 2x your bet. Three cherries will return 5x your bet.
-            4. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
-            5. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
+            1. The goal of slots is to line up matching symbols across paylines.
+            2. There are 8 symbols, each with a different multiplier — check the paytable for details.
+            3. Wild icons count as any symbol on an active payline.
+            4. Landing 3+ scatter icons triggers the Free Spin Bonus.
+            5. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
+            6. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
     },
     poker: {
         name: "Poker",
@@ -93,7 +99,7 @@ module.exports = {
             **Progressive Jackpot:** A royal flush wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 koku to qualify.
             `,
         note: `
-            1. Aces are high, and straights can wrap around. Aces can be used as a high or low card, and straights can wrap around.
+            1. Aces can be high (above King) or low (in A-2-3-4-5 straight). Straights do not wrap around — only A-high and A-low straights are valid.
             2. Jacks or Better is the minimum hand to win. Pair of Jacks or Better pays 1:1.
             3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.
             4. If you take too long to make a decision, you will be timed out and lose your bet.
@@ -239,16 +245,18 @@ module.exports = {
         description: `
             Themes change the visual style of casino games (slots, roulette, poker, etc.). Use \`/theme list\` to see all available themes, \`/theme info <theme>\` to preview one, and \`/theme set <theme>\` to equip a theme you own.
 
-            Themes come in three tiers:
+            Themes come in four tiers:
             • **Colorway** \u2014 swaps the color palette of the default layout
             • **Styled** \u2014 customizes one game with unique colors and sprites
             • **Full** \u2014 reskins all games with custom colors, sprites, and backgrounds
+            • **Limited** — seasonal or special themes that are only available during specific time windows
 
             Themes are purchased in the daily \`/shop\`. Once you own a theme, it's yours forever \u2014 equip and swap as often as you like.
             `,
         note: `
             The "Classic" theme is always available and free. New themes rotate through the shop, so check back daily.
-            Higher-tier themes (Styled, Full) include more custom artwork and game-specific overrides.`
+            Higher-tier themes (Styled, Full) include more custom artwork and game-specific overrides.
+            Limited themes only appear in the shop during their availability window — once it ends, they can't be purchased.`
     },
     jackpot: {
         name: "Progressive Jackpot",
@@ -264,18 +272,18 @@ module.exports = {
             Use \`/jackpot\` to check the current jackpot amount and last winner.
             `,
         note: `
-            The jackpot starts at 1,000,000 ${CURRENCY_NAME} if it ever resets. Minimum qualifying bet is 1,000 ${CURRENCY_NAME} for full jackpot eligibility (10 ${CURRENCY_NAME} for slots/poker).`
+            The jackpot starts at 1,000,000 koku if it ever resets. A minimum bet of 10 koku on slots or poker is required for full jackpot eligibility.`
     },
     chatbot: {
         name: "Chatbot",
         description: `
-            Sending a message in ${chatbotChannelList} will start a conversation with the bot. The bot uses a GPT-like model to generate responses based on the context of the conversation.
+            Sending a message in a chatbot channel will start a conversation with the bot. The bot operates across multiple channels, each with their own context.
             The bot is designed to have open-ended conversations that are engaging and interactive. You can use it to ask questions, share information, or just chat with the bot.
 
             Threads, public or private, can be used in ${chatbotChannelList} to create a more personalized conversation with the bot.
             Each thread has its own context and history, which will update as you interact with the bot in that thread.
 
-            The \`/context\` command provides various features for managing the chatbot within a thread, including viewing, modifying, and resetting the thread context used for generating responses.
+            The \`/context\` command lets you view and manage chatbot context — channel context can only be modified by admins, while thread owners can customize their own thread context. Summaries and facts are paginated when viewing.
             For more information, type \`/help context\`.
         `,
         note: `
@@ -317,49 +325,23 @@ module.exports = {
             Chatbot: "I've been thinking about that too. I like being around you—more than just a friend would. Maybe we've both been waiting for the right moment?"
         `
     },
-    vision: {
-        name: "Image Vision",
+    aifeatures: {
+        name: "AI Features",
         description: `
-            The chatbot can see and understand images you share. Simply attach an image to your message in a chatbot channel and the bot will describe it, answer questions about it, or react to it naturally.
+            The chatbot has additional AI capabilities powered by Google Gemini:
 
-            If you include text with your image, the bot will use it as a hint — for example, attaching a screenshot and asking "What's wrong with this code?" will get you a focused answer about the image.
+            **Image Vision** — Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself — it won't say "based on the description."
 
-            Vision uses Google Gemini (gemini-2.5-flash). If the Gemini API key is not configured, the bot will let you know it can't see the image.
+            **URL Context** — Share a link and the bot will automatically read the page content so it can discuss it with you. It works for any HTML page — articles, docs, blogs, etc. The bot references the content naturally as if it read the page.
+
+            **Image Generation** — Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
         `,
         note: `
-            The bot treats images as its own direct sensory input — it won't say "based on the description" or mention that it received a text summary. It reacts as if it opened the image itself.
+            Vision and image generation require a Gemini API key. If it's not configured, the bot will let you know rather than pretending.
 
-            If vision is unavailable (no API key, filtered content, or a fetch error), the bot will honestly tell you it couldn't see the image rather than pretending.
-        `
-    },
-    urlcontext: {
-        name: "URL Context",
-        description: `
-            When you share a link in a chatbot channel, the bot will automatically read the page content so it can discuss it with you. It extracts the page title and body text, then includes it as context in its response.
+            For URL context: only the first URL per message is fetched. Non-HTML content is skipped. Pages larger than 2MB or with text exceeding 4000 characters are truncated. Fetch requests time out after 8 seconds.
 
-            This works for any HTML page — articles, documentation, blog posts, etc. The bot will naturally reference and discuss the content as if it read the page itself.
-        `,
-        note: `
-            Only the first URL in your message is fetched. Non-HTML content (images, videos, PDFs) is not supported — use image attachments instead.
-
-            Pages larger than 2MB are skipped, and the text is capped at 4000 characters. Fetch requests time out after 8 seconds.
-        `
-    },
-    generate: {
-        name: "Image Generation",
-        description: `
-            You can generate AI images using Gemini in two ways:
-
-            **1. Slash Command** — Use \`/generate [prompt]\` to create an image from a text description. The bot will respond with the generated image attached.
-
-            **2. In Conversation** — Ask the chatbot to create an image directly in conversation (e.g., "draw me a cat", "generate an image of a sunset"). The bot will use the \`generate_image\` tool and attach the result to its reply.
-
-            Image generation uses Google Gemini (gemini-2.5-flash-image). The prompt can be up to 1000 characters.
-        `,
-        note: `
-            The chatbot has strict rules about when to generate images — it only triggers on direct, explicit requests to create/produce an image, not when you're just talking about images or using "imagine" metaphorically.
-
-            If the Gemini API key is not configured, the \`/generate\` command will return an error and the chatbot's image generation tool will be unavailable.
+            For image generation: the chatbot only triggers on direct, explicit requests to create an image, not casual mentions or metaphorical uses of "imagine."
         `
     }
 }
