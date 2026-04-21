@@ -6,6 +6,15 @@ const { getTheme } = require('./slotsThemes');
 const CanvasUtil = require('./Canvas');
 const logger = require('./logger');
 
+// Background image cache to avoid reloading from disk on every animation frame
+const _bgCache = new Map();
+async function loadCachedImage(path) {
+    if (_bgCache.has(path)) return _bgCache.get(path);
+    const img = await loadImage(path);
+    _bgCache.set(path, img);
+    return img;
+}
+
 // Payline definitions (game logic, not themed)
 const PAYLINES = [
     [[0, 0], [0, 1], [0, 2]],  // Line 1: top row
@@ -243,7 +252,7 @@ async function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreeP
     // Background
     if (c.background) {
         try {
-            const bgImg = await loadImage(c.background);
+            const bgImg = await loadCachedImage(c.background);
             const scale = Math.max(W / bgImg.width, H / bgImg.height);
             const drawW = bgImg.width * scale;
             const drawH = bgImg.height * scale;
