@@ -28,6 +28,13 @@ async function fetchPageText(url, maxChars = 4000) {
       redirect: "follow",
       signal: controller.signal
     });
+    if (res.url && res.url !== url) {
+      const redirectCheck = isSafeUrl(res.url);
+      if (!redirectCheck.safe) {
+        logger.debug(`[urlContext] blocked redirect to unsafe URL: ${res.url} (${redirectCheck.reason})`);
+        return { url, error: `Redirect target is not allowed: ${redirectCheck.reason}` };
+      }
+    }
     if (!res.ok) {
       logger.debug(`[urlContext] non-2xx ${res.status} for ${url}`);
       return { url, error: `HTTP ${res.status} ${res.statusText || ""}`.trim() };

@@ -39,6 +39,13 @@ async function describeImage(imageUrl, userHint = null) {
       return { error: `Image URL is not allowed: ${urlCheck.reason}` };
     }
     const res = await fetch(imageUrl);
+    if (res.url && res.url !== imageUrl) {
+      const redirectCheck = isSafeUrl(res.url);
+      if (!redirectCheck.safe) {
+        logger.warn(`[Gemini] Blocked redirect to unsafe URL: ${res.url} (${redirectCheck.reason})`);
+        return { error: `Redirect target is not allowed: ${redirectCheck.reason}` };
+      }
+    }
     if (!res.ok) {
       logger.warn(`[Gemini] Failed to fetch image (${res.status}): ${imageUrl}`);
       return { error: `Could not download the image (HTTP ${res.status}).` };
