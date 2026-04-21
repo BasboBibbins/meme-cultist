@@ -64,8 +64,8 @@ module.exports = {
         // Initialize first hand
         let initialCards = [];
         for (let i = 0; i < 2; i++) {
-            dealerCards.push(await bj.dealCards());
-            initialCards.push(await bj.dealCards());
+            dealerCards.push(bj.dealCards());
+            initialCards.push(bj.dealCards());
         }
         hands.push({ cards: initialCards, bet: originalBet, isSplitAces: false, isDoubled: false });
         totalBets = originalBet;
@@ -77,8 +77,8 @@ module.exports = {
         logger.debug(`${user.username}: ${initialCards[0].name} ${initialCards[1].name} = ${initialCards[0].value + initialCards[1].value}`);
 
         // Check for natural blackjack
-        if (await bj.checkHand(initialCards) === 'blackjack') {
-            let dealerTotal = await bj.getHandValue(dealerCards);
+        if (bj.checkHand(initialCards) === 'blackjack') {
+            const dealerTotal = bj.getHandValue(dealerCards);
             if (dealerTotal === 21) {
                 // Push - both have natural blackjack
                 await db.add(`${stats}.ties`, 1);
@@ -111,12 +111,12 @@ module.exports = {
 
         // Dealer peeks for natural blackjack (standard timing for late surrender).
         // Player blackjack was handled above, so any dealer blackjack here is a loss.
-        if (await bj.checkHand(dealerCards) === 'blackjack') {
+        if (bj.checkHand(dealerCards) === 'blackjack') {
             await db.add(`${stats}.losses`, 1);
             await db.add(`${stats}.profit`, -originalBet);
             const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
             if (originalBet > biggestLoss) await db.set(`${stats}.biggestLoss`, originalBet);
-            const dealerTotal = await bj.getHandValue(dealerCards);
+            const dealerTotal = bj.getHandValue(dealerCards);
             const embed = new EmbedBuilder()
                 .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
                 .setTitle(`Dealer Blackjack!`)
@@ -130,26 +130,21 @@ module.exports = {
         // Late-surrender window (seconds) — forfeit button auto-expires after this if the player doesn't act.
         const FORFEIT_WINDOW_MS = 10000;
 
-        // Build the hand description for embeds (dealer hole card hidden)
-        async function buildDescription(activeHandIndex) {
+        const statusTag = (status) => status === 'bust' ? ' 💥' : status === 'blackjack' ? ' 🃏' : '';
+        const renderCards = (cards) => cards.map(c => `\`${c.char}\``).join(' ');
+
+        function buildDescription(activeHandIndex) {
             let desc = `**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n`;
-            if (hands.length > 1) {
-                for (let i = 0; i < hands.length; i++) {
-                    const h = hands[i];
-                    const val = await bj.getHandValue(h.cards);
-                    const arrow = i === activeHandIndex ? '▶️ ' : '';
-                    const marker = h.isDoubled ? ' 💵' : '';
-                    const hStatus = await bj.checkHand(h.cards);
-                    const tag = hStatus === 'bust' ? ' 💥' : hStatus === 'blackjack' ? ' 🃏' : '';
-                    const label = hands.length > 1 ? `Hand ${i + 1}:` : `Your hand:`;
-                    desc += `${arrow} **${label}** ${h.cards.map(c => `\`${c.char}\``).join(' ')} (${val})${marker}${tag}\n`;
-                }
-            } else {
-                const val = await bj.getHandValue(hands[0].cards);
-                const hStatus = await bj.checkHand(hands[0].cards);
-                const marker = hands[0].isDoubled ? ' 💵' : '';
-                const tag = hStatus === 'bust' ? ' 💥' : hStatus === 'blackjack' ? ' 🃏' : '';
-                desc += `**Your hand:** ${hands[0].cards.map(c => `\`${c.char}\``).join(' ')} (${val})${marker}${tag}`;
+            const multi = hands.length > 1;
+            for (let i = 0; i < hands.length; i++) {
+                const h = hands[i];
+                const val = bj.getHandValue(h.cards);
+                const tag = statusTag(bj.statusFromValue(val));
+                const marker = h.isDoubled ? ' 💵' : '';
+                const arrow = multi && i === activeHandIndex ? '▶️ ' : '';
+                const label = multi ? `Hand ${i + 1}:` : `Your hand:`;
+                const prefix = multi ? `${arrow} **${label}** ` : `**${label}** `;
+                desc += `${prefix}${renderCards(h.cards)} (${val})${marker}${tag}` + (multi ? '\n' : '');
             }
             return desc;
         }
@@ -158,20 +153,20 @@ module.exports = {
         async function playHands() {
             while (currentHandIndex < hands.length) {
                 const currentHand = hands[currentHandIndex];
-                const canSplitThisHand = currentHand.cards.length === 2 &&
-                    await bj.canSplit(currentHand.cards) &&
+                const balance = await db.get(`${user.id}.balance`);
+                const hasTwo = currentHand.cards.length === 2;
+                const canAffordBet = balance >= currentHand.bet;
+
+                const canSplitThisHand = hasTwo &&
+                    bj.canSplit(currentHand.cards) &&
                     hands.length < MAX_HANDS &&
                     !currentHand.isSplitAces &&
-                    (await db.get(`${user.id}.balance`)) >= currentHand.bet;
+                    canAffordBet;
 
-                const canDouble = currentHand.cards.length === 2 &&
-                    !currentHand.isDoubled &&
-                    (await db.get(`${user.id}.balance`)) >= currentHand.bet;
+                const canDouble = hasTwo && !currentHand.isDoubled && canAffordBet;
 
                 // Late surrender: only offered on the initial, untouched, unsplit hand (standard casino rule).
-                const canForfeit = hands.length === 1 &&
-                    currentHand.cards.length === 2 &&
-                    !currentHand.isDoubled;
+                const canForfeit = hands.length === 1 && hasTwo && !currentHand.isDoubled;
 
                 const result = await playHand(currentHand, currentHandIndex, canSplitThisHand, canDouble, canForfeit);
                 if (result === 'forfeit') return; // Player surrendered — game over, no dealer turn.
@@ -191,14 +186,13 @@ module.exports = {
                     .setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                     .setTimestamp();
 
-                embed.setDescription(await buildDescription(handIndex));
+                embed.setDescription(buildDescription(handIndex));
 
                 // Split aces: one card only, auto-stand
                 if (hand.isSplitAces) {
                     await interaction.editReply({ embeds: [embed], components: [] });
                     await wait(1000);
-                    const handStatus = await bj.checkHand(hand.cards);
-                    resolve(handStatus === 'bust' ? 'bust' : 'stand');
+                    resolve(bj.statusFromValue(bj.getHandValue(hand.cards)) === 'bust' ? 'bust' : 'stand');
                     return;
                 }
 
@@ -279,13 +273,12 @@ module.exports = {
                     if (forfeitTimer) { clearTimeout(forfeitTimer); forfeitTimer = null; }
 
                     if (i.customId === 'hit') {
-                        hand.cards.push(await bj.dealCards());
-                        const handStatus = await bj.checkHand(hand.cards);
-                        const newVal = await bj.getHandValue(hand.cards);
+                        hand.cards.push(bj.dealCards());
+                        const newVal = bj.getHandValue(hand.cards);
+                        const handStatus = bj.statusFromValue(newVal);
                         logger.debug(`${user.username} Hand ${handIndex + 1}: ${hand.cards.map(c => c.name).join(' ')} = ${newVal}`);
 
-                        // Always show the new card to the user
-                        embed.setDescription(await buildDescription(handIndex));
+                        embed.setDescription(buildDescription(handIndex));
 
                         if (handStatus === 'bust') {
                             embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Bust! (${newVal})` : `Bust! (${newVal})`);
@@ -303,8 +296,9 @@ module.exports = {
                             await i.update({ embeds: [embed], components: [buttonRow] });
                         }
                     } else if (i.customId === 'stand') {
-                        embed.setDescription(await buildDescription(handIndex));
-                        embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Stand (${await bj.getHandValue(hand.cards)})` : `Stand (${await bj.getHandValue(hand.cards)})`);
+                        const standVal = bj.getHandValue(hand.cards);
+                        embed.setDescription(buildDescription(handIndex));
+                        embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Stand (${standVal})` : `Stand (${standVal})`);
                         await i.update({ embeds: [embed], components: [] });
                         collector.stop('stand');
                     } else if (i.customId === 'double') {
@@ -313,13 +307,12 @@ module.exports = {
                         hand.bet *= 2;
                         hand.isDoubled = true;
 
-                        hand.cards.push(await bj.dealCards());
-                        const newVal = await bj.getHandValue(hand.cards);
+                        hand.cards.push(bj.dealCards());
+                        const newVal = bj.getHandValue(hand.cards);
+                        const doubleStatus = bj.statusFromValue(newVal);
                         logger.debug(`${user.username} Hand ${handIndex + 1} doubled: ${hand.cards.map(c => c.name).join(' ')} = ${newVal}`);
 
-                        // Show the doubled hand with the new card
-                        embed.setDescription(await buildDescription(handIndex));
-                        const doubleStatus = await bj.checkHand(hand.cards);
+                        embed.setDescription(buildDescription(handIndex));
                         if (doubleStatus === 'bust') {
                             embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Double Down — Bust! (${newVal})` : `Double Down — Bust! (${newVal})`);
                             embed.setColor(0xFF0000);
@@ -328,20 +321,17 @@ module.exports = {
                         }
                         embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
                         await i.update({ embeds: [embed], components: [] });
-                        collector.stop('double');
+                        collector.stop(doubleStatus === 'bust' ? 'bust' : doubleStatus === 'blackjack' ? 'blackjack' : 'stand');
                     } else if (i.customId === 'split') {
                         // Split this hand
                         await db.sub(`${user.id}.balance`, hand.bet);
                         totalBets += hand.bet;
 
-                        // Check if this is an ace pair BEFORE splitting
-                        const wasAcePair = await bj.isAcePair(hand.cards);
-
-                        // Get the split card and deal new cards to both hands
+                        const wasAcePair = bj.isAcePair(hand.cards);
                         const splitCard = hand.cards[1];
-                        hand.cards = [hand.cards[0], await bj.dealCards()];
+                        hand.cards = [hand.cards[0], bj.dealCards()];
                         const newHand = {
-                            cards: [splitCard, await bj.dealCards()],
+                            cards: [splitCard, bj.dealCards()],
                             bet: hand.bet,
                             isSplitAces: wasAcePair,
                             isDoubled: false
@@ -351,9 +341,8 @@ module.exports = {
                         hands.splice(handIndex + 1, 0, newHand);
                         logger.debug(`${user.username} split hand ${handIndex + 1}. Now ${hands.length} hands.`);
 
-                        // Show the split result — both new hands
                         embed.setTitle(`Split! (${hands.length} hands)`);
-                        embed.setDescription(await buildDescription(handIndex));
+                        embed.setDescription(buildDescription(handIndex));
                         await i.update({ embeds: [embed], components: [] });
                         collector.stop('split');
                     } else if (i.customId === 'forfeit') {
@@ -367,10 +356,10 @@ module.exports = {
                         const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
                         if (netLoss > biggestLoss) await db.set(`${stats}.biggestLoss`, netLoss);
 
-                        const dealerVal = await bj.getHandValue(dealerCards);
-                        const handVal = await bj.getHandValue(hand.cards);
+                        const dealerVal = bj.getHandValue(dealerCards);
+                        const handVal = bj.getHandValue(hand.cards);
                         embed.setTitle(`Forfeit`);
-                        embed.setDescription(`**Dealer:**\n${dealerCards.map(c => `\`${c.char}\``).join(' ')} (${dealerVal})\n\n**Your hand:** ${hand.cards.map(c => `\`${c.char}\``).join(' ')} (${handVal})\n\nYou forfeited your hand and recovered **${refund.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
+                        embed.setDescription(`**Dealer:**\n${renderCards(dealerCards)} (${dealerVal})\n\n**Your hand:** ${renderCards(hand.cards)} (${handVal})\n\nYou forfeited your hand and recovered **${refund.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
                         embed.setColor(0xAAAAAA);
                         embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} (forfeited) | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
                         await i.update({ embeds: [embed], components: [] });
@@ -388,41 +377,18 @@ module.exports = {
                         await wait(1500);
                     }
 
-                    if (reason === 'bust') {
-                        resolve('bust');
-                    } else if (reason === 'blackjack') {
-                        resolve('blackjack');
-                    } else if (reason === 'stand') {
-                        resolve('stand');
-                    } else if (reason === 'double') {
-                        const handStatus = await bj.checkHand(hand.cards);
-                        if (handStatus === 'bust') {
-                            resolve('bust');
-                        } else if (handStatus === 'blackjack') {
-                            resolve('blackjack');
-                        } else {
-                            resolve('stand');
-                        }
+                    if (reason === 'bust' || reason === 'blackjack' || reason === 'stand' || reason === 'forfeit') {
+                        resolve(reason);
                     } else if (reason === 'split') {
-                        // Recursively play the current hand again (it now has a new second card)
-                        // Then the loop will continue to the next hand
-                        const canSplitThisHand = hand.cards.length === 2 &&
-                            await bj.canSplit(hand.cards) &&
-                            hands.length < MAX_HANDS &&
-                            !hand.isSplitAces &&
-                            (await db.get(`${user.id}.balance`)) >= hand.bet;
-                        const canDoubleHand = hand.cards.length === 2 &&
-                            !hand.isDoubled &&
-                            (await db.get(`${user.id}.balance`)) >= hand.bet;
-
-                        const result = await playHand(hand, handIndex, canSplitThisHand, canDoubleHand);
-                        resolve(result);
-                    } else if (reason === 'forfeit') {
-                        resolve('forfeit');
-                    } else if (reason === 'time') {
-                        // Timeout - auto-stand
-                        resolve('stand');
+                        const balance = await db.get(`${user.id}.balance`);
+                        const hasTwo = hand.cards.length === 2;
+                        const canAffordBet = balance >= hand.bet;
+                        const canSplitThisHand = hasTwo && bj.canSplit(hand.cards) &&
+                            hands.length < MAX_HANDS && !hand.isSplitAces && canAffordBet;
+                        const canDoubleHand = hasTwo && !hand.isDoubled && canAffordBet;
+                        resolve(await playHand(hand, handIndex, canSplitThisHand, canDoubleHand));
                     } else {
+                        // timeout or unexpected reason — auto-stand
                         resolve('stand');
                     }
                 });
@@ -430,18 +396,17 @@ module.exports = {
         }
 
         async function playDealer() {
-            // Helper to build dealer phase description
-            async function buildDealerDescription() {
-                const dealerVal = await bj.getHandValue(dealerCards);
-                let desc = `**Dealer:**\n${dealerCards.map(c => `\`${c.char}\``).join(' ')} (${dealerVal})\n\n`;
+            function buildDealerDescription() {
+                const dealerVal = bj.getHandValue(dealerCards);
+                let desc = `**Dealer:**\n${renderCards(dealerCards)} (${dealerVal})\n\n`;
+                const multi = hands.length > 1;
                 for (let i = 0; i < hands.length; i++) {
                     const h = hands[i];
-                    const val = await bj.getHandValue(h.cards);
+                    const val = bj.getHandValue(h.cards);
+                    const tag = statusTag(bj.statusFromValue(val));
                     const marker = h.isDoubled ? ' 💵' : '';
-                    const status = await bj.checkHand(h.cards);
-                    const tag = status === 'bust' ? ' 💥' : status === 'blackjack' ? ' 🃏' : '';
-                    const label = hands.length > 1 ? `Hand ${i + 1}:` : `Your hand:`;
-                    desc += `**${label}** ${h.cards.map(c => `\`${c.char}\``).join(' ')} (${val})${marker}${tag}\n`;
+                    const label = multi ? `Hand ${i + 1}:` : `Your hand:`;
+                    desc += `**${label}** ${renderCards(h.cards)} (${val})${marker}${tag}\n`;
                 }
                 return desc;
             }
@@ -453,23 +418,22 @@ module.exports = {
                 .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
 
-            // Reveal hole card
-            dealerEmbed.setDescription(await buildDealerDescription());
+            dealerEmbed.setDescription(buildDealerDescription());
             await interaction.editReply({ embeds: [dealerEmbed], components: [] });
             await wait(1000);
 
-            // Dealer draws one card at a time
-            while (await bj.dealerChoice(dealerCards) === 'hit' && (await bj.checkHand(dealerCards) === 'safe')) {
-                logger.debug(`Dealer choice is hit.`);
-                dealerCards.push(await bj.dealCards());
-                dealerEmbed.setDescription(await buildDealerDescription());
+            // Dealer draws until hard 17+ (one value check per iteration)
+            let dealerTotal = bj.getHandValue(dealerCards);
+            while (dealerTotal < 17) {
+                dealerCards.push(bj.dealCards());
+                dealerTotal = bj.getHandValue(dealerCards);
+                dealerEmbed.setDescription(buildDealerDescription());
                 await interaction.editReply({ embeds: [dealerEmbed], components: [] });
                 await wait(1000);
             }
 
-            const dealerTotal = await bj.getHandValue(dealerCards);
-            const dealerStatus = await bj.checkHand(dealerCards);
-            let finalDescription = `**Dealer:**\n${dealerCards.map(c => `\`${c.char}\``).join(' ')} (${dealerTotal})\n\n`;
+            const dealerStatus = bj.statusFromValue(dealerTotal);
+            let finalDescription = `**Dealer:**\n${renderCards(dealerCards)} (${dealerTotal})\n\n`;
             logger.debug(`Dealer: ${dealerCards.map(c => c.name).join(' ')} = ${dealerTotal}`);
 
             let totalWinnings = 0;
@@ -478,8 +442,8 @@ module.exports = {
 
             for (let i = 0; i < hands.length; i++) {
                 const hand = hands[i];
-                const handTotal = await bj.getHandValue(hand.cards);
-                const handStatus = await bj.checkHand(hand.cards);
+                const handTotal = bj.getHandValue(hand.cards);
+                const handStatus = bj.statusFromValue(handTotal);
 
                 let handResult = '';
                 let winnings = 0;
@@ -515,9 +479,9 @@ module.exports = {
                 }
 
                 const marker = hand.isDoubled ? ' 💵' : '';
-                const tag = handStatus === 'bust' ? ' 💥' : handStatus === 'blackjack' ? ' 🃏' : '';
+                const tag = statusTag(handStatus);
                 const label = hands.length > 1 ? `Hand ${i + 1}:` : `Your hand:`;
-                resultLines.push(`**${label}** ${hand.cards.map(card => `\`${card.char}\``).join(' ')} (${handTotal})${marker}${tag} → ${handResult}${winnings > 0 ? ` (+${winnings.toLocaleString('en-US')})` : ''}`);
+                resultLines.push(`**${label}** ${renderCards(hand.cards)} (${handTotal})${marker}${tag} → ${handResult}${winnings > 0 ? ` (+${winnings.toLocaleString('en-US')})` : ''}`);
             }
 
             // Add winnings
