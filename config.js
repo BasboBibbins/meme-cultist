@@ -21,7 +21,13 @@ const config = {
     WELCOME_CHANNEL_NAME: "welcome",
     RIP_CHANNEL_ID: process.env.RIP_CHANNEL_ID || "YOUR_RIP_CHANNEL_ID_HERE",
     RIP_CHANNEL_NAME: "rip",
-    CHATBOT_CHANNEL: process.env.CHATBOT_CHANNEL || "YOUR_CHATBOT_CHANNEL_ID_HERE",
+    CHATBOT_CHANNELS: (process.env.CHATBOT_CHANNELS || process.env.CHATBOT_CHANNEL || "YOUR_CHATBOT_CHANNEL_ID_HERE")
+        .split(",")
+        .map(id => id.trim())
+        .filter(Boolean),
+
+    // Admin configuration
+    ADMIN_COMMANDS_OWNER_ONLY: true, // true = only OWNER_ID can use admin commands, false = users with 'administrator' permission can use admin commands
 
     // April Fools configuration
     APRILFOOLS_ROLE: "Fwen",
@@ -42,6 +48,7 @@ const config = {
     PAST_MESSAGES: 15,
     SUMMARY_INTERVAL: 25,
     FACTS_INTERVAL: 15,
+    TOPIC_UPDATE_INTERVAL: 20,
     MAX_FACTS: 25,
     MAX_SUMMARIES: 3,
     FACT_TTL_DAYS: 30, // Days before facts expire (TTL)
@@ -53,27 +60,49 @@ const config = {
     INCLUDE_CHANNEL_FACTS_IN_PROMPT: true,
     INCLUDE_USER_FACTS_IN_PROMPT: true,
 
+    // Event-driven fact extraction
+    IMMEDIATE_FACTS_ENABLED: true,
+    IMMEDIATE_FACTS_MIN_LENGTH: 10,
+    IMMEDIATE_FACTS_DEBOUNCE_MS: 60000,
+    MAX_FACTS_IN_PROMPT: 15,
+    FACT_CONFIDENCE_THRESHOLD: 2,
+
     // Rate limiting
     USER_COOLDOWN: 5,
     MENTION_COOLDOWN: 60,
     GLOBAL_LIMIT: 30,
     WINDOW_SIZE: 60,
+    IMAGE_GEN_LIMIT: 5,
+    IMAGE_GEN_WINDOW: 1800, // seconds (30 minutes)
 
     // Currency/game settings
     CURRENCY_NAME: "koku",
     INTEREST_RATE: 1,
+    BLACKJACK_MAX_HANDS: 4,
     ROULETTE_MIN_BET: 10,
-    ROULETTE_MAX_BET: 5000,
+    ROULETTE_MAX_BET: 0, // default 5000
     ROULETTE_HOUSE_EDGE: 2.7,
-    ROULETTE_BETTING_TIME: 15000,
+    ROULETTE_BETTING_TIME: 60000,
     DUEL_MIN_BET: 50,
     DUEL_COOLDOWN: 300000,
-    RACE_MIN_BET: 10,
-    RACE_MAX_BET: 1000,
+    RACE_MIN_BET: 100,
+    RACE_MAX_BET: 0, // default 1000
     RACE_BETTING_TIME: 60000,
-    RACE_HOUSE_EDGE: 0.10,
+    RACE_HOUSE_EDGE: 0.05,
     RACE_ANIMATION_TICKS: 10,
-    RACE_TICK_INTERVAL: 1500,
+    RACE_TICK_INTERVAL: 2000,
+    RACE_PLACE_MULTIPLIER: 0.45,
+    RACE_SHOW_MULTIPLIER: 0.28,
+
+    // Slots settings
+    SLOTS_MAX_LINES: 5,
+    SLOTS_NEAR_MISS_CHANCE: 0.15,
+    SLOTS_BONUS_FREE_SPINS: 3,
+    SLOTS_BONUS_MULTIPLIER: 2,
+    SLOTS_DAILY_COOLDOWN: 8.64e7, // default: 24 hours = 8.64e7
+    SLOTS_DAILY_FREE_SPINS: 5,
+    SLOTS_DAILY_BET: 50,
+    SLOTS_DAILY_LINES: 3,
 
     // Jackpot settings
     JACKPOT_SEED: 1000000,

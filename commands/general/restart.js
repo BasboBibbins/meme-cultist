@@ -1,4 +1,4 @@
-const {EmbedBuilder, SlashCommandBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle} = require('discord.js');
+const {EmbedBuilder, SlashCommandBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, PermissionFlagsBits} = require('discord.js');
 const logger = require('../../utils/logger');
 
 module.exports = {
@@ -6,7 +6,7 @@ module.exports = {
         .setName("restart")
         .setDescription("[ADMIN] Restart the bot."),
     async execute(interaction) {
-        if (!interaction.member.permissions.has("ADMINISTRATOR")) {
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return await interaction.reply({content: "You do not have permission to use this command.", ephemeral: true});
         }
 

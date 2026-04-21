@@ -39,8 +39,8 @@ module.exports = {
             .setAuthor({ name: `${user.displayName }'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
             .setColor(`${accentColor}`)
             .addFields(
-                { name: "Wallet", value: `${dbUser.balance} ${CURRENCY_NAME}`, inline: true },
-                { name: "Bank", value: `${dbUser.bank} ${CURRENCY_NAME}`, inline: true },
+                { name: "Wallet", value: `${dbUser.balance.toLocaleString('en-US')} ${CURRENCY_NAME}`, inline: true },
+                { name: "Bank", value: `${dbUser.bank.toLocaleString('en-US')} ${CURRENCY_NAME}`, inline: true },
             )
             .setTimestamp()
             .setFooter( interaction.options.getUser('user') ? 

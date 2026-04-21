@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder} = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');
 
@@ -47,7 +47,10 @@ module.exports = {
                         .setDescription('The amount of Koku to set.')
                         .setRequired(true))),
     async execute(interaction) {
-        if (!interaction.member.permissions.has('ADMINISTRATOR')) {
+        const isOwner = interaction.user.id === OWNER_ID;
+        const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+        const allowed = isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
+        if (!allowed) {
             await interaction.reply({content: `You do not have permission to use this command.`, ephemeral: true});
             return;
         }
@@ -86,7 +89,7 @@ module.exports = {
                     .setColor(randomHexColor())
                     .setTimestamp()
                     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                ]});
+                ]}).catch(err => logger.warn(`Could not DM ${user.username} (${user.id}): ${err.message}`));
                 break;
             case 'remove':
                 await db.set(`${user.id}.bank`, (dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount));
@@ -100,7 +103,7 @@ module.exports = {
                     .setColor(randomHexColor())
                     .setTimestamp()
                     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                ]});
+                ]}).catch(err => logger.warn(`Could not DM ${user.username} (${user.id}): ${err.message}`));
                 break;
             case 'set':
                 await db.set(`${user.id}.bank`, (amount < 0 ? 0 : amount));
@@ -114,7 +117,7 @@ module.exports = {
                     .setColor(randomHexColor())
                     .setTimestamp()
                     .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                ]});
+                ]}).catch(err => logger.warn(`Could not DM ${user.username} (${user.id}): ${err.message}`));
                 break;
         }
     },

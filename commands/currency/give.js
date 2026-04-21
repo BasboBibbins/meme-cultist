@@ -51,15 +51,15 @@ module.exports = {
         await db.sub(`${sender.id}.balance`, amount);
         await db.add(`${receiver.id}.balance`, amount);
         ephemeral_embed
-            .setAuthor({ name: `You sent ${amount} ${CURRENCY_NAME} to ${receiver.displayName }!`, iconURL: sender.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `You sent ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} to ${receiver.displayName }!`, iconURL: sender.displayAvatarURL({ dynamic: true }) })
             .setThumbnail(receiver.displayAvatarURL({ dynamic: true, size: 1024 }))
-            .setDescription(`You now have **${dbSender.balance - amount}** ${CURRENCY_NAME} in your wallet!`)
+            .setDescription(`You now have **${(dbSender.balance - amount).toLocaleString('en-US')}** ${CURRENCY_NAME} in your wallet!`)
             .setColor(0x00FF00)
         await interaction.reply({ embeds: [ephemeral_embed], ephemeral: true });
         const dm_embed = new EmbedBuilder()
-            .setAuthor({ name: `You received ${amount} ${CURRENCY_NAME} from ${sender.displayName }!`, iconURL: receiver.displayAvatarURL({ dynamic: true }) })
+            .setAuthor({ name: `You received ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from ${sender.displayName }!`, iconURL: receiver.displayAvatarURL({ dynamic: true }) })
             .setThumbnail(sender.displayAvatarURL({ dynamic: true, size: 1024 }))
-            .setDescription(`You now have **${dbReceiver.balance + amount}** ${CURRENCY_NAME} in your wallet!`)
+            .setDescription(`You now have **${(dbReceiver.balance + amount).toLocaleString('en-US')}** ${CURRENCY_NAME} in your wallet!`)
             .setColor(randomHexColor())
             .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();

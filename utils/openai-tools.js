@@ -1,7 +1,10 @@
 const { QuickDB } = require("quick.db");
+const { AttachmentBuilder } = require("discord.js");
 const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
+const { generateImage } = require("./gemini");
+const { canGenerateImage } = require("./ratelimiter");
 const { CURRENCY_NAME } = require("../config.js");
 
 // Tool definitions for DeepSeek function calling
@@ -10,7 +13,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_balance",
-      description: "Get a user's wallet and bank balance. Call when user asks about their or someone else's money.",
+      description: "Get a user's wallet and bank balance in koku.",
       parameters: {
         type: "object",
         properties: {
@@ -24,7 +27,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_leaderboard",
-      description: "Get the top users by bank balance. Call when user asks about rankings, leaderboards, or richest users.",
+      description: "Get the top 10 users ranked by bank balance.",
       parameters: {
         type: "object",
         properties: {
@@ -38,7 +41,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_user_stats",
-      description: "Get a user's game statistics, command usage, and other stats. Call when user asks about their or someone's stats.",
+      description: "Get a user's game statistics (blackjack, slots, poker, etc.), command usage counts, and records.",
       parameters: {
         type: "object",
         properties: {
@@ -52,7 +55,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_guild_info",
-      description: "Get information about the current Discord server (guild). Call when user asks about the server, its channels, roles, or member count.",
+      description: "Get information about the current Discord server: name, member count, channels, and roles.",
       parameters: {
         type: "object",
         properties: {},
@@ -64,7 +67,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_user_info",
-      description: "Get detailed information about a Discord user including their roles, join date, and avatar. Call when user asks about someone's Discord profile.",
+      description: "Get a Discord user's profile: display name, avatar URL, roles, and join date.",
       parameters: {
         type: "object",
         properties: {
@@ -78,11 +81,35 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_bot_info",
-      description: "Get information about this bot's capabilities and available commands. Call when user asks what the bot can do, what commands are available, or how to use specific features.",
+      description: "Get a list of this bot's available slash commands and what they do.",
       parameters: {
         type: "object",
         properties: {},
         required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description:
+        "Generate a brand-new image from a text prompt and attach it to your reply. " +
+        "CALL THIS TOOL whenever the user explicitly asks you to make, create, generate, draw, paint, render, or design an image/picture/drawing/meme/artwork/poster. " +
+        "This includes requests like: 'draw me a cat', 'make an image of a sunset', 'generate a meme about X', 'can you create a picture of Y?', 'render a dragon'. " +
+        "IMPORTANT: You CANNOT create images yourself — you MUST use this tool to produce them. Never claim you generated or attached an image without calling this tool first. " +
+        "Do NOT call for: metaphorical 'imagine/picture this', discussing existing images, describing visuals, or reacting to images the user already shared.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: {
+            type: "string",
+            description:
+              "The user's image request, rewritten as a detailed visual description. " +
+              "Include subject, style, setting, composition, and mood."
+          }
+        },
+        required: ["prompt"]
       }
     }
   }
@@ -280,16 +307,41 @@ async function handleGetBotInfo(args, message, client) {
   };
 }
 
+async function handleGenerateImage(args, message, client, toolCtx) {
+  if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
+  const rateCheck = canGenerateImage(message.author.id);
+  if (!rateCheck.allowed) {
+    return { error: rateCheck.reason };
+  }
+  try {
+    const { buffer, mimeType } = await generateImage(args.prompt);
+    if (toolCtx) {
+      const ext = mimeType?.includes("png") ? "png" : "jpg";
+      toolCtx.pendingAttachments.push(
+        new AttachmentBuilder(buffer).setName(`generated.${ext}`)
+      );
+    }
+    return {
+      success: true,
+      message: "Image successfully generated and will be attached to your reply. Acknowledge this to the user briefly — the image is visible below their message. Do NOT describe the image or pretend you generated it without this tool call."
+    };
+  } catch (err) {
+    logger.error(`[generate_image] ${err.message}`);
+    return { error: `Image generation failed: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
   get_user_stats: handleGetUserStats,
   get_guild_info: handleGetGuildInfo,
   get_user_info: handleGetUserInfo,
-  get_bot_info: handleGetBotInfo
+  get_bot_info: handleGetBotInfo,
+  generate_image: handleGenerateImage
 };
 
-async function executeToolCall(toolCall, message, client) {
+async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const fnName = toolCall.function.name;
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
 
@@ -301,7 +353,7 @@ async function executeToolCall(toolCall, message, client) {
     if (!handler) {
       result = { error: `Unknown function: ${fnName}` };
     } else {
-      result = await handler(fnArgs, message, client);
+      result = await handler(fnArgs, message, client, toolCtx);
     }
   } catch (err) {
     logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);

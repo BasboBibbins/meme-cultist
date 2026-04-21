@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
 const { formatTimeLeft } = require('../../utils/time')
@@ -19,7 +19,13 @@ module.exports = {
                 .addStringOption(option =>
                     option.setName('amount')
                         .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
-                        .setRequired(true)))
+                        .setRequired(true))
+                .addIntegerOption(option =>
+                    option.setName('lines')
+                        .setDescription(`Number of paylines to bet on (1-${SLOTS_MAX_LINES})`)
+                        .setMinValue(1)
+                        .setMaxValue(SLOTS_MAX_LINES)
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName('paytable')
@@ -43,7 +49,6 @@ module.exports = {
                 break;
 
             case 'daily':
-                const cooldown = 8.64e+7; // 24 hours
                 if (dbUser.cooldowns.freespins > Date.now()) {
                     const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
                     logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${await formatTimeLeft(timeLeft)}`)
@@ -56,13 +61,15 @@ module.exports = {
                     return await interaction.reply({ embeds: [embed], ephemeral: true });
                 } else {
                     logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
-                    await db.set(`${user.id}.cooldowns.freespins`, Date.now() + cooldown);
-                    await playSlots(interaction, 0, user);
+                    await db.set(`${user.id}.cooldowns.freespins`, Date.now() + SLOTS_DAILY_COOLDOWN);
+                    await interaction.deferReply();
+                    await playSlots(interaction, 0, user, { lines: SLOTS_DAILY_LINES });
                 }
                 break;
 
             case 'bet':
                 const bet = Number(await parseBet(interaction.options.getString('amount'), user.id));
+                const lines = interaction.options.getInteger('lines') || 1;
 
                 const error_embed = new EmbedBuilder()
                     .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
@@ -85,14 +92,18 @@ module.exports = {
                     await interaction.reply({ embeds: [error_embed], ephemeral: true });
                     break;
                 }
-                if (bet > await db.get(`${interaction.user.id}.balance`)) {
-                    error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+
+                const totalCost = bet * lines;
+                const balance = await db.get(`${interaction.user.id}.balance`);
+                if (totalCost > balance) {
+                    error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}! (Need ${totalCost.toLocaleString('en-US')}, have ${balance.toLocaleString('en-US')})`);
                     await interaction.reply({ embeds: [error_embed], ephemeral: true });
                     break;
                 }
 
-                await db.set(`${user.id}.balance`, await db.get(`${user.id}.balance`) - bet);
-                await playSlots(interaction, bet, user);
+                await interaction.deferReply();
+                await db.sub(`${user.id}.balance`, totalCost);
+                await playSlots(interaction, bet, user, { lines });
                 break;
         }
     },

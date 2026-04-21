@@ -2,16 +2,14 @@ const { drawCard } = require('./deckofcards');
 const { createCanvas, loadImage } = require('canvas');
 const logger = require("./logger");
 const { AttachmentBuilder } = require('discord.js');
+const { getThemeColors } = require('../themes/resolver');
 
 // Canvas dimensions matching roulette aesthetic
 const CANVAS_W = 600;
 const CANVAS_H = 320;
 
-// Felt green matching roulette table
-const FELT_BG = '#0f4c25';
-const FELT_GREEN = '#1a6b35';
-const GOLD = '#ffd700';
-const GOLD_BORDER = '#c8a830';
+// Default poker colors (classic theme fallback)
+const DEFAULT_COLORS = getThemeColors('classic', 'poker');
 
 function roundRect(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -112,6 +110,22 @@ async function pokerScore(hand) {
 }
 
 
+const ROYAL_FLUSH_HAND = [
+    { image: 'https://deckofcardsapi.com/static/img/0S.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/JS.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/QS.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/KS.png', hold: true },
+    { image: 'https://deckofcardsapi.com/static/img/AS.png', hold: true },
+];
+
+/**
+ * Generate a royal flush hand preview PNG for the shop.
+ */
+async function pokerPreview(themeId) {
+    const colors = getThemeColors(themeId, 'poker');
+    return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors);
+}
+
 module.exports = {
     pokerScore: async (hand) => {
         try {
@@ -121,17 +135,32 @@ module.exports = {
             return null;
         }
     },
-    canvasHand: async (hand, score) => {
+    canvasHand: async (hand, score, colors = DEFAULT_COLORS) => {
         try {
             const canvas = createCanvas(CANVAS_W, CANVAS_H);
             const ctx = canvas.getContext('2d');
 
-            // Felt background matching roulette table
-            ctx.fillStyle = FELT_BG;
-            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+            if (colors.background) {
+                try {
+                    const bgImg = await loadImage(colors.background);
+                    const scale = Math.max(CANVAS_W / bgImg.width, CANVAS_H / bgImg.height);
+                    const drawW = bgImg.width * scale;
+                    const drawH = bgImg.height * scale;
+                    const dx = (CANVAS_W - drawW) / 2;
+                    const dy = (CANVAS_H - drawH) / 2;
+                    ctx.drawImage(bgImg, dx, dy, drawW, drawH);
+                } catch (err) {
+                    logger.warn('Failed to load poker background image, using fallback color', { error: err });
+                    ctx.fillStyle = colors.feltColor;
+                    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+                }
+            } else {
+                ctx.fillStyle = colors.feltColor;
+                ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+            }
 
             // Draw title with gold styling
-            ctx.fillStyle = GOLD;
+            ctx.fillStyle = colors.gold;
             ctx.font = 'bold 28px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -140,10 +169,10 @@ module.exports = {
             // Card area background with rounded corners
             const cardAreaX = 30, cardAreaY = 70;
             const cardAreaW = CANVAS_W - 60, cardAreaH = 200;
-            ctx.fillStyle = FELT_GREEN;
+            ctx.fillStyle = colors.tableGreen;
             roundRect(ctx, cardAreaX, cardAreaY, cardAreaW, cardAreaH, 12);
             ctx.fill();
-            ctx.strokeStyle = GOLD_BORDER;
+            ctx.strokeStyle = colors.goldDark;
             ctx.lineWidth = 3;
             roundRect(ctx, cardAreaX, cardAreaY, cardAreaW, cardAreaH, 12);
             ctx.stroke();
@@ -170,7 +199,7 @@ module.exports = {
 
                 // Gold border on held cards
                 if (hand[i].hold) {
-                    ctx.strokeStyle = GOLD;
+                    ctx.strokeStyle = colors.gold;
                     ctx.lineWidth = 4;
                     roundRect(ctx, cardX - 2, cardY - 2, cardW + 4, cardH + 4, 10);
                     ctx.stroke();
@@ -181,7 +210,7 @@ module.exports = {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
                     ctx.fillText('HOLD', cardX + cardW / 2, cardY - 6);
-                    ctx.fillStyle = GOLD;
+                    ctx.fillStyle = colors.gold;
                     ctx.fillText('HOLD', cardX + cardW / 2 + 1, cardY - 5);
                 }
             }
@@ -189,19 +218,21 @@ module.exports = {
             // Score display at bottom
             if (score) {
                 const scoreY = CANVAS_H - 35;
-                ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                ctx.fillStyle = colors.tableGreen;
                 roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
                 ctx.fill();
 
-                ctx.strokeStyle = GOLD;
+                ctx.strokeStyle = colors.goldDark;
                 ctx.lineWidth = 2;
                 roundRect(ctx, CANVAS_W / 2 - 120, scoreY - 20, 240, 40, 10);
                 ctx.stroke();
 
-                ctx.fillStyle = GOLD;
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
                 ctx.font = 'bold 22px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
+                ctx.fillText(score, CANVAS_W / 2 + 2, scoreY + 2);
+                ctx.fillStyle = colors.gold;
                 ctx.fillText(score, CANVAS_W / 2, scoreY);
             }
 
@@ -222,5 +253,6 @@ module.exports = {
             logger.error(err);
             return null;
         }
-    }
+    },
+    pokerPreview
 }

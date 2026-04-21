@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require('openai');
-const { CHATBOT_LOCAL } = require('../config.js');
+const { CHATBOT_LOCAL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../config.js');
 const logger = require('./logger');
 
 let _openaiClient = null;
@@ -22,14 +22,14 @@ function withTimeout(promise, ms, err = "Request timed out") {
 }
 
 const ADJECTIVES = [
+    // Generic
     'Royal', 'Noble', 'Silver', 'Golden', 'Dark', 'Swift', 'Bold', 'Wild', 'Iron',
     'Midnight', 'Crimson', 'Blazing', 'Ancient', 'Sacred', 'Mighty', 'Phantom',
     'Eternal', 'Raging', 'Frozen', 'Thunder', 'Shadow',
     'Crusty', 'Wobbly', 'Sleepy', 'Soggy', 'Grumpy', 'Chonky', 'Dusty', 'Sneaky',
     'Hangry', 'Discount', 'Cursed', 'Broke', 'Slightly', 'Suspiciously',
-    'Aggressively', 'Mediocre', 'Confused', 'Retired', 'Certified', 'Definitely-Not-A',
-    'Special', 'Silence', 'Daiwa', 'Mejiro', 'Narita', 'Symboli', 'Mihono',
-    'Satono', 'Kitasan', 'Marvelous', 'Winning', 'Maruzen',
+    'Aggressively', 'Mediocre', 'Confused', 'Retired', 'Certified', 
+    'Special', 'Silence', 'Fwenly', 'Definitely-Not-A',
 ];
 
 const NOUNS = [
@@ -39,10 +39,14 @@ const NOUNS = [
     'Noodle', 'Bucket', 'Socks', 'Muffin', 'Goblin', 'Potato', 'Biscuit', 'Waffle',
     'Accountant', 'Conspiracy', 'Refund', 'Intern', 'Napkin', 'Horoscope',
     'Regret', 'Situation', 'Vibez', 'Agenda', 'Omen', 'Opinion',
-    'Suzuka', 'Scarlet', 'McQueen', 'Turbo', 'Bourbon', 'Teio', 'Rudolf',
-    'Vodka', 'Tachyon', 'Falcon', 'Hayahide', 'Brian', 'Cap', 'Helios',
-    'Shakur', 'Taiki', 'Creek', 'Ticket', 'Sky',
 ];
+
+// add more nouns and adjectives stored in the .env
+
+NOUNS.push(...(process.env.ADDITIONAL_NOUNS || '').split(',').map(s => s.trim()).filter(Boolean));
+ADJECTIVES.push(...(process.env.ADDITIONAL_ADJECTIVES || '').split(',').map(s => s.trim()).filter(Boolean));
+
+logger.debug(`\x1b[33m[Race]\x1b[0m Loaded ${ADJECTIVES.length} adjectives and ${NOUNS.length} nouns for horse name generation.`);
 
 const EMOJIS = ['🏇', '🐎', '🦄', '🦓', '🦌', '🐴', '🎠', '⭐'];
 
@@ -65,8 +69,21 @@ function getOddsLabel(probability) {
     return ODDS_LABELS.find(o => probability >= o.threshold)?.label ?? '🔴 Outsider';
 }
 
-function calculatePayout(betAmount, displayOdds, houseEdge = 0.10) {
-    return Math.floor(betAmount * displayOdds * (1 - houseEdge));
+function calculatePayout(betAmount, displayOdds, houseEdge = 0.10, betType = 'win') {
+    let odds;
+    switch (betType) {
+        case 'place':
+            odds = (displayOdds - 1) * RACE_PLACE_MULTIPLIER + 1;
+            break;
+        case 'show':
+            odds = (displayOdds - 1) * RACE_SHOW_MULTIPLIER + 1;
+            break;
+        case 'win':
+        default:
+            odds = displayOdds;
+            break;
+    }
+    return Math.floor(betAmount * odds * (1 - houseEdge));
 }
 
 function generateHorses() {
@@ -111,6 +128,43 @@ function determineWinner(horses) {
     return horses[horses.length - 1];
 }
 
+function determineTopThree(horses) {
+    // Predetermine the full finishing order via successive weighted random draws.
+    // Each subsequent place is drawn from the remaining horses with probabilities
+    // renormalized — the same method previously used only for 1st/2nd/3rd.
+    const order = [];
+    let remaining = horses.slice();
+
+    while (remaining.length > 0) {
+        const total = remaining.reduce((sum, h) => sum + h.probability, 0);
+        const roll = Math.random() * total;
+        let cumulative = 0;
+        let pick = remaining[remaining.length - 1];
+        for (const horse of remaining) {
+            cumulative += horse.probability;
+            if (roll < cumulative) {
+                pick = horse;
+                break;
+            }
+        }
+        order.push(pick);
+        remaining = remaining.filter(h => h.number !== pick.number);
+    }
+
+    const finishOrder = order.map(h => horses.findIndex(x => x.number === h.number));
+
+    return {
+        order,
+        finishOrder,
+        first: order[0],
+        second: order[1],
+        third: order[2],
+        firstIndex: finishOrder[0],
+        secondIndex: finishOrder[1],
+        thirdIndex: finishOrder[2]
+    };
+}
+
 function buildTrack(progress, horseEmoji, trackLength = 20) {
     if (progress >= 100) {
         return `|${'—'.repeat(trackLength)}${horseEmoji}|🏁`;
@@ -123,7 +177,7 @@ function buildTrack(progress, horseEmoji, trackLength = 20) {
     return `|${before}${horseEmoji}${after}|🏁`;
 }
 
-function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = []) {
+function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = [], topThree = null) {
     const lines = [];
 
     const isFinished = winnerIndex !== null;
@@ -138,15 +192,16 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
     const medalMap = new Map();
 
     if (isFinished && finishOrder.length > 0) {
-        // Final results: use finish order for silver/bronze
-        medalMap.set(winnerIndex, '🥇');
-        let rank = 1;
-        for (const idx of finishOrder) {
-            if (idx === winnerIndex) continue;
-            if (rank === 1) medalMap.set(idx, '🥈');
-            else if (rank === 2) medalMap.set(idx, '🥉');
-            rank++;
-            if (rank > 2) break;
+        // Final results: use finish order for medals
+        const medals = ['🥇', '🥈', '🥉'];
+        for (let i = 0; i < Math.min(3, finishOrder.length); i++) {
+            medalMap.set(finishOrder[i], medals[i]);
+        }
+    } else if (finishOrder.length > 0) {
+        // During race: use finish order for medals of horses that have crossed the line
+        const medals = ['🥇', '🥈', '🥉'];
+        for (let i = 0; i < Math.min(3, finishOrder.length); i++) {
+            medalMap.set(finishOrder[i], medals[i]);
         }
     } else if (isFinished) {
         // Fallback when no finishOrder: assign medals by progress
@@ -161,11 +216,16 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
             medalMap.set(h.i, medals[rank]);
         });
     } else {
-        // During race: medals based on current position
+        // During race without finishOrder: medals based on current position
         const finishedHorses = horses
             .map((_, i) => ({ i, progress: positions[i] }))
             .filter(h => h.progress >= 100)
-            .sort((a, b) => b.progress - a.progress);
+            .sort((a, b) => {
+                if (b.progress !== a.progress) {
+                    return b.progress - a.progress;
+                }
+                return 0; // Maintain stable order if progress is identical
+            });
 
         const medals = ['🥇', '🥈', '🥉'];
         finishedHorses.slice(0, 3).forEach((h, rank) => {
@@ -208,7 +268,7 @@ function buildBettingDescription(horses, bets, endTime) {
             const horse = horses[horseIdx];
             const horseBets = betsByHorse[horseIdx];
             const total = horseBets.reduce((sum, b) => sum + b.amount, 0);
-            const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()})`).join(', ');
+            const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()} ${(b.betType || 'win').charAt(0).toUpperCase() + (b.betType || 'win').slice(1)})`).join(', ');
             lines.push(`• **Horse ${horse.number}** (${horse.name}) — ${total.toLocaleString()} koku | ${users}`);
         }
     } else {
@@ -221,16 +281,26 @@ function buildBettingDescription(horses, bets, endTime) {
     return lines.join('\n');
 }
 
-function advanceRace(horses, positions, winnerIndex) {
+function advanceRace(horses, positions, topThree) {
     const newFinishers = [];
 
     for (let i = 0; i < horses.length; i++) {
         const prevProgress = positions[i];
-        let advance = 5 + Math.random() * 7;
+        // Base advancement with reduced randomness
+        let advance = 6 + Math.random() * 4; // 6-10, avg 8
 
-        if (i === winnerIndex) advance += 2 + Math.random() * 3;
+        // Strong deterministic boosts for predetermined top 3
+        // This ensures they finish in correct order
+        if (i === topThree.firstIndex) {
+            advance += 5 + Math.random() * 2; // +5-7, ensures 1st place
+        } else if (i === topThree.secondIndex) {
+            advance += 3 + Math.random() * 2; // +3-5, ensures 2nd place
+        } else if (i === topThree.thirdIndex) {
+            advance += 1 + Math.random() * 2; // +1-3, ensures 3rd place
+        }
 
-        advance += (horses[i].form / 100) * 2;
+        // Form bonus (smaller impact, doesn't override predetermined order)
+        advance += (horses[i].form / 100) * 1.5;
 
         positions[i] = Math.min(100, positions[i] + advance);
 
@@ -398,6 +468,7 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
 module.exports = {
     generateHorses,
     determineWinner,
+    determineTopThree,
     calculatePayout,
     getOddsLabel,
     buildTrack,

@@ -1,43 +1,30 @@
 const logger = require("./logger");
+const { formatChatbotChannelMentions } = require("./channels");
 
 const userCooldowns = new Map();
 const mentionCooldowns = new Map();
+const imageGenTimestamps = new Map();
 let requestTimestamps = [];
 let requestCount = 0;
 
-const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, CHATBOT_CHANNEL} = require("../config.js")
+const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, IMAGE_GEN_LIMIT, IMAGE_GEN_WINDOW} = require("../config.js")
 
-/**
- * Clean up expired timestamps from the request array.
- * This prevents memory growth over time.
- */
 function cleanupTimestamps() {
   const now = Date.now();
   requestTimestamps = requestTimestamps.filter(ts => now - ts < WINDOW_SIZE * 1000);
 }
 
-/**
- * Check if a user can proceed with a request.
- * Implements per-user cooldown and global rate limiting with race condition protection.
- *
- * @param {string} userId - The Discord user ID
- * @param {boolean} isMention - Whether this is a mention (uses longer cooldown)
- * @returns {{allowed: boolean, reason?: string}}
- */
 function canProceed(client, userId, isMention = false) {
   const now = Date.now();
   const cooldown = isMention ? MENTION_COOLDOWN : USER_COOLDOWN;
   const cooldownMap = isMention ? mentionCooldowns : userCooldowns;
 
-  const mentionChannelId = CHATBOT_CHANNEL;
-  const mentionChannel = client.channels.cache.get(mentionChannelId);
-  const mentionChannelMention = mentionChannel ? `<#${mentionChannelId}>` : "the dedicated chatbot channel";
-
   // Per-user cooldown check
   const lastUsed = cooldownMap.get(userId) || 0;
   if (now - lastUsed < cooldown * 1000) {
     const remaining = Math.ceil((cooldown * 1000 - (now - lastUsed)) / 1000);
-    return { allowed: false, reason: `Too many requests! Please wait ${remaining}s before next use, or use ${mentionChannelMention}` };
+    const channelText = formatChatbotChannelMentions(client);
+    return { allowed: false, reason: `Too many requests! Please wait ${remaining}s before next use, or use ${channelText}` };
   }
 
   // Clean up expired timestamps periodically (every 100 requests)
@@ -73,7 +60,28 @@ function canProceed(client, userId, isMention = false) {
   return { allowed: true };
 }
 
+function canGenerateImage(userId) {
+  const now = Date.now();
+  const windowMs = IMAGE_GEN_WINDOW * 1000;
+  const history = (imageGenTimestamps.get(userId) || []).filter(ts => now - ts < windowMs);
+
+  if (history.length >= IMAGE_GEN_LIMIT) {
+    const retryIn = Math.ceil((windowMs - (now - history[0])) / 1000);
+    imageGenTimestamps.set(userId, history);
+    return {
+      allowed: false,
+      reason: `Image generation limit reached (${IMAGE_GEN_LIMIT} per ${Math.round(IMAGE_GEN_WINDOW / 60)} min). Try again in ${retryIn}s.`,
+      retryIn,
+    };
+  }
+
+  history.push(now);
+  imageGenTimestamps.set(userId, history);
+  return { allowed: true };
+}
+
 module.exports = {
   canProceed,
   cleanupTimestamps,
+  canGenerateImage,
 };

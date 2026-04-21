@@ -1,6 +1,6 @@
 {
   "name": "meme-cultist-2023",
-  "version": "5.4.5",
+  "version": "5.5.0",
   "description": "",
   "main": "bot.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "@discordjs/builders": "^1.10.1",
     "@discordjs/rest": "^1.7.1",
     "@discordjs/voice": "^0.14.0",
+    "@google/genai": "^1.50.1",
     "axios": "^1.8.3",
     "better-sqlite3": "^11.9.1",
     "bgutils-js": "^3.2.0",
@@ -23,6 +24,7 @@
     "booru": "^2.7.0",
     "canvas": "^3.1.0",
     "cat-loggr": "^1.2.2",
+    "cheerio": "^1.2.0",
     "crypto": "^1.0.1",
     "dayjs": "^1.11.7",
     "discord-player": "^7.1.0",

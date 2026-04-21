@@ -1,12 +1,13 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNEL, OOC_PREFIX } = require('../config.js');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS } = require('../config.js');
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
+const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(', ');
 
 module.exports = {
     currency: {
         name: CURRENCY_NAME_CAPITALIZED,
         description: `
             ${CURRENCY_NAME_CAPITALIZED} is the currency used by the bot. You can earn ${CURRENCY_NAME} in a variety of ways, such as gambling, claiming dailies, and even stealing from other users.
-            It currently has no use outside of gambling, but that will change in the future!
+            Spend it on gambling games or on cosmetic items in the daily \`/shop\`.
 
             There are two places to store your ${CURRENCY_NAME}: your wallet and your bank. Your wallet is where you store the ${CURRENCY_NAME} you spend on things like gambling, and your bank is where you store the ${CURRENCY_NAME} that you want to keep safe.
             You can transfer ${CURRENCY_NAME} from your wallet to your bank and vice versa using \`/bank [deposit|withdraw] [amount]\`. You can also see how much ${CURRENCY_NAME} you have in your wallet and bank using \`/balance\`.
@@ -46,8 +47,11 @@ module.exports = {
             If you go over 21, you bust and lose. If the dealer busts, you win. If you have a higher total than the dealer you win, and if you have a lower total than the dealer you lose.
             If you have the same total as the dealer, it is a tie.
 
-            If you choose to double down, you will double your bet and be given one more card. You will then be forced to stand.
-            You can only double down on the first two cards.
+            **Double Down:** Double your bet and receive exactly one more card, then stand. Only available on the first two cards.
+
+            **Split:** If you are dealt two cards of the same value, you can split them into two separate hands, each with their own bet. You can split up to ${BLACKJACK_MAX_HANDS || 4} times.
+
+            **Late Surrender:** After the dealer checks for blackjack, you can choose to surrender and forfeit half your bet, keeping the other half. Useful when you have a weak hand against a strong dealer upcard.
             `,
         rules: `
             1. The goal of blackjack is to beat the dealer's hand without going over 21.
@@ -58,24 +62,30 @@ module.exports = {
             6. If you are dealt 21 from the start (Ace & 10), you got a blackjack.
             7. Blackjack means you win 1.5 the amount of your bet.
             8. Dealer will hit until their cards total 17 or higher.
-            9. Doubling is like a hit, only the bet is doubled and you only get one more card.`
+            9. Doubling is like a hit, only the bet is doubled and you only get one more card.
+            10. Splitting is available when your first two cards have the same value. Each split hand gets a new card and plays independently.
+            11. Late surrender lets you forfeit half your bet after the dealer checks for blackjack, keeping the other half.`
     },
     slots: {
         name: "Slots",
         description: `
-            Slots is a game where you spin a slot machine and try to get three of the same symbol.
-            There are 8 symbols, each with a different multiplier. You can see the paytable by using \`/slots paytable\`.
+            Slots is a game where you spin a slot machine and try to line up matching symbols across paylines. The game uses canvas-based rendering with visual themes — equip a theme with \`/theme set\` to change how it looks.
 
-            You can also get free daily spins using \`/slots daily\` (resets daily at midnight).
+            **Wild Icons:** Wild symbols count as any symbol when on an active payline, making it easier to form winning combinations.
+
+            **Free Spins:** Land 3 or more scatter icons to trigger the Free Spin Bonus — you get free spins with no cost to your balance.
+
+            You can see the paytable by using \`/slots paytable\`. Free daily spins are available with \`/slots daily\` (resets at midnight).
 
             **Progressive Jackpot:** Triple 7s wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 ${CURRENCY_NAME} to qualify for the jackpot.
             `,
         rules: `
-            1. The goal of slots is to get three of the same symbol.
-            2. There are 8 symbols, each with a different multiplier.
-            3. Getting a single cherry will return your bet. Two cherries will return 2x your bet. Three cherries will return 5x your bet.
-            4. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
-            5. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
+            1. The goal of slots is to line up matching symbols across paylines.
+            2. There are 8 symbols, each with a different multiplier — check the paytable for details.
+            3. Wild icons count as any symbol on an active payline.
+            4. Landing 3+ scatter icons triggers the Free Spin Bonus.
+            5. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
+            6. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
     },
     poker: {
         name: "Poker",
@@ -89,7 +99,7 @@ module.exports = {
             **Progressive Jackpot:** A royal flush wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 koku to qualify.
             `,
         note: `
-            1. Aces are high, and straights can wrap around. Aces can be used as a high or low card, and straights can wrap around.
+            1. Aces can be high (above King) or low (in A-2-3-4-5 straight). Straights do not wrap around — only A-high and A-low straights are valid.
             2. Jacks or Better is the minimum hand to win. Pair of Jacks or Better pays 1:1.
             3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.
             4. If you take too long to make a decision, you will be timed out and lose your bet.
@@ -147,18 +157,26 @@ module.exports = {
             • 🔴 **Outsider** - Lowest chance, highest payout
 
             The race is animated with each horse progressing toward the finish line. First horse to cross wins!
-            Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is 10%.`,
+
+            **Bet Types:**
+            • **Win** — Horse must finish 1st. Full odds payout.
+            • **Place** — Horse must finish 1st or 2nd. Reduced payout (45% of win odds).
+            • **Show** — Horse must finish 1st, 2nd, or 3rd. Further reduced payout (28% of win odds).
+
+            Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is 5%.`,
         rules: `
             1. Use \`/race start\` to create a new race. Anyone in the channel can then place bets.
             2. Use \`/race bet [horse] [amount]\` to bet on a horse (1-8). You can only place one bet per race.
-            3. Each horse shows odds (e.g., "2.5x") and a chance indicator (Favorite, Contender, Longshot, Outsider).
-            4. The race creator can start early with "Start Now" or wait for the betting timer to expire.
-            5. Winners receive their payout via DM. The house takes a 10% cut of winnings.
-            6. You can only bet from your wallet, not your bank.`,
+            3. Use the \`type\` option to choose Win, Place, or Show (default: Win).
+            4. Each horse shows odds (e.g., "2.5x") and a chance indicator (Favorite, Contender, Longshot, Outsider).
+            5. The race creator can start early with "Start Now" or wait for the betting timer to expire.
+            6. Winners receive their payout via DM. The house takes a 5% cut of winnings.
+            7. You can only bet from your wallet, not your bank.`,
         example: `
             \`/race start\` - Start a new race (becomes the game host)
-            \`/race bet 3 500\` - Bet 500 on horse number 3
-            \`/race bet 7 all\` - Bet all your wallet balance on horse 7`,
+            \`/race bet 3 500\` - Bet 500 on horse 3 to win
+            \`/race bet 5 300 type:place\` - Bet 300 on horse 5 to place (1st or 2nd)
+            \`/race bet 7 all type:show\` - Bet all your wallet on horse 7 to show (1st, 2nd, or 3rd)`,
         note: `
             Only one race per channel at a time. Each player can only bet once per race.
             The winner is pre-determined when the race starts, but the animation shows all horses racing.
@@ -192,28 +210,92 @@ module.exports = {
             Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.
             For age-restricted YouTube videos, the bot owner can configure cookies in a \`.cookies\` file.`,
     },
+    shop: {
+        name: "Shop",
+        description: `
+            The shop sells cosmetic items (themes today, more later) in exchange for ${CURRENCY_NAME}.
+
+            Each server has its own stock of items that **rotates every day at midnight UTC**. Use \`/shop browse\` to see what's available today, \`/shop preview <item>\` to see an item's details before buying, and \`/shop buy <item>\` to purchase it.
+
+            Items are grouped by **rarity**:
+            • **Common** \u2014 shows up often, usually cheap colorways
+            • **Uncommon** \u2014 rotates in less frequently
+            • **Rare** \u2014 high-effort themes that rarely appear
+            • **Legendary** \u2014 only occasionally spotted in the wild
+
+            Once bought, items go to your \`/inventory\` and are yours forever. The daily rotation only controls *what you can buy today*, not what you can use.
+
+            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots or a royal flush on poker wins it (minimum bet of 10 ${CURRENCY_NAME} required).
+            `,
+        note: `
+            The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
+    },
+    inventory: {
+        name: "Inventory",
+        description: `
+            Your inventory holds every item you own across every category (themes today, more later). Use \`/inventory view\` to see everything you own, grouped by category and rarity.
+
+            Use \`/inventory equip <item>\` to equip an item. For themes specifically, \`/theme set <theme>\` does the same thing \u2014 they share code, pick whichever feels natural.
+
+            You can only own each item once; the shop will tell you if an item is already yours.
+            `,
+    },
+    theme: {
+        name: "Themes",
+        description: `
+            Themes change the visual style of casino games (slots, roulette, poker, etc.). Use \`/theme list\` to see all available themes, \`/theme info <theme>\` to preview one, and \`/theme set <theme>\` to equip a theme you own.
+
+            Themes come in four tiers:
+            • **Colorway** \u2014 swaps the color palette of the default layout
+            • **Styled** \u2014 customizes one game with unique colors and sprites
+            • **Full** \u2014 reskins all games with custom colors, sprites, and backgrounds
+            • **Limited** — seasonal or special themes that are only available during specific time windows
+
+            Themes are purchased in the daily \`/shop\`. Once you own a theme, it's yours forever \u2014 equip and swap as often as you like.
+            `,
+        note: `
+            The "Classic" theme is always available and free. New themes rotate through the shop, so check back daily.
+            Higher-tier themes (Styled, Full) include more custom artwork and game-specific overrides.
+            Limited themes only appear in the shop during their availability window — once it ends, they can't be purchased.`
+    },
+    jackpot: {
+        name: "Progressive Jackpot",
+        description: `
+            The progressive jackpot is a shared prize pool that grows with every qualifying bet on slots and poker.
+
+            • Every bet contributes 2% to the jackpot pool
+            • **Slots:** Triple 7s wins the jackpot (minimum 10 ${CURRENCY_NAME} bet required)
+            • **Poker:** A royal flush wins the jackpot (minimum 10 ${CURRENCY_NAME} bet required)
+            • Bets below the minimum still contribute to the jackpot but receive a reduced fixed payout instead
+            • The jackpot also earns daily interest, growing even when no one is playing
+
+            Use \`/jackpot\` to check the current jackpot amount and last winner.
+            `,
+        note: `
+            The jackpot starts at 1,000,000 koku if it ever resets. A minimum bet of 10 koku on slots or poker is required for full jackpot eligibility.`
+    },
     chatbot: {
         name: "Chatbot",
         description: `
-            Sending a message in <#${CHATBOT_CHANNEL}> will start a conversation with the bot. The bot uses a GPT-like model to generate responses based on the context of the conversation.
+            Sending a message in a chatbot channel will start a conversation with the bot. The bot operates across multiple channels, each with their own context.
             The bot is designed to have open-ended conversations that are engaging and interactive. You can use it to ask questions, share information, or just chat with the bot.
 
-            Threads, public or private, can be used in <#${CHATBOT_CHANNEL}> to create a more personalized conversation with the bot.
+            Threads, public or private, can be used in ${chatbotChannelList} to create a more personalized conversation with the bot.
             Each thread has its own context and history, which will update as you interact with the bot in that thread.
 
-            The \`/context\` command provides various features for managing the chatbot within a thread, including viewing, modifying, and resetting the thread context used for generating responses.
+            The \`/context\` command lets you view and manage chatbot context — channel context can only be modified by admins, while thread owners can customize their own thread context. Summaries and facts are paginated when viewing.
             For more information, type \`/help context\`.
         `,
         note: `
             As this is a ChatGPT-like model, it's important to keep in mind that the bot ***may not always respond as expected or accurately***.
 
-            The bot reacts to any message within <#${CHATBOT_CHANNEL}>, meaning there is no need to mention the bot.
+            The bot reacts to any message within ${chatbotChannelList}, meaning there is no need to mention the bot.
 
             Responses are generated based on how you communicate with it. Previous messages are used as context, alongside context saved based on your interactions and settings.
 
             If you want to say something out-of-character that the bot doesn't use or react to, prefix your message with "${OOC_PREFIX}" and the bot will ignore it completely.
 
-            Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions.
+            Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions. Facts are extracted both periodically from summaries and in real-time as you chat.
             If you want your thread to be more roleplay-focused, modify the settings tagged **[RP]** when using \`/context set\`.
 
             The bot may reject or defer your request if it's in violation of **[Deepseek Terms of Use](https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html)**.
@@ -241,6 +323,25 @@ module.exports = {
             Basbo: You are roleplaying as a woman I have a crush on. I finally worked up the courage to ask you out.
             Basbo: "Do you think there is something more between us?"
             Chatbot: "I've been thinking about that too. I like being around you—more than just a friend would. Maybe we've both been waiting for the right moment?"
+        `
+    },
+    aifeatures: {
+        name: "AI Features",
+        description: `
+            The chatbot has additional AI capabilities powered by Google Gemini:
+
+            **Image Vision** — Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself — it won't say "based on the description."
+
+            **URL Context** — Share a link and the bot will automatically read the page content so it can discuss it with you. It works for any HTML page — articles, docs, blogs, etc. The bot references the content naturally as if it read the page.
+
+            **Image Generation** — Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
+        `,
+        note: `
+            Vision and image generation require a Gemini API key. If it's not configured, the bot will let you know rather than pretending.
+
+            For URL context: only the first URL per message is fetched. Non-HTML content is skipped. Pages larger than 2MB or with text exceeding 4000 characters are truncated. Fetch requests time out after 8 seconds.
+
+            For image generation: the chatbot only triggers on direct, explicit requests to create an image, not casual mentions or metaphorical uses of "imagine."
         `
     }
 }

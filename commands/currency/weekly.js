@@ -39,11 +39,11 @@ module.exports = {
 
             const embed = new EmbedBuilder()
                 .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                .setDescription(`You have claimed your weekly ${CURRENCY_NAME}! **${amount}** ${CURRENCY_NAME} has been added to your bank.`)
+                .setDescription(`You have claimed your weekly ${CURRENCY_NAME}! **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} has been added to your bank.`)
                 .setColor(0x00FF00)
                 .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();
             await interaction.reply({embeds: [embed]});
-            logger.log(`${user.username} (${user.id}) claimed their weekly ${CURRENCY_NAME} and received ${amount} ${CURRENCY_NAME}.`)
+            logger.log(`${user.username} (${user.id}) claimed their weekly ${CURRENCY_NAME} and received ${amount.toLocaleString('en-US')} ${CURRENCY_NAME}.`)
         }
 };

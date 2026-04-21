@@ -5,6 +5,8 @@ const { addNewDBUser } = require('../../database');
 const { CURRENCY_NAME, ROULETTE_MIN_BET, ROULETTE_MAX_BET, ROULETTE_BETTING_TIME } = require('../../config.js');
 const { parseBet } = require('../../utils/betparse');
 const { drawRouletteTable, drawResult, spinWheel, calculateWinnings, getRedBlack, getNumberPosition } = require('../../utils/roulette');
+const { getEquippedTheme } = require('../../themes/manager');
+const { getThemeColors } = require('../../themes/resolver');
 const logger = require('../../utils/logger');
 const { randomHexColor } = require('../../utils/randomcolor');
 const wait = require('node:timers/promises').setTimeout;
@@ -83,10 +85,10 @@ module.exports = {
             return await interaction.reply({ embeds: [errorEmbed(`You must bet in whole numbers!`)], ephemeral: true });
         }
         if (ROULETTE_MIN_BET && bet < ROULETTE_MIN_BET) {
-            return await interaction.reply({ embeds: [errorEmbed(`You must bet at least ${ROULETTE_MIN_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
+            return await interaction.reply({ embeds: [errorEmbed(`You must bet at least ${ROULETTE_MIN_BET.toLocaleString('en-US')} ${CURRENCY_NAME}!`)], ephemeral: true });
         }
         if (ROULETTE_MAX_BET && bet > ROULETTE_MAX_BET) {
-            return await interaction.reply({ embeds: [errorEmbed(`You can bet at most ${ROULETTE_MAX_BET} ${CURRENCY_NAME}!`)], ephemeral: true });
+            return await interaction.reply({ embeds: [errorEmbed(`You can bet at most ${ROULETTE_MAX_BET.toLocaleString('en-US')} ${CURRENCY_NAME}!`)], ephemeral: true });
         }
 
         let parsedNumber = null;
@@ -148,7 +150,11 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
     const chipColor = user.accentColor ? user.accentColor : (fetchUserFromGuild && fetchUserFromGuild.displayHexColor && fetchUserFromGuild.displayHexColor !== '#000000' ? fetchUserFromGuild.displayHexColor : '#888888');
     const bets = [{ number: chipNumber, amount: bet, userId: user.id, username: user.displayName, type: betType, numberValue: parsedNumber }];
 
-    const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl }, { [user.id]: chipColor });
+    // Resolve the game creator's theme for all canvas rendering
+    const themeId = await getEquippedTheme(user.id);
+    const themeColors = getThemeColors(themeId, 'roulette');
+
+    const tableFile = await drawRouletteTable(bets, { [user.id]: avatarUrl }, { [user.id]: chipColor }, themeColors);
 
     const row = new ActionRowBuilder()
         .addComponents(
@@ -182,6 +188,7 @@ async function handleNewGame(interaction, client, user, betType, parsedNumber, b
         bets: bets,
         userAvatars: { [user.id]: avatarUrl },
         userColors: { [user.id]: chipColor },
+        themeColors: themeColors,
         status: 'betting',
         createdAt: Date.now(),
         endTime: Date.now() + ROULETTE_BETTING_TIME,
@@ -304,7 +311,7 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
             number: chipNumber,
             amount: bet,
             userId: user.id,
-            username: user.username,
+            username: user.displayName,
             type: betType,
             numberValue: parsedNumber
         });
@@ -317,7 +324,7 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
 
     game.endTime = Date.now() + ROULETTE_BETTING_TIME;
 
-    const tableFile = await drawRouletteTable(game.bets, game.userAvatars, game.userColors);
+    const tableFile = await drawRouletteTable(game.bets, game.userAvatars, game.userColors, game.themeColors);
 
     const betsDescription = buildBetsDescription(game.bets);
 
@@ -332,7 +339,7 @@ async function handleAddBet(interaction, client, user, betType, parsedNumber, be
 
     const localEmbed = new EmbedBuilder()
         .setAuthor({ name: `Good luck!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-        .setDescription(`Bet placed: ${bet} on ${formatBetType(betType, parsedNumber)}`)
+        .setDescription(`Bet placed: ${bet.toLocaleString('en-US')} on ${formatBetType(betType, parsedNumber)}`)
         .setColor(randomHexColor())
         .setFooter({ text: `${client.user.username} | Version ${require('../../package.json').version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
@@ -366,15 +373,16 @@ async function resolveGame(client, channel, message, game) {
         .setTimestamp()
         .setImage('attachment://roulette.png');
 
+    const tc = game.themeColors;
     const timeBetweenSpins = 500;
     for (let i = 0; i < 5; i++) {
         const randomNum = Math.floor(Math.random() * 37);
-        const resultFile = await drawResult(randomNum, 0, false, game.bets, game.userAvatars, game.userColors);
+        const resultFile = await drawResult(randomNum, 0, false, game.bets, game.userAvatars, game.userColors, tc);
         await message.edit({ embeds: [embed.setTitle('Spinning...')], files: [resultFile] });
         await wait(timeBetweenSpins);
     }
 
-    const winningNumberFile = await drawResult(winningNumber, 0, false, game.bets, game.userAvatars, game.userColors);
+    const winningNumberFile = await drawResult(winningNumber, 0, false, game.bets, game.userAvatars, game.userColors, tc);
     await message.edit({ embeds: [embed.setTitle(`Result: ${winningNumber}...`)], files: [winningNumberFile] });
     await wait(800);
 
@@ -410,13 +418,23 @@ async function resolveGame(client, channel, message, game) {
         });
     }
 
+    // Track profit per user
+    const profitByUser = {};
+    for (const result of results) {
+        if (!profitByUser[result.userId]) profitByUser[result.userId] = 0;
+        profitByUser[result.userId] += result.won ? (result.winnings - result.amount) : -result.amount;
+    }
+    for (const [userId, profit] of Object.entries(profitByUser)) {
+        await db.add(`${userId}.stats.roulette.profit`, profit);
+    }
+
     const totalWinnings = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
-    const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars, game.userColors);
+    const finalFile = await drawResult(winningNumber, totalWinnings, true, game.bets, game.userAvatars, game.userColors, tc);
 
     const resultEmbed = new EmbedBuilder()
         .setAuthor({ name: `${game.creatorUsername}'s Roulette Game`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTitle(`Winning Number: ${winningNumber} (${color})`)
-        .setDescription(`Total pool: ${game.bets.reduce((sum, b) => sum + b.amount, 0)} ${CURRENCY_NAME}\nTotal winnings paid: ${totalWinnings} ${CURRENCY_NAME}`)
+        .setDescription(`Total pool: ${game.bets.reduce((sum, b) => sum + b.amount, 0).toLocaleString('en-US')} ${CURRENCY_NAME}\nTotal winnings paid: ${totalWinnings.toLocaleString('en-US')} ${CURRENCY_NAME}`)
         .setColor(color === 'red' ? 0xFF0000 : (color === 'black' ? 0x000000 : 0x00AA00))
         .setTimestamp()
         .setImage('attachment://roulette.png');
@@ -454,10 +472,10 @@ async function sendResultDM(client, userResults, winningNumber, color) {
         const betLines = userResults.map(r => {
             const desc = formatBetType(r.type, r.numberValue);
             const outcome = r.won ? `W` : `L`;
-            return `• ${r.amount} ${CURRENCY_NAME} on ${desc} **(${outcome})**`;
+            return `• ${r.amount.toLocaleString('en-US')} ${CURRENCY_NAME} on ${desc} **(${outcome})**`;
         }).join('\n');
 
-        const summary = `${userResults.length > 0 ? `**Total bet:** ${totalBet} ${CURRENCY_NAME}\n` : ''}**Total won:** ${totalWon} ${CURRENCY_NAME}\n**Net:** ${net >= 0 ? '+' : ''}${net} ${CURRENCY_NAME}\n\nYour new balance is **${newBalance}** ${CURRENCY_NAME}.`;
+        const summary = `${userResults.length > 0 ? `**Total bet:** ${totalBet.toLocaleString('en-US')} ${CURRENCY_NAME}\n` : ''}**Total won:** ${totalWon.toLocaleString('en-US')} ${CURRENCY_NAME}\n**Net:** ${net >= 0 ? '+' : ''}${net.toLocaleString('en-US')} ${CURRENCY_NAME}\n\nYour new balance is **${newBalance.toLocaleString('en-US')}** ${CURRENCY_NAME}.`;
         const description = `Winning Number: ${winningNumber} (${color})\n\n**Your bet${userResults.length > 1 ? 's' : ''}:**\n${betLines}\n\n${summary}`;
 
         const embed = new EmbedBuilder()
@@ -498,12 +516,12 @@ function buildBetsDescription(bets) {
             byUser[bet.userId] = { displayName: bet.username, total: 0, bets: [] };
         }
         byUser[bet.userId].total += bet.amount;
-        byUser[bet.userId].bets.push(`${formatBetType(bet.type, bet.numberValue)} (${bet.amount})`);
+        byUser[bet.userId].bets.push(`${formatBetType(bet.type, bet.numberValue)} (${bet.amount.toLocaleString('en-US')} ${CURRENCY_NAME})`);
     }
 
     let desc = '';
     for (const [userId, data] of Object.entries(byUser)) {
-        desc += `• ${data.displayName}: ${data.total} on ${data.bets.join(', ')}\n`;
+        desc += `• ${data.displayName}: ${data.total.toLocaleString('en-US')} on ${data.bets.join(', ')}\n`;
     }
     return desc || 'No bets yet';
 }
