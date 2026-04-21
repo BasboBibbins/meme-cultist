@@ -13,7 +13,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_balance",
-      description: "Get a user's wallet and bank balance. Call when user asks about their or someone else's money.",
+      description: "Get a user's wallet and bank balance in koku.",
       parameters: {
         type: "object",
         properties: {
@@ -27,7 +27,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_leaderboard",
-      description: "Get the top users by bank balance. Call when user asks about rankings, leaderboards, or richest users.",
+      description: "Get the top 10 users ranked by bank balance.",
       parameters: {
         type: "object",
         properties: {
@@ -41,7 +41,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_user_stats",
-      description: "Get a user's game statistics, command usage, and other stats. Call when user asks about their or someone's stats.",
+      description: "Get a user's game statistics (blackjack, slots, poker, etc.), command usage counts, and records.",
       parameters: {
         type: "object",
         properties: {
@@ -55,7 +55,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_guild_info",
-      description: "Get information about the current Discord server (guild). Call when user asks about the server, its channels, roles, or member count.",
+      description: "Get information about the current Discord server: name, member count, channels, and roles.",
       parameters: {
         type: "object",
         properties: {},
@@ -67,7 +67,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_user_info",
-      description: "Get detailed information about a Discord user including their roles, join date, and avatar. Call when user asks about someone's Discord profile.",
+      description: "Get a Discord user's profile: display name, avatar URL, roles, and join date.",
       parameters: {
         type: "object",
         properties: {
@@ -81,7 +81,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_bot_info",
-      description: "Get information about this bot's capabilities and available commands. Call when user asks what the bot can do, what commands are available, or how to use specific features.",
+      description: "Get a list of this bot's available slash commands and what they do.",
       parameters: {
         type: "object",
         properties: {},
@@ -94,29 +94,19 @@ const TOOLS = [
     function: {
       name: "generate_image",
       description:
-        "Generate a brand-new image from a text prompt and attach it to the reply. " +
-        "STRICT CALLING RULES — you MUST satisfy ALL of the following before calling this tool:\n" +
-        "  1. The user's MOST RECENT message contains an explicit, direct imperative request to create/produce a new image, " +
-        "     using a verb like: generate, make, create, draw, paint, render, design, produce, or an unambiguous synonym.\n" +
-        "  2. That verb is directly paired with an image noun like: image, picture, pic, photo, drawing, painting, meme, artwork, illustration, render, or poster.\n" +
-        "  3. The request is addressed to you (the bot). Requests about what someone else should draw do NOT count.\n" +
-        "DO NOT call this tool when:\n" +
-        "  - The user is merely discussing, describing, reacting to, or talking about an image, meme, or visual concept.\n" +
-        "  - The user posted an image in this conversation (you already see it via perception; you do not need to regenerate it).\n" +
-        "  - The user says words like 'imagine', 'picture this', 'visualize', or uses 'image/picture' metaphorically.\n" +
-        "  - The user asks a question about an image, asks for feedback on one, or references one that already exists.\n" +
-        "  - The conversation is about art, memes, or visuals in general without a direct 'make me one' request.\n" +
-        "  - You are tempted to call it 'just in case' or to enhance your reply. If in doubt, DO NOT CALL.\n" +
-        "Examples that SHOULD trigger: 'draw me a cat', 'generate an image of a sunset', 'make a meme about X', '/imagine a dragon', 'can you create a picture of Y?'.\n" +
-        "Examples that should NOT trigger: 'that image is cool', 'I drew something yesterday', 'imagine if X happened', 'what do you think of this meme', 'describe the picture', 'I love memes'.",
+        "Generate a brand-new image from a text prompt and attach it to your reply. " +
+        "CALL THIS TOOL whenever the user explicitly asks you to make, create, generate, draw, paint, render, or design an image/picture/drawing/meme/artwork/poster. " +
+        "This includes requests like: 'draw me a cat', 'make an image of a sunset', 'generate a meme about X', 'can you create a picture of Y?', 'render a dragon'. " +
+        "IMPORTANT: You CANNOT create images yourself — you MUST use this tool to produce them. Never claim you generated or attached an image without calling this tool first. " +
+        "Do NOT call for: metaphorical 'imagine/picture this', discussing existing images, describing visuals, or reacting to images the user already shared.",
       parameters: {
         type: "object",
         properties: {
           prompt: {
             type: "string",
             description:
-              "The user's direct image request, rewritten as a detailed visual description for the image generator. " +
-              "Include subject, style, setting, composition, and mood. Do not invent a request the user did not make."
+              "The user's image request, rewritten as a detailed visual description. " +
+              "Include subject, style, setting, composition, and mood."
           }
         },
         required: ["prompt"]
@@ -333,7 +323,7 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     }
     return {
       success: true,
-      note: "Image generated and attached to the reply. Respond to the user with a message acknowledging the image generation, but do NOT include the image data in the response. The image will be attached separately by the caller."
+      message: "Image successfully generated and will be attached to your reply. Acknowledge this to the user briefly — the image is visible below their message. Do NOT describe the image or pretend you generated it without this tool call."
     };
   } catch (err) {
     logger.error(`[generate_image] ${err.message}`);

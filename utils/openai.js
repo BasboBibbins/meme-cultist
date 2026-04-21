@@ -10,6 +10,7 @@ const {
   FACT_TTL_DAYS,
   SUMMARY_INTERVAL,
   FACTS_INTERVAL,
+  TOPIC_UPDATE_INTERVAL,
   CHAT_MAX_PROMPT_TOKENS,
   SUMMARY_MAX_PROMPT_TOKENS,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT,
@@ -670,7 +671,8 @@ async function getDefaultThreadContext(thread) {
     embeddingChunks: [],
     resetPoint: null,
     messagesSinceLastSummary: 0,
-    messagesSinceLastFacts: 0
+    messagesSinceLastFacts: 0,
+    messagesSinceLastTopic: 0
   }
 }
 
@@ -955,25 +957,32 @@ async function generateUserFacts(userId, userMessages, key) {
   }
 }
 
-async function generateTopic(initMessage, key) {
+async function generateTopic(channel, messages, key) {
   const openai = getOpenAIClient(key);
+  const context = await getThreadContext(channel);
+  const existingTopic = context.topic ? context.topic.trim() : "";
+  const recentContent = messages
+    ?.slice(0, 5)
+    .map(m => m.content || m)
+    .filter(Boolean)
+    .join("\n") || "";
+
   const lines = [
-    `Summarize the message below into a short topic paragraph (1-3 sentences).`,
-    `Response will be used as the topic of the thread, so it should be concise and informative.`,
-    `Focus on the main idea. Be clear and natural. Do not mention the message or that you are an AI assistant.`,
-    initMessage && `Message:\n${initMessage}`,
-    `Topic:`
-  ]
-  const prompt = lines.filter(Boolean).join('\n')
-  logger.debug(`Generating topic based off the following prompt: \x1b[31m${prompt}`)
+    existingTopic
+      ? `Current channel topic:\n${existingTopic}\n\nRecent messages:\n${recentContent}\n\nDecide whether the conversation topic has shifted significantly from the current topic. If it has, write a new concise topic (1-3 sentences). If it has NOT changed significantly, respond with exactly: NO_CHANGE`
+      : `Summarize the message below into a short topic paragraph (1-3 sentences).\nMessage:\n${recentContent}`,
+    `The topic should be concise and informative. Focus on the main idea. Be clear and natural. Do not mention the messages or that you are an AI assistant.`,
+  ];
+  const prompt = lines.filter(Boolean).join('\n');
+  logger.debug(`Generating topic based off the following prompt: \x1b[31m${prompt}`);
   const res = await withTimeout(
     openai.createChatCompletion({
       "model": "deepseek-chat",
       "messages": [
-        { role: "system", content: "You are a AI assistant responsible for organizing and summarizing discussions." },
+        { role: "system", content: "You are an AI assistant responsible for organizing and summarizing discussions. When updating a topic, only do so if the subject matter has genuinely shifted." },
         { role: "user", content: prompt }
       ],
-      "max_tokens": 1024,
+      "max_tokens": 512,
       "temperature": 0.3
     }),
     30_000,
@@ -981,16 +990,19 @@ async function generateTopic(initMessage, key) {
   );
   const { choices } = res.data;
   logger.debug(`Prompt tokens: ${res.data.usage.prompt_tokens} | Completion tokens: ${res.data.usage.completion_tokens} | Total tokens: ${res.data.usage.total_tokens}`);
-  return choices[0].message.content.trim();
+  const result = choices[0].message.content.trim();
+  if (existingTopic && result.toUpperCase() === "NO_CHANGE") return null;
+  return result;
 }
 
 async function tickMessageCount(channel, messages, key, userId) {
   const context = await getThreadContext(channel);
   const summaryCount = (context.messagesSinceLastSummary ?? 0) + 1;
   const factsCount = (context.messagesSinceLastFacts ?? 0) + 1;
+  const topicCount = (context.messagesSinceLastTopic ?? 0) + 1;
 
   if (summaryCount >= SUMMARY_INTERVAL) {
-    await updateThreadContext(channel, { messagesSinceLastSummary: 0, messagesSinceLastFacts: 0 });
+    await updateThreadContext(channel, { messagesSinceLastSummary: 0, messagesSinceLastFacts: 0, messagesSinceLastTopic: topicCount });
     logger.log(`[MemoryTick] Summarizing ${channel.name} [${channel.id}] after ${SUMMARY_INTERVAL} messages.`);
     try {
       await summarizeMessages(messages, channel, key);
@@ -999,15 +1011,29 @@ async function tickMessageCount(channel, messages, key, userId) {
       logger.error(`[MemoryTick] Summarization failed for ${channel.name}: ${err.message}`);
     }
   } else if (factsCount >= FACTS_INTERVAL) {
-    await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: 0 });
+    await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: 0, messagesSinceLastTopic: topicCount });
     logger.log(`[MemoryTick] Generating facts for ${channel.name} [${channel.id}] after ${FACTS_INTERVAL} messages.`);
     try {
       await generateFacts(channel, key);
     } catch (err) {
       logger.error(`[MemoryTick] Fact generation failed for ${channel.name}: ${err.message}`);
     }
+  } else if (topicCount >= TOPIC_UPDATE_INTERVAL && context.topic) {
+    try {
+      const newTopic = await generateTopic(channel, messages, key);
+      if (newTopic) {
+        await channel.setTopic(newTopic).catch(err => logger.warn(`Failed to update topic for ${channel.name}: ${err.message}`));
+        await updateThreadContext(channel, { topic: newTopic, messagesSinceLastTopic: 0, messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
+        logger.log(`[MemoryTick] Updated topic for ${channel.name} [${channel.id}] — topic shifted.`);
+      } else {
+        await updateThreadContext(channel, { messagesSinceLastTopic: 0, messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
+      }
+    } catch (err) {
+      logger.error(`[MemoryTick] Topic generation failed for ${channel.name}: ${err.message}`);
+      await updateThreadContext(channel, { messagesSinceLastTopic: 0, messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
+    }
   } else {
-    await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount });
+    await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: factsCount, messagesSinceLastTopic: topicCount });
   }
 
   if (!userId) return;
@@ -1121,10 +1147,9 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         ].some(value => value && value.trim() !== "");
 
         if (topic.trim() === '') {
-          const firstMessage = validMessages[validMessages.length-1];
-          if (firstMessage) {
+          if (validMessages.length > 0) {
             const updatedContext = {
-              topic: await generateTopic(firstMessage.content, key)
+              topic: await generateTopic(targetChannel, validMessages, key)
             }
             await updateThreadContext(targetChannel, updatedContext);
           }
@@ -1192,9 +1217,8 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         ].some(value => value && value.trim() !== "");
 
         if (!topic || topic.trim() === '') {
-          const firstMessage = validMessages[validMessages.length - 1];
-          if (firstMessage) {
-            const generatedTopic = await generateTopic(firstMessage.content, key);
+          if (validMessages.length > 0) {
+            const generatedTopic = await generateTopic(targetChannel, validMessages, key);
             await updateThreadContext(targetChannel, { topic: generatedTopic });
             channelContext.topic = generatedTopic; // update local ref
           }
@@ -1325,7 +1349,14 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         const effectiveHistory = validMessages.slice(0, PAST_MESSAGES);
         for (const m of effectiveHistory.reverse()) {
           if (m.member.id === client.user.id) {
-            conversationHistory.push({ role: 'assistant', content: m.content });
+            let content = m.content;
+            // Annotate whether this bot message actually had an image attachment
+            // an attempt to prevent the model from hallucinating that it generated an image
+            const hadAttachment = m.attachments?.size > 0;
+            if (hadAttachment) {
+              content += '\n[Attached: image file]';
+            }
+            conversationHistory.push({ role: 'assistant', content });
           } else {
             conversationHistory.push({ role: 'user', content: `${m.member.displayName}: ${m.content}` });
           }
@@ -1342,6 +1373,14 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
           `- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.`
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
+      sys_prompt += `\n\n[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n` +
+        `- Money/balance questions (yours or someone else's) → get_balance\n` +
+        `- Rankings, richest users, leaderboard → get_leaderboard\n` +
+        `- Game stats, win/loss records, command counts → get_user_stats\n` +
+        `- Server info (member count, channels, roles) → get_guild_info\n` +
+        `- User profile (avatar, roles, join date) → get_user_info\n` +
+        `- Bot capabilities, available commands → get_bot_info\n` +
+        `- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it.`;
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
     } else if (customPrompt) {
       sys_prompt = customPrompt;
