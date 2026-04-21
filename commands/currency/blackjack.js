@@ -109,12 +109,26 @@ module.exports = {
             return await interaction.editReply({ embeds: [embed], components: [] });
         }
 
-        // TODO: Create an option for late surrender. After the dealer checks their hand and for natural blackjack:
-        // If dealer does NOT have natural blackjack:
-        // Create option 'forfeit' which forces the user to forfeit ther hand, returning half their bet back.
-        // Reveal dealer hand. Disable the option after player hits/double-down.
-        // Think about split logic: should users be allowed to forfeit hands after split? Can user forfeit individual hands or does it affect all hands?
-        // Compare to online casino blackjack rules to determine best implementation.
+        // Dealer peeks for natural blackjack (standard timing for late surrender).
+        // Player blackjack was handled above, so any dealer blackjack here is a loss.
+        if (await bj.checkHand(dealerCards) === 'blackjack') {
+            await db.add(`${stats}.losses`, 1);
+            await db.add(`${stats}.profit`, -originalBet);
+            const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
+            if (originalBet > biggestLoss) await db.set(`${stats}.biggestLoss`, originalBet);
+            const dealerTotal = await bj.getHandValue(dealerCards);
+            const embed = new EmbedBuilder()
+                .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+                .setTitle(`Dealer Blackjack!`)
+                .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')} (${dealerTotal}) 🃏\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nDealer has blackjack! You lose **${originalBet.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
+                .setColor(0xFF0000)
+                .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+                .setTimestamp();
+            return await interaction.editReply({ embeds: [embed], components: [] });
+        }
+
+        // Late-surrender window (seconds) — forfeit button auto-expires after this if the player doesn't act.
+        const FORFEIT_WINDOW_MS = 10000;
 
         // Build the hand description for embeds (dealer hole card hidden)
         async function buildDescription(activeHandIndex) {
@@ -154,7 +168,13 @@ module.exports = {
                     !currentHand.isDoubled &&
                     (await db.get(`${user.id}.balance`)) >= currentHand.bet;
 
-                const result = await playHand(currentHand, currentHandIndex, canSplitThisHand, canDouble);
+                // Late surrender: only offered on the initial, untouched, unsplit hand (standard casino rule).
+                const canForfeit = hands.length === 1 &&
+                    currentHand.cards.length === 2 &&
+                    !currentHand.isDoubled;
+
+                const result = await playHand(currentHand, currentHandIndex, canSplitThisHand, canDouble, canForfeit);
+                if (result === 'forfeit') return; // Player surrendered — game over, no dealer turn.
                 currentHandIndex++;
             }
 
@@ -162,7 +182,7 @@ module.exports = {
             await playDealer();
         }
 
-        async function playHand(hand, handIndex, canSplit, canDouble) {
+        async function playHand(hand, handIndex, canSplit, canDouble, canForfeit = false) {
             return new Promise(async (resolve) => {
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
@@ -214,12 +234,50 @@ module.exports = {
                     buttonRow.addComponents(splitButton);
                 }
 
+                // Late surrender: offered only on the initial untouched hand. Auto-expires after FORFEIT_WINDOW_MS.
+                const forfeitButton = new ButtonBuilder()
+                    .setCustomId('forfeit')
+                    .setLabel('Forfeit')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🏳')
+                    .setDisabled(!canForfeit);
+
+                if (canForfeit) {
+                    buttonRow.addComponents(forfeitButton);
+                }
+
                 let msg = await interaction.editReply({ embeds: [embed], components: [buttonRow] });
+
+                // Disables every action button except hit/stand — used when the hand is no longer eligible
+                // to double/split/surrender (after the first hit or after the late-surrender window closes).
+                const disableAdvancedActions = () => {
+                    for (const btn of buttonRow.components) {
+                        const id = btn.data?.custom_id;
+                        if (id !== 'hit' && id !== 'stand') {
+                            btn.setDisabled(true);
+                        }
+                    }
+                };
+
+                // Forfeit inactivity timer — disable the button after the window elapses if unused.
+                let forfeitTimer = null;
+                if (canForfeit) {
+                    forfeitTimer = setTimeout(async () => {
+                        const forfeitBtn = buttonRow.components.find(b => b.data?.custom_id === 'forfeit');
+                        if (forfeitBtn && !forfeitBtn.data.disabled) {
+                            forfeitBtn.setDisabled(true);
+                            try { await msg.edit({ embeds: [embed], components: [buttonRow] }); } catch (_) {}
+                        }
+                    }, FORFEIT_WINDOW_MS);
+                }
 
                 const filter = i => i.user.id === user.id;
                 const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
 
                 collector.on('collect', async i => {
+                    // Any user action cancels the forfeit inactivity timer.
+                    if (forfeitTimer) { clearTimeout(forfeitTimer); forfeitTimer = null; }
+
                     if (i.customId === 'hit') {
                         hand.cards.push(await bj.dealCards());
                         const handStatus = await bj.checkHand(hand.cards);
@@ -240,11 +298,8 @@ module.exports = {
                             await i.update({ embeds: [embed], components: [] });
                             collector.stop('blackjack');
                         } else {
-                            // Disable split and double after hitting
-                            buttonRow.components[2].setDisabled(true); // double
-                            if (buttonRow.components.length > 3) {
-                                buttonRow.components[3].setDisabled(true); // split
-                            }
+                            // Disable double/split/forfeit after hitting
+                            disableAdvancedActions();
                             await i.update({ embeds: [embed], components: [buttonRow] });
                         }
                     } else if (i.customId === 'stand') {
@@ -301,10 +356,31 @@ module.exports = {
                         embed.setDescription(await buildDescription(handIndex));
                         await i.update({ embeds: [embed], components: [] });
                         collector.stop('split');
+                    } else if (i.customId === 'forfeit') {
+                        // Late surrender — refund half the bet, reveal dealer hand, end the game.
+                        const refund = Math.floor(hand.bet / 2);
+                        const netLoss = hand.bet - refund;
+                        await db.add(`${user.id}.balance`, refund);
+                        await db.add(`${stats}.losses`, 1);
+                        await db.add(`${stats}.surrenders`, 1);
+                        await db.add(`${stats}.profit`, -netLoss);
+                        const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
+                        if (netLoss > biggestLoss) await db.set(`${stats}.biggestLoss`, netLoss);
+
+                        const dealerVal = await bj.getHandValue(dealerCards);
+                        const handVal = await bj.getHandValue(hand.cards);
+                        embed.setTitle(`Forfeit`);
+                        embed.setDescription(`**Dealer:**\n${dealerCards.map(c => `\`${c.char}\``).join(' ')} (${dealerVal})\n\n**Your hand:** ${hand.cards.map(c => `\`${c.char}\``).join(' ')} (${handVal})\n\nYou forfeited your hand and recovered **${refund.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
+                        embed.setColor(0xAAAAAA);
+                        embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} (forfeited) | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+                        await i.update({ embeds: [embed], components: [] });
+                        logger.info(`${user.username}(${user.id}) forfeited their hand, recovering ${refund} ${CURRENCY_NAME}.`);
+                        collector.stop('forfeit');
                     }
                 });
 
                 collector.on('end', async (collected, reason) => {
+                    if (forfeitTimer) { clearTimeout(forfeitTimer); forfeitTimer = null; }
                     logger.debug(`Hand ${handIndex + 1} collector ended. Reason: ${reason}`);
 
                     // Brief pause so the user can see the result before the next hand
@@ -341,6 +417,8 @@ module.exports = {
 
                         const result = await playHand(hand, handIndex, canSplitThisHand, canDoubleHand);
                         resolve(result);
+                    } else if (reason === 'forfeit') {
+                        resolve('forfeit');
                     } else if (reason === 'time') {
                         // Timeout - auto-stand
                         resolve('stand');
