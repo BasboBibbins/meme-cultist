@@ -122,6 +122,9 @@ const walk = function(dir) {
 
 const slashFiles = walk('./commands');
 
+// Cache music command names at startup so we don't walk the filesystem on every command
+const musicCommandNames = walk('./commands/music/').map(file => file.split('/').pop().replace('.js', ''));
+
 for (const file of slashFiles) {
     const slashcmd = require(`${file}`);
     client.slashcommands.set(slashcmd.data.name, slashcmd)
@@ -243,9 +246,8 @@ if (DELETE_SLASH) {
                 }
             
                 try {
-                    let musicCommands = walk('./commands/music/').map(file => file.split('/').pop().replace('.js', '')); 
-                    const isMusicCommand = (commandName) => musicCommands.includes(commandName);
-                    if (isMusicCommand(command)) { // provide player context if music command
+                    const isMusicCommand = (commandName) => musicCommandNames.includes(commandName);
+                    if (isMusicCommand(command.data.name)) { // provide player context if music command
                         const data = {
                             guild: interaction.guild
                         };
@@ -256,35 +258,59 @@ if (DELETE_SLASH) {
 
                     logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     if (db) {
-                        if (await db.get(`${interaction.user.id}.stats.commands.dailyReset`) != moment().format("YYYY-MM-DD")) {
-                            await db.set(`${interaction.user.id}.stats.commands.dailyReset`, moment().format("YYYY-MM-DD"))
-                            await db.set(`${interaction.user.id}.stats.commands.daily`, {})
-                        }
-                        if (await db.get(`${interaction.user.id}.stats.commands.monthlyReset`) != moment().format("YYYY-MM")) {
-                            await db.set(`${interaction.user.id}.stats.commands.monthlyReset`, moment().format("YYYY-MM"))
-                            await db.set(`${interaction.user.id}.stats.commands.monthly`, {})
-                        }
-                        if (await db.get(`${interaction.user.id}.stats.commands.yearlyReset`) != moment().format("YYYY")) {
-                            await db.set(`${interaction.user.id}.stats.commands.yearlyReset`, moment().format("YYYY"))
-                            await db.set(`${interaction.user.id}.stats.commands.yearly`, {})
-                        }
-                        
-                        await db.add(`${interaction.user.id}.stats.commands.daily.${interaction.commandName}`, 1)
-                        await db.add(`${interaction.user.id}.stats.commands.monthly.${interaction.commandName}`, 1)
-                        await db.add(`${interaction.user.id}.stats.commands.yearly.${interaction.commandName}`, 1)
-                        await db.add(`${interaction.user.id}.stats.commands.total.${interaction.commandName}`, 1)
+                        const userId = interaction.user.id;
+                        const cmdName = interaction.commandName;
+                        const now = moment();
+                        const today = now.format("YYYY-MM-DD");
+                        const thisMonth = now.format("YYYY-MM");
+                        const thisYear = now.format("YYYY");
 
-                        let balance = await db.get(`${interaction.user.id}.balance`)
-                        let largestBalance = await db.get(`${interaction.user.id}.stats.largestBalance`)
-                        if (balance > largestBalance) {
-                            await db.set(`${interaction.user.id}.stats.largestBalance`, balance)
+                        // Batch reset checks — read all three at once, then write only what changed
+                        const [dailyReset, monthlyReset, yearlyReset] = await Promise.all([
+                            db.get(`${userId}.stats.commands.dailyReset`),
+                            db.get(`${userId}.stats.commands.monthlyReset`),
+                            db.get(`${userId}.stats.commands.yearlyReset`),
+                        ]);
+                        const resetWrites = [];
+                        if (dailyReset !== today) {
+                            resetWrites.push(
+                                db.set(`${userId}.stats.commands.dailyReset`, today),
+                                db.set(`${userId}.stats.commands.daily`, {})
+                            );
                         }
+                        if (monthlyReset !== thisMonth) {
+                            resetWrites.push(
+                                db.set(`${userId}.stats.commands.monthlyReset`, thisMonth),
+                                db.set(`${userId}.stats.commands.monthly`, {})
+                            );
+                        }
+                        if (yearlyReset !== thisYear) {
+                            resetWrites.push(
+                                db.set(`${userId}.stats.commands.yearlyReset`, thisYear),
+                                db.set(`${userId}.stats.commands.yearly`, {})
+                            );
+                        }
+                        await Promise.all(resetWrites);
 
-                        let bank = await db.get(`${interaction.user.id}.bank`)
-                        let largestBank = await db.get(`${interaction.user.id}.stats.largestBank`)
-                        if (bank > largestBank) {
-                            await db.set(`${interaction.user.id}.stats.largestBank`, bank)
-                        }
+                        // Batch command usage increments
+                        await Promise.all([
+                            db.add(`${userId}.stats.commands.daily.${cmdName}`, 1),
+                            db.add(`${userId}.stats.commands.monthly.${cmdName}`, 1),
+                            db.add(`${userId}.stats.commands.yearly.${cmdName}`, 1),
+                            db.add(`${userId}.stats.commands.total.${cmdName}`, 1),
+                        ]);
+
+                        // Batch balance/bank largest-value checks
+                        const [balance, largestBalance, bank, largestBank] = await Promise.all([
+                            db.get(`${userId}.balance`),
+                            db.get(`${userId}.stats.largestBalance`),
+                            db.get(`${userId}.bank`),
+                            db.get(`${userId}.stats.largestBank`),
+                        ]);
+                        const statWrites = [];
+                        if (balance > largestBalance) statWrites.push(db.set(`${userId}.stats.largestBalance`, balance));
+                        if (bank > largestBank) statWrites.push(db.set(`${userId}.stats.largestBank`, bank));
+                        if (statWrites.length) await Promise.all(statWrites);
                     }
                 } catch (error) {
                     logger.error(error);
