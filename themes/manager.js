@@ -14,6 +14,24 @@ const { getTheme } = require('./configs');
 
 const DEFAULT_THEME = 'classic';
 
+// Per-user mutex to prevent TOCTOU in grant/revoke operations
+const _locks = new Map();
+
+async function withUserLock(userId, fn) {
+    while (_locks.has(userId)) {
+        await _locks.get(userId);
+    }
+    let resolve;
+    const promise = new Promise(r => { resolve = r; });
+    _locks.set(userId, promise);
+    try {
+        return await fn();
+    } finally {
+        _locks.delete(userId);
+        resolve();
+    }
+}
+
 /**
  * Get the user's currently equipped theme ID.
  */
@@ -28,10 +46,9 @@ async function getOwnedThemes(userId) {
     let owned = (await db.get(`${userId}.profile.theme.owned`));
     if (!Array.isArray(owned)) {
         owned = [];
-        await db.set(`${userId}.profile.theme.owned`, owned);
     }
     if (!owned.includes(DEFAULT_THEME)) {
-        owned.unshift(DEFAULT_THEME);
+        owned = [DEFAULT_THEME, ...owned];
     }
     return owned;
 }
@@ -41,11 +58,8 @@ async function getOwnedThemes(userId) {
  */
 async function ownsTheme(userId, themeId) {
     if (themeId === DEFAULT_THEME) return true;
-    let owned = (await db.get(`${userId}.profile.theme.owned`));
-    if (!Array.isArray(owned)) {
-        owned = [];
-        await db.set(`${userId}.profile.theme.owned`, owned);
-    }
+    const owned = (await db.get(`${userId}.profile.theme.owned`));
+    if (!Array.isArray(owned)) return false;
     return owned.includes(themeId);
 }
 
@@ -68,15 +82,16 @@ async function equipTheme(userId, themeId) {
  * Grant a theme to a user (used by shop on purchase).
  */
 async function grantTheme(userId, themeId) {
-    let owned = (await db.get(`${userId}.profile.theme.owned`));
-    if (!Array.isArray(owned)) {
-        owned = [];
-        await db.set(`${userId}.profile.theme.owned`, owned);
-    }
-    if (!owned.includes(themeId)) {
-        owned.push(themeId);
-        await db.set(`${userId}.profile.theme.owned`, owned);
-    }
+    return withUserLock(userId, async () => {
+        let owned = (await db.get(`${userId}.profile.theme.owned`));
+        if (!Array.isArray(owned)) {
+            owned = [];
+        }
+        if (!owned.includes(themeId)) {
+            owned.push(themeId);
+            await db.set(`${userId}.profile.theme.owned`, owned);
+        }
+    });
 }
 
 /**
@@ -84,21 +99,22 @@ async function grantTheme(userId, themeId) {
  * If the revoked theme was equipped, resets to classic.
  */
 async function revokeTheme(userId, themeId) {
-    if (themeId === DEFAULT_THEME) return;
-    let owned = (await db.get(`${userId}.profile.theme.owned`));
-    if (!Array.isArray(owned)) {
-        owned = [];
-        await db.set(`${userId}.profile.theme.owned`, owned);
-    }
-    const idx = owned.indexOf(themeId);
-    if (idx !== -1) {
-        owned.splice(idx, 1);
-        await db.set(`${userId}.profile.theme.owned`, owned);
-    }
-    const equipped = await getEquippedTheme(userId);
-    if (equipped === themeId) {
-        await db.set(`${userId}.profile.theme.equipped`, DEFAULT_THEME);
-    }
+    return withUserLock(userId, async () => {
+        if (themeId === DEFAULT_THEME) return;
+        let owned = (await db.get(`${userId}.profile.theme.owned`));
+        if (!Array.isArray(owned)) {
+            owned = [];
+        }
+        const idx = owned.indexOf(themeId);
+        if (idx !== -1) {
+            owned.splice(idx, 1);
+            await db.set(`${userId}.profile.theme.owned`, owned);
+        }
+        const equipped = await getEquippedTheme(userId);
+        if (equipped === themeId) {
+            await db.set(`${userId}.profile.theme.equipped`, DEFAULT_THEME);
+        }
+    });
 }
 
 module.exports = {

@@ -302,14 +302,22 @@ async function purchaseItem(userId, guildId, itemId) {
         return { success: false, error: 'already_owned', item };
     }
 
-    const balance = (await db.get(`${userId}.balance`)) ?? 0;
-    if (balance < item.price) {
-        return { success: false, error: 'insufficient_funds', item, balance };
+    // Atomic deduct-then-check: subtract first, then verify balance didn't go negative.
+    // This prevents two concurrent purchases both passing the balance check.
+    await db.sub(`${userId}.balance`, item.price);
+    const newBalance = (await db.get(`${userId}.balance`)) ?? 0;
+    if (newBalance < 0) {
+        // Refund — not enough funds
+        await db.add(`${userId}.balance`, item.price);
+        return { success: false, error: 'insufficient_funds', item, balance: newBalance + item.price };
     }
 
-    await db.sub(`${userId}.balance`, item.price);
     const grant = await grantItem(userId, itemId);
-    if (!grant.success) return { success: false, error: grant.error, item };
+    if (!grant.success) {
+        // Refund on grant failure
+        await db.add(`${userId}.balance`, item.price);
+        return { success: false, error: grant.error, item };
+    }
 
     await db.add(`${userId}.stats.shop.purchases`, 1);
     await db.add(`${userId}.stats.shop.spent`, item.price);
@@ -318,7 +326,6 @@ async function purchaseItem(userId, guildId, itemId) {
         await db.set(`${userId}.stats.shop.biggestPurchase`, item.price);
     }
 
-    const newBalance = (await db.get(`${userId}.balance`)) ?? 0;
     return { success: true, item, newBalance };
 }
 
