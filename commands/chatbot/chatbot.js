@@ -1,7 +1,15 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { updateThreadContext, getThreadContext } = require('../../utils/openai.js');
+const { updateThreadContext, getThreadContext, getUserChatbotData } = require('../../utils/openai.js');
 const { EmbedBuilder } = require("@discordjs/builders");
 const logger = require('../../utils/logger.js');
+
+const SCOPE_CHOICES = [
+  { name: 'Channel', value: 'channel' },
+  { name: 'User', value: 'user' },
+];
+
+const FIELDS_PER_PAGE = 25;
+const SUMMARIES_PER_PAGE = 5;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -56,10 +64,16 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('summary')
-        .setDescription('View an AI generated summary of the current channel.')
-        .addIntegerOption(option => 
-          option.setName('number')
-            .setDescription('The number of the summary to view. Default: Latest')
+        .setDescription('View AI generated summaries.')
+        .addStringOption(option =>
+          option.setName('scope')
+            .setDescription('View channel or user summaries. Default: Channel')
+            .setRequired(false)
+            .addChoices(...SCOPE_CHOICES)
+        )
+        .addIntegerOption(option =>
+          option.setName('page')
+            .setDescription('The page number to view (5 summaries per page). Default: 1')
             .setRequired(false)
             .setMinValue(1)
         )
@@ -67,7 +81,19 @@ module.exports = {
     .addSubcommand(subcommand => 
       subcommand
         .setName('facts')
-        .setDescription('Display a table of all saved facts of the current channel.')
+        .setDescription('Display a table of saved facts.')
+        .addStringOption(option =>
+          option.setName('scope')
+            .setDescription('View channel or user facts. Default: Channel')
+            .setRequired(false)
+            .addChoices(...SCOPE_CHOICES)
+        )
+        .addIntegerOption(option =>
+          option.setName('page')
+            .setDescription('The page number to view (25 facts per page). Default: 1')
+            .setRequired(false)
+            .setMinValue(1)
+        )
     )
     .addSubcommand(subcommand => 
       subcommand
@@ -165,53 +191,68 @@ module.exports = {
           await interaction.reply({ embeds: [embed], ephemeral: true });
         break;
       case 'summary':
-        const n = interaction.options.getInteger("number") || summaries.length;
-        const chosenSummary = summaries[n-1];
-        if (!chosenSummary) {
+        const summaryScope = interaction.options.getString('scope') || 'channel';
+        let summarySource;
+        let summarySourceName;
+        if (summaryScope === 'user') {
+          const userData = await getUserChatbotData(interaction.user.id);
+          summarySource = userData.summaries || [];
+          summarySourceName = interaction.user.displayName;
+        } else {
+          summarySource = [...summaries];
+          summarySourceName = channel.name;
+        }
+        const reversedSummaries = summarySource.reverse();
+        const summaryTotalPages = Math.max(1, Math.ceil(reversedSummaries.length / SUMMARIES_PER_PAGE));
+        const summaryPage = Math.min(interaction.options.getInteger('page') || 1, summaryTotalPages);
+        const summarySlice = reversedSummaries.slice((summaryPage - 1) * SUMMARIES_PER_PAGE, summaryPage * SUMMARIES_PER_PAGE);
+        if (summarySlice.length === 0) {
           embed
           .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`No summaries found! Continue chatting with the bot and try again later`)
+          .setDescription(`No ${summaryScope} summaries found! Continue chatting with the bot and try again later`)
           .setColor(0xF9844A);
           return await interaction.reply({
-            content: `No summaries found! Continue chatting with the bot and try again later`,
+            content: `No ${summaryScope} summaries found! Continue chatting with the bot and try again later`,
             ephemeral: true,
           });
         }
-        if (n < 0 || n > summaries.length) {
-          embed
-          .setAuthor({ name: `Error`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`Invalid summary number, please choose a number between 1 and ${summaries.length}.`)
-          .setColor(0xF9844A);
-          return await interaction.reply({
-            content: `Invalid summary number, please choose a number between 1 and ${summaries.length}.`,
-            ephemeral: true,
-          });
-        }
-        list = [
-          chosenSummary && `**Summary:**\n${chosenSummary.context}`,
-          chosenSummary.mergedFrom && `**Previous summaries used:** ${chosenSummary.mergedFrom}`,
-          chosenSummary.timestamp && `**Generated on ${new Date(chosenSummary.timestamp).toLocaleString()}**`
-        ]
-        desc = list.filter(Boolean).join('\n');
+        const summaryFields = summarySlice.map((s, i) => {
+          const globalIndex = reversedSummaries.length - ((summaryPage - 1) * SUMMARIES_PER_PAGE + i);
+          const preview = s.context.length > 1024 ? s.context.slice(0, 1021) + '...' : s.context;
+          const meta = [s.timestamp && `Generated: ${new Date(s.timestamp).toLocaleString()}`, s.mergedFrom && `Merged from: ${s.mergedFrom}`].filter(Boolean).join('\n');
+          return { name: `Summary #${globalIndex}`, value: [preview, meta].filter(Boolean).join('\n'), inline: false };
+        });
+        const summaryPageLabel = summaryTotalPages > 1 ? ` (Page ${summaryPage}/${summaryTotalPages})` : '';
         embed
-         .setAuthor({ name: `Latest Summary`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-         .setDescription(desc)
+         .setAuthor({ name: `${summaryScope === 'user' ? 'User' : 'Channel'} Summaries for "${summarySourceName}"${summaryPageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setFields(summaryFields)
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
          break;
       case 'facts':
-        let fields = Object.entries(facts).map(([_, v]) => ({
-          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`, 
-          value: v.value.toString().replace(/_/g, ' '), 
-          inline: true 
-        }));
-        if (fields.length > 25) {
-          logger.warn(`Too many fields! (${fields.length}) Trimming to first 25 fields`); // TODO: create page system (25 per page)'
-          fields = fields.slice(0, 25);
+        const factsScope = interaction.options.getString('scope') || 'channel';
+        let factsSource;
+        let factsSourceName;
+        if (factsScope === 'user') {
+          const userData = await getUserChatbotData(interaction.user.id);
+          factsSource = userData.facts || [];
+          factsSourceName = interaction.user.displayName;
+        } else {
+          factsSource = facts || [];
+          factsSourceName = channel.name;
         }
+        let allFields = Object.entries(factsSource).map(([_, v]) => ({
+          name: v.key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())+`:`,
+          value: v.value.toString().replace(/_/g, ' '),
+          inline: true
+        }));
+        const totalPages = Math.max(1, Math.ceil(allFields.length / FIELDS_PER_PAGE));
+        const page = Math.min(interaction.options.getInteger('page') || 1, totalPages);
+        const pageFields = allFields.slice((page - 1) * FIELDS_PER_PAGE, page * FIELDS_PER_PAGE);
+        const pageLabel = totalPages > 1 ? ` (Page ${page}/${totalPages})` : '';
         embed
-         .setAuthor({ name: `Facts for "${channel.name}"`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-         .setFields(fields)
+         .setAuthor({ name: `${factsScope === 'user' ? 'User' : 'Channel'} Facts for "${factsSourceName}"${pageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+         .setFields(pageFields.length > 0 ? pageFields : [{ name: 'No facts found', value: 'Continue chatting with the bot and try again later', inline: false }])
          .setColor(0xF9844A);
          await interaction.reply({ embeds: [embed], ephemeral: true });
         break;
