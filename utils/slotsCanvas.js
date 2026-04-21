@@ -4,6 +4,7 @@ const GIFEncoder = require('gif-encoder');
 const { CURRENCY_NAME } = require('../config.js');
 const { getTheme } = require('./slotsThemes');
 const CanvasUtil = require('./Canvas');
+const logger = require('./logger');
 
 // Payline definitions (game logic, not themed)
 const PAYLINES = [

@@ -1,4 +1,5 @@
 const { QuickDB } = require("quick.db");
+const logger = require('./logger');
 
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 
