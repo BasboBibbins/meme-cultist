@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { QuickDB } = require("quick.db");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES } = require("../../config.js");
+const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES, TESTING_MODE } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
 const { formatTimeLeft } = require('../../utils/time')
@@ -35,6 +35,10 @@ module.exports = {
                 .setName('daily')
                 .setDescription(`Use your daily free spins.`)),
     async execute(interaction) {
+        // TODO: The new implementation of the slots command is currently causing heavy performance issues when ran in production, because the hardware the bot is running on (raspberry pi) is not powerful enough to keep up with the rendering calls from the GIF animation. The command works fine in testing environments, but in production it is causing issues. I will work on optimizing the code and improving the performance of the command in the near future, but for now it will be disabled to ensure the stability of the bot.
+        if (!TESTING_MODE) {
+            return await interaction.reply({ content: `\`slots\` is currently disabled due to a critical issue. It will be fixed soon! Please understand! <:miku:1250275823710113824>`, ephemeral: true });
+        }
         const user = interaction.user;
         const option = interaction.options.getSubcommand();
         const dbUser = await db.get(user.id);
