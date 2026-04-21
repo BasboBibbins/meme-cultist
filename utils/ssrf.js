@@ -1,5 +1,3 @@
-const { exec } = require("child_process");
-
 /**
  * Validate that a URL is safe to fetch — blocks private/internal IPs,
  * link-local addresses, and cloud metadata endpoints to prevent SSRF.
