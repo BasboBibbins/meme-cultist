@@ -443,8 +443,8 @@ function drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsL
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
- * Draw the final slot machine result as a GIF.
- * Winning lines blink on/off. No wins = static single-frame GIF.
+ * Draw the final slot machine result.
+ * Wins: animated GIF with blinking paylines. No wins: static PNG.
  */
 async function drawSlotMachine(grid, options = {}) {
     const {
@@ -467,6 +467,23 @@ async function drawSlotMachine(grid, options = {}) {
     const canvas = createCanvas(layout.W, layout.H);
     const ctx = canvas.getContext('2d');
 
+    // Render the static frame once — reuse for all result frames
+    const frameCanvas = createCanvas(layout.W, layout.H);
+    const frameCtx = frameCanvas.getContext('2d');
+    await drawFrame(frameCtx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+
+    const hasWins = winResults.length > 0;
+
+    if (!hasWins) {
+        // No wins: output as static PNG — no GIF encoding needed
+        ctx.drawImage(frameCanvas, 0, 0);
+        drawGrid(ctx, grid, theme, layout);
+        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
+        const buffer = canvas.toBuffer('image/png');
+        return new AttachmentBuilder(buffer, { name: 'slots-result.png' });
+    }
+
+    // Wins: animated GIF with blink cycles
     const encoder = new GIFEncoder(layout.W, layout.H);
     encoder.setRepeat(0);
     encoder.writeHeader();
@@ -475,38 +492,28 @@ async function drawSlotMachine(grid, options = {}) {
     const buffChunks = [];
     encoder.on('data', chunk => buffChunks.push(chunk));
 
-    const hasWins = winResults.length > 0;
-
-    if (!hasWins) {
-        await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
-        drawGrid(ctx, grid, theme, layout);
-        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-        encoder.setDelay(1000);
-        encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
-    } else {
-        const blinkCycles = 3;
-        for (let cycle = 0; cycle < blinkCycles; cycle++) {
-            await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
-            drawGrid(ctx, grid, theme, layout);
-            drawWinningLines(ctx, winResults, activeLines, theme, layout);
-            drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-            encoder.setDelay(400);
-            encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
-
-            await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
-            drawGrid(ctx, grid, theme, layout);
-            drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-            encoder.setDelay(250);
-            encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
-        }
-
-        await drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+    const blinkCycles = 3;
+    for (let cycle = 0; cycle < blinkCycles; cycle++) {
+        ctx.drawImage(frameCanvas, 0, 0);
         drawGrid(ctx, grid, theme, layout);
         drawWinningLines(ctx, winResults, activeLines, theme, layout);
         drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-        encoder.setDelay(2000);
+        encoder.setDelay(400);
+        encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
+
+        ctx.drawImage(frameCanvas, 0, 0);
+        drawGrid(ctx, grid, theme, layout);
+        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
+        encoder.setDelay(250);
         encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
     }
+
+    ctx.drawImage(frameCanvas, 0, 0);
+    drawGrid(ctx, grid, theme, layout);
+    drawWinningLines(ctx, winResults, activeLines, theme, layout);
+    drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
+    encoder.setDelay(2000);
+    encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
 
     encoder.finish();
     const output = Buffer.concat(buffChunks);
@@ -531,6 +538,11 @@ async function drawSpinAnimation(finalGrid, options = {}) {
     const canvas = createCanvas(layout.W, layout.H);
     const ctx = canvas.getContext('2d');
 
+    // Render the static frame once — reuse for all animation frames
+    const frameCanvas = createCanvas(layout.W, layout.H);
+    const frameCtx = frameCanvas.getContext('2d');
+    await drawFrame(frameCtx, jackpotDisplay, activeLines, bet, false, false, theme, layout);
+
     const encoder = new GIFEncoder(layout.W, layout.H);
     encoder.setRepeat(-1); // play once, no loop
     encoder.writeHeader();
@@ -544,7 +556,7 @@ async function drawSpinAnimation(finalGrid, options = {}) {
     const symCount = theme.symbols.length;
 
     for (let frame = 0; frame < totalFrames; frame++) {
-        await drawFrame(ctx, jackpotDisplay, activeLines, bet, false, false, theme, layout);
+        ctx.drawImage(frameCanvas, 0, 0);
 
         for (let col = 0; col < 3; col++) {
             const lockFrame = lockFrames[col];
