@@ -30,7 +30,7 @@ module.exports = {
   async execute(interaction) {
     const prompt = interaction.options.getString("prompt");
     await interaction.deferReply();
-/* 
+
     const rateCheck = canGenerateImage(interaction.user.id);
     if (!rateCheck.allowed) {
       const embed = new EmbedBuilder()
@@ -40,7 +40,7 @@ module.exports = {
         .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
       return interaction.editReply({ embeds: [embed] });
-    } */
+    } 
 
     try {
       const { buffer, mimeType } = await generateImage(prompt);
