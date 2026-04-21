@@ -37,6 +37,7 @@ function renderThemeSwatch(themeId) {
 }
 
 // ── Game preview pagination ──────────────────────────────────────────
+const MAX_PREVIEW_CACHE = 50;
 const previewCache = new Map();
 const PREVIEW_GAMES = ['slots', 'roulette', 'poker'];
 const GAME_LABELS = { slots: 'Slots', roulette: 'Roulette', poker: 'Poker' };
@@ -57,6 +58,11 @@ async function getPreviewAttachment(themeId, game) {
         logger.error(`Preview generation failed for ${key}: ${err.message}`);
     }
     previewCache.set(key, attachment);
+    // Evict oldest entries if cache exceeds limit
+    if (previewCache.size > MAX_PREVIEW_CACHE) {
+        const oldest = previewCache.keys().next().value;
+        previewCache.delete(oldest);
+    }
     return attachment;
 }
 
