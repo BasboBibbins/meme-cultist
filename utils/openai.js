@@ -27,6 +27,23 @@ const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
 const { TOOLS, executeToolCall } = require("./openai-tools");
 
+// Per-key mutex to prevent read-modify-write races on context/chatbot data
+const _contextLocks = new Map();
+async function withLock(key, fn) {
+  while (_contextLocks.has(key)) {
+    await _contextLocks.get(key);
+  }
+  let resolve;
+  const promise = new Promise(r => { resolve = r; });
+  _contextLocks.set(key, promise);
+  try {
+    return await fn();
+  } finally {
+    _contextLocks.delete(key);
+    resolve();
+  }
+}
+
 let _openaiClient = null;
 function getOpenAIClient(key) {
   if (!_openaiClient || _openaiClient._key !== key) {
@@ -687,14 +704,16 @@ async function getThreadContext(thread) {
 }
 
 async function updateThreadContext(thread, updates) {
-  const dbThread = await db.get(thread.id);
-  if (dbThread) {
-    Object.keys(updates).forEach((key) => {
-      dbThread[key] = updates[key];
-    });
-    await db.set(thread.id, dbThread);
-    logger.log(`Updated thread context for thread ${thread.name} [${thread.id}]`);
-  }
+  return withLock(`thread:${thread.id}`, async () => {
+    const dbThread = await db.get(thread.id);
+    if (dbThread) {
+      Object.keys(updates).forEach((key) => {
+        dbThread[key] = updates[key];
+      });
+      await db.set(thread.id, dbThread);
+      logger.log(`Updated thread context for thread ${thread.name} [${thread.id}]`);
+    }
+  });
 }
 
 async function getUserChatbotData(userId) {
@@ -714,24 +733,24 @@ async function getUserChatbotData(userId) {
     return defaults;
   }
 
-  const chatbot = {
+  return {
     ...defaults,
     ...existing,
     incognitoChannels: Array.isArray(existing.incognitoChannels) ? existing.incognitoChannels : [],
   };
-  await usersDb.set(`${userId}.chatbot`, chatbot);
-  return chatbot;
 }
 
 async function updateUserChatbotData(userId, updates) {
-  const chatbot = await getUserChatbotData(userId);
-  if (!chatbot.incognitoMode) {
-    Object.keys(updates).forEach(key => { chatbot[key] = updates[key]; });
-    await usersDb.set(`${userId}.chatbot`, chatbot);
-    logger.log(`Updated chatbot data for user [${userId}]`);
-  } else {
-    logger.debug(`User [${userId}] is in incognito mode; skipping chatbot data update.`);
-  }
+  return withLock(`user:${userId}`, async () => {
+    const chatbot = await getUserChatbotData(userId);
+    if (!chatbot.incognitoMode) {
+      Object.keys(updates).forEach(key => { chatbot[key] = updates[key]; });
+      await usersDb.set(`${userId}.chatbot`, chatbot);
+      logger.log(`Updated chatbot data for user [${userId}]`);
+    } else {
+      logger.debug(`User [${userId}] is in incognito mode; skipping chatbot data update.`);
+    }
+  });
 }
 
 async function summarizeMessages(messages, thread, key) {
