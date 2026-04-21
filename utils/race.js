@@ -194,50 +194,39 @@ function determineWinner(horses) {
 }
 
 function determineTopThree(horses) {
-    // Pick winner using weighted random
-    const first = determineWinner(horses);
+    // Predetermine the full finishing order via successive weighted random draws.
+    // Each subsequent place is drawn from the remaining horses with probabilities
+    // renormalized — the same method previously used only for 1st/2nd/3rd.
+    const order = [];
+    let remaining = horses.slice();
 
-    // Remove winner and renormalize for second place
-    const remainingAfterFirst = horses.filter(h => h.number !== first.number);
-    const totalProbAfterFirst = remainingAfterFirst.reduce((sum, h) => sum + h.probability, 0);
-    const normalizedFirst = remainingAfterFirst.map(h => ({ ...h, probability: h.probability / totalProbAfterFirst }));
-
-    // Pick second place
-    let roll = Math.random();
-    let cumulative = 0;
-    let second = normalizedFirst[0];
-    for (const horse of normalizedFirst) {
-        cumulative += horse.probability;
-        if (roll < cumulative) {
-            second = horse;
-            break;
+    while (remaining.length > 0) {
+        const total = remaining.reduce((sum, h) => sum + h.probability, 0);
+        const roll = Math.random() * total;
+        let cumulative = 0;
+        let pick = remaining[remaining.length - 1];
+        for (const horse of remaining) {
+            cumulative += horse.probability;
+            if (roll < cumulative) {
+                pick = horse;
+                break;
+            }
         }
+        order.push(pick);
+        remaining = remaining.filter(h => h.number !== pick.number);
     }
 
-    // Remove second and renormalize for third place
-    const remainingAfterSecond = normalizedFirst.filter(h => h.number !== second.number);
-    const totalProbAfterSecond = remainingAfterSecond.reduce((sum, h) => sum + h.probability, 0);
-    const normalizedSecond = remainingAfterSecond.map(h => ({ ...h, probability: h.probability / totalProbAfterSecond }));
-
-    // Pick third place
-    roll = Math.random();
-    cumulative = 0;
-    let third = normalizedSecond[0];
-    for (const horse of normalizedSecond) {
-        cumulative += horse.probability;
-        if (roll < cumulative) {
-            third = horse;
-            break;
-        }
-    }
+    const finishOrder = order.map(h => horses.findIndex(x => x.number === h.number));
 
     return {
-        first,
-        second,
-        third,
-        firstIndex: horses.findIndex(h => h.number === first.number),
-        secondIndex: horses.findIndex(h => h.number === second.number),
-        thirdIndex: horses.findIndex(h => h.number === third.number)
+        order,
+        finishOrder,
+        first: order[0],
+        second: order[1],
+        third: order[2],
+        firstIndex: finishOrder[0],
+        secondIndex: finishOrder[1],
+        thirdIndex: finishOrder[2]
     };
 }
 

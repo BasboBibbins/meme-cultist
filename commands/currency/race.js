@@ -134,6 +134,7 @@ async function handleStartRace(interaction, client, user) {
             secondIndex: topThree.secondIndex,
             thirdIndex: topThree.thirdIndex
         },
+        finishOrder: topThree.finishOrder.slice(),
         winnerIndex: topThree.firstIndex, // Keep for backwards compatibility
         bets: [],
         phase: 'betting',
@@ -397,28 +398,8 @@ async function resolveRace(client, channel, message, game) {
         await wait(TICK_INTERVAL);
     }
 
-    // Force top 3 into correct finish order
-    const topThreeIndices = [game.topThree.firstIndex, game.topThree.secondIndex, game.topThree.thirdIndex];
-    for (const idx of topThreeIndices) {
-        if (!finishOrder.includes(idx)) {
-            finishOrder.push(idx);
-        }
-    }
-    // Remove top 3 and re-insert in correct order at the front
-    finishOrder = finishOrder.filter(idx => !topThreeIndices.includes(idx));
-    finishOrder.unshift(game.topThree.thirdIndex);
-    finishOrder.unshift(game.topThree.secondIndex);
-    finishOrder.unshift(game.topThree.firstIndex);
-
-    // Add remaining unfinished horses by progress
-    const unfinishedHorses = horses
-        .map((_, i) => ({ i, progress: positions[i] }))
-        .filter(h => !finishOrder.includes(h.i))
-        .sort((a, b) => b.progress - a.progress);
-
-    for (const h of unfinishedHorses) {
-        finishOrder.push(h.i);
-    }
+    // Enforce the predetermined finishing order for all horses
+    finishOrder = game.finishOrder.slice();
 
     for (let i = 0; i < positions.length; i++) {
         positions[i] = 100;
@@ -489,12 +470,23 @@ async function resolveRace(client, channel, message, game) {
     const totalWagered = game.bets.reduce((sum, b) => sum + b.amount, 0);
     const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 
+    const positionPrefix = (pos) => {
+        if (pos === 0) return '🥇';
+        if (pos === 1) return '🥈';
+        if (pos === 2) return '🥉';
+        return `\`${String(pos + 1).padStart(2, ' ')}.\``;
+    };
+
     const resultsLines = [
         `**${finishCommentary}**`,
         '',
-        `🥇 **WINNER: Horse ${winner.number} — ${winner.name}** ${winner.emoji} [${winner.displayOdds}x]`,
-        `🥈 **2nd: Horse ${secondPlace.number} — ${secondPlace.name}** ${secondPlace.emoji} [${secondPlace.displayOdds}x]`,
-        `🥉 **3rd: Horse ${thirdPlace.number} — ${thirdPlace.name}** ${thirdPlace.emoji} [${thirdPlace.displayOdds}x]`,
+        '**Final Standings:**'
+    ];
+    for (let pos = 0; pos < finishOrder.length; pos++) {
+        const horse = horses[finishOrder[pos]];
+        resultsLines.push(`${positionPrefix(pos)} **Horse ${horse.number} — ${horse.name}** ${horse.emoji} [${horse.displayOdds}x]`);
+    }
+    resultsLines.push(
         '',
         '```',
         finalDescription,
@@ -502,7 +494,7 @@ async function resolveRace(client, channel, message, game) {
         '',
         `**Total wagered:** ${totalWagered} ${CURRENCY_NAME}`,
         `**Total paid:** ${totalPaid} ${CURRENCY_NAME}`
-    ];
+    );
 
     // Add participant results
     if (results.length > 0) {
