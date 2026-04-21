@@ -136,6 +136,22 @@ module.exports = {
         await interaction.reply({ embeds: [embed], ephemeral: true });
         break;
       case 'set':
+        // Permission check: only admins can modify channel context
+        // Users in threads can modify their own thread's context
+        if (!interaction.channel.isThread() && !interaction.member.permissions.has('ManageChannels')) {
+          embed
+            .setAuthor({ name: `Permission Denied`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setDescription('Only server administrators can modify channel context. Create a thread to customize the bot in your own space!')
+            .setColor(0xFF0000);
+          return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        if (interaction.channel.isThread() && interaction.channel.ownerId !== interaction.user.id && !interaction.member.permissions.has('ManageChannels')) {
+          embed
+            .setAuthor({ name: `Permission Denied`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setDescription('Only the thread owner or server administrators can modify thread context.')
+            .setColor(0xFF0000);
+          return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
         const characteristicValue = interaction.options.getString('characteristics') ?? characteristics;
         const personalityValue = interaction.options.getString('personality') ?? personality;
         const preferenceValue = interaction.options.getString('preferences') ?? preferences;
@@ -169,6 +185,21 @@ module.exports = {
         await interaction.reply({ embeds: [embed], ephemeral: true });
         break;  
       case 'reset':
+        // Same permission check as 'set'
+        if (!interaction.channel.isThread() && !interaction.member.permissions.has('ManageChannels')) {
+          embed
+            .setAuthor({ name: `Permission Denied`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setDescription('Only server administrators can reset channel context.')
+            .setColor(0xFF0000);
+          return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+        if (interaction.channel.isThread() && interaction.channel.ownerId !== interaction.user.id && !interaction.member.permissions.has('ManageChannels')) {
+          embed
+            .setAuthor({ name: `Permission Denied`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setDescription('Only the thread owner or server administrators can reset thread context.')
+            .setColor(0xFF0000);
+          return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
         const blankContext = {
           roleplay_options: {
             characteristics: '',
