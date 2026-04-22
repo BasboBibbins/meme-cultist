@@ -221,7 +221,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         let winAmount = Math.floor(actualBet * win.multiplier * bonusMultiplier);
 
         if (win.matchSymbol === 7 && win.count === 3) {
-            const eligible = isFreePlay || isJackpotEligible(actualBet);
+            const eligible = (!isFreePlay) && isJackpotEligible(actualBet);
             if (eligible) {
                 const jackpotResult = await winJackpot(user.id, user.displayName);
                 jackpotAmount = jackpotResult.amount;
