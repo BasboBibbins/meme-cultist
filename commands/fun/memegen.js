@@ -2,7 +2,7 @@ const {SlashCommandBuilder, AttachmentBuilder} = require('discord.js');
 const Canvas = require('canvas');
 const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
-const GIFEncoder = require('gif-encoder');
+const { encodeGIF } = require('../../utils/gifUtil');
 const { parseGIF, decompressFrames } = require('gifuct-js');
 const path = require('path');
 const logger = require('../../utils/logger');
@@ -121,15 +121,7 @@ module.exports = {
             const gifCanvas = Canvas.createCanvas(tempCanvas.width, tempCanvas.height);
             const gifCtx = gifCanvas.getContext('2d');
 
-            const encoder = new GIFEncoder(tempCanvas.width, tempCanvas.height);
-            encoder.setDelay(gif.frames[0].delay);
-            encoder.setRepeat(0);
-            encoder.setDispose(1);
-            encoder.writeHeader();
-
-            const buffChunks = [];
-            encoder.on('data', chunk => buffChunks.push(chunk));
-            
+            const gifFrames = [];
             let frameData = undefined;
             for (const frame of frames) {
                 if (!frameData || frame.dims.width !== tempCanvas.width || frame.dims.height !== tempCanvas.height) {
@@ -142,18 +134,10 @@ module.exports = {
                 gifCtx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
                 await drawMemeGen(gifCtx);
 
-                encoder.setDelay(frame.delay);
-                encoder.addFrame(gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data);
-            }
-            encoder.finish();
-            const output = Buffer.concat(buffChunks);
-
-            if (output.length > 8e+6) {
-                return interaction.editReply({content: 'The generated GIF is too large to send.', ephemeral: true});
+                gifFrames.push({ data: gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data, delay: frame.delay });
             }
 
-            attachment = new AttachmentBuilder(output)
-                .setName(`${imageName}-memegen.gif`)
+            attachment = encodeGIF(gifFrames, { width: gifCanvas.width, height: gifCanvas.height, repeat: 0, filename: `${imageName}-memegen.gif` });
                 
         }
         return interaction.editReply({files: [attachment]});
