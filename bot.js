@@ -8,8 +8,7 @@ const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
-const { QuickDB } = require("quick.db")
-const { initDB } = require("./database")
+const { initDB, db } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
@@ -69,10 +68,7 @@ client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.immediateFactsDebounce = new Map();
 
-let db = null;
-if (fs.existsSync(`./db/users.sqlite`)) {
-    db = new QuickDB({ filePath: `./db/users.sqlite` })
-} else {
+if (!fs.existsSync(`./db/users.sqlite`)) {
     logger.error(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
     process.exit(1)
 }
@@ -261,7 +257,7 @@ if (DELETE_SLASH) {
                         };
                         await player.context.provide(data, () => command.execute(interaction));
                     } else {
-                        command.execute(interaction);
+                        await command.execute(interaction);
                     }
 
                     logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);

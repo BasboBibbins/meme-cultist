@@ -1,9 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { version } = require('../package.json');
 const { DEFAULT_ROLE, RULES_CHANNEL_ID } = require('../config.js');
-const { QuickDB } = require('quick.db');
-const { addNewDBUser } = require('../database');
-const db = new QuickDB( { filePath: 'db/users.sqlite' });
+const { addNewDBUser, db } = require('../database');
 const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID, WELCOME_CHANNEL_NAME, RIP_CHANNEL_NAME } = require('../config.js');
 const logger = require('../utils/logger');
 const { randomHexColor } = require('./randomcolor');

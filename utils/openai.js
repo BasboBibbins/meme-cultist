@@ -23,8 +23,8 @@ const {
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
+const { db: usersDb } = require("../database");
 const db = new QuickDB({ filePath: `./db/thread_contexts.sqlite` });
-const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./logger");
 const { TOOLS, executeToolCall } = require("./openai-tools");
 

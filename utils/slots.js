@@ -1,6 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
-const { QuickDB } = require("quick.db");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
+const { db } = require('../database');
 const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET } = require('../config.js');
 const { randomHexColor } = require('./randomcolor');
 const wait = require('node:timers/promises').setTimeout;
@@ -8,6 +7,7 @@ const logger = require('../utils/logger');
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('./jackpot');
 const { drawSlotMachine, drawSpinAnimation, drawPaytable, PAYLINES } = require('./slotsCanvas');
 const { getTheme } = require('./slotsThemes');
+const { getEquippedTheme } = require('../themes/manager');
 
 // Symbol definitions: index, weights, multipliers
 const SYMBOLS = [
@@ -194,9 +194,9 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
 
     const [jackpotDisplayStr, themeIdRaw] = await Promise.all([
         getJackpotDisplay(),
-        themeOverride ? Promise.resolve(null) : db.get(`${user.id}.profile.theme.equipped`),
+        themeOverride ? Promise.resolve(null) : getEquippedTheme(user.id),
     ]);
-    const theme = themeOverride || getTheme(themeIdRaw || 'classic');
+    const theme = themeOverride || getTheme(themeIdRaw);
 
     logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName} [theme: ${theme.id}]`);
 
@@ -419,7 +419,7 @@ async function runBonusSpins(interaction, actualBet, user, lines, theme) {
 async function playSlots(interaction, bet, user, options = {}) {
     const { lines = 1 } = options;
 
-    const themeId = await db.get(`${user.id}.profile.theme.equipped`) || 'classic';
+    const themeId = await getEquippedTheme(user.id);
     const theme = getTheme(themeId);
 
     const freePlay = bet === 0;
@@ -509,7 +509,7 @@ async function handleFailure(user, bet, lines) {
 }
 
 async function generatePaytable(interaction) {
-    const themeId = await db.get(`${interaction.user.id}.profile.theme.equipped`) || 'classic';
+    const themeId = await getEquippedTheme(interaction.user.id);
     const theme = getTheme(themeId);
     const jackpotDisplayStr = await getJackpotDisplay();
     const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS, theme);

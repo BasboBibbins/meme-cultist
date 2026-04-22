@@ -113,6 +113,7 @@ async function getDefaultDB(user) {
     }
 }
 module.exports = {
+    db,
     getDefaultDB: async function(user) {
         return await getDefaultDB(user);
     },
