@@ -1,8 +1,8 @@
 const { createCanvas, loadImage } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
-const GIFEncoder = require('gif-encoder');
 const { CURRENCY_NAME } = require('../config.js');
 const { getTheme } = require('./slotsThemes');
+const { encodeGIF } = require('./gifUtil');
 const CanvasUtil = require('./Canvas');
 const logger = require('./logger');
 
@@ -42,6 +42,26 @@ async function preloadThemeImages(theme) {
                 // Image failed to load — drawSymbol will fall back to label text
             }
         }
+    }
+}
+
+/**
+ * Pre-warm all image caches (sprites + backgrounds) for all themes.
+ * Call during bot startup to eliminate cold-start latency on first spin.
+ */
+async function warmCaches() {
+    const { getThemeList } = require('./slotsThemes');
+    const themes = getThemeList();
+    for (const themeInfo of themes) {
+        try {
+            const theme = getTheme(themeInfo.id);
+            await preloadThemeImages(theme);
+            if (theme.colors?.background) {
+                try {
+                    await loadCachedImage(theme.colors.background);
+                } catch (_) { /* background optional */ }
+            }
+        } catch (_) { /* skip themes with missing assets */ }
     }
 }
 
@@ -443,8 +463,8 @@ function drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsL
 // ─── Public API ──────────────────────────────────────────────────────
 
 /**
- * Draw the final slot machine result.
- * Wins: animated GIF with blinking paylines. No wins: static PNG.
+ * Draw the final slot machine result as a static PNG.
+ * Winning lines are drawn as static highlights (no blink animation).
  */
 async function drawSlotMachine(grid, options = {}) {
     const {
@@ -467,98 +487,75 @@ async function drawSlotMachine(grid, options = {}) {
     const canvas = createCanvas(layout.W, layout.H);
     const ctx = canvas.getContext('2d');
 
-    // Render the static frame once — reuse for all result frames
     const frameCanvas = createCanvas(layout.W, layout.H);
     const frameCtx = frameCanvas.getContext('2d');
     await drawFrame(frameCtx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
 
-    const hasWins = winResults.length > 0;
-
-    if (!hasWins) {
-        // No wins: output as static PNG — no GIF encoding needed
-        ctx.drawImage(frameCanvas, 0, 0);
-        drawGrid(ctx, grid, theme, layout);
-        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-        const buffer = canvas.toBuffer('image/png');
-        return new AttachmentBuilder(buffer, { name: 'slots-result.png' });
-    }
-
-    // Wins: animated GIF with blink cycles
-    const encoder = new GIFEncoder(layout.W, layout.H);
-    encoder.setRepeat(0);
-    encoder.writeHeader();
-    encoder.setQuality(10);
-
-    const buffChunks = [];
-    encoder.on('data', chunk => buffChunks.push(chunk));
-
-    const blinkCycles = 3;
-    for (let cycle = 0; cycle < blinkCycles; cycle++) {
-        ctx.drawImage(frameCanvas, 0, 0);
-        drawGrid(ctx, grid, theme, layout);
-        drawWinningLines(ctx, winResults, activeLines, theme, layout);
-        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-        encoder.setDelay(400);
-        encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
-
-        ctx.drawImage(frameCanvas, 0, 0);
-        drawGrid(ctx, grid, theme, layout);
-        drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-        encoder.setDelay(250);
-        encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
-    }
-
     ctx.drawImage(frameCanvas, 0, 0);
     drawGrid(ctx, grid, theme, layout);
-    drawWinningLines(ctx, winResults, activeLines, theme, layout);
-    drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
-    encoder.setDelay(2000);
-    encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
 
-    encoder.finish();
-    const output = Buffer.concat(buffChunks);
-    return new AttachmentBuilder(output, { name: 'slots-result.gif' });
+    // Draw winning lines as static highlights
+    if (winResults.length > 0) {
+        drawWinningLines(ctx, winResults, activeLines, theme, layout);
+    }
+
+    drawResultText(ctx, totalWin, balance, isBonus, isFreePlay, bonusSpinsLeft, theme, layout);
+    const buffer = canvas.toBuffer('image/png');
+    return new AttachmentBuilder(buffer, { name: 'slots-result.png' });
 }
 
 /**
- * Draw a spinning animation as a GIF, ending on the final grid.
+ * Draw a spinning animation as a GIF with progressive column reveals.
+ * Renders at half resolution for performance, scaled up via ctx.scale().
  */
 async function drawSpinAnimation(finalGrid, options = {}) {
     const {
         jackpotDisplay = '0 koku',
         activeLines = 1,
         bet = 0,
+        isBonus = false,
+        isFreePlay = false,
         theme: themeOverride,
     } = options;
 
     const theme = themeOverride || getTheme('classic');
     const layout = getLayout(theme);
+    const { W, H } = layout;
     await preloadThemeImages(theme);
 
-    const canvas = createCanvas(layout.W, layout.H);
-    const ctx = canvas.getContext('2d');
-
-    // Render the static frame once — reuse for all animation frames
-    const frameCanvas = createCanvas(layout.W, layout.H);
-    const frameCtx = frameCanvas.getContext('2d');
-    await drawFrame(frameCtx, jackpotDisplay, activeLines, bet, false, false, theme, layout);
-
-    const encoder = new GIFEncoder(layout.W, layout.H);
-    encoder.setRepeat(-1); // play once, no loop
-    encoder.writeHeader();
-    encoder.setQuality(10);
-
-    const buffChunks = [];
-    encoder.on('data', chunk => buffChunks.push(chunk));
-
-    const totalFrames = 18;
-    const lockFrames = [6, 11, 16];
     const symCount = theme.symbols.length;
 
-    for (let frame = 0; frame < totalFrames; frame++) {
-        ctx.drawImage(frameCanvas, 0, 0);
+    // --- Half-resolution canvas for spin frames (Pi 3B optimization) ---
+    // Use ctx.scale(0.5, 0.5) so all drawing functions use full-res coordinates
+    // and the canvas automatically scales everything down.
+    const halfW = Math.floor(W / 2);
+    const halfH = Math.floor(H / 2);
 
-        for (let col = 0; col < 3; col++) {
+    const halfFrameCanvas = createCanvas(halfW, halfH);
+    const halfFrameCtx = halfFrameCanvas.getContext('2d');
+    halfFrameCtx.scale(0.5, 0.5);
+    await drawFrame(halfFrameCtx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
+
+    const halfSpinCanvas = createCanvas(halfW, halfH);
+    const halfSpinCtx = halfSpinCanvas.getContext('2d');
+
+    // --- Full-resolution canvas to scale half-res frames up for encoding ---
+    const fullCanvas = createCanvas(W, H);
+    const fullCtx = fullCanvas.getContext('2d');
+
+    const frames = [];
+    const totalFrames = 10;
+    const lockFrames = [3, 6, 9]; // Column lock points
+
+    for (let frame = 0; frame < totalFrames; frame++) {
+        // Blit frame at native half-res size (no scale transform)
+        halfSpinCtx.drawImage(halfFrameCanvas, 0, 0);
+
+        // Apply scale transform for symbol drawing (full-res coords → half-res pixels)
+        halfSpinCtx.save();
+        halfSpinCtx.scale(0.5, 0.5);
+
+        for (let col = 0; col < 3; col++) { 
             const lockFrame = lockFrames[col];
             const locked = frame >= lockFrame;
 
@@ -567,33 +564,37 @@ async function drawSpinAnimation(finalGrid, options = {}) {
                 const cy = layout.FRAME_Y + row * layout.CELL_H + layout.CELL_H / 2;
 
                 if (locked) {
-                    drawSymbol(ctx, finalGrid[row][col], cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
+                    drawSymbol(halfSpinCtx, finalGrid[row][col], cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
                 } else {
                     const randomSym = Math.floor(Math.random() * symCount);
-                    ctx.save();
-                    ctx.globalAlpha = 0.4;
-                    drawSymbol(ctx, randomSym, cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
-                    ctx.globalAlpha = 1.0;
-                    ctx.fillStyle = theme.colors.motionBlurOverlay;
-                    ctx.fillRect(
+                    halfSpinCtx.save();
+                    halfSpinCtx.globalAlpha = 0.4;
+                    drawSymbol(halfSpinCtx, randomSym, cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
+                    halfSpinCtx.globalAlpha = 1.0;
+                    halfSpinCtx.fillStyle = theme.colors.motionBlurOverlay;
+                    halfSpinCtx.fillRect(
                         layout.FRAME_X + col * layout.CELL_W + 1,
                         layout.FRAME_Y + row * layout.CELL_H + 1,
                         layout.CELL_W - 2,
                         layout.CELL_H - 2
                     );
-                    ctx.restore();
+                    halfSpinCtx.restore();
                 }
             }
         }
+        halfSpinCtx.restore();
 
-        const isLastFrame = frame === totalFrames - 1;
-        encoder.setDelay(isLastFrame ? 3000 : 120);
-        encoder.addFrame(ctx.getImageData(0, 0, layout.W, layout.H).data);
+        // Scale half-res frame up to full resolution for GIF encoding
+        fullCtx.drawImage(halfSpinCanvas, 0, 0, W, H);
+
+        let delay = 80;
+        if (lockFrames.includes(frame)) delay = 300;
+        else if (frame === totalFrames - 1) delay = 500;
+
+        frames.push({ data: fullCtx.getImageData(0, 0, W, H).data, delay });
     }
 
-    encoder.finish();
-    const output = Buffer.concat(buffChunks);
-    return new AttachmentBuilder(output, { name: 'slots-spin.gif' });
+    return encodeGIF(frames, { width: W, height: H, repeat: -1, filename: 'slots-spin.gif' });
 }
 
 /**
@@ -777,6 +778,7 @@ module.exports = {
     drawSpinAnimation,
     drawPaytable,
     slotsPreview,
+    warmCaches,
     PAYLINES,
     PAYLINE_COLORS,
 };

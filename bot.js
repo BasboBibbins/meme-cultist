@@ -198,6 +198,14 @@ if (DELETE_SLASH) {
         await player.extractors.loadMulti(DefaultExtractors);
         await player.extractors.register(YoutubeiExtractor, {});
         client.player = player;
+        // Pre-warm slot image caches to eliminate cold-start latency on first spin
+        try {
+            const { warmCaches } = require('./utils/slotsCanvas');
+            await warmCaches();
+            logger.info('Slot image caches pre-warmed.');
+        } catch (err) {
+            logger.warn('Failed to pre-warm slot caches, will load on first spin.', { error: err });
+        }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
         if (DEBUG_MODE) {
             logger.info(`DEBUG MODE ENABLED!`);
