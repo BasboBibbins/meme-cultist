@@ -42,6 +42,7 @@ module.exports = {
             logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
             await addNewDBUser(user);
         }
+        const dbUserFresh = await db.get(user.id);
 
         switch (option) {
             case 'paytable':
@@ -49,8 +50,8 @@ module.exports = {
                 break;
 
             case 'daily':
-                if (dbUser.cooldowns.freespins > Date.now()) {
-                    const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
+                if ((dbUserFresh?.cooldowns?.freespins || 0) > Date.now()) {
+                    const timeLeft = new Date(dbUserFresh.cooldowns.freespins - Date.now());
                     logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${await formatTimeLeft(timeLeft)}`)
                     const embed = new EmbedBuilder()
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })

@@ -101,9 +101,6 @@ async function getDefaultDB(user) {
                 "owned": [],
             },
         },
-        "slots": {
-            "theme": "classic",
-        },
         "chatbot": {
             messageCount: 0,
             summaries: [],
@@ -152,6 +149,23 @@ module.exports = {
                     if (!dbUser[key]) {
                         dbUser[key] = value;
                         updated = true;
+                    } else if (dbUser[key] && typeof dbUser[key] === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
+                        // Deep-merge nested objects (e.g. cooldowns, profile, stats) so new
+                        // fields like cooldowns.freespins and profile.theme.equipped are added
+                        // to existing users without wiping their current data.
+                        for (const [subKey, subValue] of Object.entries(value)) {
+                            if (dbUser[key][subKey] === undefined || dbUser[key][subKey] === null) {
+                                dbUser[key][subKey] = subValue;
+                                updated = true;
+                            } else if (dbUser[key][subKey] && typeof dbUser[key][subKey] === 'object' && subValue && typeof subValue === 'object' && !Array.isArray(subValue)) {
+                                for (const [deepKey, deepValue] of Object.entries(subValue)) {
+                                    if (dbUser[key][subKey][deepKey] === undefined || dbUser[key][subKey][deepKey] === null) {
+                                        dbUser[key][subKey][deepKey] = deepValue;
+                                        updated = true;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 if (updated) {
