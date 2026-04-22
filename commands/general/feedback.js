@@ -24,13 +24,35 @@ function getFeedbackClient() {
     return openaiClient;
 }
 
+function cleanMarkdownCode(content) {
+    if (!content) return content;
+    content = content.trim();
+    // Strip fenced code blocks (```json ... ``` or ``` ... ```)
+    if (content.startsWith("```")) {
+        const firstNewline = content.indexOf("\n");
+        if (firstNewline !== -1) {
+            content = content.slice(firstNewline + 1);
+        } else {
+            content = content.slice(3);
+        }
+        if (content.endsWith("```")) {
+            content = content.slice(0, -3).trim();
+        }
+    }
+    // Strip inline backticks
+    if (content.startsWith("`") && content.endsWith("`")) {
+        content = content.slice(1, -1).trim();
+    }
+    return content;
+}
+
 async function validateFeedback(type, description, username) {
     const openai = getFeedbackClient();
     if (!openai) return { valid: true, reason: "API unavailable", category: "unknown" };
 
     const typeLabels = { bug: 'Bug Report', suggestion: 'Feature Suggestion', general: 'General Feedback' };
 
-    const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON (no markdown):
+    const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON (NO MARKDOWN):
 
 Feedback Type: ${typeLabels[type]}
 From User: ${username}
@@ -56,6 +78,8 @@ Empty: < 5 characters of content.`;
         });
 
         const content = response.data.choices[0]?.message?.content?.trim();
+        content = cleanMarkdownCode(content);
+
         if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
         return JSON.parse(content);
     } catch (error) {
