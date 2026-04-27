@@ -1240,7 +1240,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
         } else if (isMention) {
           const mentionChannelMention = formatChatbotChannelMentions(client, "the dedicated bot channel");
           const lines = [
-            `You are ${client.user.displayName}, a helpful AI assistant in a Discord server called ${message.guild.name}. A user has mentioned you in a channel.`,
+            `You are ${client.user.displayName}, a helpful AI assistant in a Discord server called ${message.guild.name}. A user has mentioned you (<@${CLIENT_ID}>) in a channel.`,
             `Current time: ${now} UTC.`,
             validMembers.length > 0 && `Current users in this channel: ${currentUsers}`,
             `\n[Guidelines]`,
