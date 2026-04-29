@@ -2,6 +2,7 @@ const { OpenAIApi, Configuration } = require("openai");
 const {
   PAST_MESSAGES,
   CHATBOT_LOCAL,
+  CONVO_MODEL,
   BANNED_ROLE,
   OOC_PREFIX,
   CLIENT_ID,
@@ -397,7 +398,7 @@ async function compressFacts(facts, key, scope = "channel") {
 
     const res = await withTimeout(
       openai.createChatCompletion({
-        model: "deepseek-chat",
+        model: CONVO_MODEL,
         messages: [
           { role: "system", content: "You compress and deduplicate memory facts. Respond only with key=value lines." },
           { role: "user", content: prompt }
@@ -487,7 +488,7 @@ async function runImmediateClassifier(text, scope, key) {
 
   const res = await withTimeout(
     openai.createChatCompletion({
-      model: "deepseek-chat",
+      model: CONVO_MODEL,
       messages: [
         { role: "system", content: sys },
         { role: "user", content: text }
@@ -776,7 +777,7 @@ async function summarizeMessages(messages, thread, key) {
   logger.debug(`Summarizing thread with the following prompt: \x1b[31m${prompt}`);
   const res = await withTimeout(
     openai.createChatCompletion({
-      "model": "deepseek-chat",
+      "model": CONVO_MODEL,
       "messages": [
         { role: "system", content: "You summarize chat conversations into useful memory, responding with only the summary body." },
         { role: "user", content: prompt }
@@ -824,7 +825,7 @@ async function summarizeUserMessages(userMessages, userId, key) {
   const prompt = lines.filter(Boolean).join('\n');
   const res = await withTimeout(
     openai.createChatCompletion({
-      model: "deepseek-chat",
+      model: CONVO_MODEL,
       messages: [
         { role: "system", content: "You build user profiles from chat messages, responding with only the summary body." },
         { role: "user", content: prompt }
@@ -868,7 +869,7 @@ async function generateFacts(thread, key) {
   logger.debug(`Generating facts based off the following prompt: \x1b[31m${prompt}`)
   const res = await withTimeout(
     openai.createChatCompletion({
-      "model": "deepseek-chat",
+      "model": CONVO_MODEL,
       "messages": [
         { role: "system", content: "You extract permanent facts from a summary and write them to memory." },
         { role: "user", content: prompt }
@@ -925,7 +926,7 @@ async function generateUserFacts(userId, userMessages, key) {
   const prompt = lines.filter(Boolean).join('\n');
   const res = await withTimeout(
     openai.createChatCompletion({
-      model: "deepseek-chat",
+      model: CONVO_MODEL,
       messages: [
         { role: "system", content: "You extract permanent facts about a user and write them to memory." },
         ...userMessages.length > 0 ? [{ role: "system", content: `User's recent messages:\n${userMessages.map(m => `${m.member.displayName}: ${m.content}`).join('\n')}` }] : [],
@@ -977,7 +978,7 @@ async function generateTopic(channel, messages, key) {
   logger.debug(`Generating topic based off the following prompt: \x1b[31m${prompt}`);
   const res = await withTimeout(
     openai.createChatCompletion({
-      "model": "deepseek-chat",
+      "model": CONVO_MODEL,
       "messages": [
         { role: "system", content: "You are an AI assistant responsible for organizing and summarizing discussions. When updating a topic, only do so if the subject matter has genuinely shifted." },
         { role: "user", content: prompt }
@@ -1448,7 +1449,7 @@ async function handleBotMessage(client, message, key, customPrompt = null, chann
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
       const requestBody = {
-        model: "deepseek-chat",
+        model: CONVO_MODEL,
         messages: messages,
         temperature: 0.9,
         tools: TOOLS,

@@ -3,7 +3,7 @@ const { OpenAIApi, Configuration } = require("openai");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
-const { CHATBOT_LOCAL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
+const { CHATBOT_LOCAL, CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: `./db/feedback.sqlite` });
 
@@ -68,7 +68,7 @@ Empty: < 5 characters of content.`;
 
     try {
         const response = await openai.createChatCompletion({
-            model: "deepseek-chat",
+            model: CONVO_MODEL,
             messages: [
                 { role: "system", content: "You respond only with valid JSON." },
                 { role: "user", content: prompt }
@@ -140,7 +140,7 @@ async function generateIssueTitle(type, description) {
     logger.debug(`[Feedback] generateIssueTitle: Requesting title for ${typeLabel}, description length: ${description.length}`);
 
     const response = await openai.createChatCompletion({
-        model: "deepseek-chat",
+        model: CONVO_MODEL,
         messages: [
             { role: "system", content: "You generate concise GitHub issue titles. Respond with ONLY the title text, no quotes or extra formatting." },
             { role: "user", content: `Generate a short, descriptive GitHub issue title for this ${typeLabel}:\n\n"${description}"` }
