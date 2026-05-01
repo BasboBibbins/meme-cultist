@@ -10,8 +10,10 @@ function totalNumOfCmds(type) {
 }
 
 function getFavoriteCommand(type) {
-    let command = Object.keys(type).reduce((a, b) => type[a] > type[b] ? a : b);
-    return { command: command, uses: type[command] };
+    const keys = Object.keys(type);
+    if (keys.length === 0) return { command: 'None', uses: 0 };
+    let command = keys.reduce((a, b) => type[a] > type[b] ? a : b);
+    return { command: '/'+command, uses: type[command] };
 }
 
 function buildDesc(lines) {
@@ -114,11 +116,11 @@ async function generateStatsEmbed(page, interaction, user) {
             ]);
             embed.setTitle(`${user.displayName }'s Command Stats`)
             embed.setFields(
-                { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily || {})}**\n*Favorite Command:* /**${getFavoriteCommand(daily || {}).command} (${getFavoriteCommand(daily || {}).uses})**`, inline: true },
-                { name: "This Month", value: `*Commands Used:* **${totalNumOfCmds(monthly || {})}**\n*Favorite Command:* /**${getFavoriteCommand(monthly || {}).command} (${getFavoriteCommand(monthly || {}).uses})**`, inline: true },
+                { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily || {})}**\n*Favorite Command:* **${getFavoriteCommand(daily || {}).command} (${getFavoriteCommand(daily || {}).uses})**`, inline: true },
+                { name: "This Month", value: `*Commands Used:* **${totalNumOfCmds(monthly || {})}**\n*Favorite Command:* **${getFavoriteCommand(monthly || {}).command} (${getFavoriteCommand(monthly || {}).uses})**`, inline: true },
                 { name: " ", value: " ", inline: false},
-                { name: "This Year", value: `*Commands Used:* **${totalNumOfCmds(yearly || {})}**\n*Favorite Command:* /**${getFavoriteCommand(yearly || {}).command} (${getFavoriteCommand(yearly || {}).uses})**`, inline: true },
-                { name: "All Time", value: `*Commands Used:* **${totalNumOfCmds(total || {})}**\n*Favorite Command:* /**${getFavoriteCommand(total || {}).command} (${getFavoriteCommand(total || {}).uses})**`, inline: true },
+                { name: "This Year", value: `*Commands Used:* **${totalNumOfCmds(yearly || {})}**\n*Favorite Command:* **${getFavoriteCommand(yearly || {}).command} (${getFavoriteCommand(yearly || {}).uses})**`, inline: true },
+                { name: "All Time", value: `*Commands Used:* **${totalNumOfCmds(total || {})}**\n*Favorite Command:* **${getFavoriteCommand(total || {}).command} (${getFavoriteCommand(total || {}).uses})**`, inline: true },
             );
             break;
         }
@@ -243,6 +245,8 @@ async function generateStatsEmbed(page, interaction, user) {
                 { name: "\u200b", value: "\u200b", inline: false },
                 { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
                 { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
+                { name: "\u200b", value: "\u200b", inline: false },
+                { name: "See more info by using the command", value: "`/context", inline: true },
             );
             break;
         }
@@ -302,6 +306,7 @@ module.exports = {
         collector.on('collect', async i => {
             await i.deferUpdate();
             if (i.customId === 'previous') {
+                if (page <= 1) return;
                 page--;
                 if (page === 1) {
                     row.components[0].setDisabled(true);
@@ -310,6 +315,7 @@ module.exports = {
                 collector.resetTimer();
                 i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
             } else if (i.customId === 'next') {
+                if (page >= 5) return;
                 page++;
                 if (page === 5) {
                     row.components[1].setDisabled(true);
