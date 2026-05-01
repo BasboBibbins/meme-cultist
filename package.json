@@ -1,6 +1,6 @@
 {
   "name": "meme-cultist-2023",
-  "version": "5.5.0",
+  "version": "5.5.1",
   "description": "",
   "main": "bot.js",
   "scripts": {
@@ -36,7 +36,7 @@
     "ffmpeg-static": "^5.2.0",
     "fs": "0.0.1-security",
     "genius-lyrics": "^4.4.7",
-    "gif-encoder": "^0.7.2",
+    "gifenc": "^1.0.3",
     "gifuct-js": "^2.1.2",
     "node-schedule": "^2.1.1",
     "node-superfetch": "^0.3.3",

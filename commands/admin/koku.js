@@ -1,7 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const { QuickDB } = require("quick.db");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { addNewDBUser } = require("../../database");
+const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');

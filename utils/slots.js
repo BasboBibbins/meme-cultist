@@ -1,6 +1,5 @@
-const { EmbedBuilder, AttachmentBuilder } = require('discord.js');
-const { QuickDB } = require("quick.db");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
+const { EmbedBuilder } = require('discord.js');
+const { db } = require('../database');
 const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET } = require('../config.js');
 const { randomHexColor } = require('./randomcolor');
 const wait = require('node:timers/promises').setTimeout;
@@ -8,6 +7,7 @@ const logger = require('../utils/logger');
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('./jackpot');
 const { drawSlotMachine, drawSpinAnimation, drawPaytable, PAYLINES } = require('./slotsCanvas');
 const { getTheme } = require('./slotsThemes');
+const { getEquippedTheme } = require('../themes/manager');
 
 // Symbol definitions: index, weights, multipliers
 const SYMBOLS = [
@@ -192,12 +192,13 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         spinLabel = '',
     } = options;
 
-    const jackpotDisplayStr = await getJackpotDisplay();
+    const [jackpotDisplayStr, themeIdRaw] = await Promise.all([
+        getJackpotDisplay(),
+        themeOverride ? Promise.resolve(null) : getEquippedTheme(user.id),
+    ]);
+    const theme = themeOverride || getTheme(themeIdRaw);
 
-    const themeId = await db.get(`${user.id}.profile.theme.equipped`) || 'classic';
-    const theme = getTheme(themeId);
-
-    logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName} [theme: ${themeId}]`);
+    logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName} [theme: ${theme.id}]`);
 
     // Generate grid
     let grid = spinGrid();
@@ -220,7 +221,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         let winAmount = Math.floor(actualBet * win.multiplier * bonusMultiplier);
 
         if (win.matchSymbol === 7 && win.count === 3) {
-            const eligible = isFreePlay || isJackpotEligible(actualBet);
+            const eligible = (!isFreePlay) && isJackpotEligible(actualBet);
             if (eligible) {
                 const jackpotResult = await winJackpot(user.id, user.displayName);
                 jackpotAmount = jackpotResult.amount;
@@ -234,25 +235,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         totalWin += winAmount;
     }
 
-    // Send spinning animation
-    const spinAttachment = await drawSpinAnimation(grid, {
-        jackpotDisplay: jackpotDisplayStr,
-        activeLines: lines,
-        bet: actualBet,
-        theme,
-    });
-
-    let ok = await retryDiscord(
-        () => interaction.editReply({ files: [spinAttachment], embeds: [] }),
-        `spin animation ${spinLabel}`
-    );
-    if (!ok) {
-        return { totalWin: 0, winResults: [], isJackpot: false, jackpotAmount: 0, triggersBonus: false, scatterCount: 0, failed: true };
-    }
-
-    await wait(2800);
-
-    // Update balance and stats
+    // Update balance and stats before generating images (so balance displayed is correct)
     const totalCost = isFreePlay || isBonus ? 0 : actualBet * lines;
     if (totalWin > 0) {
         await db.add(`${user.id}.balance`, totalWin);
@@ -275,7 +258,28 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
 
     const currentBalance = await db.get(`${user.id}.balance`);
 
-    // Draw result image
+    // Send spinning animation GIF
+    const spinAttachment = await drawSpinAnimation(grid, {
+        jackpotDisplay: jackpotDisplayStr,
+        activeLines: lines,
+        bet: actualBet,
+        isBonus,
+        isFreePlay,
+        theme,
+    });
+
+    let ok = await retryDiscord(
+        () => interaction.editReply({ files: [spinAttachment], embeds: [] }),
+        `spin animation ${spinLabel}`
+    );
+    if (!ok) {
+        return { totalWin: 0, winResults: [], isJackpot: false, jackpotAmount: 0, triggersBonus: false, scatterCount: 0, failed: true };
+    }
+
+    // Brief pause to let user see the spin animation before result replaces it
+    await wait(1500);
+
+    // Draw static result image (PNG with winning lines highlighted)
     const resultAttachment = await drawSlotMachine(grid, {
         jackpotDisplay: isJackpot ? await getJackpotDisplay() : jackpotDisplayStr,
         activeLines: lines,
@@ -324,6 +328,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         });
     }
 
+    // Send result image + embed
     ok = await retryDiscord(
         () => interaction.editReply({ files: [resultAttachment], embeds: [embed] }),
         `result image ${spinLabel}`
@@ -393,7 +398,7 @@ function buildSummaryEmbed(user, spinResults, label, interaction, theme) {
 async function runBonusSpins(interaction, actualBet, user, lines, theme) {
     const results = [];
     for (let i = 0; i < SLOTS_BONUS_FREE_SPINS; i++) {
-        await wait(3000);
+        await wait(1500);
         const result = await executeSpin(interaction, user, {
             actualBet,
             lines,
@@ -414,7 +419,7 @@ async function runBonusSpins(interaction, actualBet, user, lines, theme) {
 async function playSlots(interaction, bet, user, options = {}) {
     const { lines = 1 } = options;
 
-    const themeId = await db.get(`${user.id}.profile.theme.equipped`) || 'classic';
+    const themeId = await getEquippedTheme(user.id);
     const theme = getTheme(themeId);
 
     const freePlay = bet === 0;
@@ -426,7 +431,7 @@ async function playSlots(interaction, bet, user, options = {}) {
         const spinResults = [];
 
         for (let i = 0; i < totalFreeSpins; i++) {
-            if (i > 0) await wait(3000);
+            if (i > 0) await wait(1500);
             const result = await executeSpin(interaction, user, {
                 actualBet,
                 lines,
@@ -504,7 +509,7 @@ async function handleFailure(user, bet, lines) {
 }
 
 async function generatePaytable(interaction) {
-    const themeId = await db.get(`${interaction.user.id}.profile.theme.equipped`) || 'classic';
+    const themeId = await getEquippedTheme(interaction.user.id);
     const theme = getTheme(themeId);
     const jackpotDisplayStr = await getJackpotDisplay();
     const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS, theme);

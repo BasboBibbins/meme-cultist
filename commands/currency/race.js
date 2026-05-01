@@ -1,7 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
-const { QuickDB } = require('quick.db');
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { addNewDBUser } = require('../../database');
+const { addNewDBUser, db } = require('../../database');
 const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../../config.js');
 const { parseBet } = require('../../utils/betparse');
 const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require('../../utils/race');

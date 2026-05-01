@@ -8,8 +8,7 @@ const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
-const { QuickDB } = require("quick.db")
-const { initDB } = require("./database")
+const { initDB, db } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
@@ -69,10 +68,7 @@ client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.immediateFactsDebounce = new Map();
 
-let db = null;
-if (fs.existsSync(`./db/users.sqlite`)) {
-    db = new QuickDB({ filePath: `./db/users.sqlite` })
-} else {
+if (!fs.existsSync(`./db/users.sqlite`)) {
     logger.error(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
     process.exit(1)
 }
@@ -198,6 +194,14 @@ if (DELETE_SLASH) {
         await player.extractors.loadMulti(DefaultExtractors);
         await player.extractors.register(YoutubeiExtractor, {});
         client.player = player;
+        // Pre-warm slot image caches to eliminate cold-start latency on first spin
+        try {
+            const { warmCaches } = require('./utils/slotsCanvas');
+            await warmCaches();
+            logger.info('Slot image caches pre-warmed.');
+        } catch (err) {
+            logger.warn('Failed to pre-warm slot caches, will load on first spin.', { error: err });
+        }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
         if (DEBUG_MODE) {
             logger.info(`DEBUG MODE ENABLED!`);
@@ -253,7 +257,7 @@ if (DELETE_SLASH) {
                         };
                         await player.context.provide(data, () => command.execute(interaction));
                     } else {
-                        command.execute(interaction);
+                        await command.execute(interaction);
                     }
 
                     logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
@@ -265,52 +269,55 @@ if (DELETE_SLASH) {
                         const thisMonth = now.format("YYYY-MM");
                         const thisYear = now.format("YYYY");
 
-                        // Batch reset checks — read all three at once, then write only what changed
-                        const [dailyReset, monthlyReset, yearlyReset] = await Promise.all([
-                            db.get(`${userId}.stats.commands.dailyReset`),
-                            db.get(`${userId}.stats.commands.monthlyReset`),
-                            db.get(`${userId}.stats.commands.yearlyReset`),
-                        ]);
-                        const resetWrites = [];
-                        if (dailyReset !== today) {
-                            resetWrites.push(
-                                db.set(`${userId}.stats.commands.dailyReset`, today),
-                                db.set(`${userId}.stats.commands.daily`, {})
-                            );
-                        }
-                        if (monthlyReset !== thisMonth) {
-                            resetWrites.push(
-                                db.set(`${userId}.stats.commands.monthlyReset`, thisMonth),
-                                db.set(`${userId}.stats.commands.monthly`, {})
-                            );
-                        }
-                        if (yearlyReset !== thisYear) {
-                            resetWrites.push(
-                                db.set(`${userId}.stats.commands.yearlyReset`, thisYear),
-                                db.set(`${userId}.stats.commands.yearly`, {})
-                            );
-                        }
-                        await Promise.all(resetWrites);
-
-                        // Batch command usage increments
-                        await Promise.all([
-                            db.add(`${userId}.stats.commands.daily.${cmdName}`, 1),
-                            db.add(`${userId}.stats.commands.monthly.${cmdName}`, 1),
-                            db.add(`${userId}.stats.commands.yearly.${cmdName}`, 1),
-                            db.add(`${userId}.stats.commands.total.${cmdName}`, 1),
-                        ]);
-
-                        // Batch balance/bank largest-value checks
-                        const [balance, largestBalance, bank, largestBank] = await Promise.all([
+                        // Read stats and balance/bank once to avoid read-modify-write races
+                        const [stats, balance, bank] = await Promise.all([
+                            db.get(`${userId}.stats`),
                             db.get(`${userId}.balance`),
-                            db.get(`${userId}.stats.largestBalance`),
                             db.get(`${userId}.bank`),
-                            db.get(`${userId}.stats.largestBank`),
                         ]);
-                        const statWrites = [];
-                        if (balance > largestBalance) statWrites.push(db.set(`${userId}.stats.largestBalance`, balance));
-                        if (bank > largestBank) statWrites.push(db.set(`${userId}.stats.largestBank`, bank));
-                        if (statWrites.length) await Promise.all(statWrites);
+                        const userStats = stats || {};
+                        if (!userStats.commands || typeof userStats.commands !== 'object') {
+                            userStats.commands = {
+                                dailyReset: 0,
+                                monthlyReset: 0,
+                                yearlyReset: 0,
+                                daily: {},
+                                monthly: {},
+                                yearly: {},
+                                total: {},
+                            };
+                        }
+                        // Legacy schema initialized total as 0 (number); convert to object
+                        if (typeof userStats.commands.total === 'number') {
+                            userStats.commands.total = {};
+                        }
+
+                        // Apply date resets
+                        if (userStats.commands.dailyReset !== today) {
+                            userStats.commands.dailyReset = today;
+                            userStats.commands.daily = {};
+                        }
+                        if (userStats.commands.monthlyReset !== thisMonth) {
+                            userStats.commands.monthlyReset = thisMonth;
+                            userStats.commands.monthly = {};
+                        }
+                        if (userStats.commands.yearlyReset !== thisYear) {
+                            userStats.commands.yearlyReset = thisYear;
+                            userStats.commands.yearly = {};
+                        }
+
+                        // Apply command usage increments
+                        userStats.commands.daily[cmdName] = (userStats.commands.daily[cmdName] || 0) + 1;
+                        userStats.commands.monthly[cmdName] = (userStats.commands.monthly[cmdName] || 0) + 1;
+                        userStats.commands.yearly[cmdName] = (userStats.commands.yearly[cmdName] || 0) + 1;
+                        userStats.commands.total[cmdName] = (userStats.commands.total[cmdName] || 0) + 1;
+
+                        // Largest balance/bank tracking
+                        if (balance > (userStats.largestBalance || 0)) userStats.largestBalance = balance;
+                        if (bank > (userStats.largestBank || 0)) userStats.largestBank = bank;
+
+                        // Single write back eliminates all races
+                        await db.set(`${userId}.stats`, userStats);
                     }
                 } catch (error) {
                     logger.error(error);

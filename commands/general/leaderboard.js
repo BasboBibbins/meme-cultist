@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { QuickDB } = require("quick.db");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
+const { db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { getAllTimeTopUsers, getCurrentTopUsers } = require("../../utils/bank");
 const logger = require("../../utils/logger");

@@ -1,5 +1,4 @@
-const { QuickDB } = require('quick.db');
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
+const { db } = require('../database');
 const logger = require('./logger');
 const { INTEREST_RATE } = require('../config.js');
 
