@@ -1,6 +1,6 @@
 const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { CURRENCY_NAME } = require("../../config.js");
-const { addNewDBUser, db } = require("../../database");
+const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require('../../utils/openai');
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
@@ -108,12 +108,10 @@ async function generateStatsEmbed(page, interaction, user) {
             );
             break;
         case 2: {
-            const [daily, monthly, yearly, total] = await Promise.all([
-                db.get(`${user.id}.stats.commands.daily`),
-                db.get(`${user.id}.stats.commands.monthly`),
-                db.get(`${user.id}.stats.commands.yearly`),
-                db.get(`${user.id}.stats.commands.total`)
-            ]);
+            // Apply pending period resets so a user who hasn't run a command since
+            // midnight / month / year rollover sees fresh buckets, not stale data.
+            const commands = await applyCommandStatsResets(user.id);
+            const { daily, monthly, yearly, total } = commands;
             embed.setTitle(`${user.displayName }'s Command Stats`)
             embed.setFields(
                 { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily || {})}**\n*Favorite Command:* **${getFavoriteCommand(daily || {}).command} (${getFavoriteCommand(daily || {}).uses})**`, inline: true },
@@ -246,7 +244,7 @@ async function generateStatsEmbed(page, interaction, user) {
                 { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
                 { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
                 { name: "\u200b", value: "\u200b", inline: false },
-                { name: "See more info by using the command", value: "`/context", inline: true },
+                { name: "See more info by using the command", value: "`/context`", inline: true },
             );
             break;
         }

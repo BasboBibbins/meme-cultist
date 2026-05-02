@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const Canvas = require('canvas');
 const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
 const { wrapText } = require('../../utils/Canvas.js');
@@ -126,8 +126,20 @@ module.exports = {
                 gifFrames.push({ data: gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data, delay: frame.delay });
             }
 
-            attachment = encodeGIF(gifFrames, { width: gifCanvas.width, height: gifCanvas.height, repeat: 0, filename: `${imageName}-caption.gif` });
-                
+            try {
+                attachment = encodeGIF(gifFrames, { width: gifCanvas.width, height: gifCanvas.height, repeat: 0, filename: `${imageName}-caption.gif`, maxBytes: 8e6 });
+            } catch (err) {
+                if (err.code === 'GIF_TOO_LARGE') {
+                    const embed = new EmbedBuilder()
+                        .setTitle('Error')
+                        .setDescription('The resulting GIF is too large to send.')
+                        .setColor(0xff0000)
+                        .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+                        .setTimestamp();
+                    return interaction.editReply({embeds: [embed]});
+                }
+                throw err;
+            }
         }
         return interaction.editReply({files: [attachment]});
     }

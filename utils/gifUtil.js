@@ -25,11 +25,11 @@ function encodeGIF(frames, options = {}) {
         maxColors = 256,
         filename = 'animation.gif',
         paletteSource = null,
+        maxBytes = 0,
     } = options;
 
     if (frames.length === 0) throw new Error('encodeGIF: no frames provided');
 
-    // Quantize palette once from the palette source or first frame
     const sourceData = paletteSource || frames[0].data;
     const palette = quantize(sourceData, maxColors, { format: 'rgba4444' });
 
@@ -47,6 +47,14 @@ function encodeGIF(frames, options = {}) {
 
     gif.finish();
     const output = Buffer.from(gif.bytes());
+
+    if (maxBytes > 0 && output.length > maxBytes) {
+        const err = new Error(`GIF size ${output.length} exceeds maxBytes ${maxBytes}`);
+        err.code = 'GIF_TOO_LARGE';
+        err.size = output.length;
+        throw err;
+    }
+
     return new AttachmentBuilder(output, { name: filename });
 }
 

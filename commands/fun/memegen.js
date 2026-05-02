@@ -137,8 +137,14 @@ module.exports = {
                 gifFrames.push({ data: gifCtx.getImageData(0, 0, gifCanvas.width, gifCanvas.height).data, delay: frame.delay });
             }
 
-            attachment = encodeGIF(gifFrames, { width: gifCanvas.width, height: gifCanvas.height, repeat: 0, filename: `${imageName}-memegen.gif` });
-                
+            try {
+                attachment = encodeGIF(gifFrames, { width: gifCanvas.width, height: gifCanvas.height, repeat: 0, filename: `${imageName}-memegen.gif`, maxBytes: 8e6 });
+            } catch (err) {
+                if (err.code === 'GIF_TOO_LARGE') {
+                    return interaction.editReply({content: 'The generated GIF is too large to send.', ephemeral: true});
+                }
+                throw err;
+            }
         }
         return interaction.editReply({files: [attachment]});
     },

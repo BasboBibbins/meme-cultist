@@ -77,10 +77,9 @@ Empty: < 5 characters of content.`;
             temperature: 0.1
         });
 
-        const content = response.data.choices[0]?.message?.content?.trim();
-        content = cleanMarkdownCode(content);
-
+        let content = response.data.choices[0]?.message?.content?.trim();
         if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
+        content = cleanMarkdownCode(content);
         return JSON.parse(content);
     } catch (error) {
         logger.error(`[Feedback] Validation error: ${error.message}`);

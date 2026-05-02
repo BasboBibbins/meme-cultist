@@ -38,6 +38,7 @@
     "genius-lyrics": "^4.4.7",
     "gifenc": "^1.0.3",
     "gifuct-js": "^2.1.2",
+    "moment": "^2.30.1",
     "node-schedule": "^2.1.1",
     "node-superfetch": "^0.3.3",
     "openai": "^3.3.0",

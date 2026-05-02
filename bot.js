@@ -8,7 +8,7 @@ const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
-const { initDB, db } = require("./database")
+const { initDB, db, applyCommandStatsResets } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
@@ -206,6 +206,25 @@ if (DELETE_SLASH) {
         if (DEBUG_MODE) {
             logger.info(`DEBUG MODE ENABLED!`);
         }
+
+        // Sweep stale daily/monthly/yearly command stat buckets across all guild members.
+        // Catches users who were inactive across a period rollover while the bot was down.
+        try {
+            const guild = client.guilds.cache.get(GUILD_ID);
+            if (guild) {
+                let resets = 0;
+                for (const [memberId] of guild.members.cache) {
+                    if (memberId === client.user.id) continue;
+                    const before = await db.get(`${memberId}.stats.commands.dailyReset`);
+                    await applyCommandStatsResets(memberId);
+                    const after = await db.get(`${memberId}.stats.commands.dailyReset`);
+                    if (before !== after) resets++;
+                }
+                logger.info(`Stats reset sweep complete (${resets} user${resets === 1 ? '' : 's'} rolled over).`);
+            }
+        } catch (err) {
+            logger.warn('Stats reset sweep failed.', { error: err });
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -264,60 +283,28 @@ if (DELETE_SLASH) {
                     if (db) {
                         const userId = interaction.user.id;
                         const cmdName = interaction.commandName;
-                        const now = moment();
-                        const today = now.format("YYYY-MM-DD");
-                        const thisMonth = now.format("YYYY-MM");
-                        const thisYear = now.format("YYYY");
 
-                        // Read stats and balance/bank once to avoid read-modify-write races
-                        const [stats, balance, bank] = await Promise.all([
-                            db.get(`${userId}.stats`),
+                        // Apply any pending period resets, then increment counters in memory
+                        // and persist with a single scoped write.
+                        const commands = await applyCommandStatsResets(userId);
+                        commands.daily[cmdName] = (commands.daily[cmdName] || 0) + 1;
+                        commands.monthly[cmdName] = (commands.monthly[cmdName] || 0) + 1;
+                        commands.yearly[cmdName] = (commands.yearly[cmdName] || 0) + 1;
+                        commands.total[cmdName] = (commands.total[cmdName] || 0) + 1;
+                        await db.set(`${userId}.stats.commands`, commands);
+
+                        // Largest balance/bank checks — narrow writes only, separate from
+                        // the commands subtree to avoid racing with the midnight interest job.
+                        const [balance, largestBalance, bank, largestBank] = await Promise.all([
                             db.get(`${userId}.balance`),
+                            db.get(`${userId}.stats.largestBalance`),
                             db.get(`${userId}.bank`),
+                            db.get(`${userId}.stats.largestBank`),
                         ]);
-                        const userStats = stats || {};
-                        if (!userStats.commands || typeof userStats.commands !== 'object') {
-                            userStats.commands = {
-                                dailyReset: 0,
-                                monthlyReset: 0,
-                                yearlyReset: 0,
-                                daily: {},
-                                monthly: {},
-                                yearly: {},
-                                total: {},
-                            };
-                        }
-                        // Legacy schema initialized total as 0 (number); convert to object
-                        if (typeof userStats.commands.total === 'number') {
-                            userStats.commands.total = {};
-                        }
-
-                        // Apply date resets
-                        if (userStats.commands.dailyReset !== today) {
-                            userStats.commands.dailyReset = today;
-                            userStats.commands.daily = {};
-                        }
-                        if (userStats.commands.monthlyReset !== thisMonth) {
-                            userStats.commands.monthlyReset = thisMonth;
-                            userStats.commands.monthly = {};
-                        }
-                        if (userStats.commands.yearlyReset !== thisYear) {
-                            userStats.commands.yearlyReset = thisYear;
-                            userStats.commands.yearly = {};
-                        }
-
-                        // Apply command usage increments
-                        userStats.commands.daily[cmdName] = (userStats.commands.daily[cmdName] || 0) + 1;
-                        userStats.commands.monthly[cmdName] = (userStats.commands.monthly[cmdName] || 0) + 1;
-                        userStats.commands.yearly[cmdName] = (userStats.commands.yearly[cmdName] || 0) + 1;
-                        userStats.commands.total[cmdName] = (userStats.commands.total[cmdName] || 0) + 1;
-
-                        // Largest balance/bank tracking
-                        if (balance > (userStats.largestBalance || 0)) userStats.largestBalance = balance;
-                        if (bank > (userStats.largestBank || 0)) userStats.largestBank = bank;
-
-                        // Single write back eliminates all races
-                        await db.set(`${userId}.stats`, userStats);
+                        const statWrites = [];
+                        if (balance > (largestBalance || 0)) statWrites.push(db.set(`${userId}.stats.largestBalance`, balance));
+                        if (bank > (largestBank || 0)) statWrites.push(db.set(`${userId}.stats.largestBank`, bank));
+                        if (statWrites.length) await Promise.all(statWrites);
                     }
                 } catch (error) {
                     logger.error(error);
