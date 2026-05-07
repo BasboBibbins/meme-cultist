@@ -1,9 +1,13 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const { addNewDBUser, setDBValue, db } = require("../../database");
 const { CURRENCY_NAME, BLACKJACK_MAX_HANDS } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const wait = require('node:timers/promises').setTimeout;
-const bj = require('../../utils/blackjack');
+const { getHandValue, statusFromValue, checkHand, canSplit, isAcePair } = require('../../utils/blackjack');
+const { newDeck, drawCard } = require('../../utils/cards');
+const { canvasBlackjack } = require('../../utils/blackjackCanvas');
+const { getEquippedTheme } = require('../../themes/manager');
+const { getBlackjackColors } = require('../../themes/resolver');
 const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');
 
@@ -53,17 +57,28 @@ module.exports = {
 
         await interaction.deferReply();
 
+        // Shared embed used throughout the game — mutated by each phase
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+            .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
         // Game state for splits
         let hands = []; // Array of { cards: [], bet: number, isSplitAces: boolean, isDoubled: boolean }
         let dealerCards = [];
         let currentHandIndex = 0;
         let totalBets = 0; // Track total bets placed (original + splits + doubles)
 
-        // Initialize first hand
+        // Resolve theme for canvas rendering
+        const themeId = await getEquippedTheme(user.id);
+        const colors = getBlackjackColors(themeId);
+
+        // Create deck and deal initial cards
+        const deckId = await newDeck();
         let initialCards = [];
         for (let i = 0; i < 2; i++) {
-            dealerCards.push(bj.dealCards());
-            initialCards.push(bj.dealCards());
+            dealerCards.push(await drawCard(deckId));
+            initialCards.push(await drawCard(deckId));
         }
         hands.push({ cards: initialCards, bet: originalBet, isSplitAces: false, isDoubled: false });
         totalBets = originalBet;
@@ -71,25 +86,31 @@ module.exports = {
         // Deduct initial bet
         await db.sub(`${user.id}.balance`, originalBet);
 
-        logger.debug(`Dealer: ${dealerCards[0].name} ${dealerCards[1].name} = ${dealerCards[0].value + dealerCards[1].value}`);
-        logger.debug(`${user.username}: ${initialCards[0].name} ${initialCards[1].name} = ${initialCards[0].value + initialCards[1].value}`);
+        logger.debug(`Dealer: ${dealerCards[0].name} ${dealerCards[1].name} = ${dealerCards[0].numericValue + dealerCards[1].numericValue}`);
+        logger.debug(`${user.username}: ${initialCards[0].name} ${initialCards[1].name} = ${initialCards[0].numericValue + initialCards[1].numericValue}`);
+
+        // Helper: render current state to canvas and attach to embed
+        async function renderState(revealHole = false, activeIndex = 0, title = 'Good luck!', description = '') {
+            const attachment = await canvasBlackjack(dealerCards, hands, colors, themeId, revealHole, activeIndex);
+            if (attachment) {
+                embed.setImage('attachment://blackjack.png');
+            }
+            embed.setTitle(title);
+            if (description) embed.setDescription(description);
+            return attachment;
+        }
 
         // Check for natural blackjack
-        if (bj.checkHand(initialCards) === 'blackjack') {
-            const dealerTotal = bj.getHandValue(dealerCards);
+        if (checkHand(initialCards) === 'blackjack') {
+            const dealerTotal = getHandValue(dealerCards);
+            const attachment = await renderState(true, 0, 'Blackjack!');
             if (dealerTotal === 21) {
                 // Push - both have natural blackjack
                 await db.add(`${stats}.ties`, 1);
                 await db.add(`${user.id}.balance`, originalBet);
-                // Net 0 for a push, no profit change
-                const embed = new EmbedBuilder()
-                    .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setTitle(`Push!`)
-                    .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')}\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nBoth have blackjack! It's a push!\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
-                    .setColor(0xFFFF00)
-                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                    .setTimestamp();
-                return await interaction.editReply({ embeds: [embed], components: [] });
+                embed.setColor(0xFFFF00)
+                    .setDescription(`Both have blackjack! It's a push!\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
+                return await interaction.editReply({ embeds: [embed], components: [], files: [attachment] });
             }
             let winnings = originalBet + Math.ceil(originalBet * 1.5);
             await db.add(`${user.id}.balance`, winnings);
@@ -97,55 +118,31 @@ module.exports = {
             await db.add(`${stats}.blackjacks`, 1);
             if (winnings > await db.get(`${stats}.biggestWin`)) await db.set(`${stats}.biggestWin`, winnings);
             await db.add(`${stats}.profit`, winnings - originalBet);
-            const embed = new EmbedBuilder()
-                .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setTitle(`Blackjack!`)
-                .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')} (${dealerTotal})\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nYou got blackjack! You win **${(originalBet * 1.5).toLocaleString('en-US')}** ${CURRENCY_NAME}!\nYour new balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
-                .setColor(0x00AE86)
-                .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                .setTimestamp();
-            return await interaction.editReply({ embeds: [embed], components: [] });
+            embed.setColor(0x00AE86)
+                .setDescription(`You got blackjack! You win **${(originalBet * 1.5).toLocaleString('en-US')}** ${CURRENCY_NAME}!\nYour new balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
+                .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+            return await interaction.editReply({ embeds: [embed], components: [], files: [attachment] });
         }
 
         // Dealer peeks for natural blackjack (standard timing for late surrender).
         // Player blackjack was handled above, so any dealer blackjack here is a loss.
-        if (bj.checkHand(dealerCards) === 'blackjack') {
+        if (checkHand(dealerCards) === 'blackjack') {
             await db.add(`${stats}.losses`, 1);
             await db.add(`${stats}.profit`, -originalBet);
             const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
             if (originalBet > biggestLoss) await db.set(`${stats}.biggestLoss`, originalBet);
-            const dealerTotal = bj.getHandValue(dealerCards);
-            const embed = new EmbedBuilder()
-                .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setTitle(`Dealer Blackjack!`)
-                .setDescription(`**Dealer:**\n${dealerCards.map(card => `\`${card.char}\``).join(' ')} (${dealerTotal}) 🃏\n\n**${user.displayName}:**\n${initialCards.map(card => `\`${card.char}\``).join(' ')}\n\nDealer has blackjack! You lose **${originalBet.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
-                .setColor(0xFF0000)
-                .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                .setTimestamp();
-            return await interaction.editReply({ embeds: [embed], components: [] });
+            const dealerTotal = getHandValue(dealerCards);
+            const attachment = await renderState(true, 0, 'Dealer Blackjack!');
+            embed.setColor(0xFF0000)
+                .setDescription(`Dealer has blackjack! You lose **${originalBet.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
+                .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+            return await interaction.editReply({ embeds: [embed], components: [], files: [attachment] });
         }
 
         // Late-surrender window (seconds) — forfeit button auto-expires after this if the player doesn't act.
         const FORFEIT_WINDOW_MS = 10000;
 
         const statusTag = (status) => status === 'bust' ? ' 💥' : status === 'blackjack' ? ' 🃏' : '';
-        const renderCards = (cards) => cards.map(c => `\`${c.char}\``).join(' ');
-
-        function buildDescription(activeHandIndex) {
-            let desc = `**Dealer:**\n\`${dealerCards[0].char}\` \`??\`\n\n`;
-            const multi = hands.length > 1;
-            for (let i = 0; i < hands.length; i++) {
-                const h = hands[i];
-                const val = bj.getHandValue(h.cards);
-                const tag = statusTag(bj.statusFromValue(val));
-                const marker = h.isDoubled ? ' 💵' : '';
-                const arrow = multi && i === activeHandIndex ? '▶️ ' : '';
-                const label = multi ? `Hand ${i + 1}:` : `Your hand:`;
-                const prefix = multi ? `${arrow} **${label}** ` : `**${label}** `;
-                desc += `${prefix}${renderCards(h.cards)} (${val})${marker}${tag}` + (multi ? '\n' : '');
-            }
-            return desc;
-        }
 
         // Main game loop - play through each hand
         async function playHands() {
@@ -156,7 +153,7 @@ module.exports = {
                 const canAffordBet = balance >= currentHand.bet;
 
                 const canSplitThisHand = hasTwo &&
-                    bj.canSplit(currentHand.cards) &&
+                    canSplit(currentHand.cards) &&
                     hands.length < MAX_HANDS &&
                     !currentHand.isSplitAces &&
                     canAffordBet;
@@ -175,22 +172,19 @@ module.exports = {
             await playDealer();
         }
 
-        async function playHand(hand, handIndex, canSplit, canDouble, canForfeit = false) {
+        async function playHand(hand, handIndex, splitEnabled, canDouble, canForfeit = false) {
             return new Promise(async (resolve) => {
-                const embed = new EmbedBuilder()
-                    .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                    .setTitle(hands.length > 1 ? `Hand ${handIndex + 1} of ${hands.length}` : `Good luck!`)
-                    .setColor(randomHexColor())
-                    .setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                    .setTimestamp();
+                embed.setColor(randomHexColor());
+                embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
 
-                embed.setDescription(buildDescription(handIndex));
+                const title = hands.length > 1 ? `Hand ${handIndex + 1} of ${hands.length}` : `Good luck!`;
+                const attachment = await renderState(false, handIndex, title);
 
                 // Split aces: one card only, auto-stand
                 if (hand.isSplitAces) {
-                    await interaction.editReply({ embeds: [embed], components: [] });
+                    await interaction.editReply({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
                     await wait(1000);
-                    resolve(bj.statusFromValue(bj.getHandValue(hand.cards)) === 'bust' ? 'bust' : 'stand');
+                    resolve(statusFromValue(getHandValue(hand.cards)) === 'bust' ? 'bust' : 'stand');
                     return;
                 }
 
@@ -220,9 +214,9 @@ module.exports = {
                     .setLabel('Split')
                     .setStyle(ButtonStyle.Secondary)
                     .setEmoji('✂')
-                    .setDisabled(!canSplit);
+                    .setDisabled(!splitEnabled);
 
-                if (canSplit || hands.length > 1) {
+                if (splitEnabled || hands.length > 1) {
                     buttonRow.addComponents(splitButton);
                 }
 
@@ -238,10 +232,9 @@ module.exports = {
                     buttonRow.addComponents(forfeitButton);
                 }
 
-                let msg = await interaction.editReply({ embeds: [embed], components: [buttonRow] });
+                let msg = await interaction.editReply({ embeds: [embed], components: [buttonRow], files: attachment ? [attachment] : [] });
 
-                // Disables every action button except hit/stand — used when the hand is no longer eligible
-                // to double/split/surrender (after the first hit or after the late-surrender window closes).
+                // Disables every action button except hit/stand
                 const disableAdvancedActions = () => {
                     for (const btn of buttonRow.components) {
                         const id = btn.data?.custom_id;
@@ -251,14 +244,14 @@ module.exports = {
                     }
                 };
 
-                // Forfeit inactivity timer — disable the button after the window elapses if unused.
+                // Forfeit inactivity timer
                 let forfeitTimer = null;
                 if (canForfeit) {
                     forfeitTimer = setTimeout(async () => {
                         const forfeitBtn = buttonRow.components.find(b => b.data?.custom_id === 'forfeit');
                         if (forfeitBtn && !forfeitBtn.data.disabled) {
                             forfeitBtn.setDisabled(true);
-                            try { await msg.edit({ embeds: [embed], components: [buttonRow] }); } catch (_) {}
+                            try { await msg.edit({ embeds: [embed], components: [buttonRow], files: attachment ? [attachment] : [] }); } catch (_) {}
                         }
                     }, FORFEIT_WINDOW_MS);
                 }
@@ -267,37 +260,36 @@ module.exports = {
                 const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
 
                 collector.on('collect', async i => {
-                    // Any user action cancels the forfeit inactivity timer.
                     if (forfeitTimer) { clearTimeout(forfeitTimer); forfeitTimer = null; }
 
                     if (i.customId === 'hit') {
-                        hand.cards.push(bj.dealCards());
-                        const newVal = bj.getHandValue(hand.cards);
-                        const handStatus = bj.statusFromValue(newVal);
+                        hand.cards.push(await drawCard(deckId));
+                        const newVal = getHandValue(hand.cards);
+                        const handStatus = statusFromValue(newVal);
                         logger.debug(`${user.username} Hand ${handIndex + 1}: ${hand.cards.map(c => c.name).join(' ')} = ${newVal}`);
 
-                        embed.setDescription(buildDescription(handIndex));
-
                         if (handStatus === 'bust') {
-                            embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Bust! (${newVal})` : `Bust! (${newVal})`);
+                            const title = hands.length > 1 ? `Hand ${handIndex + 1} — Bust! (${newVal})` : `Bust! (${newVal})`;
+                            const att = await renderState(false, handIndex, title);
                             embed.setColor(0xFF0000);
-                            await i.update({ embeds: [embed], components: [] });
+                            await i.update({ embeds: [embed], components: [], files: att ? [att] : [] });
                             collector.stop('bust');
                         } else if (handStatus === 'blackjack') {
-                            embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — 21!` : `21!`);
+                            const title = hands.length > 1 ? `Hand ${handIndex + 1} — 21!` : `21!`;
+                            const att = await renderState(false, handIndex, title);
                             embed.setColor(0x00AE86);
-                            await i.update({ embeds: [embed], components: [] });
+                            await i.update({ embeds: [embed], components: [], files: att ? [att] : [] });
                             collector.stop('blackjack');
                         } else {
-                            // Disable double/split/forfeit after hitting
                             disableAdvancedActions();
-                            await i.update({ embeds: [embed], components: [buttonRow] });
+                            const att = await renderState(false, handIndex, title);
+                            await i.update({ embeds: [embed], components: [buttonRow], files: att ? [att] : [] });
                         }
                     } else if (i.customId === 'stand') {
-                        const standVal = bj.getHandValue(hand.cards);
-                        embed.setDescription(buildDescription(handIndex));
-                        embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Stand (${standVal})` : `Stand (${standVal})`);
-                        await i.update({ embeds: [embed], components: [] });
+                        const standVal = getHandValue(hand.cards);
+                        const stTitle = hands.length > 1 ? `Hand ${handIndex + 1} — Stand (${standVal})` : `Stand (${standVal})`;
+                        const att = await renderState(false, handIndex, stTitle);
+                        await i.update({ embeds: [embed], components: [], files: att ? [att] : [] });
                         collector.stop('stand');
                     } else if (i.customId === 'double') {
                         await db.sub(`${user.id}.balance`, hand.bet);
@@ -305,31 +297,28 @@ module.exports = {
                         hand.bet *= 2;
                         hand.isDoubled = true;
 
-                        hand.cards.push(bj.dealCards());
-                        const newVal = bj.getHandValue(hand.cards);
-                        const doubleStatus = bj.statusFromValue(newVal);
+                        hand.cards.push(await drawCard(deckId));
+                        const newVal = getHandValue(hand.cards);
+                        const doubleStatus = statusFromValue(newVal);
                         logger.debug(`${user.username} Hand ${handIndex + 1} doubled: ${hand.cards.map(c => c.name).join(' ')} = ${newVal}`);
 
-                        embed.setDescription(buildDescription(handIndex));
-                        if (doubleStatus === 'bust') {
-                            embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Double Down — Bust! (${newVal})` : `Double Down — Bust! (${newVal})`);
-                            embed.setColor(0xFF0000);
-                        } else {
-                            embed.setTitle(hands.length > 1 ? `Hand ${handIndex + 1} — Double Down (${newVal})` : `Double Down (${newVal})`);
-                        }
+                        const dTitle = doubleStatus === 'bust'
+                            ? (hands.length > 1 ? `Hand ${handIndex + 1} — Double Down — Bust! (${newVal})` : `Double Down — Bust! (${newVal})`)
+                            : (hands.length > 1 ? `Hand ${handIndex + 1} — Double Down (${newVal})` : `Double Down (${newVal})`);
+                        const att = await renderState(false, handIndex, dTitle);
+                        if (doubleStatus === 'bust') embed.setColor(0xFF0000);
                         embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
-                        await i.update({ embeds: [embed], components: [] });
+                        await i.update({ embeds: [embed], components: [], files: att ? [att] : [] });
                         collector.stop(doubleStatus === 'bust' ? 'bust' : doubleStatus === 'blackjack' ? 'blackjack' : 'stand');
                     } else if (i.customId === 'split') {
-                        // Split this hand
                         await db.sub(`${user.id}.balance`, hand.bet);
                         totalBets += hand.bet;
 
-                        const wasAcePair = bj.isAcePair(hand.cards);
+                        const wasAcePair = isAcePair(hand.cards);
                         const splitCard = hand.cards[1];
-                        hand.cards = [hand.cards[0], bj.dealCards()];
+                        hand.cards = [hand.cards[0], await drawCard(deckId)];
                         const newHand = {
-                            cards: [splitCard, bj.dealCards()],
+                            cards: [splitCard, await drawCard(deckId)],
                             bet: hand.bet,
                             isSplitAces: wasAcePair,
                             isDoubled: false
@@ -339,12 +328,10 @@ module.exports = {
                         hands.splice(handIndex + 1, 0, newHand);
                         logger.debug(`${user.username} split hand ${handIndex + 1}. Now ${hands.length} hands.`);
 
-                        embed.setTitle(`Split! (${hands.length} hands)`);
-                        embed.setDescription(buildDescription(handIndex));
-                        await i.update({ embeds: [embed], components: [] });
+                        const att = await renderState(false, handIndex, `Split! (${hands.length} hands)`);
+                        await i.update({ embeds: [embed], components: [], files: att ? [att] : [] });
                         collector.stop('split');
                     } else if (i.customId === 'forfeit') {
-                        // Late surrender — refund half the bet, reveal dealer hand, end the game.
                         const refund = Math.floor(hand.bet / 2);
                         const netLoss = hand.bet - refund;
                         await db.add(`${user.id}.balance`, refund);
@@ -354,13 +341,11 @@ module.exports = {
                         const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
                         if (netLoss > biggestLoss) await db.set(`${stats}.biggestLoss`, netLoss);
 
-                        const dealerVal = bj.getHandValue(dealerCards);
-                        const handVal = bj.getHandValue(hand.cards);
-                        embed.setTitle(`Forfeit`);
-                        embed.setDescription(`**Dealer:**\n${renderCards(dealerCards)} (${dealerVal})\n\n**Your hand:** ${renderCards(hand.cards)} (${handVal})\n\nYou forfeited your hand and recovered **${refund.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
+                        const att = await renderState(true, handIndex, 'Forfeit',
+                            `You forfeited your hand and recovered **${refund.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
                         embed.setColor(0xAAAAAA);
                         embed.setFooter({ text: `Bet: ${hand.bet.toLocaleString('en-US')} ${CURRENCY_NAME} (forfeited) | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
-                        await i.update({ embeds: [embed], components: [] });
+                        await i.update({ embeds: [embed], components: [], files: att ? [att] : [] });
                         logger.info(`${user.username}(${user.id}) forfeited their hand, recovering ${refund} ${CURRENCY_NAME}.`);
                         collector.stop('forfeit');
                     }
@@ -370,7 +355,6 @@ module.exports = {
                     if (forfeitTimer) { clearTimeout(forfeitTimer); forfeitTimer = null; }
                     logger.debug(`Hand ${handIndex + 1} collector ended. Reason: ${reason}`);
 
-                    // Brief pause so the user can see the result before the next hand
                     if (hands.length > 1 && ['bust', 'blackjack', 'stand', 'double'].includes(reason)) {
                         await wait(1500);
                     }
@@ -381,12 +365,11 @@ module.exports = {
                         const balance = await db.get(`${user.id}.balance`);
                         const hasTwo = hand.cards.length === 2;
                         const canAffordBet = balance >= hand.bet;
-                        const canSplitThisHand = hasTwo && bj.canSplit(hand.cards) &&
+                        const canSplitThisHand = hasTwo && canSplit(hand.cards) &&
                             hands.length < MAX_HANDS && !hand.isSplitAces && canAffordBet;
                         const canDoubleHand = hasTwo && !hand.isDoubled && canAffordBet;
                         resolve(await playHand(hand, handIndex, canSplitThisHand, canDoubleHand));
                     } else {
-                        // timeout or unexpected reason — auto-stand
                         resolve('stand');
                     }
                 });
@@ -394,44 +377,25 @@ module.exports = {
         }
 
         async function playDealer() {
-            function buildDealerDescription() {
-                const dealerVal = bj.getHandValue(dealerCards);
-                let desc = `**Dealer:**\n${renderCards(dealerCards)} (${dealerVal})\n\n`;
-                const multi = hands.length > 1;
-                for (let i = 0; i < hands.length; i++) {
-                    const h = hands[i];
-                    const val = bj.getHandValue(h.cards);
-                    const tag = statusTag(bj.statusFromValue(val));
-                    const marker = h.isDoubled ? ' 💵' : '';
-                    const label = multi ? `Hand ${i + 1}:` : `Your hand:`;
-                    desc += `**${label}** ${renderCards(h.cards)} (${val})${marker}${tag}\n`;
-                }
-                return desc;
-            }
+            embed.setColor(randomHexColor());
+            embed.setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
 
-            const dealerEmbed = new EmbedBuilder()
-                .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setTitle(`Dealer's turn`)
-                .setColor(randomHexColor())
-                .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                .setTimestamp();
-
-            dealerEmbed.setDescription(buildDealerDescription());
-            await interaction.editReply({ embeds: [dealerEmbed], components: [] });
+            // Reveal hole card and show dealer's turn start
+            let attachment = await renderState(true, 0, `Dealer's turn`);
+            await interaction.editReply({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
             await wait(1000);
 
-            // Dealer draws until hard 17+ (one value check per iteration)
-            let dealerTotal = bj.getHandValue(dealerCards);
+            // Dealer draws until hard 17+
+            let dealerTotal = getHandValue(dealerCards);
             while (dealerTotal < 17) {
-                dealerCards.push(bj.dealCards());
-                dealerTotal = bj.getHandValue(dealerCards);
-                dealerEmbed.setDescription(buildDealerDescription());
-                await interaction.editReply({ embeds: [dealerEmbed], components: [] });
+                dealerCards.push(await drawCard(deckId));
+                dealerTotal = getHandValue(dealerCards);
+                attachment = await renderState(true, 0, `Dealer's turn`);
+                await interaction.editReply({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
                 await wait(1000);
             }
 
-            const dealerStatus = bj.statusFromValue(dealerTotal);
-            let finalDescription = `**Dealer:**\n${renderCards(dealerCards)} (${dealerTotal})\n\n`;
+            const dealerStatus = statusFromValue(dealerTotal);
             logger.debug(`Dealer: ${dealerCards.map(c => c.name).join(' ')} = ${dealerTotal}`);
 
             let totalWinnings = 0;
@@ -440,36 +404,31 @@ module.exports = {
 
             for (let i = 0; i < hands.length; i++) {
                 const hand = hands[i];
-                const handTotal = bj.getHandValue(hand.cards);
-                const handStatus = bj.statusFromValue(handTotal);
+                const handTotal = getHandValue(hand.cards);
+                const handStatus = statusFromValue(handTotal);
 
                 let handResult = '';
                 let winnings = 0;
 
                 if (handStatus === 'bust') {
-                    // Player already busted - lost
                     handResult = 'BUST';
                     if (hand.bet > biggestHandLoss) biggestHandLoss = hand.bet;
                     await db.add(`${stats}.losses`, 1);
                 } else if (dealerStatus === 'bust') {
-                    // Dealer busted - player wins
                     winnings = hand.bet * 2;
                     handResult = 'WIN';
                     totalWinnings += winnings;
                     await db.add(`${stats}.wins`, 1);
                 } else if (handTotal > dealerTotal) {
-                    // Player higher - wins
                     winnings = hand.bet * 2;
                     handResult = 'WIN';
                     totalWinnings += winnings;
                     await db.add(`${stats}.wins`, 1);
                 } else if (handTotal < dealerTotal) {
-                    // Dealer higher - loses
                     handResult = 'LOSE';
                     if (hand.bet > biggestHandLoss) biggestHandLoss = hand.bet;
                     await db.add(`${stats}.losses`, 1);
                 } else {
-                    // Tie - push
                     winnings = hand.bet;
                     handResult = 'PUSH';
                     totalWinnings += winnings;
@@ -479,10 +438,9 @@ module.exports = {
                 const marker = hand.isDoubled ? ' 💵' : '';
                 const tag = statusTag(handStatus);
                 const label = hands.length > 1 ? `Hand ${i + 1}:` : `Your hand:`;
-                resultLines.push(`**${label}** ${renderCards(hand.cards)} (${handTotal})${marker}${tag} → ${handResult}${winnings > 0 ? ` (+${winnings.toLocaleString('en-US')})` : ''}`);
+                resultLines.push(`**${label}** (${handTotal})${marker}${tag} → ${handResult}${winnings > 0 ? ` (+${winnings.toLocaleString('en-US')})` : ''}`);
             }
 
-            // Add winnings
             if (totalWinnings > 0) {
                 await db.add(`${user.id}.balance`, totalWinnings);
                 const profit = totalWinnings - totalBets;
@@ -494,7 +452,6 @@ module.exports = {
                 }
             }
 
-            // Update stats for biggest loss (only actual losses)
             if (biggestHandLoss > 0) {
                 const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
                 if (biggestHandLoss > biggestLoss) {
@@ -502,22 +459,17 @@ module.exports = {
                 }
             }
 
-            // Track net profit/loss for this game
             const netProfit = totalWinnings - totalBets;
             await db.add(`${stats}.profit`, netProfit);
 
-            const finalEmbed = new EmbedBuilder()
-                .setAuthor({ name: `${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setTitle(dealerStatus === 'bust' ? 'Dealer busts!' : `Dealer: ${dealerTotal}`)
-                .setDescription(`${finalDescription}${resultLines.join('\n')}\n\n${totalWinnings > totalBets ? `You won **${(totalWinnings - totalBets).toLocaleString('en-US')}** ${CURRENCY_NAME}!` : totalWinnings === totalBets ? `You broke even.` : `You lost **${(totalBets - totalWinnings).toLocaleString('en-US')}** ${CURRENCY_NAME}.`}\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
-                .setColor(totalWinnings > totalBets ? 0x00AE86 : (totalWinnings > 0 ? 0xFFFF00 : 0xFF0000))
-                .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [finalEmbed], components: [] });
+            const dTitle = dealerStatus === 'bust' ? 'Dealer busts!' : `Dealer: ${dealerTotal}`;
+            const desc = `${resultLines.join('\n')}\n\n${totalWinnings > totalBets ? `You won **${(totalWinnings - totalBets).toLocaleString('en-US')}** ${CURRENCY_NAME}!` : totalWinnings === totalBets ? `You broke even.` : `You lost **${(totalBets - totalWinnings).toLocaleString('en-US')}** ${CURRENCY_NAME}.`}\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`;
+            attachment = await renderState(true, 0, dTitle, desc);
+            embed.setColor(totalWinnings > totalBets ? 0x00AE86 : (totalWinnings > 0 ? 0xFFFF00 : 0xFF0000));
+            await interaction.editReply({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
         }
 
         // Start the game
         await playHands();
     }
-}
+};
