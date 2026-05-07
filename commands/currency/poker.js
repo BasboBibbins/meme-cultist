@@ -1,7 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Attachment, AttachmentBuilder } = require('discord.js');
-const { QuickDB } = require("quick.db");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { addNewDBUser } = require("../../database");
+const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const wait = require('node:timers/promises').setTimeout;

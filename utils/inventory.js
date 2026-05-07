@@ -9,8 +9,7 @@
  */
 
 const { EmbedBuilder } = require('discord.js');
-const { QuickDB } = require('quick.db');
-const db = new QuickDB({ filePath: './db/users.sqlite' });
+const { db } = require('../database');
 
 const { CURRENCY_NAME } = require('../config.js');
 const { getThemeList, getTheme } = require('../themes/configs');
@@ -403,6 +402,7 @@ function buildEquipResultEmbed({ result, itemId, user, footer }) {
             case 'unknown_theme':  desc = `Unknown item \`${itemId}\`.`; break;
             case 'not_owned':      desc = `You don't own ${prefix}**${name}**.\nCheck \`/shop browse\` to purchase it!`; break;
             case 'unknown_category': desc = `**${name}** can't be equipped.`; break;
+            case 'write_failed':   desc = `Failed to save your theme selection. Please try again.`; break;
             default:               desc = `Equip failed: \`${result.error}\`.`;
         }
         const embed = new EmbedBuilder()

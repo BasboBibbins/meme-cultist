@@ -1,6 +1,5 @@
-const { QuickDB } = require("quick.db");
 const { AttachmentBuilder } = require("discord.js");
-const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
+const { db: usersDb } = require("../database");
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
 const { generateImage } = require("./gemini");

@@ -1,7 +1,5 @@
-const { QuickDB } = require("quick.db");
+const { db } = require('../database');
 const logger = require('./logger');
-
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
 
 /**
  * Safe recursive-descent math expression evaluator.

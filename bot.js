@@ -8,8 +8,7 @@ const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
 const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
-const { QuickDB } = require("quick.db")
-const { initDB } = require("./database")
+const { initDB, db, applyCommandStatsResets } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
@@ -69,10 +68,7 @@ client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.immediateFactsDebounce = new Map();
 
-let db = null;
-if (fs.existsSync(`./db/users.sqlite`)) {
-    db = new QuickDB({ filePath: `./db/users.sqlite` })
-} else {
+if (!fs.existsSync(`./db/users.sqlite`)) {
     logger.error(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
     process.exit(1)
 }
@@ -198,9 +194,36 @@ if (DELETE_SLASH) {
         await player.extractors.loadMulti(DefaultExtractors);
         await player.extractors.register(YoutubeiExtractor, {});
         client.player = player;
+        // Pre-warm slot image caches to eliminate cold-start latency on first spin
+        try {
+            const { warmCaches } = require('./utils/slotsCanvas');
+            await warmCaches();
+            logger.info('Slot image caches pre-warmed.');
+        } catch (err) {
+            logger.warn('Failed to pre-warm slot caches, will load on first spin.', { error: err });
+        }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
         if (DEBUG_MODE) {
             logger.info(`DEBUG MODE ENABLED!`);
+        }
+
+        // Sweep stale daily/monthly/yearly command stat buckets across all guild members.
+        // Catches users who were inactive across a period rollover while the bot was down.
+        try {
+            const guild = client.guilds.cache.get(GUILD_ID);
+            if (guild) {
+                let resets = 0;
+                for (const [memberId] of guild.members.cache) {
+                    if (memberId === client.user.id) continue;
+                    const before = await db.get(`${memberId}.stats.commands.dailyReset`);
+                    await applyCommandStatsResets(memberId);
+                    const after = await db.get(`${memberId}.stats.commands.dailyReset`);
+                    if (before !== after) resets++;
+                }
+                logger.info(`Stats reset sweep complete (${resets} user${resets === 1 ? '' : 's'} rolled over).`);
+            }
+        } catch (err) {
+            logger.warn('Stats reset sweep failed.', { error: err });
         }
     })
 
@@ -253,54 +276,25 @@ if (DELETE_SLASH) {
                         };
                         await player.context.provide(data, () => command.execute(interaction));
                     } else {
-                        command.execute(interaction);
+                        await command.execute(interaction);
                     }
 
                     logger.info(`${interaction.user.tag} used command \x1b[33m\`${interaction.commandName}\`\x1b[0m in #${interaction.channel.name} in ${interaction.guild.name}.`);
                     if (db) {
                         const userId = interaction.user.id;
                         const cmdName = interaction.commandName;
-                        const now = moment();
-                        const today = now.format("YYYY-MM-DD");
-                        const thisMonth = now.format("YYYY-MM");
-                        const thisYear = now.format("YYYY");
 
-                        // Batch reset checks — read all three at once, then write only what changed
-                        const [dailyReset, monthlyReset, yearlyReset] = await Promise.all([
-                            db.get(`${userId}.stats.commands.dailyReset`),
-                            db.get(`${userId}.stats.commands.monthlyReset`),
-                            db.get(`${userId}.stats.commands.yearlyReset`),
-                        ]);
-                        const resetWrites = [];
-                        if (dailyReset !== today) {
-                            resetWrites.push(
-                                db.set(`${userId}.stats.commands.dailyReset`, today),
-                                db.set(`${userId}.stats.commands.daily`, {})
-                            );
-                        }
-                        if (monthlyReset !== thisMonth) {
-                            resetWrites.push(
-                                db.set(`${userId}.stats.commands.monthlyReset`, thisMonth),
-                                db.set(`${userId}.stats.commands.monthly`, {})
-                            );
-                        }
-                        if (yearlyReset !== thisYear) {
-                            resetWrites.push(
-                                db.set(`${userId}.stats.commands.yearlyReset`, thisYear),
-                                db.set(`${userId}.stats.commands.yearly`, {})
-                            );
-                        }
-                        await Promise.all(resetWrites);
+                        // Apply any pending period resets, then increment counters in memory
+                        // and persist with a single scoped write.
+                        const commands = await applyCommandStatsResets(userId);
+                        commands.daily[cmdName] = (commands.daily[cmdName] || 0) + 1;
+                        commands.monthly[cmdName] = (commands.monthly[cmdName] || 0) + 1;
+                        commands.yearly[cmdName] = (commands.yearly[cmdName] || 0) + 1;
+                        commands.total[cmdName] = (commands.total[cmdName] || 0) + 1;
+                        await db.set(`${userId}.stats.commands`, commands);
 
-                        // Batch command usage increments
-                        await Promise.all([
-                            db.add(`${userId}.stats.commands.daily.${cmdName}`, 1),
-                            db.add(`${userId}.stats.commands.monthly.${cmdName}`, 1),
-                            db.add(`${userId}.stats.commands.yearly.${cmdName}`, 1),
-                            db.add(`${userId}.stats.commands.total.${cmdName}`, 1),
-                        ]);
-
-                        // Batch balance/bank largest-value checks
+                        // Largest balance/bank checks — narrow writes only, separate from
+                        // the commands subtree to avoid racing with the midnight interest job.
                         const [balance, largestBalance, bank, largestBank] = await Promise.all([
                             db.get(`${userId}.balance`),
                             db.get(`${userId}.stats.largestBalance`),
@@ -308,8 +302,8 @@ if (DELETE_SLASH) {
                             db.get(`${userId}.stats.largestBank`),
                         ]);
                         const statWrites = [];
-                        if (balance > largestBalance) statWrites.push(db.set(`${userId}.stats.largestBalance`, balance));
-                        if (bank > largestBank) statWrites.push(db.set(`${userId}.stats.largestBank`, bank));
+                        if (balance > (largestBalance || 0)) statWrites.push(db.set(`${userId}.stats.largestBalance`, balance));
+                        if (bank > (largestBank || 0)) statWrites.push(db.set(`${userId}.stats.largestBank`, bank));
                         if (statWrites.length) await Promise.all(statWrites);
                     }
                 } catch (error) {

@@ -1,8 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { QuickDB } = require("quick.db");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
-const { addNewDBUser, setDBValue } = require("../../database");
-const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES } = require("../../config.js");
+const { addNewDBUser, setDBValue, db } = require("../../database");
+const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES, TESTING_MODE } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const { generatePaytable, playSlots } = require('../../utils/slots');
 const { formatTimeLeft } = require('../../utils/time')
@@ -42,6 +40,7 @@ module.exports = {
             logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
             await addNewDBUser(user);
         }
+        const dbUserFresh = await db.get(user.id);
 
         switch (option) {
             case 'paytable':
@@ -49,8 +48,8 @@ module.exports = {
                 break;
 
             case 'daily':
-                if (dbUser.cooldowns.freespins > Date.now()) {
-                    const timeLeft = new Date(dbUser.cooldowns.freespins - Date.now());
+                if ((dbUserFresh?.cooldowns?.freespins || 0) > Date.now()) {
+                    const timeLeft = new Date(dbUserFresh.cooldowns.freespins - Date.now());
                     logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${await formatTimeLeft(timeLeft)}`)
                     const embed = new EmbedBuilder()
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })

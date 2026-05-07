@@ -41,13 +41,13 @@ async function winJackpot(userId, username) {
     const newJackpot = {
         amount: SEED,
         lastWon: Date.now(),
-        lastWinner: { id: userId, name: username }
+        lastWinner: { id: userId, name: username, wonAmount: wonAmount }
     };
 
     await db.set('progressive', newJackpot);
     logger.log(`JACKPOT WON: ${username} (${userId}) won ${wonAmount.toLocaleString()} ${CURRENCY}!`);
 
-    return { amount: wonAmount, ...newJackpot };
+    return { ...newJackpot, amount: wonAmount };
 }
 
 

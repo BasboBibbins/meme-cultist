@@ -1,6 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { QuickDB } = require("quick.db");
-const usersDb = new QuickDB({ filePath: `./db/users.sqlite` });
+const { db: usersDb } = require('../../database');
 const logger = require('../../utils/logger');
 const { getUserChatbotData } = require('../../utils/openai');
 

@@ -1,5 +1,5 @@
 const { OpenAIApi, Configuration } = require('openai');
-const { CHATBOT_LOCAL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../config.js');
+const { CHATBOT_LOCAL, CONVO_MODEL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../config.js');
 const logger = require('./logger');
 
 let _openaiClient = null;
@@ -345,7 +345,7 @@ Generate 15 unique commentary lines:`;
     try {
         const res = await withTimeout(
             openai.createChatCompletion({
-                model: 'deepseek-chat',
+                model: CONVO_MODEL,
                 messages: [
                     { role: 'system', content: 'You are an exciting horse racing commentator. Respond with only numbered commentary lines, one per line. Never use specific horse names.' },
                     { role: 'user', content: prompt }

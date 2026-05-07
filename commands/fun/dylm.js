@@ -1,8 +1,6 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require('discord.js');
 const Canvas = require('canvas');
 const { registerFont, ImageData, loadImage, createCanvas } = require('canvas');
-const GIFEncoder = require('gif-encoder');
-const { parseGIF, decompressFrames } = require('gifuct-js');
 const logger = require('../../utils/logger');
 const path = require('path');
 

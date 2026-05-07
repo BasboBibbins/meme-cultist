@@ -3,7 +3,7 @@ const { OpenAIApi, Configuration } = require("openai");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
-const { CHATBOT_LOCAL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
+const { CHATBOT_LOCAL, CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: `./db/feedback.sqlite` });
 
@@ -24,13 +24,35 @@ function getFeedbackClient() {
     return openaiClient;
 }
 
+function cleanMarkdownCode(content) {
+    if (!content) return content;
+    content = content.trim();
+    // Strip fenced code blocks (```json ... ``` or ``` ... ```)
+    if (content.startsWith("```")) {
+        const firstNewline = content.indexOf("\n");
+        if (firstNewline !== -1) {
+            content = content.slice(firstNewline + 1);
+        } else {
+            content = content.slice(3);
+        }
+        if (content.endsWith("```")) {
+            content = content.slice(0, -3).trim();
+        }
+    }
+    // Strip inline backticks
+    if (content.startsWith("`") && content.endsWith("`")) {
+        content = content.slice(1, -1).trim();
+    }
+    return content;
+}
+
 async function validateFeedback(type, description, username) {
     const openai = getFeedbackClient();
     if (!openai) return { valid: true, reason: "API unavailable", category: "unknown" };
 
     const typeLabels = { bug: 'Bug Report', suggestion: 'Feature Suggestion', general: 'General Feedback' };
 
-    const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON (no markdown):
+    const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON (NO MARKDOWN):
 
 Feedback Type: ${typeLabels[type]}
 From User: ${username}
@@ -46,7 +68,7 @@ Empty: < 5 characters of content.`;
 
     try {
         const response = await openai.createChatCompletion({
-            model: "deepseek-chat",
+            model: CONVO_MODEL,
             messages: [
                 { role: "system", content: "You respond only with valid JSON." },
                 { role: "user", content: prompt }
@@ -55,8 +77,9 @@ Empty: < 5 characters of content.`;
             temperature: 0.1
         });
 
-        const content = response.data.choices[0]?.message?.content?.trim();
+        let content = response.data.choices[0]?.message?.content?.trim();
         if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
+        content = cleanMarkdownCode(content);
         return JSON.parse(content);
     } catch (error) {
         logger.error(`[Feedback] Validation error: ${error.message}`);
@@ -116,7 +139,7 @@ async function generateIssueTitle(type, description) {
     logger.debug(`[Feedback] generateIssueTitle: Requesting title for ${typeLabel}, description length: ${description.length}`);
 
     const response = await openai.createChatCompletion({
-        model: "deepseek-chat",
+        model: CONVO_MODEL,
         messages: [
             { role: "system", content: "You generate concise GitHub issue titles. Respond with ONLY the title text, no quotes or extra formatting." },
             { role: "user", content: `Generate a short, descriptive GitHub issue title for this ${typeLabel}:\n\n"${description}"` }

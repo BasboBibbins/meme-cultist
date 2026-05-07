@@ -1,8 +1,6 @@
 const {SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits} = require('discord.js');
-const { QuickDB } = require("quick.db");
-const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB } = require("../../database");
+const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB, db } = require("../../database");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
-const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("../../utils/logger");
 const wait = require('util').promisify(setTimeout);
 

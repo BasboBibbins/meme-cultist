@@ -127,7 +127,7 @@ module.exports = {
                     .setDescription(
                         `Purchased ${prefix}**${result.item.name}** for **${formatPrice(result.item.price)}**!\n`
                         + `New balance: **${result.newBalance.toLocaleString('en-US')} ${CURRENCY_NAME}**\n\n`
-                        + `Use \`/inventory equip ${result.item.id}\` to equip it.`
+                        + `Use \`/theme set\` to equip it!`
                     )
                     .setColor(0x00FF00)
                     .setFooter(footer)

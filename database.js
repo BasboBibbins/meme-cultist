@@ -1,7 +1,47 @@
 const { QuickDB } = require("quick.db");
+const moment = require("moment");
 const { GUILD_ID } = require("./config.js");
 const db = new QuickDB({ filePath: `./db/users.sqlite` });
 const logger = require("./utils/logger");
+
+// Read the user's stats.commands subtree, clear any buckets whose period has
+// rolled over, and persist if anything changed. Returns the in-memory object so
+// callers can mutate further (e.g. increment a counter) and write once.
+// Idempotent — safe to call from /stats, the post-command handler, or a startup sweep.
+async function applyCommandStatsResets(userId) {
+    const commands = (await db.get(`${userId}.stats.commands`)) || {};
+
+    const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (!isPlainObject(commands.total)) commands.total = {};
+    if (!isPlainObject(commands.daily)) commands.daily = {};
+    if (!isPlainObject(commands.monthly)) commands.monthly = {};
+    if (!isPlainObject(commands.yearly)) commands.yearly = {};
+
+    const now = moment();
+    const today = now.format("YYYY-MM-DD");
+    const thisMonth = now.format("YYYY-MM");
+    const thisYear = now.format("YYYY");
+
+    let changed = false;
+    if (commands.dailyReset !== today) {
+        commands.dailyReset = today;
+        commands.daily = {};
+        changed = true;
+    }
+    if (commands.monthlyReset !== thisMonth) {
+        commands.monthlyReset = thisMonth;
+        commands.monthly = {};
+        changed = true;
+    }
+    if (commands.yearlyReset !== thisYear) {
+        commands.yearlyReset = thisYear;
+        commands.yearly = {};
+        changed = true;
+    }
+
+    if (changed) await db.set(`${userId}.stats.commands`, commands);
+    return commands;
+}
 
 async function getDefaultDB(user) {
     return {
@@ -24,7 +64,7 @@ async function getDefaultDB(user) {
                 "daily": {},
                 "monthly": {},
                 "yearly": {},
-                "total": 0,
+                "total": {},
             },
             "dailies": {
                 "claimed": 0,
@@ -101,9 +141,6 @@ async function getDefaultDB(user) {
                 "owned": [],
             },
         },
-        "slots": {
-            "theme": "classic",
-        },
         "chatbot": {
             messageCount: 0,
             summaries: [],
@@ -116,6 +153,8 @@ async function getDefaultDB(user) {
     }
 }
 module.exports = {
+    db,
+    applyCommandStatsResets,
     getDefaultDB: async function(user) {
         return await getDefaultDB(user);
     },
@@ -148,10 +187,33 @@ module.exports = {
                 logger.log(`Adding ${user.username} [${user.id}] to the database.`)
             } else {
                 let updated = false;
+                // Type-repair migration: legacy schema stored stats.commands.total
+                // as the number 0; convert to {} so per-command counters work.
+                if (dbUser.stats && dbUser.stats.commands && typeof dbUser.stats.commands.total === 'number') {
+                    dbUser.stats.commands.total = {};
+                    updated = true;
+                }
                 for (const [key, value] of Object.entries(defaultDB)) {
                     if (!dbUser[key]) {
                         dbUser[key] = value;
                         updated = true;
+                    } else if (dbUser[key] && typeof dbUser[key] === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
+                        // Deep-merge nested objects (e.g. cooldowns, profile, stats) so new
+                        // fields like cooldowns.freespins and profile.theme.equipped are added
+                        // to existing users without wiping their current data.
+                        for (const [subKey, subValue] of Object.entries(value)) {
+                            if (dbUser[key][subKey] === undefined || dbUser[key][subKey] === null) {
+                                dbUser[key][subKey] = subValue;
+                                updated = true;
+                            } else if (dbUser[key][subKey] && typeof dbUser[key][subKey] === 'object' && subValue && typeof subValue === 'object' && !Array.isArray(subValue)) {
+                                for (const [deepKey, deepValue] of Object.entries(subValue)) {
+                                    if (dbUser[key][subKey][deepKey] === undefined || dbUser[key][subKey][deepKey] === null) {
+                                        dbUser[key][subKey][deepKey] = deepValue;
+                                        updated = true;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 if (updated) {

@@ -8,9 +8,9 @@
  * Classic is always implicitly owned -- no DB entry required.
  */
 
-const { QuickDB } = require('quick.db');
-const db = new QuickDB({ filePath: './db/users.sqlite' });
+const { db } = require('../database');
 const { getTheme } = require('./configs');
+const logger = require('../utils/logger');
 
 const DEFAULT_THEME = 'classic';
 
@@ -36,7 +36,8 @@ async function withUserLock(userId, fn) {
  * Get the user's currently equipped theme ID.
  */
 async function getEquippedTheme(userId) {
-    return (await db.get(`${userId}.profile.theme.equipped`)) || DEFAULT_THEME;
+    const val = await db.get(`${userId}.profile.theme.equipped`);
+    return val || DEFAULT_THEME;
 }
 
 /**
@@ -67,15 +68,32 @@ async function ownsTheme(userId, themeId) {
  * Equip a theme.  Returns { success, error? }.
  */
 async function equipTheme(userId, themeId) {
-    const theme = getTheme(themeId);
-    if (theme.id !== themeId) {
-        return { success: false, error: 'unknown_theme' };
-    }
-    if (!(await ownsTheme(userId, themeId))) {
-        return { success: false, error: 'not_owned' };
-    }
-    await db.set(`${userId}.profile.theme.equipped`, themeId);
-    return { success: true };
+    return withUserLock(userId, async () => {
+        const theme = getTheme(themeId);
+        if (theme.id !== themeId) {
+            return { success: false, error: 'unknown_theme' };
+        }
+        if (!(await ownsTheme(userId, themeId))) {
+            return { success: false, error: 'not_owned' };
+        }
+        await db.set(`${userId}.profile.theme.equipped`, themeId);
+
+        // Verify the write persisted
+        const verify = await db.get(`${userId}.profile.theme.equipped`);
+        if (verify !== themeId) {
+            logger.error(`[themes] equipTheme verification failed for user ${userId}: wrote "${themeId}" but read "${verify}"`);
+            // Retry once
+            await db.set(`${userId}.profile.theme.equipped`, themeId);
+            const retryVerify = await db.get(`${userId}.profile.theme.equipped`);
+            if (retryVerify !== themeId) {
+                logger.error(`[themes] equipTheme retry also failed for user ${userId}: wrote "${themeId}" but read "${retryVerify}"`);
+                return { success: false, error: 'write_failed' };
+            }
+        }
+
+        logger.debug(`[themes] ${userId} equipped theme "${themeId}"`);
+        return { success: true };
+    });
 }
 
 /**
