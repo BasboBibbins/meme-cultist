@@ -11,7 +11,8 @@
 
 const path = require('path');
 
-const ASSETS_BASE = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
+const ASSETS_BASE       = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
+const ASSETS_BASE_CARDS = path.join(__dirname, '..', '..', 'assets', 'imgs', 'cards');
 
 module.exports = {
     id: 'classic',
@@ -112,5 +113,15 @@ module.exports = {
         // Poker uses shared keys (feltColor, tableGreen, gold, goldDark).
         // No additional overrides needed for the classic look.
         poker: {},
+
+        // ── Cards ───────────────────────────────────────────────────
+        cards: {
+            sheet:      path.join(ASSETS_BASE_CARDS, 'classic.png'),
+            back:       path.join(ASSETS_BASE_CARDS, 'classic-back.png'),
+            cardWidth:  90,
+            cardHeight: 135,
+            suitsOrder: ['CLUBS', 'DIAMONDS', 'HEARTS', 'SPADES'],
+            ranksOrder: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'J', 'Q', 'K'],
+        },
     },
 };

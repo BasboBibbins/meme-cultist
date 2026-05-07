@@ -202,6 +202,14 @@ if (DELETE_SLASH) {
         } catch (err) {
             logger.warn('Failed to pre-warm slot caches, will load on first spin.', { error: err });
         }
+        // Pre-warm card spritesheet cache to eliminate cold-start latency on first poker hand
+        try {
+            const { warmCardCache } = require('./utils/cards');
+            await warmCardCache('classic');
+            logger.info('Card sheet pre-warmed.');
+        } catch (err) {
+            logger.warn('Failed to pre-warm card sheet, will load on first /poker.', { error: err });
+        }
         logger.info(`Logged in as \x1b[33m${client.user.tag}\x1b[0m!`);
         if (DEBUG_MODE) {
             logger.info(`DEBUG MODE ENABLED!`);

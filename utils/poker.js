@@ -1,8 +1,8 @@
-const { drawCard } = require('./deckofcards');
 const { createCanvas, loadImage } = require('canvas');
 const logger = require("./logger");
 const { AttachmentBuilder } = require('discord.js');
 const { getThemeColors } = require('../themes/resolver');
+const { loadCardSheet, getCardSpriteCoords } = require('./cards');
 
 // Canvas dimensions matching roulette aesthetic
 const CANVAS_W = 600;
@@ -111,11 +111,11 @@ async function pokerScore(hand) {
 
 
 const ROYAL_FLUSH_HAND = [
-    { image: 'https://deckofcardsapi.com/static/img/0S.png', hold: true },
-    { image: 'https://deckofcardsapi.com/static/img/JS.png', hold: true },
-    { image: 'https://deckofcardsapi.com/static/img/QS.png', hold: true },
-    { image: 'https://deckofcardsapi.com/static/img/KS.png', hold: true },
-    { image: 'https://deckofcardsapi.com/static/img/AS.png', hold: true },
+    { code: '0S', hold: true },
+    { code: 'JS', hold: true },
+    { code: 'QS', hold: true },
+    { code: 'KS', hold: true },
+    { code: 'AS', hold: true },
 ];
 
 /**
@@ -123,7 +123,7 @@ const ROYAL_FLUSH_HAND = [
  */
 async function pokerPreview(themeId) {
     const colors = getThemeColors(themeId, 'poker');
-    return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors);
+    return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors, themeId);
 }
 
 module.exports = {
@@ -135,7 +135,7 @@ module.exports = {
             return null;
         }
     },
-    canvasHand: async (hand, score, colors = DEFAULT_COLORS) => {
+    canvasHand: async (hand, score, colors = DEFAULT_COLORS, themeId = 'classic') => {
         try {
             const canvas = createCanvas(CANVAS_W, CANVAS_H);
             const ctx = canvas.getContext('2d');
@@ -184,10 +184,12 @@ module.exports = {
             const startCardX = (CANVAS_W - totalCardsWidth) / 2;
             const cardY = cardAreaY + (cardAreaH - cardH) / 2;
 
+            const { img: sheetImg, cfg: sheetCfg } = await loadCardSheet(themeId);
+
             // Load and draw cards
             for (let i = 0; i < 5; i++) {
                 const cardX = startCardX + i * (cardW + cardSpacing);
-                const card = await loadImage(hand[i].image);
+                const c = getCardSpriteCoords(hand[i].code, sheetCfg);
 
                 // Card shadow
                 ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -195,7 +197,7 @@ module.exports = {
                 ctx.fill();
 
                 // Draw card image
-                ctx.drawImage(card, cardX, cardY, cardW, cardH);
+                ctx.drawImage(sheetImg, c.sx, c.sy, c.sw, c.sh, cardX, cardY, cardW, cardH);
 
                 // Gold border on held cards
                 if (hand[i].hold) {
@@ -240,15 +242,6 @@ module.exports = {
             const file = new AttachmentBuilder(buffer)
                 .setName('hand.png');
             return file;
-        } catch (err) {
-            logger.error(err);
-            return null;
-        }
-    },
-    getCard: async (deckId) => {
-        try {
-            const card = await drawCard(deckId);
-            return card.image;
         } catch (err) {
             logger.error(err);
             return null;

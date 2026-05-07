@@ -35,4 +35,14 @@ function getThemeSymbols(themeId) {
     return classic.overrides.slots.symbols;
 }
 
-module.exports = { getThemeColors, getThemeSymbols };
+// Get card spritesheet config for a theme, falling back to classic.
+function getCardSheet(themeId) {
+    const classic = getTheme('classic');
+    const theme   = getTheme(themeId);
+    return {
+        ...(classic.overrides?.cards ?? {}),
+        ...(theme.overrides?.cards   ?? {}),
+    };
+}
+
+module.exports = { getThemeColors, getThemeSymbols, getCardSheet };

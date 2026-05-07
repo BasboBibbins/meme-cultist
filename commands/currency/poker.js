@@ -3,10 +3,10 @@ const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require('../../utils/betparse');
 const wait = require('node:timers/promises').setTimeout;
-const { shuffleDeck, newDeck, dealHand, drawCard } = require('../../utils/deckofcards');
+const { shuffleDeck, newDeck, dealHand, drawCard } = require('../../utils/cards');
 const logger = require("../../utils/logger");
 const { randomHexColor } = require('../../utils/randomcolor');
-const { getCard, canvasHand, pokerScore } = require('../../utils/poker');
+const { canvasHand, pokerScore } = require('../../utils/poker');
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require('../../utils/jackpot');
 const { getEquippedTheme } = require('../../themes/manager');
 const { getThemeColors } = require('../../themes/resolver');
@@ -138,7 +138,7 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji(heldCards[4].emoji),
             );
-        let file = await canvasHand(heldCards, heldCards.score, pokerColors);
+        let file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId);
 
         const draw_row = new ActionRowBuilder()
             .addComponents(
@@ -185,7 +185,7 @@ module.exports = {
                 }
                 logger.debug(heldCards.map(c => c.code).join(' | '));
                 heldCards.score = await pokerScore(heldCards);
-                file = await canvasHand(heldCards, heldCards.score, pokerColors);
+                file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId);
                 i.editReply({ components: [], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                 return collector.stop(heldCards.score);
             }
@@ -196,7 +196,7 @@ module.exports = {
             hold_row.components[idx]
                 .setStyle(card.hold ? ButtonStyle.Secondary : ButtonStyle.Primary)
                 .setLabel(`${card.value} ${card.hold ? 'HOLDING' : 'HOLD'}`);
-            file = await canvasHand(heldCards, heldCards.score, pokerColors);
+            file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId);
             i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
             logger.debug(heldCards.map((c, k) => `card${k + 1}: ${c.hold}`).join(', '));
             collector.resetTimer();
