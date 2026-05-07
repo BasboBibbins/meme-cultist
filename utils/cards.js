@@ -8,19 +8,19 @@ const SUITS = [
 ];
 
 const RANKS = [
-    { value: 'ACE', code: 'A' },
-    { value: '2', code: '2' },
-    { value: '3', code: '3' },
-    { value: '4', code: '4' },
-    { value: '5', code: '5' },
-    { value: '6', code: '6' },
-    { value: '7', code: '7' },
-    { value: '8', code: '8' },
-    { value: '9', code: '9' },
-    { value: '10', code: '0' },
-    { value: 'JACK', code: 'J' },
-    { value: 'QUEEN', code: 'Q' },
-    { value: 'KING', code: 'K' },
+    { value: 'ACE', code: 'A', name: 'Ace', char: 'A', numericValue: 11 },
+    { value: '2', code: '2', name: 'Two', char: '2', numericValue: 2 },
+    { value: '3', code: '3', name: 'Three', char: '3', numericValue: 3 },
+    { value: '4', code: '4', name: 'Four', char: '4', numericValue: 4 },
+    { value: '5', code: '5', name: 'Five', char: '5', numericValue: 5 },
+    { value: '6', code: '6', name: 'Six', char: '6', numericValue: 6 },
+    { value: '7', code: '7', name: 'Seven', char: '7', numericValue: 7 },
+    { value: '8', code: '8', name: 'Eight', char: '8', numericValue: 8 },
+    { value: '9', code: '9', name: 'Nine', char: '9', numericValue: 9 },
+    { value: '10', code: '0', name: 'Ten', char: '10', numericValue: 10 },
+    { value: 'JACK', code: 'J', name: 'Jack', char: 'J', numericValue: 10 },
+    { value: 'QUEEN', code: 'Q', name: 'Queen', char: 'Q', numericValue: 10 },
+    { value: 'KING', code: 'K', name: 'King', char: 'K', numericValue: 10 },
 ];
 
 const STANDARD_DECK = Object.freeze(
@@ -30,6 +30,9 @@ const STANDARD_DECK = Object.freeze(
             suit: suit.name,
             value: rank.value,
             emoji: suit.emoji,
+            name: rank.name,
+            char: rank.char,
+            numericValue: rank.numericValue,
         }))
     )
 );

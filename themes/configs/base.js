@@ -114,6 +114,11 @@ module.exports = {
         // No additional overrides needed for the classic look.
         poker: {},
 
+        // ── Blackjack ───────────────────────────────────────────────
+        // Blackjack uses the same shared palette as poker by default.
+        // Themes can override independently if desired.
+        blackjack: {},
+
         // ── Cards ───────────────────────────────────────────────────
         cards: {
             sheet:      path.join(ASSETS_BASE_CARDS, 'classic.png'),

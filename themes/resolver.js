@@ -45,4 +45,20 @@ function getCardSheet(themeId) {
     };
 }
 
-module.exports = { getThemeColors, getThemeSymbols, getCardSheet };
+// Resolve blackjack colors, falling back to poker overrides when blackjack
+// overrides are not defined. This keeps blackjack and poker visually aligned
+// by default while allowing themes to style them independently.
+function getBlackjackColors(themeId) {
+    const classic = getTheme('classic');
+    const theme   = getTheme(themeId);
+    const gameId  = 'blackjack';
+    const fallback = 'poker';
+    return {
+        ...classic.colors,
+        ...(classic.overrides?.[gameId] ?? classic.overrides?.[fallback] ?? {}),
+        ...theme.colors,
+        ...(theme.overrides?.[gameId] ?? theme.overrides?.[fallback] ?? {}),
+    };
+}
+
+module.exports = { getThemeColors, getThemeSymbols, getCardSheet, getBlackjackColors };
