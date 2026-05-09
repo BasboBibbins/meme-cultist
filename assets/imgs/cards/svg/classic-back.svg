@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="svg2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 359 539">
+  <defs>
+    <style>
+      .cls-1 {
+        opacity: .6;
+      }
+
+      .cls-1, .cls-2 {
+        fill: red;
+      }
+
+      .cls-1, .cls-2, .cls-3, .cls-4 {
+        stroke-width: 0px;
+      }
+
+      .cls-3 {
+        fill: none;
+      }
+
+      .cls-5 {
+        opacity: .3;
+      }
+
+      .cls-6 {
+        fill: #fff;
+        stroke: #000;
+      }
+
+      .cls-4 {
+        fill: url(#Cubes);
+      }
+    </style>
+    <pattern id="Cubes" x="0" y="0" width="142" height="123" patternTransform="translate(-5094.02 -13143.86) scale(.4 -.4)" patternUnits="userSpaceOnUse" viewBox="0 0 142 123">
+      <g>
+        <rect class="cls-3" width="142" height="123"/>
+        <g id="path6">
+          <polygon class="cls-1" points="0 123 0 123 35.51 102.5 71.01 122.99 106.51 102.5 142 122.99 142 123 0 123"/>
+        </g>
+        <g id="path7">
+          <g class="cls-5">
+            <path class="cls-2" d="m35.5,61.5h0V20.5L0,0v41l35.5,20.5Zm106.51,61.5h0v-41l-35.51-20.5v41l35.5,20.5Zm-71,0h0v-41l-35.51-20.5v41l35.5,20.5Zm35.49-61.5h0V20.5L71,0v41l35.5,20.5Z"/>
+          </g>
+        </g>
+        <path id="path23" class="cls-2" d="m106.5,61.5h0V20.5L142,0v41l-35.5,20.5Zm-35.49,61.5h0v-41l35.51-20.5v41l-35.5,20.5ZM0,123h0v-41l35.51-20.5v41L0,123Zm35.49-61.5h0V20.5L71,0v41l-35.5,20.5Z"/>
+        <g id="path24">
+          <polygon class="cls-1" points="71 82 35.5 61.5 0 82 0 41 0 41 35.5 61.49 71 41 106.5 61.49 142 41 142 82 142 82 106.5 61.5 71 82"/>
+        </g>
+        <g id="path26">
+          <polygon class="cls-1" points="35.51 20.5 0 0 0 0 142 0 142 0 106.51 20.5 71.01 0 35.51 20.5"/>
+        </g>
+      </g>
+    </pattern>
+  </defs>
+  <g id="g27">
+    <rect id="rect6472-54-1-4" class="cls-6" width="359" height="539" rx="29.94" ry="29.94"/>
+    <rect id="rect3-9" class="cls-4" x="19.5" y="19.5" width="320" height="500" rx="27" ry="27"/>
+  </g>
+</svg>

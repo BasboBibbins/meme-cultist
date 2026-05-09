@@ -42,6 +42,16 @@ module.exports = {
         textLoss:    '#ff4444',
         textPrimary: '#ffd700',
         embedColor:  0x0f4c25,
+        // Card art generation keys (used by scripts/generate-cards.js)
+        cardAccent:    '#ff4444',
+        cardSecondary: '#000000',
+        cardText:      '#000000',
+        cardBorder:    '#cccccc',
+        // Per-suit overrides (styled pipeline). Fall back to cardSecondary/cardAccent.
+        cardClub:      '#000000',
+        cardDiamond:   '#ff4444',
+        cardHeart:     '#ff4444',
+        cardSpade:     '#000000',
     },
 
     overrides: {

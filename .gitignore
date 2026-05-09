@@ -9,3 +9,5 @@ config.json
 /.claude
 CLAUDE.md
 /docs
+/tmp
+/scripts

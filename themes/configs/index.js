@@ -47,6 +47,20 @@ function poker(colors, overrides) {
     return { feltColor: colors.feltColor, tableGreen: colors.tableGreen, gold: colors.gold, goldDark: colors.goldDark, ...overrides };
 }
 
+const ASSETS_BASE_CARDS = path.join(__dirname, '..', '..', 'assets', 'imgs', 'cards');
+const ASSETS_BASE_CARDS_GENERATED = path.join(ASSETS_BASE_CARDS, 'generated');
+
+function cardsOverride(themeId) {
+    return {
+        sheet:      path.join(ASSETS_BASE_CARDS_GENERATED, `${themeId}.png`),
+        back:       path.join(ASSETS_BASE_CARDS_GENERATED, `${themeId}-back.png`),
+        cardWidth:  90,
+        cardHeight: 135,
+        suitsOrder: ['CLUBS', 'DIAMONDS', 'HEARTS', 'SPADES'],
+        ranksOrder: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'J', 'Q', 'K'],
+    };
+}
+
 // ── Theme color palettes (pre-declared so poker() can reuse them) ─────────────────
 
 const memecultColors = {
@@ -77,6 +91,10 @@ const neonColors = {
     textWin:     '#88ffaa',
     textLoss:    '#ff6688',
     textPrimary: '#c0c0c0',
+    cardAccent:    '#ff0055',
+    cardSecondary: '#00ffcc',
+    cardText:      '#ffffff',
+    cardBorder:    '#c0c0c0',
 };
 
 const feudalJapanColors = {
@@ -259,6 +277,7 @@ const themes = {
                 resultBorder: '#00ffcc',
             },
             poker: poker(neonColors),
+            cards: cardsOverride('neon'),
         },
         'slots',
     ),
@@ -491,6 +510,10 @@ const themes = {
             textLoss:    '#ff6677',
             textPrimary: '#c0c0c0',
             embedColor:  0x1a0a2e,
+            cardAccent:    '#ff8800',
+            cardSecondary: '#4a0080',
+            cardText:      '#1a0a2e',
+            cardBorder:    '#c0c0c0',
         },
         {
             slots: {
@@ -505,6 +528,7 @@ const themes = {
                 motionBlurOverlay:   'rgba(26, 10, 46, 0.5)',
                 paylineColors:       ['#88cc88', '#ff6677', '#c0c0c0', '#ffcc00', '#66dd88'],
             },
+            cards: cardsOverride('sunset'),
         },
     ),
 
