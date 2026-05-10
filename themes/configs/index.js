@@ -93,7 +93,7 @@ const neonColors = {
     textPrimary: '#c0c0c0',
     cardAccent:    '#ff0055',
     cardSecondary: '#00ffcc',
-    cardText:      '#ffffff',
+    cardText:      '#1a0a2e',
     cardBorder:    '#c0c0c0',
 };
 

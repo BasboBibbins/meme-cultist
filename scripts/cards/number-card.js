@@ -3,11 +3,11 @@ const { getPipLayout } = require('./pip-layouts');
 
 const CARD_W = 90;
 const CARD_H = 135;
-const BORDER_R = 6;
+const BORDER_R = 8;
 const CORNER_MARGIN_X = 6;
 const CORNER_MARGIN_Y = 10;
 const SYMBOL_SIZE = 14; // destination size for corner suit symbol
-const PIP_SIZE = 20;     // destination size for center pips
+const PIP_SIZE = 30;     // destination size for center pips
 
 function roundRect(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -54,27 +54,7 @@ function drawNumberCard(ctx, x, y, rankCode, rankDisplay, symbolImg, colors) {
     roundRect(c, 0, 0, CARD_W, CARD_H, BORDER_R);
     c.clip();
 
-    // Top-left corner: rank + small symbol
-    c.fillStyle = colors.cardText || '#000000';
-    c.font = `bold 14px "Times New Roman", serif`;
-    c.textAlign = 'left';
-    c.textBaseline = 'top';
-    c.fillText(rankDisplay, CORNER_MARGIN_X, CORNER_MARGIN_Y);
-    if (symbolImg) {
-        c.drawImage(symbolImg, CORNER_MARGIN_X, CORNER_MARGIN_Y + 14, SYMBOL_SIZE, SYMBOL_SIZE);
-    }
-
-    // Bottom-right corner: rotated rank + symbol
-    c.save();
-    c.translate(CARD_W - CORNER_MARGIN_X, CARD_H - CORNER_MARGIN_Y);
-    c.rotate(Math.PI);
-    c.fillText(rankDisplay, 0, 0);
-    if (symbolImg) {
-        c.drawImage(symbolImg, 0, 14, SYMBOL_SIZE, SYMBOL_SIZE);
-    }
-    c.restore();
-
-    // Center pips
+    // Center pips (draw first so corner text sits on top)
     const pips = getPipLayout(rankCode, CARD_W, CARD_H);
     for (const pip of pips) {
         const size = PIP_SIZE * pip.scale;
@@ -89,6 +69,26 @@ function drawNumberCard(ctx, x, y, rankCode, rankDisplay, symbolImg, colors) {
         }
         c.restore();
     }
+
+    // Top-left corner: rank + small symbol
+    c.fillStyle = colors.cardText || '#000000';
+    c.font = `bold 14px "Arial", serif`;
+    c.textAlign = 'left';
+    c.textBaseline = 'top';
+    c.fillText(rankDisplay, CORNER_MARGIN_X, CORNER_MARGIN_Y);
+    if (symbolImg) {
+        c.drawImage(symbolImg, CORNER_MARGIN_X * 0.5, CORNER_MARGIN_Y + 14, SYMBOL_SIZE, SYMBOL_SIZE);
+    }
+
+    // Bottom-right corner: rotated rank + symbol
+    c.save();
+    c.translate(CARD_W - CORNER_MARGIN_X, CARD_H - CORNER_MARGIN_Y);
+    c.rotate(Math.PI);
+    c.fillText(rankDisplay, 0, 0);
+    if (symbolImg) {
+        c.drawImage(symbolImg, -CORNER_MARGIN_X * 0.5, 14, SYMBOL_SIZE, SYMBOL_SIZE);
+    }
+    c.restore();
 
     c.restore();
 

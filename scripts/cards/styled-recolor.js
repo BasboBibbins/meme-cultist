@@ -125,6 +125,16 @@ async function generateFallbackSymbol(rowSvg, suitColor) {
         0, 0, SYMBOL_CROP.w, SYMBOL_CROP.h
     );
 
+    // Remove the white card background so the symbol is transparent
+    const imageData = sCtx.getImageData(0, 0, SYMBOL_CROP.w, SYMBOL_CROP.h);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 250 && data[i + 1] > 250 && data[i + 2] > 250) {
+            data[i + 3] = 0;
+        }
+    }
+    sCtx.putImageData(imageData, 0, 0);
+
     return await loadImage(symCanvas.toBuffer('image/png'));
 }
 

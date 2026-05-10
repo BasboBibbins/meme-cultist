@@ -87,14 +87,18 @@ async function generateFullCards(theme, { force = false } = {}) {
     for (let si = 0; si < SUITS.length; si++) {
         const suit = SUITS[si];
         const symbolImg = symbols[suit];
+        const cardColors = {
+            cardBorder: colors.cardBorder,
+            cardText: suitColors[si],
+        };
         for (let ri = 0; ri < RANKS.length; ri++) {
             const rank = RANKS[ri];
             const x = ri * 90;
             const y = si * 135;
             if (FACE_RANKS.includes(rank)) {
-                await drawFaceCard(ctx, x, y, rank, portraits[rank], symbolImg, colors, hasCustomFrame ? customFrame : null);
+                await drawFaceCard(ctx, x, y, rank, portraits[rank], symbolImg, cardColors, hasCustomFrame ? customFrame : null);
             } else {
-                drawNumberCard(ctx, x, y, rank, rankDisplay(rank), symbolImg, colors);
+                drawNumberCard(ctx, x, y, rank, rankDisplay(rank), symbolImg, cardColors);
             }
         }
     }
