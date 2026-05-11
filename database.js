@@ -114,6 +114,18 @@ async function getDefaultDB(user) {
                 "totalBet": 0,
                 "profit": 0,
             },
+            "craps": {
+                "rolls": 0,
+                "wins": 0,
+                "losses": 0,
+                "pushes": 0,
+                "pointsHit": 0,
+                "sevenOuts": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+                "totalBet": 0,
+                "profit": 0,
+            },
             "poker": {
                 "wins": 0,
                 "losses": 0,

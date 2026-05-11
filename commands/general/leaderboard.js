@@ -52,6 +52,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
                 ['Flip', 'flip'],
                 ['Roulette', 'roulette'],
                 ['Race', 'race'],
+                ['Craps', 'craps'],
                 ['Poker', 'poker'],
                 ['Beg', 'begs'],
             ];
@@ -69,6 +70,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
                 ['Flip', 'flip'],
                 ['Roulette', 'roulette'],
                 ['Race', 'race'],
+                ['Craps', 'craps'],
                 ['Poker', 'poker'],
             ];
             for (const [label, key] of games) {
@@ -92,6 +94,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
                 ['Flip', 'flip'],
                 ['Roulette', 'roulette'],
                 ['Race', 'race'],
+                ['Craps', 'craps'],
                 ['Poker', 'poker'],
                 ['Beg', 'begs'],
             ];

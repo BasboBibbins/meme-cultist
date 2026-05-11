@@ -66,6 +66,7 @@ client.slashcommands = new Collection()
 client.contextResetPoints = new Map();
 client.rouletteGames = new Map();
 client.raceGames = new Map();
+client.crapsGames = new Map();
 client.immediateFactsDebounce = new Map();
 
 if (!fs.existsSync(`./db/users.sqlite`)) {

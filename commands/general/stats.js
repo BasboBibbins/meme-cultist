@@ -29,6 +29,7 @@ async function getGameStats(userId) {
         'begs.wins', 'begs.losses', 'begs.profit',
         'roulette.wins', 'roulette.losses', 'roulette.totalBet', 'roulette.biggestWin', 'roulette.biggestLoss', 'roulette.profit',
         'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss', 'race.profit',
+        'craps.rolls', 'craps.wins', 'craps.losses', 'craps.pushes', 'craps.pointsHit', 'craps.sevenOuts', 'craps.totalBet', 'craps.biggestWin', 'craps.biggestLoss', 'craps.profit',
         'poker.wins', 'poker.losses', 'poker.royals', 'poker.biggestWin', 'poker.biggestLoss', 'poker.profit'
     ];
 
@@ -163,6 +164,7 @@ async function generateStatsEmbed(page, interaction, user) {
             const bg = gameStats.begs || {};
             const rl = gameStats.roulette || {};
             const rc = gameStats.race || {};
+            const cr = gameStats.craps || {};
             const pk = gameStats.poker || {};
 
             embed.setTitle(`${user.displayName }'s Game Stats`)
@@ -213,6 +215,15 @@ async function generateStatsEmbed(page, interaction, user) {
                     rc.biggestWin && `*Biggest Win:* **${rc.biggestWin}**`,
                     rc.biggestLoss && `*Biggest Loss:* **${rc.biggestLoss}**`,
                     `*Net Profit:* **${formatProfit(rc.profit || 0)}**`
+                ]), inline: true },
+                { name: "Craps", value: buildDesc([
+                    `*Rolls:* **${cr.rolls || 0}**`,
+                    `*Win Rate:* **${calcWinRate(gameStats, 'craps')}%**`,
+                    cr.pointsHit && `*Points Hit:* **${cr.pointsHit}**`,
+                    cr.sevenOuts && `*Seven Outs:* **${cr.sevenOuts}**`,
+                    cr.biggestWin && `*Biggest Win:* **${cr.biggestWin}**`,
+                    cr.biggestLoss && `*Biggest Loss:* **${cr.biggestLoss}**`,
+                    `*Net Profit:* **${formatProfit(cr.profit || 0)}**`
                 ]), inline: true },
             );
             if (pk.wins || pk.losses) {

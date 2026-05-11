@@ -95,6 +95,12 @@ const config = {
     RACE_PLACE_MULTIPLIER: 0.45,
     RACE_SHOW_MULTIPLIER: 0.28,
 
+    // Craps settings
+    CRAPS_MIN_BET: 10,
+    CRAPS_MAX_BET: 0, // 0 = no cap
+    CRAPS_ROUND_TIMEOUT: 5 * 60 * 1000, // 5 min idle -> refund + end
+    CRAPS_ANIMATION_HOLD_MS: 1100,
+
     // Slots settings
     SLOTS_MAX_LINES: 5,
     SLOTS_NEAR_MISS_CHANCE: 0.15,

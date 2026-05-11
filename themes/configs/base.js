@@ -119,6 +119,32 @@ module.exports = {
         // Themes can override independently if desired.
         blackjack: {},
 
+        // ── Craps ───────────────────────────────────────────────────
+        craps: {
+            feltInner:        '#237a3d',
+            feltMid:          '#1a6b35',
+            feltOuter:        '#145228',
+            layoutLine:       '#ffd700',
+            layoutLabel:      '#ffffff',
+            passLineColor:    '#1a8a3f',
+            dontPassColor:    '#5a1a1a',
+            fieldColor:       '#3a5a8a',
+            comeColor:        '#2a7a4a',
+            placeColor:       '#1e6a35',
+            hardWaysColor:    '#aa3a3a',
+            propsColor:       '#8a4a2a',
+            bigSixEightColor: '#1e6a35',
+            puckOff:          '#1a1a1a',
+            puckOn:           '#ffffff',
+            puckText:         '#000000',
+            diceFace:         '#ffffff',
+            diceDots:         '#000000',
+            diceShadow:       'rgba(0,0,0,0.4)',
+            winnerHighlight:  '#ffd700',
+            resultOverlay:    'rgba(0,0,0,0.6)',
+            resultBorder:     '#ffd700',
+        },
+
         // ── Cards ───────────────────────────────────────────────────
         cards: {
             sheet:      path.join(ASSETS_BASE_CARDS, 'classic.png'),
