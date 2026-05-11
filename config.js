@@ -47,6 +47,7 @@ const config = {
     CHATBOT_LOCAL: false,
     CONVO_MODEL: process.env.CONVO_MODEL || "deepseek-v4-flash",
     PAST_MESSAGES: 15,
+    MAX_API_MESSAGES: 25,
     SUMMARY_INTERVAL: 25,
     FACTS_INTERVAL: 15,
     TOPIC_UPDATE_INTERVAL: 20,

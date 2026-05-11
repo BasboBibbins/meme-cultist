@@ -68,6 +68,7 @@ client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.crapsGames = new Map();
 client.immediateFactsDebounce = new Map();
+client.toolCallHistory = new Map();
 
 if (!fs.existsSync(`./db/users.sqlite`)) {
     logger.error(`Database file not found! Please run \`node bot.js dbinit\` to create the database.`)
@@ -384,6 +385,13 @@ if (DELETE_SLASH) {
         client.contextResetPoints.delete(thread.id);
         if (isChatbotChannel(thread.parentId)) {
             await deleteThreadContext(thread);
+        }
+    });
+
+    client.on(Events.MessageDelete, async (message) => {
+        if (client.toolCallHistory.has(message.id)) {
+            client.toolCallHistory.delete(message.id);
+            logger.debug(`[ToolCallHistory] Cleaned up deleted message ${message.id}`);
         }
     });
 

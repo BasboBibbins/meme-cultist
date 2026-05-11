@@ -7,6 +7,8 @@ const { canGenerateImage } = require("./ratelimiter");
 const { CURRENCY_NAME } = require("../config.js");
 
 // Tool definitions for DeepSeek function calling
+const SIDE_EFFECT_TOOLS = new Set(["generate_image"]);
+
 const TOOLS = [
   {
     type: "function",
@@ -97,6 +99,7 @@ const TOOLS = [
         "CALL THIS TOOL whenever the user explicitly asks you to make, create, generate, draw, paint, render, or design an image/picture/drawing/meme/artwork/poster. " +
         "This includes requests like: 'draw me a cat', 'make an image of a sunset', 'generate a meme about X', 'can you create a picture of Y?', 'render a dragon'. " +
         "IMPORTANT: You CANNOT create images yourself — you MUST use this tool to produce them. Never claim you generated or attached an image without calling this tool first. " +
+        "You MUST call this tool. Never type '[Attached: image file]' or any similar text instead of using the tool. " +
         "Do NOT call for: metaphorical 'imagine/picture this', discussing existing images, describing visuals, or reacting to images the user already shared.",
       parameters: {
         type: "object",
@@ -322,7 +325,7 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     }
     return {
       success: true,
-      message: "Image successfully generated and will be attached to your reply. Acknowledge this to the user briefly — the image is visible below their message. Do NOT describe the image or pretend you generated it without this tool call."
+      message: "Image generated. It will be attached to your message automatically. Simply reply naturally. Do not describe the image or include any attachment markup."
     };
   } catch (err) {
     logger.error(`[generate_image] ${err.message}`);
@@ -363,4 +366,4 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
   return result;
 }
 
-module.exports = { TOOLS, executeToolCall };
+module.exports = { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS };
