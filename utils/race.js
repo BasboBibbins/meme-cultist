@@ -32,6 +32,8 @@ const ADJECTIVES = [
     'Special', 'Silence', 'Fwenly', 'Definitely-Not-A',
 ];
 
+const ADJ_USE_PERCENT = 95; // percentage of time an adjective is used for a horse name. (default: 95) 
+
 const NOUNS = [
     'Blade', 'Crown', 'Storm', 'Lance', 'Crest', 'Star', 'Comet', 'Arrow',
     'Dancer', 'Ruler', 'Sovereign', 'Champion', 'Warrior', 'Legend', 'Eclipse',
@@ -99,7 +101,7 @@ function generateHorses() {
         const form = forms[i];
         const probability = form / totalForm;
         const displayOdds = Math.min(25, Math.round((1 / probability) * 10) / 10);
-        const usesAdj = Math.random() < 0.8; 
+        const usesAdj = Math.random() < (ADJ_USE_PERCENT / 100);
 
         return {
             number: numbers[i],
