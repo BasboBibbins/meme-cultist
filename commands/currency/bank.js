@@ -63,13 +63,14 @@ module.exports = {
 
         switch (subcommand) {
             case "deposit":
-                if (dbUser.balance < amount) {
-                    embed.setDescription(`You don't have enough ${CURRENCY_NAME} to deposit!`);
+                const currentBalance = dbUser.balance;
+                if (currentBalance < amount) {
+                    embed.setDescription(`You don't have enough ${CURRENCY_NAME} to deposit!\n\nYour current balance is **${currentBalance.toLocaleString('en-US')} ${CURRENCY_NAME}**`);
                     embed.setColor("#FF0000");
                 } else {
                     logger.info(`Depositing ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet to their bank...`);
                     await deposit(user.id, amount);
-                    embed.setDescription(`Successfully deposited ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} into your bank!`);
+                    embed.setDescription(`Successfully deposited **${amount.toLocaleString('en-US')} ${CURRENCY_NAME}** into your bank!\n\nYour new balance is **${(amount+currentBalance).toLocaleString('en-US')} ${CURRENCY_NAME}**`);
                     embed.setColor("#00FF00");
                 }
                 await interaction.editReply({embeds: [embed]});
@@ -78,13 +79,14 @@ module.exports = {
                 });
                 break;
             case "withdraw":
-                if (dbUser.bank < amount) {
-                    embed.setDescription(`You don't have enough ${CURRENCY_NAME} to withdraw!`);
+                const currentBank = dbUser.bank;
+                if (currentBank < amount) {
+                    embed.setDescription(`You don't have enough ${CURRENCY_NAME} to withdraw!\n\nYour current bank balance is **${currentBank.toLocaleString('en-US')} ${CURRENCY_NAME}**`);
                     embed.setColor("#FF0000");
                 } else {
                     logger.info(`Withdrawing ${amount} ${CURRENCY_NAME} from ${user.username} (${user.id})'s bank to their wallet...`);
                     await withdraw(user.id, amount);
-                    embed.setDescription(`Successfully withdrew ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from your bank!`);
+                    embed.setDescription(`Successfully withdrew ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from your bank!\n\nYour new bank balance is **${curentBank+amount} ${CURRENCY_NAME}**`);
                     embed.setColor("#00FF00");
                 }
                 await interaction.editReply({embeds: [embed]});
