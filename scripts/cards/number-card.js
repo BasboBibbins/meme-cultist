@@ -4,8 +4,8 @@ const { getPipLayout } = require('./pip-layouts');
 const CARD_W = 90;
 const CARD_H = 135;
 const BORDER_R = 8;
-const CORNER_MARGIN_X = 6;
-const CORNER_MARGIN_Y = 10;
+const CORNER_MARGIN_X = 4;
+const CORNER_MARGIN_Y = 6;
 const SYMBOL_SIZE = 14; // destination size for corner suit symbol
 const PIP_SIZE = 30;     // destination size for center pips
 
@@ -39,13 +39,13 @@ function drawNumberCard(ctx, x, y, rankCode, rankDisplay, symbolImg, colors) {
     const c = cardCanvas.getContext('2d');
 
     // Background
-    c.fillStyle = '#ffffff';
+    c.fillStyle = colors.cardBackground || '#ffffff';
     roundRect(c, 0, 0, CARD_W, CARD_H, BORDER_R);
     c.fill();
 
     // Border
     c.strokeStyle = colors.cardBorder || '#cccccc';
-    c.lineWidth = 1;
+    c.lineWidth = 2;
     roundRect(c, 0, 0, CARD_W, CARD_H, BORDER_R);
     c.stroke();
 
@@ -70,23 +70,27 @@ function drawNumberCard(ctx, x, y, rankCode, rankDisplay, symbolImg, colors) {
         c.restore();
     }
 
-    // Top-left corner: rank + small symbol
+    const CORNER_CENTER_X = CORNER_MARGIN_X + SYMBOL_SIZE / 2;
+
+    // Top-left corner: rank + small symbol (centered above one another)
     c.fillStyle = colors.cardText || '#000000';
-    c.font = `bold 14px "Arial", serif`;
-    c.textAlign = 'left';
+    c.font = `bold 12px "Card Characters", serif`;
+    c.textAlign = 'center';
     c.textBaseline = 'top';
-    c.fillText(rankDisplay, CORNER_MARGIN_X, CORNER_MARGIN_Y);
+    c.fillText(rankDisplay, CORNER_CENTER_X, CORNER_MARGIN_Y);
     if (symbolImg) {
-        c.drawImage(symbolImg, CORNER_MARGIN_X * 0.5, CORNER_MARGIN_Y + 14, SYMBOL_SIZE, SYMBOL_SIZE);
+        c.drawImage(symbolImg, CORNER_CENTER_X - SYMBOL_SIZE / 2, CORNER_MARGIN_Y + 14, SYMBOL_SIZE, SYMBOL_SIZE);
     }
 
-    // Bottom-right corner: rotated rank + symbol
+    // Bottom-right corner: rotated rank + symbol (mirror of top-left)
     c.save();
-    c.translate(CARD_W - CORNER_MARGIN_X, CARD_H - CORNER_MARGIN_Y);
+    c.translate(CARD_W - CORNER_CENTER_X, CARD_H - CORNER_MARGIN_Y);
     c.rotate(Math.PI);
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
     c.fillText(rankDisplay, 0, 0);
     if (symbolImg) {
-        c.drawImage(symbolImg, -CORNER_MARGIN_X * 0.5, 14, SYMBOL_SIZE, SYMBOL_SIZE);
+        c.drawImage(symbolImg, -SYMBOL_SIZE / 2, 14, SYMBOL_SIZE, SYMBOL_SIZE);
     }
     c.restore();
 

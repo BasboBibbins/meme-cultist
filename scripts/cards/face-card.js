@@ -5,13 +5,13 @@ const path = require('path');
 const CARD_W = 90;
 const CARD_H = 135;
 const BORDER_R = 6;
-const PORTRAIT_X = 14;
-const PORTRAIT_Y = 28;
-const PORTRAIT_W = 62;
-const PORTRAIT_H = 78;
-const CORNER_MARGIN_X = 6;
-const CORNER_MARGIN_Y = 10;
-const SYMBOL_SIZE = 14;
+const PORTRAIT_W = 90;
+const PORTRAIT_H = 120;
+const PORTRAIT_X = (CARD_W - PORTRAIT_W) / 2;
+const PORTRAIT_Y = (CARD_H - PORTRAIT_H) / 2;
+const CORNER_MARGIN_X = 2;
+const CORNER_MARGIN_Y = 8;
+const SYMBOL_SIZE = 16;
 
 const DEFAULT_FRAME_PATH = path.join(__dirname, '..', '..', 'assets', 'imgs', 'cards', 'templates', 'face-frame.png');
 
@@ -46,12 +46,12 @@ async function drawFaceCard(ctx, x, y, rankDisplay, portraitImg, symbolImg, colo
     const c = cardCanvas.getContext('2d');
 
     // Background
-    c.fillStyle = '#ffffff';
+    c.fillStyle = colors.cardBackground || '#ffffff';
     roundRect(c, 0, 0, CARD_W, CARD_H, BORDER_R);
     c.fill();
 
     c.strokeStyle = colors.cardBorder || '#cccccc';
-    c.lineWidth = 1;
+    c.lineWidth = 2;
     roundRect(c, 0, 0, CARD_W, CARD_H, BORDER_R);
     c.stroke();
 
@@ -74,29 +74,35 @@ async function drawFaceCard(ctx, x, y, rankDisplay, portraitImg, symbolImg, colo
         c.restore();
     }
 
-    // Frame overlay
-    const framePath = customFramePath && fs.existsSync(customFramePath) ? customFramePath : DEFAULT_FRAME_PATH;
-    if (fs.existsSync(framePath)) {
-        const frameImg = await loadImage(framePath);
-        c.drawImage(frameImg, 0, 0, CARD_W, CARD_H);
+    // Frame overlay (skip entirely when customFramePath === null)
+    if (customFramePath !== null) {
+        const framePath = customFramePath && fs.existsSync(customFramePath) ? customFramePath : DEFAULT_FRAME_PATH;
+        if (fs.existsSync(framePath)) {
+            const frameImg = await loadImage(framePath);
+            c.drawImage(frameImg, 0, 0, CARD_W, CARD_H);
+        }
     }
+
+    const CORNER_CENTER_X = CORNER_MARGIN_X + SYMBOL_SIZE / 2;
 
     // Corner text
     c.fillStyle = colors.cardText || '#000000';
-    c.font = `bold 14px "Times New Roman", serif`;
-    c.textAlign = 'left';
+    c.font = `bold 12px "Card Characters", serif`;
+    c.textAlign = 'center';
     c.textBaseline = 'top';
-    c.fillText(rankDisplay, CORNER_MARGIN_X, CORNER_MARGIN_Y);
+    c.fillText(rankDisplay, CORNER_CENTER_X, CORNER_MARGIN_Y);
     if (symbolImg) {
-        c.drawImage(symbolImg, CORNER_MARGIN_X, CORNER_MARGIN_Y + 14, SYMBOL_SIZE, SYMBOL_SIZE);
+        c.drawImage(symbolImg, CORNER_CENTER_X - SYMBOL_SIZE / 2, CORNER_MARGIN_Y + 14, SYMBOL_SIZE, SYMBOL_SIZE);
     }
 
     c.save();
-    c.translate(CARD_W - CORNER_MARGIN_X, CARD_H - CORNER_MARGIN_Y);
+    c.translate(CARD_W - CORNER_CENTER_X, CARD_H - CORNER_MARGIN_Y);
     c.rotate(Math.PI);
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
     c.fillText(rankDisplay, 0, 0);
     if (symbolImg) {
-        c.drawImage(symbolImg, 0, 14, SYMBOL_SIZE, SYMBOL_SIZE);
+        c.drawImage(symbolImg, -SYMBOL_SIZE / 2, 14, SYMBOL_SIZE, SYMBOL_SIZE);
     }
     c.restore();
 

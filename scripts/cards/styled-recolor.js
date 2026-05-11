@@ -19,15 +19,20 @@ if (!fs.existsSync(GENERATED_DIR)) {
 
 /**
  * Recolor a row-specific SVG string.
- * Replaces all red/black palette colors in the <style> block with the target suit color.
+ * Replaces all red/black palette colors in the <style> block with the target suit color,
+ * and white palette colors with the card background color.
  */
-function recolorRowSvg(rowSvg, suitColor) {
+function recolorRowSvg(rowSvg, suitColor, cardBackground) {
     const map = new Map();
     for (const old of colorMap.redPalette) {
         map.set(old, suitColor);
     }
     for (const old of colorMap.blackPalette) {
         map.set(old, suitColor);
+    }
+    const bg = cardBackground || '#ffffff';
+    for (const old of colorMap.whitePalette) {
+        map.set(old, bg);
     }
     const recolored = recolorSvgStyle(rowSvg, map);
     return injectDefaultFills(recolored, suitColor);
@@ -44,6 +49,7 @@ async function generateStyledCards(theme, { force = false } = {}) {
     const spadeColor   = colors.cardSpade   || colors.cardSecondary || colors.textBlack || '#000000';
 
     const suitColors = [clubColor, diamondColor, heartColor, spadeColor];
+    const cardBackground = colors.cardBackground || '#ffffff';
 
     const sheetOut = path.join(GENERATED_DIR, `${themeId}.png`);
     const backOut = path.join(GENERATED_DIR, `${themeId}-back.png`);
@@ -62,7 +68,7 @@ async function generateStyledCards(theme, { force = false } = {}) {
     const ctx = canvas.getContext('2d');
 
     for (let i = 0; i < 4; i++) {
-        const recolored = recolorRowSvg(rowSvgs[i], suitColors[i]);
+        const recolored = recolorRowSvg(rowSvgs[i], suitColors[i], cardBackground);
         const buffer = Buffer.from(recolored, 'utf8');
         const img = await loadImage(buffer);
         ctx.drawImage(img, 0, i * ROW_H, SHEET_W, ROW_H);
@@ -110,8 +116,18 @@ const SYMBOL_CROP = { x: 110, y: 180, w: 140, h: 180 };
  * Generate a fallback suit symbol by cropping the center pip from the
  * recolored Ace (first card) of a row SVG.
  */
-async function generateFallbackSymbol(rowSvg, suitColor) {
-    const recolored = recolorRowSvg(rowSvg, suitColor);
+async function generateFallbackSymbol(rowSvg, suitColor, cardBackground) {
+    // Recolor red/black palette to suitColor, but keep white as-is
+    // so the card background stays white and can be made transparent.
+    const map = new Map();
+    for (const old of colorMap.redPalette) {
+        map.set(old, suitColor);
+    }
+    for (const old of colorMap.blackPalette) {
+        map.set(old, suitColor);
+    }
+    const recolored = injectDefaultFills(recolorSvgStyle(rowSvg, map), suitColor);
+
     const rowCanvas = createCanvas(4680, 540);
     const rowCtx = rowCanvas.getContext('2d');
     const rowImg = await loadImage(Buffer.from(recolored, 'utf8'));

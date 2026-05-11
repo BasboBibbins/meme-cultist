@@ -42,6 +42,12 @@ async function generateFullCards(theme, { force = false } = {}) {
         theme.colors?.cardSpade   || theme.colors?.cardSecondary || theme.colors?.textBlack || '#000000',
     ];
 
+    const colors = {
+        cardBorder: theme.colors?.cardBorder || '#cccccc',
+        cardText: theme.colors?.cardText || '#000000',
+        cardBackground: theme.colors?.cardBackground || '#ffffff',
+    };
+
     const symbols = {};
     let usedFallbackSymbols = false;
     for (let i = 0; i < SUITS.length; i++) {
@@ -51,7 +57,7 @@ async function generateFullCards(theme, { force = false } = {}) {
             symbols[suit] = await loadImage(p);
         } else {
             console.log(`[full] ${themeId}: using fallback symbol for ${suit}`);
-            symbols[suit] = await generateFallbackSymbol(rowSvgs[i], suitColors[i]);
+            symbols[suit] = await generateFallbackSymbol(rowSvgs[i], suitColors[i], colors.cardBackground);
             usedFallbackSymbols = true;
         }
     }
@@ -70,11 +76,6 @@ async function generateFullCards(theme, { force = false } = {}) {
         portraits[rank] = await loadImage(p);
     }
 
-    const colors = {
-        cardBorder: theme.colors?.cardBorder || '#cccccc',
-        cardText: theme.colors?.cardText || '#000000',
-    };
-
     const customFrame = themeAssetPath(themeId, 'face-frame.png');
     const hasCustomFrame = fs.existsSync(customFrame);
 
@@ -90,6 +91,7 @@ async function generateFullCards(theme, { force = false } = {}) {
         const cardColors = {
             cardBorder: colors.cardBorder,
             cardText: suitColors[si],
+            cardBackground: colors.cardBackground,
         };
         for (let ri = 0; ri < RANKS.length; ri++) {
             const rank = RANKS[ri];
