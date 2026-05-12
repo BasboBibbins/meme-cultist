@@ -1,26 +1,26 @@
-const crypto = require('crypto');
+const crypto = require("crypto");
 
 const SUITS = [
-    { name: 'SPADES', emoji: '♠️' },
-    { name: 'HEARTS', emoji: '♥️' },
-    { name: 'DIAMONDS', emoji: '♦️' },
-    { name: 'CLUBS', emoji: '♣️' },
+    { name: "SPADES", emoji: "♠️" },
+    { name: "HEARTS", emoji: "♥️" },
+    { name: "DIAMONDS", emoji: "♦️" },
+    { name: "CLUBS", emoji: "♣️" },
 ];
 
 const RANKS = [
-    { value: 'ACE', code: 'A', name: 'Ace', char: 'A', numericValue: 11 },
-    { value: '2', code: '2', name: 'Two', char: '2', numericValue: 2 },
-    { value: '3', code: '3', name: 'Three', char: '3', numericValue: 3 },
-    { value: '4', code: '4', name: 'Four', char: '4', numericValue: 4 },
-    { value: '5', code: '5', name: 'Five', char: '5', numericValue: 5 },
-    { value: '6', code: '6', name: 'Six', char: '6', numericValue: 6 },
-    { value: '7', code: '7', name: 'Seven', char: '7', numericValue: 7 },
-    { value: '8', code: '8', name: 'Eight', char: '8', numericValue: 8 },
-    { value: '9', code: '9', name: 'Nine', char: '9', numericValue: 9 },
-    { value: '10', code: '0', name: 'Ten', char: '10', numericValue: 10 },
-    { value: 'JACK', code: 'J', name: 'Jack', char: 'J', numericValue: 10 },
-    { value: 'QUEEN', code: 'Q', name: 'Queen', char: 'Q', numericValue: 10 },
-    { value: 'KING', code: 'K', name: 'King', char: 'K', numericValue: 10 },
+    { value: "ACE", code: "A", name: "Ace", char: "A", numericValue: 11 },
+    { value: "2", code: "2", name: "Two", char: "2", numericValue: 2 },
+    { value: "3", code: "3", name: "Three", char: "3", numericValue: 3 },
+    { value: "4", code: "4", name: "Four", char: "4", numericValue: 4 },
+    { value: "5", code: "5", name: "Five", char: "5", numericValue: 5 },
+    { value: "6", code: "6", name: "Six", char: "6", numericValue: 6 },
+    { value: "7", code: "7", name: "Seven", char: "7", numericValue: 7 },
+    { value: "8", code: "8", name: "Eight", char: "8", numericValue: 8 },
+    { value: "9", code: "9", name: "Nine", char: "9", numericValue: 9 },
+    { value: "10", code: "0", name: "Ten", char: "10", numericValue: 10 },
+    { value: "JACK", code: "J", name: "Jack", char: "J", numericValue: 10 },
+    { value: "QUEEN", code: "Q", name: "Queen", char: "Q", numericValue: 10 },
+    { value: "KING", code: "K", name: "King", char: "K", numericValue: 10 },
 ];
 
 const STANDARD_DECK = Object.freeze(
@@ -37,7 +37,6 @@ const STANDARD_DECK = Object.freeze(
     )
 );
 
-/** @type {Map<string, { cards: typeof STANDARD_DECK[number][], index: number }>} */
 const decks = new Map();
 
 function shuffle(cards) {
@@ -49,10 +48,10 @@ function shuffle(cards) {
     return arr;
 }
 
-const { loadImage } = require('canvas');
-const { getCardSheet } = require('../themes/resolver');
+const { loadImage } = require("canvas");
+const { getCardSheet } = require("../themes/resolver");
 
-const sheetCache = new Map();   // path -> loaded Image
+const sheetCache = new Map();
 
 async function loadCardSheet(themeId) {
     const cfg = getCardSheet(themeId);
@@ -61,16 +60,16 @@ async function loadCardSheet(themeId) {
 }
 
 function getCardSpriteCoords(cardCode, cfg) {
-    const rank = cardCode.slice(0, -1);     // "A","0","K"...
-    const suitChar = cardCode.slice(-1);    // "C","D","H","S"
-    const suit = { C: 'CLUBS', D: 'DIAMONDS', H: 'HEARTS', S: 'SPADES' }[suitChar];
+    const rank = cardCode.slice(0, -1);
+    const suitChar = cardCode.slice(-1);
+    const suit = { C: "CLUBS", D: "DIAMONDS", H: "HEARTS", S: "SPADES" }[suitChar];
     const ri = cfg.ranksOrder.indexOf(rank);
     const si = cfg.suitsOrder.indexOf(suit);
     if (ri < 0 || si < 0) throw new Error(`Invalid card code: ${cardCode}`);
     return { sx: ri * cfg.cardWidth, sy: si * cfg.cardHeight, sw: cfg.cardWidth, sh: cfg.cardHeight };
 }
 
-async function warmCardCache(themeId = 'classic') {
+async function warmCardCache(themeId = "classic") {
     await loadCardSheet(themeId);
 }
 
@@ -97,7 +96,7 @@ module.exports = {
         return state.cards[state.index++];
     },
     dealHand: async (deckId) => {
-        const { pokerScore } = require('./poker');
+        const { pokerScore } = require("./poker");
         const cards = [];
         for (let i = 0; i < 5; i++) {
             cards.push(await module.exports.drawCard(deckId));

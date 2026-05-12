@@ -1,8 +1,8 @@
-const { createCanvas, loadImage } = require('canvas');
-const logger = require('./logger');
-const { AttachmentBuilder } = require('discord.js');
-const { loadCardSheet, getCardSpriteCoords } = require('./cards');
-const { getHandValue, statusFromValue } = require('./blackjack');
+const { createCanvas, loadImage } = require("canvas");
+const logger = require("./logger");
+const { AttachmentBuilder } = require("discord.js");
+const { loadCardSheet, getCardSpriteCoords } = require("./cards");
+const { getHandValue, statusFromValue } = require("./blackjack");
 
 const CARD_W = 110;
 const CARD_H = 165;
@@ -161,23 +161,23 @@ function applyOutcomeOverlay(ctx, x, y, w, h, outcome) {
 }
 
 function drawBadge(ctx, x, y, type) {
-    const w = type === 'bust' ? 44 : 34;
+    const w = type === "bust" ? 44 : 34;
     const h = 18;
     const r = 4;
     let bg, text, textColor;
 
-    if (type === 'double') {
-        bg = '#2ecc71';
-        text = '2x';
-        textColor = '#ffffff';
-    } else if (type === 'bust') {
-        bg = '#e74c3c';
-        text = 'BUST';
-        textColor = '#ffffff';
-    } else if (type === 'blackjack') {
-        bg = '#f1c40f';
-        text = 'BJ';
-        textColor = '#1a1a1a';
+    if (type === "double") {
+        bg = "#2ecc71";
+        text = "2x";
+        textColor = "#ffffff";
+    } else if (type === "bust") {
+        bg = "#e74c3c";
+        text = "BUST";
+        textColor = "#ffffff";
+    } else if (type === "blackjack") {
+        bg = "#f1c40f";
+        text = "BJ";
+        textColor = "#1a1a1a";
     } else {
         return w;
     }
@@ -188,8 +188,8 @@ function drawBadge(ctx, x, y, type) {
 
     ctx.fillStyle = textColor;
     ctx.font = `bold ${type === 'bust' ? 11 : 12}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(text, x + w / 2, y + h / 2 + 1);
 
     return w;
@@ -202,7 +202,7 @@ function drawTotalCircle(ctx, x, y, size, total, colors, badges = []) {
 
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.fill();
     ctx.strokeStyle = colors.gold;
     ctx.lineWidth = 2;
@@ -210,8 +210,8 @@ function drawTotalCircle(ctx, x, y, size, total, colors, badges = []) {
 
     ctx.fillStyle = colors.gold;
     ctx.font = `bold ${Math.floor(size * 0.45)}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(total, cx, cy);
 
     if (badges.length > 0) {
@@ -220,7 +220,7 @@ function drawTotalCircle(ctx, x, y, size, total, colors, badges = []) {
         let totalW = 0;
         const badgeWs = [];
         for (const b of badges) {
-            const bw = b === 'bust' ? 44 : 34;
+            const bw = b === "bust" ? 44 : 34;
             badgeWs.push(bw);
             totalW += bw;
         }
@@ -236,32 +236,21 @@ function drawTotalCircle(ctx, x, y, size, total, colors, badges = []) {
 }
 
 function drawCardBack(ctx, x, y, w, h, colors) {
-    ctx.fillStyle = '#1a3a5c';
+    ctx.fillStyle = "#1a3a5c";
     roundRect(ctx, x, y, w, h, 8);
     ctx.fill();
-    ctx.strokeStyle = colors.goldDark || '#c8a830';
+    ctx.strokeStyle = colors.goldDark || "#c8a830";
     ctx.lineWidth = 2;
     roundRect(ctx, x, y, w, h, 8);
     ctx.stroke();
 
-    ctx.fillStyle = colors.goldDark || '#c8a830';
+    ctx.fillStyle = colors.goldDark || "#c8a830";
     ctx.font = `bold ${Math.floor(h * 0.35)}px Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('?', x + w / 2, y + h / 2);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("?", x + w / 2, y + h / 2);
 }
 
-/**
- * Render a blackjack game state to a canvas PNG attachment.
- *
- * @param {Array} dealerCards — card objects from utils/cards.js
- * @param {Array} playerHands — array of { cards: [], bet: number, isSplitAces: boolean, isDoubled: boolean }
- * @param {Object} colors — resolved theme colors
- * @param {string} themeId — theme identifier for spritesheet lookup
- * @param {boolean} revealHole — show dealer's hole card face-up (default: face-down)
- * @param {number} activeHandIndex — which player hand is currently active
- * @returns {AttachmentBuilder|null}
- */
 async function canvasBlackjack(dealerCards, playerHands, colors, themeId, revealHole = false, activeHandIndex = 0, opts = {}) {
     const { user = null, dealerUser = null, outcomes = [], dealerOutcome = null, playerOutcome = null } = opts;
     try {
@@ -279,7 +268,7 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
         const CANVAS_H = MARGIN + HEADER_H + SECTION_GAP + sectionHeight + playerHands.length * (sectionHeight + SECTION_GAP) + MARGIN;
 
         const canvas = createCanvas(CANVAS_W, CANVAS_H);
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
 
         // Background
         if (colors.background) {
@@ -292,7 +281,7 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
                 const dy = (CANVAS_H - drawH) / 2;
                 ctx.drawImage(bgImg, dx, dy, drawW, drawH);
             } catch (err) {
-                logger.warn('Failed to load blackjack background image, using fallback color', { error: err });
+                logger.warn("Failed to load blackjack background image, using fallback color", { error: err });
                 ctx.fillStyle = colors.feltColor;
                 ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
             }
@@ -303,28 +292,28 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
 
         // Title — outlined, glowing, matching the duel banner treatment.
         // Once the game resolves, the title swaps to the player-perspective result.
-        let titleText = 'BLACKJACK';
+        let titleText = "BLACKJACK";
         let titleAccent = colors.gold;
-        if (playerOutcome === 'win') {
-            titleText = 'YOU WIN';
-            titleAccent = colors.textWin || '#44ff44';
-        } else if (playerOutcome === 'loss') {
-            titleText = 'YOU LOSE';
-            titleAccent = colors.textLoss || '#ff4444';
-        } else if (playerOutcome === 'push') {
-            titleText = 'PUSH';
+        if (playerOutcome === "win") {
+            titleText = "YOU WIN";
+            titleAccent = colors.textWin || "#44ff44";
+        } else if (playerOutcome === "loss") {
+            titleText = "YOU LOSE";
+            titleAccent = colors.textLoss || "#ff4444";
+        } else if (playerOutcome === "push") {
+            titleText = "PUSH";
             titleAccent = colors.gold;
         }
         ctx.save();
-        ctx.font = 'bold 40px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
+        ctx.font = "bold 40px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
         ctx.shadowColor = withAlpha(titleAccent, 0.85);
         ctx.shadowBlur = 22;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 0;
         ctx.lineWidth = 5;
-        ctx.strokeStyle = colors.feltColor || '#0f4c25';
+        ctx.strokeStyle = colors.feltColor || "#0f4c25";
         ctx.strokeText(titleText, CANVAS_W / 2, MARGIN);
         ctx.shadowBlur = 0;
         ctx.fillStyle = titleAccent;
@@ -346,7 +335,7 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             try {
                 backImg = await loadImage(sheetCfg.back);
             } catch (err) {
-                logger.warn('Failed to load card back image', { error: err });
+                logger.warn("Failed to load card back image", { error: err });
             }
         }
 
@@ -362,10 +351,10 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
 
         // Label
         ctx.fillStyle = colors.textWhite;
-        ctx.font = 'bold 16px Arial';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText('Dealer', MARGIN + SECTION_PADDING, y + SECTION_PADDING);
+        ctx.font = "bold 16px Arial";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("Dealer", MARGIN + SECTION_PADDING, y + SECTION_PADDING);
 
         // Avatar above the total circle, stacked vertically and centered in the info column.
         const infoStackH = AVATAR_SIZE + AVATAR_GAP + CIRCLE_SIZE;
@@ -404,13 +393,13 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             const handStatus = statusFromValue(handTotal);
 
             const multi = playerHands.length > 1;
-            const label = multi ? `Hand ${hi + 1}` : 'Your hand';
+            const label = multi ? `Hand ${hi + 1}` : "Your hand";
 
             // Status badges for this hand (shown under the total circle)
             const badges = [];
-            if (hand.isDoubled) badges.push('double');
-            if (handStatus === 'bust') badges.push('bust');
-            else if (handStatus === 'blackjack') badges.push('blackjack');
+            if (hand.isDoubled) badges.push("double");
+            if (handStatus === "bust") badges.push("bust");
+            else if (handStatus === "blackjack") badges.push("blackjack");
 
             // Section background
             drawSectionBg(ctx, MARGIN, y, CANVAS_W - MARGIN * 2, sectionHeight, colors);
@@ -418,9 +407,9 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             // Label
             const isActive = hi === activeHandIndex;
             ctx.fillStyle = isActive ? colors.gold : colors.textWhite;
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
+            ctx.font = "bold 16px Arial";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
             ctx.fillText(label, MARGIN + SECTION_PADDING, y + SECTION_PADDING);
 
             // Avatar above the total circle.
@@ -449,10 +438,10 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             y += sectionHeight + SECTION_GAP;
         }
 
-        const buffer = canvas.toBuffer('image/png');
-        return new AttachmentBuilder(buffer).setName('blackjack.png');
+        const buffer = canvas.toBuffer("image/png");
+        return new AttachmentBuilder(buffer).setName("blackjack.png");
     } catch (err) {
-        logger.error('Failed to render blackjack canvas', { error: err });
+        logger.error("Failed to render blackjack canvas", { error: err });
         return null;
     }
 }

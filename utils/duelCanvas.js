@@ -386,15 +386,26 @@ function drawAtmosphere(ctx, width, height, colors) {
     ctx.restore();
 }
 
-async function fetchAvatarBuffer(user) {
+// Cache decoded avatars across the four-phase duel lifecycle (challenge, choose,
+// result, rematch). Without this, every phase re-fetched both avatars — up to 8
+// fetches per duel against Discord's CDN.
+const avatarCache = new Map();
+function loadUserAvatar(user) {
+    if (!user) return Promise.resolve(null);
     const url = user.displayAvatarURL({ extension: "png", size: 128 });
-    try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        return Buffer.from(await res.arrayBuffer());
-    } catch {
-        return null;
-    }
+    if (avatarCache.has(url)) return avatarCache.get(url);
+    const promise = (async () => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const buf = Buffer.from(await res.arrayBuffer());
+            return await loadImage(buf);
+        } catch {
+            return null;
+        }
+    })();
+    avatarCache.set(url, promise);
+    return promise;
 }
 
 async function renderDuel({ challenger, opponent, bet, challengerChoice, opponentChoice, result, colors }) {
@@ -415,8 +426,8 @@ async function renderDuel({ challenger, opponent, bet, challengerChoice, opponen
 
     // Pre-fetch both avatars and sprites in parallel.
     const [challengerAvatar, opponentAvatar, coinSprite, rockSprite, paperSprite, scissorsSprite] = await Promise.all([
-        fetchAvatarBuffer(challenger),
-        fetchAvatarBuffer(opponent),
+        loadUserAvatar(challenger),
+        loadUserAvatar(opponent),
         loadSprite(colors.coinSprite),
         loadSprite(colors.rockSprite),
         loadSprite(colors.paperSprite),
@@ -436,7 +447,7 @@ async function renderDuel({ challenger, opponent, bet, challengerChoice, opponen
     }
 
     // Helper to draw a player panel
-    async function drawPlayerPanel(user, choice, x, align, avatarBuffer) {
+    async function drawPlayerPanel(user, choice, x, align, avatarImg) {
         const avatarSize = AVATAR_SIZE;
         const avatarX = align === "left" ? x : x - avatarSize;
         const avatarY = AVATAR_Y;
@@ -448,25 +459,18 @@ async function renderDuel({ challenger, opponent, bet, challengerChoice, opponen
         ctx.fill();
 
         // Draw avatar
-        try {
-            const avatar = await loadImage(avatarBuffer);
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-            ctx.closePath();
-            ctx.clip();
-            ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
-            ctx.restore();
-        } catch {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-            ctx.closePath();
-            ctx.clip();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        if (avatarImg) {
+            ctx.drawImage(avatarImg, avatarX, avatarY, avatarSize, avatarSize);
+        } else {
             ctx.fillStyle = colors.feltDark || "#0a3a1a";
             ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
-            ctx.restore();
         }
+        ctx.restore();
 
         // Name
         ctx.font = "bold 22px sans-serif";

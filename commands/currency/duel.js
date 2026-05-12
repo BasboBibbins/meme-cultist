@@ -6,6 +6,7 @@ const { renderDuel } = require("../../utils/duelCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getDuelColors } = require("../../themes/resolver");
 const logger = require("../../utils/logger");
+const { withUserLock } = require("../../utils/userlock");
 
 const ACCEPT_TIMEOUT = 60000;
 const CHOICE_TIMEOUT = 30000;
@@ -144,8 +145,18 @@ module.exports = {
         }
 
         // Escrow only the challenger's wager up front. The opponent's wallet is
-        // checked and deducted when they click accept.
-        await db.sub(`${challenger.id}.balance`, bet);
+        // checked and deducted when they click accept. Lock prevents concurrent
+        // commands (e.g. /bank withdraw, /slots) from racing the escrow.
+        const escrowed = await withUserLock(challenger.id, async () => {
+            const bal = await db.get(`${challenger.id}.balance`) || 0;
+            if (bal < bet) return false;
+            await db.sub(`${challenger.id}.balance`, bet);
+            return true;
+        });
+        if (!escrowed) {
+            errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+            return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+        }
 
         client.duelGames.set(sessionKey, {
             challengerId: challenger.id,
@@ -235,7 +246,7 @@ module.exports = {
 
             if (i.customId === `duel_decline_${sessionKey}`) {
                 acceptCollector.stop("responded");
-                await db.add(`${challenger.id}.balance`, bet);
+                await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
                 client.duelGames.delete(sessionKey);
 
                 const declineEmbed = new EmbedBuilder()
@@ -254,7 +265,7 @@ module.exports = {
             const opponentWallet = await db.get(`${opponent.id}.balance`) || 0;
             if (opponentWallet < bet) {
                 acceptCollector.stop("responded");
-                await db.add(`${challenger.id}.balance`, bet);
+                await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
                 client.duelGames.delete(sessionKey);
 
                 const shortfall = bet - opponentWallet;
@@ -271,7 +282,25 @@ module.exports = {
             }
 
             acceptCollector.stop("responded");
-            await db.sub(`${opponent.id}.balance`, bet);
+            const opponentEscrowed = await withUserLock(opponent.id, async () => {
+                const bal = await db.get(`${opponent.id}.balance`) || 0;
+                if (bal < bet) return false;
+                await db.sub(`${opponent.id}.balance`, bet);
+                return true;
+            });
+            if (!opponentEscrowed) {
+                // Lost the race — wallet drained between the wallet check above and the lock acquisition.
+                await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+                client.duelGames.delete(sessionKey);
+                const raceEmbed = new EmbedBuilder()
+                    .setAuthor({ name: `Duel Cancelled`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
+                    .setDescription(`${opponent.displayName}'s wallet changed before acceptance could finalize. ${challenger.displayName}'s wager has been refunded.`)
+                    .setColor(0xFF0000)
+                    .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+                    .setTimestamp();
+                await i.update({ embeds: [raceEmbed], components: [] });
+                return;
+            }
             session.status = "active";
 
             await i.deferUpdate();
@@ -281,7 +310,7 @@ module.exports = {
         acceptCollector.on("end", async (_, reason) => {
             if (reason === "time") {
                 // Opponent never accepted — only the challenger was escrowed.
-                await db.add(`${challenger.id}.balance`, bet);
+                await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
 
                 const expiredEmbed = new EmbedBuilder()
                     .setAuthor({ name: `Duel Expired`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
@@ -390,8 +419,8 @@ async function runRpsPhase({ session, challenger, opponent, bet, colors, msg, cl
         // Timeout / incomplete
         if (choices.size === 0) {
             // No one chose — refund both
-            await db.add(`${challenger.id}.balance`, bet);
-            await db.add(`${opponent.id}.balance`, bet);
+            await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+            await withUserLock(opponent.id, () => db.add(`${opponent.id}.balance`, bet));
 
             const timeoutEmbed = new EmbedBuilder()
                 .setAuthor({ name: `Duel Cancelled`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
@@ -400,7 +429,7 @@ async function runRpsPhase({ session, challenger, opponent, bet, colors, msg, cl
                 .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
 
-            await msg.edit({ embeds: [timeoutEmbed], components: [], attachments: [] });
+            await msg.edit({ embeds: [timeoutEmbed], components: [], files: [] });
             client.duelGames.delete(sessionKey);
             logger.info(`Duel ${sessionKey} timed out with no choices. Both refunded.`);
             return;
@@ -411,7 +440,7 @@ async function runRpsPhase({ session, challenger, opponent, bet, colors, msg, cl
         const winner = chooserId === challenger.id ? challenger : opponent;
         const loser = chooserId === challenger.id ? opponent : challenger;
 
-        await db.add(`${winner.id}.balance`, bet * 2);
+        await withUserLock(winner.id, () => db.add(`${winner.id}.balance`, bet * 2));
         await updateStats(winner.id, loser.id, bet);
         await setCooldowns(challenger.id, opponent.id);
 
@@ -460,8 +489,8 @@ async function resolveDuel(session, choices, challenger, opponent, bet, colors, 
 
     if (result === "draw") {
         // Refund both
-        await db.add(`${challenger.id}.balance`, bet);
-        await db.add(`${opponent.id}.balance`, bet);
+        await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+        await withUserLock(opponent.id, () => db.add(`${opponent.id}.balance`, bet));
 
         const drawEmbed = new EmbedBuilder()
             .setAuthor({ name: `It's a Draw!`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
@@ -488,9 +517,11 @@ async function resolveDuel(session, choices, challenger, opponent, bet, colors, 
             await msg.edit({ embeds: [drawEmbed], components: [] });
         }
 
-        // Update totalBet stat for both
+        // Update totalBet + draws for both
         await db.add(`${challenger.id}.stats.duel.totalBet`, bet);
         await db.add(`${opponent.id}.stats.duel.totalBet`, bet);
+        await db.add(`${challenger.id}.stats.duel.draws`, 1);
+        await db.add(`${opponent.id}.stats.duel.draws`, 1);
 
         client.duelGames.delete(sessionKey);
         logger.info(`Duel ${sessionKey} ended in a draw.`);
@@ -503,7 +534,7 @@ async function resolveDuel(session, choices, challenger, opponent, bet, colors, 
     const loser = result === "challenger" ? opponent : challenger;
 
     // Winner takes full pot
-    await db.add(`${winner.id}.balance`, bet * 2);
+    await withUserLock(winner.id, () => db.add(`${winner.id}.balance`, bet * 2));
     await updateStats(winner.id, loser.id, bet);
     await setCooldowns(challenger.id, opponent.id);
 
@@ -619,13 +650,37 @@ async function offerRematch({ challenger, opponent, bet, colors, msg, client, se
                 .setColor(0xFF0000)
                 .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
-            try { await msg.edit({ embeds: [cancelEmbed], components: [], attachments: [] }); } catch (_) {}
+            try { await msg.edit({ embeds: [cancelEmbed], components: [], files: [] }); } catch (_) {}
             logger.info(`Duel ${sessionKey} rematch cancelled — ${shortPlayer.username} insufficient funds.`);
             return;
         }
 
-        await db.sub(`${challenger.id}.balance`, bet);
-        await db.sub(`${opponent.id}.balance`, bet);
+        // Re-check balances under per-user locks before escrowing — between the
+        // pre-check above and acquiring the locks, either side could have spent
+        // their wallet in another game.
+        const cEsc = await withUserLock(challenger.id, async () => {
+            const b = await db.get(`${challenger.id}.balance`) || 0;
+            if (b < bet) return false;
+            await db.sub(`${challenger.id}.balance`, bet);
+            return true;
+        });
+        if (!cEsc) {
+            try { await msg.edit({ components: [] }); } catch (_) {}
+            logger.info(`Duel ${sessionKey} rematch cancelled at escrow — challenger insufficient funds.`);
+            return;
+        }
+        const oEsc = await withUserLock(opponent.id, async () => {
+            const b = await db.get(`${opponent.id}.balance`) || 0;
+            if (b < bet) return false;
+            await db.sub(`${opponent.id}.balance`, bet);
+            return true;
+        });
+        if (!oEsc) {
+            await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+            try { await msg.edit({ components: [] }); } catch (_) {}
+            logger.info(`Duel ${sessionKey} rematch cancelled at escrow — opponent insufficient funds.`);
+            return;
+        }
 
         const newSession = {
             challengerId: challenger.id,
