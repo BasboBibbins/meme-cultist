@@ -8,6 +8,8 @@ const CARD_W = 110;
 const CARD_H = 165;
 const CARD_SPACING = 16;
 const CIRCLE_SIZE = 70;
+const AVATAR_SIZE = 50;
+const AVATAR_GAP = 10;
 const MARGIN = 30;
 const HEADER_H = 55;
 const LABEL_H = 24;
@@ -20,6 +22,49 @@ function hexToRgba(hex, alpha) {
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function withAlpha(color, a) {
+    if (!color || typeof color !== "string") return `rgba(0,0,0,${a})`;
+    const trimmed = color.trim();
+    const m = trimmed.match(/^rgba?\s*\(\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)/i);
+    if (m) return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
+    let h = trimmed.replace("#", "");
+    if (h.length === 3) h = h.split("").map(c => c + c).join("");
+    if (h.length !== 6) return `rgba(0,0,0,${a})`;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return `rgba(0,0,0,${a})`;
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+const spriteCache = new Map();
+function loadSprite(p) {
+    if (!p) return Promise.resolve(null);
+    if (spriteCache.has(p)) return spriteCache.get(p);
+    const promise = loadImage(p).catch(() => null);
+    spriteCache.set(p, promise);
+    return promise;
+}
+
+const avatarCache = new Map();
+async function loadUserAvatar(user) {
+    if (!user) return null;
+    const url = user.displayAvatarURL({ extension: "png", size: 128 });
+    if (avatarCache.has(url)) return avatarCache.get(url);
+    const promise = (async () => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return null;
+            const buf = Buffer.from(await res.arrayBuffer());
+            return await loadImage(buf);
+        } catch {
+            return null;
+        }
+    })();
+    avatarCache.set(url, promise);
+    return promise;
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -41,10 +86,78 @@ function drawSectionBg(ctx, x, y, w, h, colors) {
     ctx.fillStyle = hexToRgba(colors.tableGreen, 0.65);
     roundRect(ctx, x, y, w, h, 12);
     ctx.fill();
+
+    // Dark radial vignette overlay clipped to the section — darkens edges to
+    // give each hand a "spotlit" feel.
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.clip();
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const grad = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.18, cx, cy, Math.max(w, h) * 0.7);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+
     ctx.strokeStyle = colors.goldDark;
     ctx.lineWidth = 3;
     roundRect(ctx, x, y, w, h, 12);
     ctx.stroke();
+}
+
+function drawAvatarCircle(ctx, x, y, size, img, colors) {
+    const cx = x + size / 2;
+    const cy = y + size / 2;
+    // Gold ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, size / 2 + 3, 0, Math.PI * 2);
+    ctx.fillStyle = colors.gold || "#ffd700";
+    ctx.fill();
+
+    if (img) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, x, y, size, size);
+        ctx.restore();
+    } else {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(x, y, size, size);
+        ctx.restore();
+    }
+}
+
+function stampAvatarOutcome(ctx, avatarX, avatarY, size, outcome, sprites) {
+    if (outcome === "win" && sprites.crown) {
+        const w = Math.round(size * 0.72);
+        const h = w;
+        ctx.drawImage(sprites.crown, avatarX + (size - w) / 2, avatarY - h + 4, w, h);
+    } else if (outcome === "loss" && sprites.fracture) {
+        const w = Math.round(size * 1.2);
+        const h = w;
+        ctx.drawImage(sprites.fracture, avatarX + (size - w) / 2, avatarY + (size - h) / 2, w, h);
+    }
+}
+
+function applyOutcomeOverlay(ctx, x, y, w, h, outcome) {
+    // Losers get a dimming overlay clipped to the section. Wins and pushes
+    // rely on the sprite stamp alone — no colored frame.
+    if (outcome !== "loss") return;
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.clip();
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
 }
 
 function drawBadge(ctx, x, y, type) {
@@ -149,7 +262,8 @@ function drawCardBack(ctx, x, y, w, h, colors) {
  * @param {number} activeHandIndex — which player hand is currently active
  * @returns {AttachmentBuilder|null}
  */
-async function canvasBlackjack(dealerCards, playerHands, colors, themeId, revealHole = false, activeHandIndex = 0) {
+async function canvasBlackjack(dealerCards, playerHands, colors, themeId, revealHole = false, activeHandIndex = 0, opts = {}) {
+    const { user = null, dealerUser = null, outcomes = [], dealerOutcome = null, playerOutcome = null } = opts;
     try {
         const maxDealerCards = dealerCards.length;
         const maxPlayerCards = playerHands.length > 0
@@ -187,12 +301,43 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
         }
 
-        // Title
-        ctx.fillStyle = colors.gold;
-        ctx.font = 'bold 32px Arial';
+        // Title — outlined, glowing, matching the duel banner treatment.
+        // Once the game resolves, the title swaps to the player-perspective result.
+        let titleText = 'BLACKJACK';
+        let titleAccent = colors.gold;
+        if (playerOutcome === 'win') {
+            titleText = 'YOU WIN';
+            titleAccent = colors.textWin || '#44ff44';
+        } else if (playerOutcome === 'loss') {
+            titleText = 'YOU LOSE';
+            titleAccent = colors.textLoss || '#ff4444';
+        } else if (playerOutcome === 'push') {
+            titleText = 'PUSH';
+            titleAccent = colors.gold;
+        }
+        ctx.save();
+        ctx.font = 'bold 40px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText('BLACKJACK', CANVAS_W / 2, MARGIN);
+        ctx.shadowColor = withAlpha(titleAccent, 0.85);
+        ctx.shadowBlur = 22;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = colors.feltColor || '#0f4c25';
+        ctx.strokeText(titleText, CANVAS_W / 2, MARGIN);
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = titleAccent;
+        ctx.fillText(titleText, CANVAS_W / 2, MARGIN);
+        ctx.restore();
+
+        // Pre-load avatars and shared outcome sprites in parallel.
+        const [dealerAvatar, playerAvatar, crownImg, fractureImg] = await Promise.all([
+            loadUserAvatar(dealerUser),
+            loadUserAvatar(user),
+            loadSprite(colors.crownSprite),
+            loadSprite(colors.fractureSprite),
+        ]);
 
         // Load sheet and back image
         const { img: sheetImg, cfg: sheetCfg } = await loadCardSheet(themeId);
@@ -222,8 +367,14 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
         ctx.textBaseline = 'top';
         ctx.fillText('Dealer', MARGIN + SECTION_PADDING, y + SECTION_PADDING);
 
+        // Avatar above the total circle, stacked vertically and centered in the info column.
+        const infoStackH = AVATAR_SIZE + AVATAR_GAP + CIRCLE_SIZE;
+        const infoTop = y + LABEL_H + SECTION_PADDING + (CARD_H - infoStackH) / 2;
+        const avatarColX = MARGIN + SECTION_PADDING + (CIRCLE_SIZE - AVATAR_SIZE) / 2;
+        drawAvatarCircle(ctx, avatarColX, infoTop, AVATAR_SIZE, dealerAvatar, colors);
+
         // Total circle + cards
-        const circleY = y + LABEL_H + SECTION_PADDING + (CARD_H - CIRCLE_SIZE) / 2;
+        const circleY = infoTop + AVATAR_SIZE + AVATAR_GAP;
         drawTotalCircle(ctx, MARGIN + SECTION_PADDING, circleY, CIRCLE_SIZE, dealerTotal, colors);
 
         for (let i = 0; i < dealerCards.length; i++) {
@@ -240,6 +391,10 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
                 ctx.drawImage(sheetImg, c.sx, c.sy, c.sw, c.sh, cardX, cardY, CARD_W, CARD_H);
             }
         }
+
+        applyOutcomeOverlay(ctx, MARGIN, y, CANVAS_W - MARGIN * 2, sectionHeight, dealerOutcome);
+        stampAvatarOutcome(ctx, avatarColX, infoTop, AVATAR_SIZE, dealerOutcome, { crown: crownImg, fracture: fractureImg });
+
         y += sectionHeight + SECTION_GAP;
 
         // ── Player hands ───────────────────────────────────
@@ -268,8 +423,14 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             ctx.textBaseline = 'top';
             ctx.fillText(label, MARGIN + SECTION_PADDING, y + SECTION_PADDING);
 
+            // Avatar above the total circle.
+            const pInfoStackH = AVATAR_SIZE + AVATAR_GAP + CIRCLE_SIZE;
+            const pInfoTop = y + LABEL_H + SECTION_PADDING + (CARD_H - pInfoStackH) / 2;
+            const pAvatarColX = MARGIN + SECTION_PADDING + (CIRCLE_SIZE - AVATAR_SIZE) / 2;
+            drawAvatarCircle(ctx, pAvatarColX, pInfoTop, AVATAR_SIZE, playerAvatar, colors);
+
             // Total circle + cards
-            const pCircleY = y + LABEL_H + SECTION_PADDING + (CARD_H - CIRCLE_SIZE) / 2;
+            const pCircleY = pInfoTop + AVATAR_SIZE + AVATAR_GAP;
             drawTotalCircle(ctx, MARGIN + SECTION_PADDING, pCircleY, CIRCLE_SIZE, handTotal, colors, badges);
 
             for (let ci = 0; ci < hand.cards.length; ci++) {
@@ -278,6 +439,13 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
                 const c = getCardSpriteCoords(hand.cards[ci].code, sheetCfg);
                 ctx.drawImage(sheetImg, c.sx, c.sy, c.sw, c.sh, cardX, cardY, CARD_W, CARD_H);
             }
+
+            // Loss dimming overlay (win/push leave the section unchanged).
+            applyOutcomeOverlay(ctx, MARGIN, y, CANVAS_W - MARGIN * 2, sectionHeight, outcomes[hi]);
+            // Crown above winner avatar / fracture over loser avatar — drawn
+            // after the dim overlay so the sprite itself stays crisp.
+            stampAvatarOutcome(ctx, pAvatarColX, pInfoTop, AVATAR_SIZE, outcomes[hi], { crown: crownImg, fracture: fractureImg });
+
             y += sectionHeight + SECTION_GAP;
         }
 

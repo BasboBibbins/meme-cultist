@@ -90,8 +90,8 @@ module.exports = {
         logger.debug(`${user.username}: ${initialCards[0].name} ${initialCards[1].name} = ${initialCards[0].numericValue + initialCards[1].numericValue}`);
 
         // Helper: render current state to canvas and attach to embed
-        async function renderState(revealHole = false, activeIndex = 0, title = 'Good luck!', description = '') {
-            const attachment = await canvasBlackjack(dealerCards, hands, colors, themeId, revealHole, activeIndex);
+        async function renderState(revealHole = false, activeIndex = 0, title = 'Good luck!', description = '', outcomes = [], dealerOutcome = null, playerOutcome = null) {
+            const attachment = await canvasBlackjack(dealerCards, hands, colors, themeId, revealHole, activeIndex, { user, dealerUser: interaction.client.user, outcomes, dealerOutcome, playerOutcome });
             if (attachment) {
                 embed.setImage('attachment://blackjack.png');
             }
@@ -103,7 +103,9 @@ module.exports = {
         // Check for natural blackjack
         if (checkHand(initialCards) === 'blackjack') {
             const dealerTotal = getHandValue(dealerCards);
-            const attachment = await renderState(true, 0, 'Blackjack!');
+            const naturalOutcome = dealerTotal === 21 ? 'push' : 'win';
+            const dealerOutcome = dealerTotal === 21 ? 'push' : 'loss';
+            const attachment = await renderState(true, 0, 'Blackjack!', '', [naturalOutcome], dealerOutcome, naturalOutcome);
             if (dealerTotal === 21) {
                 // Push - both have natural blackjack
                 await db.add(`${stats}.ties`, 1);
@@ -132,7 +134,7 @@ module.exports = {
             const biggestLoss = await db.get(`${stats}.biggestLoss`) || 0;
             if (originalBet > biggestLoss) await db.set(`${stats}.biggestLoss`, originalBet);
             const dealerTotal = getHandValue(dealerCards);
-            const attachment = await renderState(true, 0, 'Dealer Blackjack!');
+            const attachment = await renderState(true, 0, 'Dealer Blackjack!', '', ['loss'], 'win', 'loss');
             embed.setColor(0xFF0000)
                 .setDescription(`Dealer has blackjack! You lose **${originalBet.toLocaleString('en-US')}** ${CURRENCY_NAME}.\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`)
                 .setFooter({ text: `Bet: ${originalBet.toLocaleString('en-US')} ${CURRENCY_NAME} | ${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
@@ -401,6 +403,7 @@ module.exports = {
             let totalWinnings = 0;
             let biggestHandLoss = 0;
             let resultLines = [];
+            const outcomes = [];
 
             for (let i = 0; i < hands.length; i++) {
                 const hand = hands[i];
@@ -435,6 +438,8 @@ module.exports = {
                     await db.add(`${stats}.ties`, 1);
                 }
 
+                outcomes.push(handResult === 'WIN' ? 'win' : handResult === 'PUSH' ? 'push' : 'loss');
+
                 const marker = hand.isDoubled ? ' 💵' : '';
                 const tag = statusTag(handStatus);
                 const label = hands.length > 1 ? `Hand ${i + 1}:` : `Your hand:`;
@@ -464,7 +469,12 @@ module.exports = {
 
             const dTitle = dealerStatus === 'bust' ? 'Dealer busts!' : `Dealer: ${dealerTotal}`;
             const desc = `${resultLines.join('\n')}\n\n${totalWinnings > totalBets ? `You won **${(totalWinnings - totalBets).toLocaleString('en-US')}** ${CURRENCY_NAME}!` : totalWinnings === totalBets ? `You broke even.` : `You lost **${(totalBets - totalWinnings).toLocaleString('en-US')}** ${CURRENCY_NAME}.`}\nYour balance is **${(await db.get(`${user.id}.balance`)).toLocaleString('en-US')}** ${CURRENCY_NAME}.`;
-            attachment = await renderState(true, 0, dTitle, desc);
+            const allWin = outcomes.length > 0 && outcomes.every(o => o === 'win');
+            const allLoss = outcomes.length > 0 && outcomes.every(o => o === 'loss');
+            const allPush = outcomes.length > 0 && outcomes.every(o => o === 'push');
+            const dealerOutcome = allLoss ? 'win' : allWin ? 'loss' : allPush ? 'push' : null;
+            const playerOutcome = allWin ? 'win' : allLoss ? 'loss' : allPush ? 'push' : null;
+            attachment = await renderState(true, 0, dTitle, desc, outcomes, dealerOutcome, playerOutcome);
             embed.setColor(totalWinnings > totalBets ? 0x00AE86 : (totalWinnings > 0 ? 0xFFFF00 : 0xFF0000));
             await interaction.editReply({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
         }
