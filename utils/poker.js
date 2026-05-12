@@ -139,7 +139,7 @@ function stampAvatarOutcome(ctx, avatarX, avatarY, size, outcome, sprites) {
         const h = w;
         ctx.drawImage(sprites.crown, avatarX + (size - w) / 2, avatarY - h + 4, w, h);
     } else if (outcome === "loss" && sprites.fracture) {
-        const w = Math.round(size * 1.2);
+        const w = Math.round(size * 0.95);
         const h = w;
         ctx.drawImage(sprites.fracture, avatarX + (size - w) / 2, avatarY + (size - h) / 2, w, h);
     }

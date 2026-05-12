@@ -160,7 +160,7 @@ function drawAsymmetrySprites(ctx, winnerSide, loserSide, sprites) {
         ctx.drawImage(sprites.crown, wc.x - w / 2, AVATAR_Y - h + 6, w, h);
     }
     if (sprites.fracture) {
-        const w = 96, h = 96;
+        const w = 90, h = 90;
         ctx.drawImage(sprites.fracture, lc.x - w / 2, lc.y - h / 2, w, h);
     }
 }
