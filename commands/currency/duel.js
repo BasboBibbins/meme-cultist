@@ -115,15 +115,17 @@ module.exports = {
 
         const challengerBalance = await db.get(`${challenger.id}.balance`) || 0;
         const opponentBank = await db.get(`${opponent.id}.bank`) || 0;
+        const opponentWallet = await db.get(`${opponent.id}.balance`) || 0;
+        const opponentTotal = opponentBank + opponentWallet;
 
         if (bet > challengerBalance) {
             errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
-        // Opponent eligibility is gated on their bank, not wallet —
-        // the wallet check is deferred until they actually click accept.
-        if (bet > opponentBank) {
-            errorEmbed.setDescription(`${opponent.displayName} doesn't have enough banked ${CURRENCY_NAME} to be challenged for this wager!`);
+        // Opponent eligibility uses their combined wallet+bank — the wallet-only
+        // check is still deferred until they actually click accept.
+        if (bet > opponentTotal) {
+            errorEmbed.setDescription(`${opponent.displayName} doesn't have enough ${CURRENCY_NAME} to be challenged for this wager!`);
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
 
