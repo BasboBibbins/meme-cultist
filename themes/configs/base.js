@@ -11,8 +11,10 @@
 
 const path = require('path');
 
-const ASSETS_BASE       = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
-const ASSETS_BASE_CARDS = path.join(__dirname, '..', '..', 'assets', 'imgs', 'cards');
+const ASSETS_BASE        = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
+const ASSETS_BASE_CARDS  = path.join(__dirname, '..', '..', 'assets', 'imgs', 'cards');
+const ASSETS_BASE_DUEL   = path.join(__dirname, '..', '..', 'assets', 'imgs', 'duel');
+const ASSETS_BASE_SHARED = path.join(__dirname, '..', '..', 'assets', 'imgs', 'shared');
 
 module.exports = {
     id: 'classic',
@@ -42,6 +44,10 @@ module.exports = {
         textLoss:    '#ff4444',
         textPrimary: '#ffd700',
         embedColor:  0x0f4c25,
+        // Shared win/loss outcome sprites — used by any game that marks
+        // individual hands/players as winners or losers (duel, blackjack, …).
+        crownSprite:    path.join(ASSETS_BASE_SHARED, 'crown.png'),
+        fractureSprite: path.join(ASSETS_BASE_SHARED, 'fracture.png'),
     },
 
     overrides: {
@@ -154,6 +160,10 @@ module.exports = {
             textWin: '#44ff44',
             textLoss: '#ff4444',
             embedColor: 0x0f4c25,
+            coinSprite:     path.join(ASSETS_BASE_DUEL, 'coin.png'),
+            rockSprite:     path.join(ASSETS_BASE_DUEL, 'rock.png'),
+            paperSprite:    path.join(ASSETS_BASE_DUEL, 'paper.png'),
+            scissorsSprite: path.join(ASSETS_BASE_DUEL, 'scissors.png'),
         },
 
         // ── Cards ───────────────────────────────────────────────────
