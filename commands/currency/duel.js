@@ -99,14 +99,16 @@ module.exports = {
         }
 
         const challengerBalance = await db.get(`${challenger.id}.balance`) || 0;
-        const opponentBalance = await db.get(`${opponent.id}.balance`) || 0;
+        const opponentBank = await db.get(`${opponent.id}.bank`) || 0;
 
         if (bet > challengerBalance) {
             errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
-        if (bet > opponentBalance) {
-            errorEmbed.setDescription(`${opponent.displayName} doesn't have enough ${CURRENCY_NAME} to match your wager!`);
+        // Opponent eligibility is gated on their bank, not wallet —
+        // the wallet check is deferred until they actually click accept.
+        if (bet > opponentBank) {
+            errorEmbed.setDescription(`${opponent.displayName} doesn't have enough banked ${CURRENCY_NAME} to be challenged for this wager!`);
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
 
@@ -127,9 +129,9 @@ module.exports = {
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
 
-        // Escrow both wagers
+        // Escrow only the challenger's wager up front. The opponent's wallet is
+        // checked and deducted when they click accept.
         await db.sub(`${challenger.id}.balance`, bet);
-        await db.sub(`${opponent.id}.balance`, bet);
 
         client.duelGames.set(sessionKey, {
             challengerId: challenger.id,
@@ -146,9 +148,18 @@ module.exports = {
         const themeId = await getEquippedTheme(challenger.id);
         const colors = getDuelColors(themeId);
 
+        // Surface the opponent's wallet readiness up front so they know whether
+        // they can accept immediately or need to withdraw from their bank first.
+        const opponentWalletAtChallenge = await db.get(`${opponent.id}.balance`) || 0;
+        const walletReady = opponentWalletAtChallenge >= bet;
+        const shortfallAtChallenge = bet - opponentWalletAtChallenge;
+        const walletLine = walletReady
+            ? `` // TODO: Add a phrase here if necessary
+            : `⚠️ ${opponent.displayName}'s wallet only has **${opponentWalletAtChallenge.toLocaleString("en-US")}** ${CURRENCY_NAME}. Withdraw **${shortfallAtChallenge.toLocaleString("en-US")}** from your bank via \`/bank\` before accepting.`;
+
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${challenger.displayName} challenges ${opponent.displayName}!`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
-            .setDescription(`**${challenger.displayName}** has wagered **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on a Rock-Paper-Scissors duel!\n\n${opponent}, click **Accept Duel** to lock in your **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} and play.`)
+            .setDescription(`**${challenger.displayName}** has wagered **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on a Rock-Paper-Scissors duel!\n\n${opponent}, click **Accept Duel** to lock in your **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME}, or **Decline** to pass.\n\n${walletLine}`)
             .setColor(colors.embedColor || 0x0f4c25)
             .setThumbnail(opponent.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
@@ -161,17 +172,22 @@ module.exports = {
                     .setLabel("Accept Duel")
                     .setStyle(ButtonStyle.Success)
                     .setEmoji("⚔"),
+                new ButtonBuilder()
+                    .setCustomId(`duel_decline_${sessionKey}`)
+                    .setLabel("Decline")
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji("✋"),
             );
 
         await interaction.deferReply();
         const msg = await interaction.editReply({ content: `${opponent}`, embeds: [embed], components: [acceptRow] });
 
-        // DM the challenged user
+        // DM the challenged user with a jump link to the channel message.
         try {
             await opponent.send({ embeds: [new EmbedBuilder()
                 .setTitle("You've been challenged to a duel!")
                 .setThumbnail(challenger.displayAvatarURL({ dynamic: true, size: 1024 }))
-                .setDescription(`**${challenger.displayName}** has challenged you to a Rock-Paper-Scissors duel for **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\nClick **Accept Duel** in the channel to play, or ignore it to decline.`)
+                .setDescription(`**${challenger.displayName}** has challenged you to a Rock-Paper-Scissors duel for **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\n[Jump to the duel](${msg.url}) to **Accept** or **Decline**.\n\n${walletLine}`)
                 .setColor(colors.embedColor || 0x0f4c25)
                 .setTimestamp()
                 .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })] });
@@ -183,11 +199,49 @@ module.exports = {
             session.sessionKey = sessionKey;
         }
 
-        // Acceptance collector
-        const acceptFilter = i => i.user.id === opponent.id && i.customId === `duel_accept_${sessionKey}`;
-        const acceptCollector = msg.createMessageComponentCollector({ filter: acceptFilter, time: ACCEPT_TIMEOUT, max: 1 });
+        // Accept/Decline collector — both buttons are only honoured for the opponent.
+        const buttonFilter = i =>
+            i.user.id === opponent.id &&
+            (i.customId === `duel_accept_${sessionKey}` || i.customId === `duel_decline_${sessionKey}`);
+        const acceptCollector = msg.createMessageComponentCollector({ filter: buttonFilter, time: ACCEPT_TIMEOUT, max: 1 });
 
         acceptCollector.on("collect", async i => {
+            if (i.customId === `duel_decline_${sessionKey}`) {
+                await db.add(`${challenger.id}.balance`, bet);
+                client.duelGames.delete(sessionKey);
+
+                const declineEmbed = new EmbedBuilder()
+                    .setAuthor({ name: `Duel Declined`, iconURL: opponent.displayAvatarURL({ dynamic: true }) })
+                    .setDescription(`${opponent.displayName} declined the duel. ${challenger.displayName}'s wager has been refunded.`)
+                    .setColor(0xAAAAAA)
+                    .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+                    .setTimestamp();
+
+                await i.update({ embeds: [declineEmbed], components: [] });
+                logger.info(`Duel ${sessionKey} declined by ${opponent.username}.`);
+                return;
+            }
+
+            // Verify the opponent's wallet at acceptance time — bank was only used to gate the initial challenge.
+            const opponentWallet = await db.get(`${opponent.id}.balance`) || 0;
+            if (opponentWallet < bet) {
+                await db.add(`${challenger.id}.balance`, bet);
+                client.duelGames.delete(sessionKey);
+
+                const shortfall = bet - opponentWallet;
+                const insufficientEmbed = new EmbedBuilder()
+                    .setAuthor({ name: `Duel Cancelled`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
+                    .setDescription(`${opponent.displayName} only has **${opponentWallet.toLocaleString("en-US")}** ${CURRENCY_NAME} in their wallet — **${shortfall.toLocaleString("en-US")}** short of the **${bet.toLocaleString("en-US")}** bet. Withdraw from your bank via \`/bank\` before the next challenge.\n\n${challenger.displayName}'s wager has been refunded.`)
+                    .setColor(0xFF0000)
+                    .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+                    .setTimestamp();
+
+                await i.update({ embeds: [insufficientEmbed], components: [] });
+                logger.info(`Duel ${sessionKey} cancelled — opponent wallet insufficient at accept time.`);
+                return;
+            }
+
+            await db.sub(`${opponent.id}.balance`, bet);
             session.status = "active";
 
             const rpsEmbed = new EmbedBuilder()
@@ -342,9 +396,8 @@ module.exports = {
 
         acceptCollector.on("end", async (_, reason) => {
             if (reason === "time") {
-                // Opponent never accepted — refund both
+                // Opponent never accepted — only the challenger was escrowed.
                 await db.add(`${challenger.id}.balance`, bet);
-                await db.add(`${opponent.id}.balance`, bet);
 
                 const expiredEmbed = new EmbedBuilder()
                     .setAuthor({ name: `Duel Expired`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
