@@ -134,6 +134,15 @@ async function getDefaultDB(user) {
                 "biggestLoss": 0,
                 "profit": 0,
             },
+            "duel": {
+                "wins": 0,
+                "losses": 0,
+                "draws": 0,
+                "biggestWin": 0,
+                "biggestLoss": 0,
+                "profit": 0,
+                "totalBet": 0,
+            },
             "begs": {
                 "wins": 0,
                 "losses": 0,

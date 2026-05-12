@@ -61,4 +61,8 @@ function getBlackjackColors(themeId) {
     };
 }
 
-module.exports = { getThemeColors, getThemeSymbols, getCardSheet, getBlackjackColors };
+function getDuelColors(themeId) {
+    return getThemeColors(themeId, 'duel');
+}
+
+module.exports = { getThemeColors, getThemeSymbols, getCardSheet, getBlackjackColors, getDuelColors };

@@ -145,6 +145,17 @@ module.exports = {
             resultBorder:     '#ffd700',
         },
 
+        // ── Duel ────────────────────────────────────────────────────
+        duel: {
+            feltColor: '#0f4c25',
+            tableGreen: '#1a6b35',
+            gold: '#ffd700',
+            textWhite: '#ffffff',
+            textWin: '#44ff44',
+            textLoss: '#ff4444',
+            embedColor: 0x0f4c25,
+        },
+
         // ── Cards ───────────────────────────────────────────────────
         cards: {
             sheet:      path.join(ASSETS_BASE_CARDS, 'classic.png'),
