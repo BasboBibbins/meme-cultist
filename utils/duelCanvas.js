@@ -193,7 +193,8 @@ function drawWinnerBanner(ctx, x, y, text, accent, maxWidth, colors) {
 function drawPotBlock(ctx, x, y, bet, coinSprite, colors) {
     const gold = colors.gold || "#ffd700";
     const felt = colors.feltColor || "#0f4c25";
-    const amountText = bet.toLocaleString("en-US");
+    const pot = bet * 2 // add both users' bets to pot
+    const amountText = pot.toLocaleString("en-US");
 
     ctx.save();
     ctx.font = "bold 26px 'DejaVu Sans Mono', monospace";
