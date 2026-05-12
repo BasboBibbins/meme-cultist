@@ -138,7 +138,7 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary)
                     .setEmoji(heldCards[4].emoji),
             );
-        let file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId);
+        let file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId, { user });
 
         const draw_row = new ActionRowBuilder()
             .addComponents(
@@ -185,7 +185,8 @@ module.exports = {
                 }
                 logger.debug(heldCards.map(c => c.code).join(' | '));
                 heldCards.score = await pokerScore(heldCards);
-                file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId);
+                const finalOutcome = heldCards.score ? 'win' : 'loss';
+                file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId, { user, outcome: finalOutcome });
                 i.editReply({ components: [], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
                 return collector.stop(heldCards.score);
             }
@@ -196,7 +197,7 @@ module.exports = {
             hold_row.components[idx]
                 .setStyle(card.hold ? ButtonStyle.Secondary : ButtonStyle.Primary)
                 .setLabel(`${card.value} ${card.hold ? 'HOLDING' : 'HOLD'}`);
-            file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId);
+            file = await canvasHand(heldCards, heldCards.score, pokerColors, themeId, { user });
             i.editReply({ components: [hold_row, draw_row], embeds: [embed.setImage(`attachment://hand.png`)], files: [file] });
             logger.debug(heldCards.map((c, k) => `card${k + 1}: ${c.hold}`).join(', '));
             collector.resetTimer();
