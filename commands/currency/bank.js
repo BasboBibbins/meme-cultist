@@ -86,7 +86,7 @@ module.exports = {
                 } else {
                     logger.info(`Withdrawing ${amount} ${CURRENCY_NAME} from ${user.username} (${user.id})'s bank to their wallet...`);
                     await withdraw(user.id, amount);
-                    embed.setDescription(`Successfully withdrew ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from your bank!\n\nYour new bank balance is **${curentBank+amount} ${CURRENCY_NAME}**`);
+                    embed.setDescription(`Successfully withdrew ${amount.toLocaleString('en-US')} ${CURRENCY_NAME} from your bank!\n\nYour new bank balance is **${currentBank+amount} ${CURRENCY_NAME}**`);
                     embed.setColor("#00FF00");
                 }
                 await interaction.editReply({embeds: [embed]});
