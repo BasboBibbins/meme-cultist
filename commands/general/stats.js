@@ -30,6 +30,7 @@ async function getGameStats(userId) {
         'roulette.wins', 'roulette.losses', 'roulette.totalBet', 'roulette.biggestWin', 'roulette.biggestLoss', 'roulette.profit',
         'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss', 'race.profit',
         'craps.rolls', 'craps.wins', 'craps.losses', 'craps.pushes', 'craps.pointsHit', 'craps.sevenOuts', 'craps.totalBet', 'craps.biggestWin', 'craps.biggestLoss', 'craps.profit',
+        'duel.wins', 'duel.losses', 'duel.draws', 'duel.totalBet', 'duel.biggestWin', 'duel.biggestLoss', 'duel.profit',
         'poker.wins', 'poker.losses', 'poker.royals', 'poker.biggestWin', 'poker.biggestLoss', 'poker.profit'
     ];
 
@@ -53,6 +54,7 @@ function calcTotalGames(gameStats, gameName) {
     const losses = g.losses || 0;
     if (gameName === 'blackjack') return wins + losses + (g.ties || 0);
     if (gameName === 'slots') return wins + losses + (g.jackpots || 0);
+    if (gameName === 'duel') return wins + losses + (g.draws || 0);
     return wins + losses;
 }
 
@@ -165,6 +167,7 @@ async function generateStatsEmbed(page, interaction, user) {
             const rl = gameStats.roulette || {};
             const rc = gameStats.race || {};
             const cr = gameStats.craps || {};
+            const du = gameStats.duel || {};
             const pk = gameStats.poker || {};
 
             embed.setTitle(`${user.displayName }'s Game Stats`)
@@ -226,6 +229,19 @@ async function generateStatsEmbed(page, interaction, user) {
                     `*Net Profit:* **${formatProfit(cr.profit || 0)}**`
                 ]), inline: true },
             );
+            if (du.wins || du.losses || du.draws) {
+                embed.addFields(
+                    { name: "Duel", value: buildDesc([
+                        `*Duels:* **${calcTotalGames(gameStats, 'duel')}**`,
+                        `*Win Rate:* **${calcWinRate(gameStats, 'duel')}%**`,
+                        du.draws && `*Draws:* **${du.draws}**`,
+                        du.totalBet && `*Total Bet:* **${du.totalBet}**`,
+                        du.biggestWin && `*Biggest Win:* **${du.biggestWin}**`,
+                        du.biggestLoss && `*Biggest Loss:* **${du.biggestLoss}**`,
+                        `*Net Profit:* **${formatProfit(du.profit || 0)}**`
+                    ]), inline: true },
+                );
+            }
             if (pk.wins || pk.losses) {
                 embed.addFields(
                     { name: "Poker", value: buildDesc([

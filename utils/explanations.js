@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS } = require('../config.js');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN } = require('../config.js');
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(', ');
 
@@ -182,6 +182,34 @@ module.exports = {
             The winner is pre-determined when the race starts, but the animation shows all horses racing.
             Higher form ratings mean higher probability of winning but lower odds.
             Min/max bet amounts are configured by the server admin.`
+    },
+    duel: {
+        name: "Duel",
+        description: `
+            Duel is a head-to-head Rock-Paper-Scissors wager between two players. Use \`/duel @user [bet]\` to challenge someone. The challenger's wager is escrowed immediately — the opponent has ${Math.floor(60)} seconds to **Accept** or **Decline** via buttons (and gets a DM with a jump link).
+
+            On accept, the opponent's wallet is checked and their matching wager is escrowed. Both players then pick **🪨 Rock**, **📄 Paper**, or **✂️ Scissors** — choices are hidden until both lock in. Standard RPS rules apply: rock beats scissors, scissors beats paper, paper beats rock.
+
+            **Winner takes the full pot** (both wagers). A **draw** refunds both wagers. If a player doesn't pick in time, the other wins by **forfeit**. If neither picks, both are refunded.
+
+            After the result, either player can click **🔁 Rematch** within 60 seconds — when **both** click, balances are re-checked and the duel restarts on the same message (the cooldown is bypassed by mutual agreement).
+            `,
+        rules: `
+            1. Use \`/duel @user [bet]\` to challenge another player. Minimum bet is ${DUEL_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}.
+            2. The challenger's wager is locked up front. The opponent is gated on **bank** balance for the challenge and **wallet** balance at accept time — withdraw via \`/bank\` if your wallet is short.
+            3. The opponent must click **Accept Duel** within 60 seconds; otherwise the challenger is refunded.
+            4. Both players have 30 seconds to choose Rock, Paper, or Scissors. Choices are hidden until both pick.
+            5. Winner takes the full pot. Draw refunds both. Forfeit by timeout awards the pot to whoever did choose.
+            6. A standard cooldown of ${Math.floor(DUEL_COOLDOWN / 60000)} minutes is applied to both players after a resolved duel.
+            7. The rematch button skips the cooldown when both players click within 60 seconds.`,
+        example: `
+            \`/duel @rival 500\` — Challenge @rival to a duel for 500 ${CURRENCY_NAME}.
+            \`/duel @rival half\` — Wager half your wallet.
+            \`/duel @rival all\` — Go all-in.`,
+        note: `
+            You can't duel yourself or a bot. Only one active duel per challenger/opponent pair per channel at a time.
+            The opponent's bank is checked at challenge time so the challenger sees up front whether the opponent could ever cover the wager.
+            DM notifications go to the opponent on challenge and to the loser on resolution.`
     },
     music: {
         name: "Music",
