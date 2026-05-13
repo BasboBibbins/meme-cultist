@@ -22,6 +22,7 @@ const {
   FACT_CONFIDENCE_THRESHOLD,
   LOW_BUDGET_MODE,
   CRITIQUE_MODEL,
+  STREAMING_ENABLED,
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
@@ -1031,6 +1032,96 @@ async function tickMessageCount(channel, messages, userId) {
   }
 }
 
+function accumulateToolCalls(existing, deltas) {
+    if (!existing) existing = [];
+    for (const d of deltas) {
+        const idx = d.index ?? 0;
+        if (!existing[idx]) {
+            existing[idx] = {
+                id: d.id || "",
+                type: d.type || "function",
+                function: { name: d.function?.name || "", arguments: d.function?.arguments || "" }
+            };
+        } else {
+            if (d.id) existing[idx].id = d.id;
+            if (d.type) existing[idx].type = d.type;
+            if (d.function?.name) existing[idx].function.name = d.function.name;
+            if (d.function?.arguments) existing[idx].function.arguments += d.function.arguments;
+        }
+    }
+    return existing;
+}
+
+async function streamResponseToDiscord({ messages, model, temperature, variant, targetChannel, timeoutMs }) {
+    let placeholder;
+    try {
+        placeholder = await targetChannel.send("...");
+    } catch (err) {
+        logger.warn(`[Stream] Failed to send placeholder: ${err.message}`);
+        return { response: null, messageId: null, streamed: false, toolCalls: null };
+    }
+
+    const editThrottleMs = 750;
+    let lastEdit = 0;
+    let accumulated = "";
+    let pendingToolCalls = null;
+
+    try {
+        const stream = llm.chatStream({
+            model,
+            messages,
+            temperature,
+            timeoutMs,
+            label: "handleBotMessage",
+            variant,
+        });
+
+        for await (const chunk of stream) {
+            if (chunk.tool_calls && chunk.tool_calls.length > 0) {
+                pendingToolCalls = accumulateToolCalls(pendingToolCalls, chunk.tool_calls);
+            }
+            if (chunk.content) accumulated += chunk.content;
+            if (chunk.finish_reason === "tool_calls") {
+                break;
+            }
+            const now = Date.now();
+            if (now - lastEdit >= editThrottleMs) {
+                const text = accumulated.trim() || "...";
+                if (text.length <= 2000) {
+                    await placeholder.edit(text);
+                    lastEdit = now;
+                }
+            }
+        }
+
+        // If model wanted tools, abort streaming and let the caller handle them non-streamed.
+        if (pendingToolCalls && pendingToolCalls.length > 0) {
+            await placeholder.delete().catch(() => {});
+            return { response: null, messageId: null, streamed: false, toolCalls: pendingToolCalls };
+        }
+
+        const text = accumulated.trim() || "...";
+        if (text.length <= 2000) {
+            await placeholder.edit(text);
+        } else {
+            await placeholder.delete().catch(() => {});
+            const chunks = splitAtWordBoundary(text, 1997);
+            for (let i = 0; i < chunks.length; i++) {
+                let chunk = chunks[i];
+                if (i < chunks.length - 1) chunk += "...";
+                const sent = await targetChannel.send(chunk);
+                if (i === 0) placeholder = sent;
+            }
+        }
+
+        return { response: accumulated, messageId: placeholder.id, streamed: true, toolCalls: null };
+    } catch (err) {
+        logger.warn(`[Stream] Streaming failed: ${err.message}`);
+        await placeholder.delete().catch(() => {});
+        return { response: null, messageId: null, streamed: false, toolCalls: null };
+    }
+}
+
 async function handleBotMessage(client, message, customPrompt = null, channelId = null, isMention = false, extraContext = null) {
   // sys message ignore
   logger.debug(`Received message: ${message.content} | Type: ${message.type} | Channel ID: ${channelId || message.channel.id}`);
@@ -1469,6 +1560,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     ];
 
     let response = null;
+    let streamedMessageId = null;
     let toolCallDepth = 0;
     const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
     const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [] };
@@ -1476,6 +1568,47 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
       logger.debug(`[API Request] tools: ${JSON.stringify(TOOLS.map(t => t.function.name))}`);
       logger.debug(`[API Request] last user message: ${messages[messages.length - 1]?.content?.substring(0, 100)}...`);
+
+      // Streaming attempt: only on the first call of a turn sequence and
+      // only when no file attachments are pending (Discord edits cannot add files).
+      const tryStream = STREAMING_ENABLED && !LOW_BUDGET_MODE && toolCtx.pendingAttachments.length === 0 && toolCallDepth === 0;
+      if (tryStream) {
+        const streamRes = await streamResponseToDiscord({
+          messages, model: CONVO_MODEL, temperature: 0.9, variant: sys_variant,
+          targetChannel, timeoutMs: 120_000,
+        });
+        if (streamRes.streamed) {
+          response = streamRes.response;
+          streamedMessageId = streamRes.messageId;
+          logger.debug(`[Stream] Completed with ${response?.length ?? 0} chars.`);
+          break;
+        }
+        if (streamRes.toolCalls && streamRes.toolCalls.length > 0) {
+          logger.debug(`[Stream] Model requested tool calls mid-stream; switching to non-streamed path.`);
+          messages.push({ role: "assistant", content: null, tool_calls: streamRes.toolCalls });
+          for (const toolCall of streamRes.toolCalls) {
+            const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+            messages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(toolResult),
+            });
+            if (SIDE_EFFECT_TOOLS.has(toolCall.function.name)) {
+              toolCtx.pendingToolCalls.push({
+                id: toolCall.id,
+                type: "function",
+                function: {
+                  name: toolCall.function.name,
+                  arguments: toolCall.function.arguments,
+                },
+                result: toolResult,
+              });
+            }
+          }
+          toolCallDepth++;
+          continue;
+        }
+      }
 
       const completion = await llm.chat({
         model: CONVO_MODEL,
@@ -1594,6 +1727,25 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           if (revised) {
             logger.log(`[Critique] Regenerated reply after critique.`);
             response = revised;
+            if (streamedMessageId) {
+              try {
+                if (revised.length <= 2000) {
+                  const msg = await targetChannel.messages.fetch(streamedMessageId);
+                  await msg.edit(revised);
+                } else {
+                  const msg = await targetChannel.messages.fetch(streamedMessageId);
+                  await msg.delete().catch(() => {});
+                  const chunks = splitAtWordBoundary(revised, 1997);
+                  for (let i = 0; i < chunks.length; i++) {
+                    let chunk = chunks[i];
+                    if (i < chunks.length - 1) chunk += "...";
+                    await targetChannel.send(chunk);
+                  }
+                }
+              } catch (err) {
+                logger.warn(`[Critique] Failed to edit streamed message: ${err.message}`);
+              }
+            }
           }
         } catch (err) {
           logger.warn(`[Critique] Revision failed, keeping original: ${err.message}`);
@@ -1606,7 +1758,14 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     const pendingFiles = toolCtx.pendingAttachments;
     const sentMessageIds = [];
     try {
-      if (response && response.length > 2000) {
+      if (streamedMessageId) {
+        // Response was already streamed to Discord. Track the message for tool-call history.
+        sentMessageIds.push(streamedMessageId);
+        if (pendingFiles.length > 0) {
+          const sent = await targetChannel.send({ files: pendingFiles });
+          sentMessageIds.push(sent.id);
+        }
+      } else if (response && response.length > 2000) {
         logger.warn("Response exceeds Discord's character limit, splitting response into chunks.");
         const chunks = splitAtWordBoundary(response, 1997);
         for (let i = 0; i < chunks.length; i++) {

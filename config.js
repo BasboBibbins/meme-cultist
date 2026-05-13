@@ -180,6 +180,7 @@ const config = {
     LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
     CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
     BOOKMARK_EMOJI: process.env.BOOKMARK_EMOJI || "📌",
+    STREAMING_ENABLED: /^(1|true|yes|on)$/i.test(process.env.STREAMING_ENABLED || ""),
 };
 
 module.exports = config;

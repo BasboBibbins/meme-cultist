@@ -52,4 +52,63 @@ async function chat(args) {
     };
 }
 
-module.exports = { chat, getClient };
+async function* chatStream(args) {
+    const client = getClient();
+    const payload = {
+        model: args.model,
+        messages: args.messages,
+        stream: true,
+    };
+    if (args.temperature !== undefined) payload.temperature = args.temperature;
+    if (args.max_tokens !== undefined) payload.max_tokens = args.max_tokens;
+    if (args.tools !== undefined) payload.tools = args.tools;
+    if (args.tool_choice !== undefined) payload.tool_choice = args.tool_choice;
+    if (args.response_format !== undefined) payload.response_format = args.response_format;
+
+    const raw = await client.createChatCompletion(payload, { responseType: "stream" });
+    const stream = raw.data;
+
+    let buffer = "";
+    for await (const chunk of stream) {
+        buffer += chunk.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop(); // keep incomplete line in buffer
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data: ")) continue;
+            const data = trimmed.slice(6).trim();
+            if (data === "[DONE]") return;
+            try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta;
+                const finish_reason = parsed.choices?.[0]?.finish_reason;
+                yield {
+                    content: delta?.content || "",
+                    tool_calls: delta?.tool_calls,
+                    finish_reason,
+                };
+            } catch (_) {
+                // ignore malformed SSE lines
+            }
+        }
+    }
+
+    // flush remaining buffer
+    if (buffer.trim().startsWith("data: ")) {
+        const data = buffer.trim().slice(6).trim();
+        if (data !== "[DONE]") {
+            try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta;
+                const finish_reason = parsed.choices?.[0]?.finish_reason;
+                yield {
+                    content: delta?.content || "",
+                    tool_calls: delta?.tool_calls,
+                    finish_reason,
+                };
+            } catch (_) {}
+        }
+    }
+}
+
+module.exports = { chat, chatStream, getClient };

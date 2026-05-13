@@ -7,6 +7,7 @@ const { estimateCost, estimateTokenCount } = require("./cost");
 
 module.exports = {
     chat: router.chat,
+    chatStream: router.chatStream,
     describeImage: router.describeImage,
     generateImage: router.generateImage,
     getCacheStats: router.getCacheStats,
