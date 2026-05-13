@@ -405,16 +405,20 @@ module.exports = {
 
             **Slash command:**
             • \`/remind add when:\"in 30 minutes\" message:\"stretch\"\` — set a new reminder
+            • \`/remind add when:\"tomorrow at 8pm\" message:\"walk the dog\" frequency:daily end_date:\"in 2 weeks\"\` — recurring reminder
+            • \`/remind add when:\"in 10 minutes\" message:\"meeting\" target:@User\` — group reminder
             • \`/remind list\` — show your pending reminders
             • \`/remind cancel id:<ID>\` — cancel a reminder by its ID
 
-            The bot tries to DM you first. If your DMs are closed, it falls back to the channel where the reminder was set.
+            The bot tries to DM each recipient first. If DMs are closed, it falls back to the channel where the reminder was set.
         `,
         rules: `
             1. Natural-language time works: "in 2 hours", "tomorrow at 3pm", "next tuesday", "5 minutes from now".
             2. You can have up to 10 active reminders at once.
             3. Reminders persist across bot restarts.
-            4. If the bot can't reach you (DMs closed and channel gone), the reminder is dropped and logged.`
+            4. If the bot can't reach you (DMs closed and channel gone), the reminder is dropped and logged.
+            5. Group reminders can target a user or a role. Role targets are resolved to individual DMs for each member.
+            6. Recurring reminders repeat daily or weekly. Cancelling the pending job breaks the chain — no future instances fire.`
     },
     aifeatures: {
         name: "AI Features",
