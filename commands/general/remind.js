@@ -1,7 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, Role } = require("discord.js");
 const jobs = require("../../utils/jobs");
 const { parseWhen } = require("../../utils/reminders/parse");
-const { REMINDER_MAX_ACTIVE_PER_USER } = require("../../config.js");
+const { REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../../config.js");
 const logger = require("../../utils/logger");
 
 function countUserReminders(userId) {
@@ -29,7 +29,24 @@ module.exports = {
                 .addStringOption(option =>
                     option.setName("message")
                         .setDescription("What to remind you about")
-                        .setRequired(true)))
+                        .setRequired(true))
+                .addMentionableOption(option =>
+                    option.setName("target")
+                        .setDescription("Optional user or role to also notify")
+                        .setRequired(false))
+                .addStringOption(option =>
+                    option.setName("frequency")
+                        .setDescription("How often to repeat")
+                        .addChoices(
+                            { name: "Once", value: "once" },
+                            { name: "Daily", value: "daily" },
+                            { name: "Weekly", value: "weekly" }
+                        )
+                        .setRequired(false))
+                .addStringOption(option =>
+                    option.setName("end_date")
+                        .setDescription("When to stop repeating, e.g. 'in 2 weeks' (only if frequency is set)")
+                        .setRequired(false)))
         .addSubcommand(subcommand =>
             subcommand
                 .setName("list")
@@ -52,6 +69,9 @@ module.exports = {
         if (subcommand === "add") {
             const when = interaction.options.getString("when");
             const message = interaction.options.getString("message");
+            const mentionable = interaction.options.getMentionable("target");
+            const frequency = interaction.options.getString("frequency") || "once";
+            const endDateRaw = interaction.options.getString("end_date");
 
             const parsed = parseWhen(when);
             if (!parsed.ok) {
@@ -75,22 +95,73 @@ module.exports = {
                 return;
             }
 
+            const targets = [userId];
+            if (mentionable) {
+                if (mentionable instanceof Role) {
+                    targets.push(`role:${mentionable.id}`);
+                } else {
+                    targets.push(mentionable.id);
+                }
+            }
+
+            const targetCount = mentionable && mentionable instanceof Role
+                ? Math.min(mentionable.members.size, REMINDER_MAX_GROUP_SIZE)
+                : targets.length;
+
+            let recurrence = null;
+            if (frequency === "daily" || frequency === "weekly") {
+                const intervalMs = frequency === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+                let endAt = null;
+                let maxOccurrences = null;
+                if (endDateRaw) {
+                    const endParsed = parseWhen(endDateRaw);
+                    if (endParsed.ok) {
+                        endAt = endParsed.runAt;
+                    } else {
+                        const embed = new EmbedBuilder()
+                            .setTitle("❌ Invalid End Date")
+                            .setDescription(endParsed.reason)
+                            .setColor("#FF0000")
+                            .setTimestamp();
+                        await interaction.editReply({ embeds: [embed] });
+                        return;
+                    }
+                }
+                recurrence = { frequency, intervalMs, endAt, maxOccurrences, firedCount: 0 };
+            }
+
             const jobId = jobs.enqueue({
                 kind: "reminder",
                 payload: {
                     userId,
                     channelId: interaction.channelId,
                     text: message,
+                    targets,
                     createdBy: "slash",
+                    recurrence,
                 },
                 run_at: parsed.runAt,
             });
 
+            let description = `I'll remind you <t:${Math.floor(parsed.runAt / 1000)}:R>.\n\n**${message}**`;
+            if (mentionable) {
+                const targetName = mentionable.role ? `@${mentionable.name}` : `@${mentionable.displayName || mentionable.user?.username}`;
+                description += `\n\n👥 Also notifying: ${targetName}`;
+            }
+            if (recurrence) {
+                const freqLabel = recurrence.frequency === "daily" ? "Daily" : "Weekly";
+                let recurText = `\n🔁 Repeats **${freqLabel}**`;
+                if (recurrence.endAt) {
+                    recurText += ` until <t:${Math.floor(recurrence.endAt / 1000)}:R>`;
+                }
+                description += recurText;
+            }
+
             const embed = new EmbedBuilder()
                 .setTitle("✅ Reminder Set")
-                .setDescription(`I'll remind you <t:${Math.floor(parsed.runAt / 1000)}:R>.\n\n**${message}**`)
+                .setDescription(description)
                 .setColor("#44FF44")
-                .setFooter({ text: `Reminder ID: ${jobId}` })
+                .setFooter({ text: `Reminder ID: ${jobId} | Targets: ${targetCount}` })
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
             logger.log(`[Remind] User ${interaction.user.tag} set reminder ${jobId} for ${new Date(parsed.runAt).toISOString()}`);
@@ -124,8 +195,17 @@ module.exports = {
             const fields = rows.map(row => {
                 const payload = JSON.parse(row.payload);
                 const preview = payload.text.length > 40 ? payload.text.slice(0, 40) + "..." : payload.text;
+                let label = `ID ${row.id} — <t:${Math.floor(row.run_at / 1000)}:R>`;
+                if (payload.recurrence) {
+                    const freq = payload.recurrence.frequency === "daily" ? "Daily" : "Weekly";
+                    label += ` (${freq})`;
+                }
+                let extra = "";
+                if (payload.targets && payload.targets.length > 1) {
+                    extra += ` [${payload.targets.length} targets]`;
+                }
                 return {
-                    name: `ID ${row.id} — <t:${Math.floor(row.run_at / 1000)}:R>`,
+                    name: label + extra,
                     value: preview,
                     inline: false,
                 };

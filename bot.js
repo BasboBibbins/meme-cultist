@@ -251,31 +251,81 @@ if (DELETE_SLASH) {
         // future features (reminders, async embeddings, proactive triggers)
         // will queue.register(...) elsewhere before any enqueue.
         const jobs = require("./utils/jobs");
+        const { REMINDER_DM_FALLBACK, REMINDER_MAX_GROUP_SIZE } = require("./config.js");
         jobs.register("reminder", async (payload) => {
-            const { userId, channelId, text } = payload;
-            let target = null;
-            try {
-                const user = await client.users.fetch(userId);
-                target = await user.createDM();
-            } catch (_) {
-                // DM failed, fall back to channel
+            const { userId, channelId, text, targets, recurrence } = payload;
+            const notifyIds = targets && targets.length > 0 ? targets : [userId];
+            const guild = client.guilds.cache.get(GUILD_ID);
+
+            const resolvedUserIds = new Set();
+            for (const id of notifyIds) {
+                if (id.startsWith("role:")) {
+                    const roleId = id.slice(5);
+                    if (!guild) continue;
+                    try {
+                        const role = await guild.roles.fetch(roleId);
+                        if (role) {
+                            for (const [memberId] of role.members) {
+                                resolvedUserIds.add(memberId);
+                            }
+                        }
+                    } catch (_) {}
+                } else {
+                    resolvedUserIds.add(id);
+                }
             }
-            if (!target && channelId) {
-                try {
-                    target = await client.channels.fetch(channelId);
-                } catch (_) {}
+
+            if (resolvedUserIds.size > REMINDER_MAX_GROUP_SIZE) {
+                logger.warn(`[Reminder] Group size ${resolvedUserIds.size} exceeds limit ${REMINDER_MAX_GROUP_SIZE}, truncating.`);
+                const trimmed = Array.from(resolvedUserIds).slice(0, REMINDER_MAX_GROUP_SIZE);
+                resolvedUserIds.clear();
+                for (const uid of trimmed) resolvedUserIds.add(uid);
             }
-            if (!target) {
-                logger.warn(`[Reminder] No reachable target for user ${userId}, dropping reminder.`);
-                return;
+
+            for (const uid of resolvedUserIds) {
+                let target = null;
+                if (REMINDER_DM_FALLBACK) {
+                    try {
+                        const user = await client.users.fetch(uid);
+                        target = await user.createDM();
+                    } catch (_) {}
+                }
+                if (!target && channelId) {
+                    try { target = await client.channels.fetch(channelId); } catch (_) {}
+                }
+                if (target) {
+                    const embed = new EmbedBuilder()
+                        .setTitle("⏰ Reminder")
+                        .setDescription(text)
+                        .setColor(0xFFD700)
+                        .setTimestamp();
+                    await target.send({ embeds: [embed] }).catch(err => {
+                        logger.warn(`[Reminder] Failed to send to ${uid}: ${err.message}`);
+                    });
+                } else {
+                    logger.warn(`[Reminder] No reachable target for user ${uid}, dropping reminder.`);
+                }
             }
-            const embed = new EmbedBuilder()
-                .setTitle("⏰ Reminder")
-                .setDescription(text)
-                .setColor(0xFFD700)
-                .setTimestamp();
-            await target.send({ embeds: [embed] });
-            logger.log(`[Reminder] Delivered to ${userId} in ${target.id}`);
+
+            if (recurrence) {
+                const nextCount = (recurrence.firedCount || 0) + 1;
+                const nextRunAt = Date.now() + recurrence.intervalMs;
+                const hitEnd = (recurrence.endAt && nextRunAt > recurrence.endAt) ||
+                    (recurrence.maxOccurrences && nextCount >= recurrence.maxOccurrences);
+                if (!hitEnd) {
+                    jobs.enqueue({
+                        kind: "reminder",
+                        payload: {
+                            ...payload,
+                            recurrence: { ...recurrence, firedCount: nextCount }
+                        },
+                        run_at: nextRunAt,
+                    });
+                    logger.log(`[Reminder] Scheduled next occurrence (count=${nextCount})`);
+                } else {
+                    logger.log(`[Reminder] Recurrence ended after ${nextCount} occurrence(s).`);
+                }
+            }
         });
         jobs.start();
     })

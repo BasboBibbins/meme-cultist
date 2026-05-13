@@ -185,6 +185,7 @@ const config = {
     // Reminders
     REMINDER_MAX_ACTIVE_PER_USER: parseInt(process.env.REMINDER_MAX_ACTIVE_PER_USER || "10", 10),
     REMINDER_DM_FALLBACK: /^(1|true|yes|on)$/i.test(process.env.REMINDER_DM_FALLBACK || "1"),
+    REMINDER_MAX_GROUP_SIZE: parseInt(process.env.REMINDER_MAX_GROUP_SIZE || "25", 10),
 };
 
 module.exports = config;

@@ -4,7 +4,7 @@ const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
 const { generateImage } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
 
@@ -127,7 +127,25 @@ const TOOLS = [
         properties: {
           when: { type: "string", description: "When to remind, e.g. 'in 2 hours', 'tomorrow at 3pm'" },
           message: { type: "string", description: "What to remind the user about" },
-          channel_id: { type: "string", description: "Discord channel ID to post in (default: DM the user)" }
+          channel_id: { type: "string", description: "Discord channel ID to post in (default: DM the user)" },
+          targets: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional Discord user IDs or role IDs to notify. Role IDs must be prefixed with 'role:'. Defaults to the requesting user."
+          },
+          frequency: {
+            type: "string",
+            enum: ["once", "daily", "weekly"],
+            description: "How often to repeat. Default: once"
+          },
+          end_date: {
+            type: "string",
+            description: "When to stop repeating, e.g. 'in 2 weeks', 'next month'"
+          },
+          occurrences: {
+            type: "integer",
+            description: "Max number of repetitions"
+          }
         },
         required: ["when", "message"]
       }
@@ -374,20 +392,63 @@ async function handleSetReminder(args, message, client, toolCtx) {
     return { error: `You already have ${activeCount} active reminders. Cancel one first.` };
   }
 
+  const targets = Array.isArray(args.targets) && args.targets.length > 0
+    ? args.targets
+    : [userId];
+
+  if (targets.length > REMINDER_MAX_GROUP_SIZE) {
+    return { error: `Too many targets. Maximum group size is ${REMINDER_MAX_GROUP_SIZE}.` };
+  }
+
+  let recurrence = null;
+  const frequency = args.frequency || "once";
+  if (frequency === "daily" || frequency === "weekly") {
+    const intervalMs = frequency === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    let endAt = null;
+    let maxOccurrences = null;
+    if (args.end_date) {
+      const endParsed = parseWhen(args.end_date);
+      if (endParsed.ok) {
+        endAt = endParsed.runAt;
+      }
+    }
+    if (typeof args.occurrences === "number" && args.occurrences > 0) {
+      maxOccurrences = args.occurrences;
+    }
+    recurrence = { frequency, intervalMs, endAt, maxOccurrences, firedCount: 0 };
+  }
+
   const jobId = jobs.enqueue({
     kind: "reminder",
     payload: {
       userId,
       channelId: args.channel_id || message.channelId,
       text: args.message,
+      targets,
       createdBy: "chatbot",
+      recurrence,
     },
     run_at: parsed.runAt,
   });
 
+  let confirm = `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:R>.`;
+  if (targets.length > 1) {
+    confirm += ` Notifying ${targets.length} target(s).`;
+  }
+  if (recurrence) {
+    const freqLabel = recurrence.frequency === "daily" ? "Daily" : "Weekly";
+    confirm += ` Repeats ${freqLabel}`;
+    if (recurrence.endAt) {
+      confirm += ` until <t:${Math.floor(recurrence.endAt / 1000)}:R>`;
+    } else if (recurrence.maxOccurrences) {
+      confirm += ` for ${recurrence.maxOccurrences} occurrence(s)`;
+    }
+    confirm += ".";
+  }
+
   return {
     success: true,
-    message: `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:R>.`,
+    message: confirm,
     reminder_id: jobId,
   };
 }
