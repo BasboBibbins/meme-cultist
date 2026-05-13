@@ -398,6 +398,24 @@ module.exports = {
             The canvas disables betting zones that are not legal for the current phase.
             Craps contributes to the progressive jackpot at the same rate as other games.`
     },
+    reminder: {
+        name: "Reminders",
+        description: `
+            Set reminders so the bot pings you later. You can use the slash command \`/remind\` or just ask the chatbot directly ("remind me in 2 hours to check the oven").
+
+            **Slash command:**
+            • \`/remind add when:\"in 30 minutes\" message:\"stretch\"\` — set a new reminder
+            • \`/remind list\` — show your pending reminders
+            • \`/remind cancel id:<ID>\` — cancel a reminder by its ID
+
+            The bot tries to DM you first. If your DMs are closed, it falls back to the channel where the reminder was set.
+        `,
+        rules: `
+            1. Natural-language time works: "in 2 hours", "tomorrow at 3pm", "next tuesday", "5 minutes from now".
+            2. You can have up to 10 active reminders at once.
+            3. Reminders persist across bot restarts.
+            4. If the bot can't reach you (DMs closed and channel gone), the reminder is dropped and logged.`
+    },
     aifeatures: {
         name: "AI Features",
         description: `

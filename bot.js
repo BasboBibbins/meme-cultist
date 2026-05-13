@@ -7,7 +7,7 @@ const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
-const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js")
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, EmbedBuilder } = require("discord.js")
 const { initDB, db, applyCommandStatsResets } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
@@ -250,7 +250,34 @@ if (DELETE_SLASH) {
         // Start the durable job queue. Ships with no handlers registered;
         // future features (reminders, async embeddings, proactive triggers)
         // will queue.register(...) elsewhere before any enqueue.
-        require("./utils/jobs").start();
+        const jobs = require("./utils/jobs");
+        jobs.register("reminder", async (payload) => {
+            const { userId, channelId, text } = payload;
+            let target = null;
+            try {
+                const user = await client.users.fetch(userId);
+                target = await user.createDM();
+            } catch (_) {
+                // DM failed, fall back to channel
+            }
+            if (!target && channelId) {
+                try {
+                    target = await client.channels.fetch(channelId);
+                } catch (_) {}
+            }
+            if (!target) {
+                logger.warn(`[Reminder] No reachable target for user ${userId}, dropping reminder.`);
+                return;
+            }
+            const embed = new EmbedBuilder()
+                .setTitle("⏰ Reminder")
+                .setDescription(text)
+                .setColor(0xFFD700)
+                .setTimestamp();
+            await target.send({ embeds: [embed] });
+            logger.log(`[Reminder] Delivered to ${userId} in ${target.id}`);
+        });
+        jobs.start();
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));

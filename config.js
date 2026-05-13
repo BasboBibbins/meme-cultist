@@ -181,6 +181,10 @@ const config = {
     CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
     BOOKMARK_EMOJI: process.env.BOOKMARK_EMOJI || "📌",
     STREAMING_ENABLED: /^(1|true|yes|on)$/i.test(process.env.STREAMING_ENABLED || ""),
+
+    // Reminders
+    REMINDER_MAX_ACTIVE_PER_USER: parseInt(process.env.REMINDER_MAX_ACTIVE_PER_USER || "10", 10),
+    REMINDER_DM_FALLBACK: /^(1|true|yes|on)$/i.test(process.env.REMINDER_DM_FALLBACK || "1"),
 };
 
 module.exports = config;

@@ -4,10 +4,12 @@ const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
 const { generateImage } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
-const { CURRENCY_NAME } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER } = require("../config.js");
+const jobs = require("./jobs");
+const { parseWhen } = require("./reminders/parse");
 
 // Tool definitions for DeepSeek function calling
-const SIDE_EFFECT_TOOLS = new Set(["generate_image"]);
+const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
 
 const TOOLS = [
   {
@@ -112,6 +114,22 @@ const TOOLS = [
           }
         },
         required: ["prompt"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_reminder",
+      description: "Set a reminder for the user. The bot will send a message at the requested time.",
+      parameters: {
+        type: "object",
+        properties: {
+          when: { type: "string", description: "When to remind, e.g. 'in 2 hours', 'tomorrow at 3pm'" },
+          message: { type: "string", description: "What to remind the user about" },
+          channel_id: { type: "string", description: "Discord channel ID to post in (default: DM the user)" }
+        },
+        required: ["when", "message"]
       }
     }
   }
@@ -333,6 +351,47 @@ async function handleGenerateImage(args, message, client, toolCtx) {
   }
 }
 
+async function handleSetReminder(args, message, client, toolCtx) {
+  if (!args?.when || !args?.message) {
+    return { error: "Missing required 'when' or 'message' argument." };
+  }
+
+  const parsed = parseWhen(args.when);
+  if (!parsed.ok) {
+    return { error: parsed.reason };
+  }
+
+  const userId = message.author.id;
+  const activeCount = jobs.list("reminder", row => {
+    try {
+      return JSON.parse(row.payload).userId === userId;
+    } catch (_) {
+      return false;
+    }
+  }).length;
+
+  if (activeCount >= REMINDER_MAX_ACTIVE_PER_USER) {
+    return { error: `You already have ${activeCount} active reminders. Cancel one first.` };
+  }
+
+  const jobId = jobs.enqueue({
+    kind: "reminder",
+    payload: {
+      userId,
+      channelId: args.channel_id || message.channelId,
+      text: args.message,
+      createdBy: "chatbot",
+    },
+    run_at: parsed.runAt,
+  });
+
+  return {
+    success: true,
+    message: `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:R>.`,
+    reminder_id: jobId,
+  };
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -340,7 +399,8 @@ const TOOL_HANDLERS = {
   get_guild_info: handleGetGuildInfo,
   get_user_info: handleGetUserInfo,
   get_bot_info: handleGetBotInfo,
-  generate_image: handleGenerateImage
+  generate_image: handleGenerateImage,
+  set_reminder: handleSetReminder,
 };
 
 async function executeToolCall(toolCall, message, client, toolCtx = null) {
