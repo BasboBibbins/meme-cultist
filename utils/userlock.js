@@ -3,21 +3,10 @@
 // can interleave with `/bank`, `/slots`, or another concurrent game in
 // the same channel and would otherwise risk a double-spend or double-refund.
 
-const _locks = new Map();
+const { withLock } = require("./lock");
 
 async function withUserLock(userId, fn) {
-    while (_locks.has(userId)) {
-        await _locks.get(userId);
-    }
-    let resolve;
-    const promise = new Promise(r => { resolve = r; });
-    _locks.set(userId, promise);
-    try {
-        return await fn();
-    } finally {
-        _locks.delete(userId);
-        resolve();
-    }
+    return withLock(`user:${userId}`, fn);
 }
 
 module.exports = { withUserLock };

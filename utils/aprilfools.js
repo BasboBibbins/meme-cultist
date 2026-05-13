@@ -103,11 +103,10 @@ module.exports = {
     logger.debug(`Created phantom channel #${fakeChannel.name}`);
 
     if (aikey) {
-      logger.debug(`Handling bot message for phantom channel #${fakeChannel.name} with aikey: ${aikey.substring(0, 5)}...`);
+      logger.debug(`Handling bot message for phantom channel #${fakeChannel.name}`);
       handleBotMessage(
         client,
         null,
-        aikey,
         `You are a Discord bot named ${client.user.username}. You have just created a new channel called #${fakeChannel.name} in the guild ${guild.name}. Respond with a message that fits the theme of this channel to get the conversation going. Markdown is supported. All text will be visible to the channel members.\n\n`,
         fakeChannel.id
       )
@@ -310,11 +309,10 @@ module.exports = {
 
     const randomChannel = channels.random();
     if (aikey) {
-      logger.debug(`Handling bot message for phantom channel #${randomChannel.name} with aikey: ${aikey.substring(0, 5)}...`);
+      logger.debug(`Handling bot message for phantom channel #${randomChannel.name}`);
       handleBotMessage(
         client,
         null,
-        aikey,
         `You are a Discord bot named ${client.user.username}. You have entered the text channel #${randomChannel.name} in the guild ${guild.name}. Respond with a message that fits the theme of this channel to get the conversation going. Markdown is supported. All text will be visible to the channel members.\n\n`,
         randomChannel.id
       )

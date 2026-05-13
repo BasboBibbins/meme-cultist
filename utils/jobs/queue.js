@@ -1,0 +1,162 @@
+// Durable job queue backed by SQLite (better-sqlite3, WAL mode). The bot's
+// background work — reminders, async embeddings, proactive triggers, retried
+// failed LLM calls — will eventually all enqueue here. This PR ships the
+// infrastructure dormant: no handlers are registered yet.
+//
+// Single-tenant assumptions:
+//   - One bot process. The startup reaper rescues any job stuck in 'running'.
+//   - SD-card friendly: WAL + synchronous=NORMAL, no per-event flush.
+
+const path = require("path");
+const Database = require("better-sqlite3");
+const config = require("../../config.js");
+const logger = require("../logger");
+const { withLock } = require("../lock");
+
+let _db = null;
+let _ticking = false;
+let _timer = null;
+const _handlers = new Map();
+
+function openDb() {
+    if (_db) return _db;
+    const dbPath = path.resolve(process.cwd(), config.JOB_DB_PATH || "db/jobs.sqlite");
+    _db = new Database(dbPath);
+    _db.pragma("journal_mode = WAL");
+    _db.pragma("synchronous = NORMAL");
+    _db.pragma("busy_timeout = 5000");
+    _db.exec(`
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            run_at INTEGER NOT NULL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            last_error TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(status, run_at, priority DESC);
+    `);
+    logger.log(`[Jobs] Opened ${dbPath} (WAL)`);
+    return _db;
+}
+
+function enqueue({ kind, payload = {}, run_at = Date.now(), priority = 0, max_attempts = 3 } = {}) {
+    if (!kind || typeof kind !== "string") throw new Error("Job kind is required.");
+    const db = openDb();
+    const now = Date.now();
+    const stmt = db.prepare(`
+        INSERT INTO jobs (kind, payload, run_at, priority, status, attempts, max_attempts, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?)
+    `);
+    const info = stmt.run(kind, JSON.stringify(payload), run_at, priority, max_attempts, now, now);
+    return info.lastInsertRowid;
+}
+
+function register(kind, handler) {
+    if (typeof handler !== "function") throw new Error(`Job handler for "${kind}" must be a function.`);
+    _handlers.set(kind, handler);
+}
+
+function stats() {
+    const db = openDb();
+    const rows = db.prepare(`SELECT status, COUNT(*) AS c FROM jobs GROUP BY status`).all();
+    const out = { pending: 0, running: 0, done: 0, failed: 0 };
+    for (const r of rows) out[r.status] = r.c;
+    return out;
+}
+
+function reapStaleRunning() {
+    const db = openDb();
+    const info = db.prepare(`UPDATE jobs SET status='pending', updated_at=? WHERE status='running'`).run(Date.now());
+    if (info.changes > 0) logger.warn(`[Jobs] Startup reaper requeued ${info.changes} job(s) stuck in 'running'.`);
+}
+
+async function runJob(row) {
+    const handler = _handlers.get(row.kind);
+    if (!handler) {
+        logger.warn(`[Jobs] No handler registered for kind="${row.kind}" (id=${row.id}). Marking failed.`);
+        const db = openDb();
+        db.prepare(`UPDATE jobs SET status='failed', last_error=?, updated_at=? WHERE id=?`)
+            .run(`No handler for kind=${row.kind}`, Date.now(), row.id);
+        return;
+    }
+    const payload = JSON.parse(row.payload || "{}");
+    try {
+        await withLock(`job:${row.id}`, () => handler(payload, { jobId: row.id, attempts: row.attempts }));
+        const db = openDb();
+        db.prepare(`UPDATE jobs SET status='done', updated_at=?, last_error=NULL WHERE id=?`).run(Date.now(), row.id);
+    } catch (err) {
+        const db = openDb();
+        const msg = err?.message?.slice(0, 1000) || String(err).slice(0, 1000);
+        if (row.attempts >= row.max_attempts) {
+            db.prepare(`UPDATE jobs SET status='failed', last_error=?, updated_at=? WHERE id=?`).run(msg, Date.now(), row.id);
+            logger.error(`[Jobs] Job ${row.id} (${row.kind}) permanently failed after ${row.attempts} attempts: ${msg}`);
+        } else {
+            const backoffMs = Math.pow(2, row.attempts) * 1000;
+            const nextRun = Date.now() + backoffMs;
+            db.prepare(`UPDATE jobs SET status='pending', run_at=?, last_error=?, updated_at=? WHERE id=?`)
+                .run(nextRun, msg, Date.now(), row.id);
+            logger.warn(`[Jobs] Job ${row.id} (${row.kind}) failed (attempt ${row.attempts}/${row.max_attempts}); retrying in ${backoffMs}ms: ${msg}`);
+        }
+    }
+}
+
+async function tickOnce() {
+    if (_ticking) return;
+    _ticking = true;
+    try {
+        const db = openDb();
+        const batchSize = config.JOB_BATCH_SIZE || 5;
+        const due = db.prepare(`
+            SELECT id, kind, payload, run_at, priority, status, attempts, max_attempts
+            FROM jobs
+            WHERE status='pending' AND run_at <= ?
+            ORDER BY priority DESC, run_at ASC
+            LIMIT ?
+        `).all(Date.now(), batchSize);
+
+        for (const row of due) {
+            const claim = db.prepare(`
+                UPDATE jobs SET status='running', attempts=attempts+1, updated_at=?
+                WHERE id=? AND status='pending'
+            `).run(Date.now(), row.id);
+            if (claim.changes === 0) continue;
+            // Refetch with new attempt count for backoff math.
+            const claimed = db.prepare(`SELECT * FROM jobs WHERE id=?`).get(row.id);
+            await runJob(claimed);
+        }
+    } catch (err) {
+        logger.error(`[Jobs] Tick loop error: ${err.message}`);
+    } finally {
+        _ticking = false;
+    }
+}
+
+function start({ tickIntervalMs } = {}) {
+    const interval = tickIntervalMs || config.JOB_TICK_MS || 2000;
+    openDb();
+    reapStaleRunning();
+    if (_timer) return;
+    _timer = setInterval(() => { tickOnce(); }, interval);
+    if (_timer.unref) _timer.unref();
+    logger.log(`[Jobs] Tick loop started (every ${interval}ms, batch=${config.JOB_BATCH_SIZE || 5})`);
+}
+
+function stop() {
+    if (_timer) {
+        clearInterval(_timer);
+        _timer = null;
+    }
+    if (_db) {
+        try { _db.close(); } catch (_) {}
+        _db = null;
+    }
+    logger.log(`[Jobs] Tick loop stopped`);
+}
+
+module.exports = { enqueue, register, start, stop, stats, tickOnce };

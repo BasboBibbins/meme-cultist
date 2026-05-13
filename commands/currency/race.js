@@ -93,7 +93,7 @@ async function handleStartRace(interaction, client, user) {
     // Generate commentary asynchronously (don't await - use default if not ready)
     let commentaryPromise = null;
     if (OPENAI_API_KEY) {
-        commentaryPromise = generateRaceCommentary(OPENAI_API_KEY);
+        commentaryPromise = generateRaceCommentary();
     }
 
     const endTime = Date.now() + BETTING_TIME;

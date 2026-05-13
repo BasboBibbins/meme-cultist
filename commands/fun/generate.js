@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
-const { generateImage } = require("../../utils/gemini");
+const { generateImage } = require("../../utils/llm");
 const { canGenerateImage } = require("../../utils/ratelimiter");
 
 function parseCloudflareError(err) {
@@ -43,7 +43,7 @@ module.exports = {
     } 
 
     try {
-      const { buffer, mimeType } = await generateImage(prompt);
+      const { buffer, mimeType } = await generateImage({ prompt });
       const ext = mimeType?.includes("png") ? "png" : "jpg";
       const fileName = `generated.${ext}`;
       const attachment = new AttachmentBuilder(buffer).setName(fileName);

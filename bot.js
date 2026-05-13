@@ -14,7 +14,7 @@ const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
-const { describeImage } = require("./utils/gemini")
+const { describeImage } = require("./utils/llm")
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext")
 const { isChatbotChannel } = require("./utils/channels")
 const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
@@ -99,6 +99,12 @@ process.on("unhandledRejection", (reason, p) => {
     logger.error(err.stack);
     process.exit(1);
 })
+
+function shutdownJobs() {
+    try { require("./utils/jobs").stop(); } catch (_) {}
+}
+process.on("SIGINT", () => { shutdownJobs(); process.exit(0); });
+process.on("SIGTERM", () => { shutdownJobs(); process.exit(0); });
 
 let commands = []
 
@@ -236,6 +242,11 @@ if (DELETE_SLASH) {
         } catch (err) {
             logger.warn('Stats reset sweep failed.', { error: err });
         }
+
+        // Start the durable job queue. Ships with no handlers registered;
+        // future features (reminders, async embeddings, proactive triggers)
+        // will queue.register(...) elsewhere before any enqueue.
+        require("./utils/jobs").start();
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -431,7 +442,7 @@ if (DELETE_SLASH) {
         if (imageAttachment) {
             message.channel.sendTyping().catch(() => {});
             const displayName = message.member?.displayName || message.author.username;
-            const result = await describeImage(imageAttachment.url, message.content || null);
+            const result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
             if (result?.description) {
                 extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
             } else if (result?.error) {
@@ -451,9 +462,9 @@ if (DELETE_SLASH) {
         }
 
         if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
-            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, false, extraContext);
+            await handleBotMessage(client, message, null, null, false, extraContext);
         } else if (isMentioned) {
-            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true, extraContext);
+            await handleBotMessage(client, message, null, null, true, extraContext);
         }
     })
 

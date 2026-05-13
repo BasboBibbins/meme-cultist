@@ -2,7 +2,7 @@ const { AttachmentBuilder } = require("discord.js");
 const { db: usersDb } = require("../database");
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
-const { generateImage } = require("./gemini");
+const { generateImage } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
 const { CURRENCY_NAME } = require("../config.js");
 
@@ -316,7 +316,7 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     return { error: rateCheck.reason };
   }
   try {
-    const { buffer, mimeType } = await generateImage(args.prompt);
+    const { buffer, mimeType } = await generateImage({ prompt: args.prompt });
     if (toolCtx) {
       const ext = mimeType?.includes("png") ? "png" : "jpg";
       toolCtx.pendingAttachments.push(

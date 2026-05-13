@@ -158,7 +158,20 @@ const config = {
         "bobs",
         "hentai",
         "rule34"
-    ]
+    ],
+
+    // Cloudflare Workers AI credentials (used by utils/llm/adapters/cloudflare.js)
+    CF_ACCOUNT_ID: process.env.CF_ACCOUNT_ID || "",
+    CF_API_KEY: process.env.CF_API_KEY || "",
+
+    // LLM provider layer (utils/llm/)
+    LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
+    LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),
+
+    // Durable job queue (utils/jobs/)
+    JOB_TICK_MS: parseInt(process.env.JOB_TICK_MS || "2000", 10),
+    JOB_BATCH_SIZE: parseInt(process.env.JOB_BATCH_SIZE || "5", 10),
+    JOB_DB_PATH: process.env.JOB_DB_PATH || "db/jobs.sqlite",
 };
 
 module.exports = config;

@@ -1,27 +1,18 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { OpenAIApi, Configuration } = require("openai");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
+const llm = require("../../utils/llm");
 const { randomHexColor } = require("../../utils/randomcolor");
-const { CHATBOT_LOCAL, CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
+const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: `./db/feedback.sqlite` });
 
-let openaiClient = null;
-function getFeedbackClient() {
-    if (!openaiClient) {
-        const key = process.env.OPENAI_API_KEY;
-        if (!key) {
-            logger.error("[Feedback] OPENAI_API_KEY not found in environment");
-            return null;
-        }
-        const configuration = new Configuration({
-            apiKey: key,
-            basePath: CHATBOT_LOCAL ? "http://127.0.0.1:3000/v1/" : "https://api.deepseek.com"
-        });
-        openaiClient = new OpenAIApi(configuration);
+function llmAvailable() {
+    if (!process.env.OPENAI_API_KEY) {
+        logger.error("[Feedback] OPENAI_API_KEY not found in environment");
+        return false;
     }
-    return openaiClient;
+    return true;
 }
 
 function cleanMarkdownCode(content) {
@@ -47,8 +38,7 @@ function cleanMarkdownCode(content) {
 }
 
 async function validateFeedback(type, description, username) {
-    const openai = getFeedbackClient();
-    if (!openai) return { valid: true, reason: "API unavailable", category: "unknown" };
+    if (!llmAvailable()) return { valid: true, reason: "API unavailable", category: "unknown" };
 
     const typeLabels = { bug: 'Bug Report', suggestion: 'Feature Suggestion', general: 'General Feedback' };
 
@@ -67,23 +57,25 @@ Nonsense: random characters, meaningless.
 Empty: < 5 characters of content.`;
 
     try {
-        const response = await openai.createChatCompletion({
+        const response = await llm.chat({
             model: CONVO_MODEL,
             messages: [
                 { role: "system", content: "You respond only with valid JSON." },
-                { role: "user", content: prompt }
+                { role: "user", content: prompt },
             ],
             max_tokens: 150,
-            temperature: 0.1
+            temperature: 0.1,
+            label: "validateFeedback",
+            variant: "validate_feedback",
         });
 
-        let content = response.data.choices[0]?.message?.content?.trim();
+        let content = response.result.content?.trim();
         if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
         content = cleanMarkdownCode(content);
         return JSON.parse(content);
     } catch (error) {
         logger.error(`[Feedback] Validation error: ${error.message}`);
-        return { valid: false, reason: "Validation failed", category: "error" }; 
+        return { valid: false, reason: "Validation failed", category: "error" };
     }
 }
 
@@ -129,8 +121,7 @@ async function notifyOwner(client, feedback) {
 }
 
 async function generateIssueTitle(type, description) {
-    const openai = getFeedbackClient();
-    if (!openai) {
+    if (!llmAvailable()) {
         logger.debug("[Feedback] generateIssueTitle: No OpenAI client available, cannot generate title");
         throw new Error("OpenAI client unavailable for title generation");
     }
@@ -138,22 +129,21 @@ async function generateIssueTitle(type, description) {
     const typeLabel = type === 'bug' ? 'Bug Report' : 'Feature Suggestion';
     logger.debug(`[Feedback] generateIssueTitle: Requesting title for ${typeLabel}, description length: ${description.length}`);
 
-    const response = await openai.createChatCompletion({
+    const response = await llm.chat({
         model: CONVO_MODEL,
         messages: [
             { role: "system", content: "You generate concise GitHub issue titles. Respond with ONLY the title text, no quotes or extra formatting." },
-            { role: "user", content: `Generate a short, descriptive GitHub issue title for this ${typeLabel}:\n\n"${description}"` }
+            { role: "user", content: `Generate a short, descriptive GitHub issue title for this ${typeLabel}:\n\n"${description}"` },
         ],
         max_tokens: 60,
-        temperature: 0.3
+        temperature: 0.3,
+        label: "generateIssueTitle",
+        variant: "issue_title",
     });
 
-    logger.debug(`[Feedback] generateIssueTitle: Response status: ${response.status}`);
-    logger.debug(`[Feedback] generateIssueTitle: Response choices: ${JSON.stringify(response.data?.choices)}`);
-
-    const title = response.data?.choices?.[0]?.message?.content?.trim();
+    const title = response.result.content?.trim();
     if (!title) {
-        logger.debug(`[Feedback] generateIssueTitle: Empty title from API response. Full response.data: ${JSON.stringify(response.data)}`);
+        logger.debug(`[Feedback] generateIssueTitle: Empty title from API response.`);
         throw new Error("DeepSeek returned empty title content");
     }
 
