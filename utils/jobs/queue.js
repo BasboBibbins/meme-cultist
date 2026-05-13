@@ -159,4 +159,16 @@ function stop() {
     logger.log(`[Jobs] Tick loop stopped`);
 }
 
-module.exports = { enqueue, register, start, stop, stats, tickOnce };
+function list(kind, filterFn = null) {
+    const db = openDb();
+    const rows = db.prepare(`SELECT id, payload, run_at, priority, status, created_at FROM jobs WHERE kind = ? AND status IN ('pending','running') ORDER BY run_at ASC`).all(kind);
+    return filterFn ? rows.filter(filterFn) : rows;
+}
+
+function cancel(id) {
+    const db = openDb();
+    const info = db.prepare(`UPDATE jobs SET status='cancelled', updated_at=? WHERE id=? AND status IN ('pending','running')`).run(Date.now(), id);
+    return info.changes > 0;
+}
+
+module.exports = { enqueue, register, start, stop, stats, tickOnce, list, cancel };
