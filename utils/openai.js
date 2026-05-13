@@ -20,6 +20,8 @@ const {
   IMMEDIATE_FACTS_DEBOUNCE_MS,
   MAX_FACTS_IN_PROMPT,
   FACT_CONFIDENCE_THRESHOLD,
+  LOW_BUDGET_MODE,
+  CRITIQUE_MODEL,
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
@@ -67,6 +69,7 @@ function cleanupExpiredFacts(facts) {
 
   return facts.filter(fact => {
     if (!fact?.updatedAt) return true; // Keep facts without timestamp
+    if (fact.pinned) return true; // Bookmarked facts never expire
     const age = now - fact.updatedAt;
     return age < ttlMs;
   });
@@ -116,7 +119,10 @@ function buildFactsBlock(tag, factsArray) {
   const core = filtered.filter(f => isCoreIdentityKey(f.key));
   const rest = filtered.filter(f => !isCoreIdentityKey(f.key));
   const scored = scoreFacts(rest).sort((a, b) => b._score - a._score);
-  const slots = Math.max(0, (MAX_FACTS_IN_PROMPT || filtered.length) - core.length);
+  const effectiveMax = LOW_BUDGET_MODE
+    ? Math.min(MAX_FACTS_IN_PROMPT || filtered.length, 8)
+    : (MAX_FACTS_IN_PROMPT || filtered.length);
+  const slots = Math.max(0, effectiveMax - core.length);
   const selected = [...core, ...scored.slice(0, slots)];
 
   const factsBody = selected.map(f => `${f.key}: ${f.value}`).join('\n');
@@ -208,6 +214,7 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
     confidence: f.confidence || "high",
     extractedFrom: f.extractedFrom || "",
     reinforcedCount: f.reinforcedCount || 1,
+    ...(f.pinned ? { pinned: true } : {}),
   })) : [];
 
   combined = cleanupExpiredFacts(combined);
@@ -222,8 +229,12 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
     if (value === "__deleted__") {
       const idx = combined.findIndex(f => f.key === key);
       if (idx !== -1) {
-        combined.splice(idx, 1);
-        logger.debug(`[Facts] Deleted: ${key}`);
+        if (combined[idx].pinned) {
+          logger.debug(`[Facts] Refused to delete pinned fact: ${key}`);
+        } else {
+          combined.splice(idx, 1);
+          logger.debug(`[Facts] Deleted: ${key}`);
+        }
       }
       continue;
     }
@@ -276,8 +287,11 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
 async function compressFacts(facts, scope = "channel") {
   if (!Array.isArray(facts) || facts.length === 0) return facts;
   try {
+    // Pinned facts (bookmarked via 📌) are never merged or rewritten.
+    const pinned = facts.filter(f => f.pinned);
+    const unpinned = facts.filter(f => !f.pinned);
     const groups = new Map();
-    for (const f of facts) {
+    for (const f of unpinned) {
       const prefix = (f.key.split("_")[0] || f.key).toLowerCase();
       if (!groups.has(prefix)) groups.set(prefix, []);
       groups.get(prefix).push(f);
@@ -331,7 +345,8 @@ async function compressFacts(facts, scope = "channel") {
       if (arr.length >= 2) for (const f of arr) groupedKeySet.add(f.key);
     }
 
-    const kept = facts.filter(f => !groupedKeySet.has(f.key));
+    // Keep unpinned facts that weren't in any duplicate group + restore all pinned facts untouched.
+    const kept = unpinned.filter(f => !groupedKeySet.has(f.key));
     const mergedIn = compressedKeyed.map(c => ({
       key: c.key,
       value: c.value,
@@ -340,12 +355,54 @@ async function compressFacts(facts, scope = "channel") {
       extractedFrom: "compressed",
       reinforcedCount: 1,
     }));
-    const result = [...kept, ...mergedIn];
-    logger.log(`[Facts] compressFacts ${scope}: ${facts.length} -> ${result.length} (replaced ${groupedKeySet.size} grouped with ${mergedIn.length} merged)`);
+    const result = [...pinned, ...kept, ...mergedIn];
+    logger.log(`[Facts] compressFacts ${scope}: ${facts.length} -> ${result.length} (pinned=${pinned.length}, replaced ${groupedKeySet.size} grouped with ${mergedIn.length} merged)`);
     return result;
   } catch (err) {
     logger.warn(`[Facts] compressFacts failed: ${err.message}`);
     return facts;
+  }
+}
+
+// Self-critique trigger: fires only when a reply contains content that could
+// hallucinate a verifiable fact — numbers, currency, balance/rank claims, or
+// relative-time phrases. Keeps the cost bounded; most replies skip critique.
+const _critiqueTriggerRe = /(\d|\bkoku\b|\bbalance\b|\brank\b|\brichest\b|\bleaderboard\b|\bposition\b|\btoday\b|\btomorrow\b|\byesterday\b|\bin \d+ (?:second|minute|hour|day|week|month|year)s?\b|\bat \d{1,2}:\d{2}\b|\$|%)/i;
+function shouldCritique(text) {
+  if (!text || typeof text !== "string") return false;
+  return _critiqueTriggerRe.test(text);
+}
+
+async function runCritique(originalMessages, candidateResponse) {
+  // Returns { ok: boolean, fix?: string }. Fails open on any error.
+  try {
+    const res = await llm.chat({
+      model: CRITIQUE_MODEL,
+      messages: [
+        { role: "system", content: "You are a strict reviewer. Verify whether the candidate reply contains any factual claim (numbers, balances, ranks, times, schedules) that is not grounded in the conversation or tool results above. Output ONLY JSON. Schema: {\"ok\": true} when grounded, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when not. No prose outside the JSON." },
+        ...originalMessages,
+        { role: "user", content: `[Candidate reply to review]\n${candidateResponse}` },
+      ],
+      max_tokens: 512,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      timeoutMs: 30_000,
+      label: "self-critique",
+      variant: "critique",
+    });
+    const raw = res.result.content?.trim() || "";
+    // Best-effort JSON parse; reasoner sometimes wraps in code fences.
+    const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+    try {
+      const parsed = JSON.parse(stripped);
+      if (typeof parsed?.ok === "boolean") return parsed;
+    } catch (_) { /* fall through */ }
+    const m = stripped.match(/"ok"\s*:\s*(true|false)/i);
+    if (m) return { ok: m[1].toLowerCase() === "true", fix: stripped };
+    return { ok: true }; // fail-open
+  } catch (err) {
+    logger.warn(`[Critique] Failed: ${err.message}`);
+    return { ok: true };
   }
 }
 
@@ -356,7 +413,13 @@ function sortAndPruneFacts(combined) {
     if (aTime !== bTime) return bTime - aTime;
     return a.key.localeCompare(b.key);
   });
-  if (combined.length > MAX_FACTS) combined = combined.slice(0, MAX_FACTS);
+  if (combined.length > MAX_FACTS) {
+    // Pinned facts are never dropped by the size cap; only unpinned overflow gets sliced.
+    const pinned = combined.filter(f => f.pinned);
+    const unpinned = combined.filter(f => !f.pinned);
+    const slotsForUnpinned = Math.max(0, MAX_FACTS - pinned.length);
+    combined = [...pinned, ...unpinned.slice(0, slotsForUnpinned)];
+  }
   return combined;
 }
 
@@ -1407,7 +1470,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
     let response = null;
     let toolCallDepth = 0;
-    const MAX_TOOL_DEPTH = 5;
+    const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
     const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [] };
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
@@ -1506,6 +1569,40 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
     }
 
+    // Self-critique gate: for replies that make verifiable factual claims
+    // (numbers, balances, ranks, times), ask a separate reasoner pass to
+    // confirm grounding. Regenerate once if the critique disagrees.
+    if (response && !LOW_BUDGET_MODE && shouldCritique(response)) {
+      logger.debug(`[Critique] Triggered for reply preview="${response.substring(0, 80)}..."`);
+      const verdict = await runCritique(messages, response);
+      if (!verdict.ok && verdict.fix) {
+        logger.warn(`[Critique] Reply needs revision: ${verdict.fix.substring(0, 200)}`);
+        try {
+          const revision = await llm.chat({
+            model: CONVO_MODEL,
+            messages: [
+              ...messages,
+              { role: "assistant", content: response },
+              { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply with the correction. Keep the original tone and length.` },
+            ],
+            temperature: 0.5,
+            timeoutMs: 60_000,
+            label: "critique-revision",
+            variant: "critique_revision",
+          });
+          const revised = revision.result.content?.trim();
+          if (revised) {
+            logger.log(`[Critique] Regenerated reply after critique.`);
+            response = revised;
+          }
+        } catch (err) {
+          logger.warn(`[Critique] Revision failed, keeping original: ${err.message}`);
+        }
+      } else {
+        logger.debug(`[Critique] Reply approved.`);
+      }
+    }
+
     const pendingFiles = toolCtx.pendingAttachments;
     const sentMessageIds = [];
     try {
@@ -1581,5 +1678,6 @@ module.exports = {
   deleteThreadContext, getValidMessages, summarizeMessages, generateFacts,
   getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
   getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts,
-  extractImmediateFacts, extractImmediateChannelFacts
+  extractImmediateFacts, extractImmediateChannelFacts,
+  runImmediateClassifier, mergeFacts, sortAndPruneFacts
 };

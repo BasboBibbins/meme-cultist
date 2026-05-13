@@ -175,6 +175,11 @@ const config = {
 
     // Persistent personas (utils/personas/)
     PERSONA_DB_PATH: process.env.PERSONA_DB_PATH || "db/personas.sqlite",
+
+    // Polish-milestone toggles
+    LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
+    CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
+    BOOKMARK_EMOJI: process.env.BOOKMARK_EMOJI || "📌",
 };
 
 module.exports = config;

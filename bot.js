@@ -7,7 +7,7 @@ const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
-const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js")
 const { initDB, db, applyCommandStatsResets } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
@@ -49,10 +49,14 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences
-    ]
+    ],
+    // Reaction handling on uncached messages requires these partials —
+    // most 📌 reactions arrive on older messages the bot has never seen.
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 })
 
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
@@ -404,6 +408,14 @@ if (DELETE_SLASH) {
         if (client.toolCallHistory.has(message.id)) {
             client.toolCallHistory.delete(message.id);
             logger.debug(`[ToolCallHistory] Cleaned up deleted message ${message.id}`);
+        }
+    });
+
+    client.on(Events.MessageReactionAdd, async (reaction, user) => {
+        try {
+            await require("./utils/bookmarks").handleBookmarkReaction(reaction, user);
+        } catch (err) {
+            logger.error(`[Bookmark] Reaction handler failed: ${err.message}`);
         }
     });
 
