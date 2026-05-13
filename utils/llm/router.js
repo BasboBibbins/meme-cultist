@@ -77,4 +77,11 @@ async function generateImage(args) {
     return { ...out, latency_ms };
 }
 
-module.exports = { chat, describeImage, generateImage, getCacheStats };
+async function* chatStream(args) {
+    const label = args.label || "chatStream";
+    // Streaming does not retry automatically; callers should fall back to
+    // the non-streaming chat() if the generator throws.
+    yield* deepseek.chatStream(args);
+}
+
+module.exports = { chat, chatStream, describeImage, generateImage, getCacheStats };
