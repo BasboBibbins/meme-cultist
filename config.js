@@ -172,6 +172,9 @@ const config = {
     JOB_TICK_MS: parseInt(process.env.JOB_TICK_MS || "2000", 10),
     JOB_BATCH_SIZE: parseInt(process.env.JOB_BATCH_SIZE || "5", 10),
     JOB_DB_PATH: process.env.JOB_DB_PATH || "db/jobs.sqlite",
+
+    // Persistent personas (utils/personas/)
+    PERSONA_DB_PATH: process.env.PERSONA_DB_PATH || "db/personas.sqlite",
 };
 
 module.exports = config;
