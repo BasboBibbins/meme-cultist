@@ -5,6 +5,8 @@ const { getUserChatbotData } = require('../../utils/openai');
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { todayStamp } = require('../../utils/time.js');
+const { AttachmentBuilder } = require('discord.js');
 
 function totalNumOfCmds(type) {
     return Object.keys(type).reduce((a, b) => a + type[b], 0);
@@ -262,7 +264,7 @@ async function generateStatsEmbed(page, interaction, user) {
                 { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
                 { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
                 { name: "\u200b", value: "\u200b", inline: false },
-                { name: "See more info by using the command", value: "`/context`", inline: true },
+                { name: "See more info by using the command", value: "`/whatdoyouknow`", inline: true },
             );
             break;
         }
@@ -279,8 +281,8 @@ module.exports = {
                 .setDescription('The user to check the stats of.')
                 .setRequired(false))
         .addBooleanOption(option =>
-            option.setName('details')
-                .setDescription('Detailed stats for nerd emojis.')
+            option.setName('export')
+                .setDescription('Export stats in JSON format. Useful for nerd emojis (like Basbo).')
                 .setRequired(false)),
     async execute(interaction) {
         await interaction.deferReply();
@@ -304,18 +306,31 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary),
             );
         let page = 1;
-        msg = await interaction.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
+        const msg = await interaction.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
         const filter = i => i.customId === 'previous' || i.customId === 'next';
-        const collector = await msg.createMessageComponentCollector({ filter, time: 60000 });
+        const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
 
-        if (interaction.options.getBoolean('details')) {
-            const chunks = [];
-            const data = JSON.stringify(dbUser, null, 4);
-            for (let i = 0; i < data.length; i += 1900) {
-                chunks.push(data.substring(i, i + 1900));
-            }
-            for (let i = 0; i < chunks.length; i++) {
-                await sendDM(interaction.user, { content: `\`\`\`json\n${chunks[i]}\`\`\`` });
+        if (interaction.options.getBoolean('export')) {
+            const dump = {
+                exportedAt: new Date().toISOString(),
+                userId: interaction.user.id,
+                username: interaction.user.tag,
+                dbEntry: dbUser || {}
+            };
+            const buffer = Buffer.from(JSON.stringify(dump, null, 2), "utf-8");
+            const filename = `dataexport-${interaction.user.id}-${todayStamp()}.json`;
+            const attachment = new AttachmentBuilder(buffer).setName(filename);
+
+            const dm = await sendDM(interaction.user, {
+                content: `Here is your data exported in JSON format.`,
+                files: [attachment],
+            });
+            if (dm) {
+                logger.log(`[ExportData] ${interaction.user.tag} data exported to JSON. DM sent successfully.`);
+                await interaction.followUp({ content: "Check your DMs — I sent you a JSON file with your stats.", ephemeral: true });
+            } else {
+                logger.warn(`[ExportData] DM failed or disabled for ${interaction.user.tag}. Falling back to ephemeral reply.`);
+                await interaction.followUp({ content: `Here is your data exported in JSON format.`, files: [attachment], ephemeral: true });
             }
         }
 

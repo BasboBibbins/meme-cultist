@@ -2,14 +2,7 @@ const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const { getUserChatbotData } = require("../../utils/openai");
 const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
-
-function todayStamp() {
-    const d = new Date();
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(d.getUTCDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-}
+const { todayStamp } = require("../../utils/time")
 
 module.exports = {
     data: new SlashCommandBuilder()
