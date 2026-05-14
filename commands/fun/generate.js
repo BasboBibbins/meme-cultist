@@ -3,6 +3,7 @@ const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { generateImage } = require("../../utils/llm");
 const { canGenerateImage } = require("../../utils/ratelimiter");
+const { isChatbotChannel, formatChatbotChannelMentions } = require("../../utils/channels");
 
 function parseCloudflareError(err) {
   try {
@@ -29,6 +30,17 @@ module.exports = {
     ),
   async execute(interaction) {
     const prompt = interaction.options.getString("prompt");
+
+    if (!isChatbotChannel(interaction.channelId, interaction.channel?.parentId)) {
+      const embed = new EmbedBuilder()
+        .setTitle("Not Available")
+        .setDescription(`Image generation is only available in chatbot channels: ${formatChatbotChannelMentions(interaction.client)}`)
+        .setColor(0xffaa00)
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed] });
+    }
+
     await interaction.deferReply();
 
     const rateCheck = canGenerateImage(interaction.user.id);
