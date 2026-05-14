@@ -3,6 +3,7 @@ const { CURRENCY_NAME } = require("../../config.js");
 const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require('../../utils/openai');
 const logger = require("../../utils/logger");
+const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
 
 function totalNumOfCmds(type) {
@@ -314,7 +315,7 @@ module.exports = {
                 chunks.push(data.substring(i, i + 1900));
             }
             for (let i = 0; i < chunks.length; i++) {
-                await interaction.user.send(`\`\`\`json\n${chunks[i]}\`\`\``);
+                await sendDM(interaction.user, { content: `\`\`\`json\n${chunks[i]}\`\`\`` });
             }
         }
 

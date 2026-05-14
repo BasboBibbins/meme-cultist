@@ -24,6 +24,7 @@ const schedule = require("node-schedule")
 const rateLimiter = require('./utils/ratelimiter')
 const { DefaultExtractors } = require("@discord-player/extractor")
 const playdl = require('play-dl');
+const { sendDM } = require("./utils/dm");
 
 const TOKEN = process.env.TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
@@ -282,27 +283,29 @@ if (DELETE_SLASH) {
                 for (const uid of trimmed) resolvedUserIds.add(uid);
             }
 
+            const reminderEmbed = new EmbedBuilder()
+                .setTitle("⏰ Reminder")
+                .setDescription(text)
+                .setColor(0xFFD700)
+                .setTimestamp();
+
             for (const uid of resolvedUserIds) {
-                let target = null;
+                let sent = false;
                 if (REMINDER_DM_FALLBACK) {
                     try {
                         const user = await client.users.fetch(uid);
-                        target = await user.createDM();
+                        const dm = await sendDM(user, { embeds: [reminderEmbed] });
+                        if (dm) sent = true;
                     } catch (_) {}
                 }
-                if (!target && channelId) {
-                    try { target = await client.channels.fetch(channelId); } catch (_) {}
+                if (!sent && channelId) {
+                    try {
+                        const channel = await client.channels.fetch(channelId);
+                        await channel.send({ embeds: [reminderEmbed] });
+                        sent = true;
+                    } catch (_) {}
                 }
-                if (target) {
-                    const embed = new EmbedBuilder()
-                        .setTitle("⏰ Reminder")
-                        .setDescription(text)
-                        .setColor(0xFFD700)
-                        .setTimestamp();
-                    await target.send({ embeds: [embed] }).catch(err => {
-                        logger.warn(`[Reminder] Failed to send to ${uid}: ${err.message}`);
-                    });
-                } else {
+                if (!sent) {
                     logger.warn(`[Reminder] No reachable target for user ${uid}, dropping reminder.`);
                 }
             }
@@ -348,9 +351,9 @@ if (DELETE_SLASH) {
 
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
-            return await interaction.member.createDM().then(async dm => {
-                await dm.send(`You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
-            })
+            return await sendDM(interaction.user, {
+                content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`,
+            });
         }
         if (interaction.isChatInputCommand()) {
             interaction.channel.sendTyping().then(async () => {
@@ -507,12 +510,15 @@ if (DELETE_SLASH) {
         }
         if (message.member.roles.cache.has(banned)) {
             logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
-            await message.member.createDM().then(async dm => {
-                const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
+            const dmChannel = await message.author.createDM().catch(() => null);
+            if (dmChannel) {
+                const isLastMsgBot = dmChannel.lastMessage && dmChannel.lastMessage.author.id == client.user.id;
                 if (isLastMsgBot) {
-                    await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
+                    await sendDM(message.author, {
+                        content: `You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`,
+                    });
                 }
-            })
+            }
             return
         }
 

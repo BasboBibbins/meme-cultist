@@ -3,6 +3,7 @@ const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { sendDM } = require("../../utils/dm");
 const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: `./db/feedback.sqlite` });
@@ -112,7 +113,7 @@ async function notifyOwner(client, feedback) {
             });
         }
 
-        await owner.send({ embeds: [embed] });
+        await sendDM(owner, { embeds: [embed] });
         return true;
     } catch (error) {
         logger.error(`[Feedback] Failed to DM owner: ${error.message}`);

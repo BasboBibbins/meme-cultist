@@ -6,6 +6,7 @@ const { drawRouletteTable, drawResult, spinWheel, calculateWinnings, getRedBlack
 const { getEquippedTheme } = require('../../themes/manager');
 const { getThemeColors } = require('../../themes/resolver');
 const logger = require('../../utils/logger');
+const { sendDM } = require('../../utils/dm');
 const { randomHexColor } = require('../../utils/randomcolor');
 const wait = require('node:timers/promises').setTimeout;
 
@@ -482,7 +483,7 @@ async function sendResultDM(client, userResults, winningNumber, color) {
             .setColor(net > 0 ? 0x00AA00 : (net < 0 ? 0xFF0000 : 0x888888))
             .setTimestamp();
 
-        await dmUser.send({ embeds: [embed] });
+        await sendDM(dmUser, { embeds: [embed] });
     } catch (e) {
         logger.warn(`Could not send DM to user ${userId}: ${e.message}`);
     }
