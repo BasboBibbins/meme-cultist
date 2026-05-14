@@ -4,6 +4,7 @@ const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
 const { generateImage } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
+const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
 const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
@@ -346,6 +347,10 @@ async function handleGetBotInfo(args, message, client) {
 }
 
 async function handleGenerateImage(args, message, client, toolCtx) {
+  if (!isChatbotChannel(message.channelId, message.channel?.parentId)) {
+    const mentions = formatChatbotChannelMentions(client);
+    return { error: `Image generation is only available in chatbot channels: ${mentions}.` };
+  }
   if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
   const rateCheck = canGenerateImage(message.author.id);
   if (!rateCheck.allowed) {
