@@ -438,5 +438,37 @@ module.exports = {
 
             For image generation: the chatbot only triggers on direct, explicit requests to create an image, not casual mentions or metaphorical uses of "imagine."
         `
+    },
+    persona: {
+        name: "Personas",
+        description: `
+            Personas let you create reusable custom voices for the chatbot. Instead of changing the bot's behavior one message at a time, you can define a persistent identity and pin it to any channel or thread.
+
+            **Creating a persona:**
+            Use \`/persona create name:my-persona prompt:"You are a sarcastic pirate." public:true\`
+            • **name** — lowercase letters, numbers, and hyphens only; 1–32 characters.
+            • **prompt** — the system prompt that tells the bot how to behave (up to 2000 characters). Be specific: personality, tone, knowledge boundaries, and how it should refer to itself.
+            • **public** — \`true\` lets anyone in the server use it; \`false\` restricts it to you.
+
+            **Using a persona:**
+            \`/persona use name:my-persona\` pins it to the current channel or thread. The bot will adopt that voice for all messages in that context until you clear it.
+
+            **Managing personas:**
+            • \`/persona list\` — see all personas in the server and which one is pinned here.
+            • \`/persona clear\` — remove the pinned persona and return to the default voice.
+            • \`/persona edit\` — update the prompt or visibility of a persona you own.
+            • \`/persona delete\` — permanently remove a persona you own.
+        `,
+        rules: `
+            1. Personas are scoped to the server they were created in.
+            2. You can only edit or delete personas you created. Server admins and the bot owner can also modify any persona.
+            3. Private personas can only be pinned by their creator (or the bot owner).
+            4. A persona pinned to a channel stays active until \`/persona clear\` is used or the persona is deleted.
+            5. If a pinned persona is deleted, channels that had it will fall back to the default bot voice automatically.
+            6. Personas override thread-level roleplay settings from \`/context set\` — the persona prompt takes priority.`,
+        note: `
+            Personas work in both regular chatbot channels and threads. Each channel/thread can have its own pinned persona.
+            For best results, write prompts that describe the persona's personality, speech patterns, and boundaries rather than scripting specific responses.
+            The prompt becomes part of the system message sent to the LLM on every turn, so keep it concise and focused.`
     }
 }
