@@ -162,6 +162,9 @@ async function getDefaultDB(user) {
                 "owned": [],
             },
         },
+        "settings": {
+            "dmsEnabled": true,
+        },
         "chatbot": {
             messageCount: 0,
             summaries: [],

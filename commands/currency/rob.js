@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js")
 const { addNewDBUser, db } = require("../../database")
 const { CURRENCY_NAME } = require("../../config.js")
 const logger = require("../../utils/logger")
+const { sendDM } = require("../../utils/dm")
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -72,7 +73,7 @@ module.exports = {
             embed.setColor("#00ff00");
             embed.setDescription(`${user.displayName } has successfully robbed **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} from ${victim.displayName }!`);
             await interaction.editReply({ embeds: [embed] });
-            await victim.send({ embeds: [new EmbedBuilder()
+            await sendDM(victim, { embeds: [new EmbedBuilder()
                 .setTitle("Oh no!")
                 .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }))
                 .setDescription(`**${user.displayName }** just robbed you of **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\nBe sure to keep your ${CURRENCY_NAME} safe by depositing it into your bank next time!`)

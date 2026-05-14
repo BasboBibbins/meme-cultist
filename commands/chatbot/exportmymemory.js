@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const { getUserChatbotData } = require("../../utils/openai");
+const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
 
 function todayStamp() {
@@ -29,20 +30,18 @@ module.exports = {
         const filename = `memory-${interaction.user.id}-${todayStamp()}.json`;
         const attachment = new AttachmentBuilder(buffer).setName(filename);
 
-        try {
-            const dm = await interaction.user.createDM();
-            await dm.send({
-                content: `Here's everything the chatbot remembers about you. Use \`/forget <fact_key>\` to remove specific facts, or \`/incognito\` to stop accumulating memory.`,
-                files: [attachment],
-            });
+        const dm = await sendDM(interaction.user, {
+            content: `Here's everything the chatbot remembers about you. Use \`/forget <fact_key>\` to remove specific facts, or \`/incognito\` to stop accumulating memory.`,
+            files: [attachment],
+        });
+        if (dm) {
             logger.log(`[ExportMemory] DM sent to ${interaction.user.tag}`);
             return interaction.editReply({ content: "Check your DMs — I sent you a JSON file." });
-        } catch (err) {
-            logger.warn(`[ExportMemory] DM failed for ${interaction.user.tag}: ${err.message}. Falling back to ephemeral reply.`);
-            return interaction.editReply({
-                content: "I couldn't DM you (DMs disabled?). Here's your export inline:",
-                files: [attachment],
-            });
         }
+        logger.warn(`[ExportMemory] DM failed or disabled for ${interaction.user.tag}. Falling back to ephemeral reply.`);
+        return interaction.editReply({
+            content: "I couldn't DM you (DMs disabled or closed?). Here's your export inline:",
+            files: [attachment],
+        });
     },
 };
