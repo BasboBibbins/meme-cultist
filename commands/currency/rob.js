@@ -46,12 +46,11 @@ module.exports = {
         const chance = Math.floor(Math.random() * 100) + 1;
         const cooldown = 60000 * 5;
 
-        if (await db.get(`${user.id}.cooldowns.rob`) > Date.now()) {
-            const timeLeft = new Date(await db.get(`${user.id}.cooldowns.rob`) - Date.now());
-            logger.debug(`current date: ${Date.now()} | cooldown: ${await db.get(`${user.id}.cooldowns.rob`) - Date.now()} | timeLeft: ${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s`);
+        const robCooldown = await db.get(`${user.id}.cooldowns.rob`);
+        if (robCooldown > Date.now()) {
             const embed = new EmbedBuilder()
                 .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setDescription(`You have already attempted to rob someone recently! You can rob again in **${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s**.`)
+                .setDescription(`Rob cooldown active. You can rob again **<t:${Math.floor(robCooldown / 1000)}:R>**.`)
                 .setColor(0xFF0000)
                 .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();

@@ -20,10 +20,9 @@ module.exports = {
             const cooldown = 6.048e+8; // 7 days
     
             if (dbUser.cooldowns.weekly > Date.now()) {
-                const timeLeft = new Date(dbUser.cooldowns.weekly - Date.now());
                 const embed = new EmbedBuilder()
                     .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                    .setDescription(`You have already claimed your weekly ${CURRENCY_NAME}! You can claim again in **${await formatTimeLeft(timeLeft)}**.`)
+                    .setDescription(`You have already claimed your weekly ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.weekly)}**.`)
                     .setColor(0xFF0000)
                     .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                     .setTimestamp();

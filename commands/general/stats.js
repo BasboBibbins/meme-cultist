@@ -73,17 +73,7 @@ function formatProfit(value) {
 
 function formatCooldown(timestamp) {
     if (!timestamp || timestamp <= Date.now()) return '**Available now!**';
-    const diff = timestamp - Date.now();
-    const seconds = Math.round(diff / 1000);
-    const minutes = Math.round(diff / 60000);
-    const hours = Math.round(diff / 3600000);
-    const days = Math.round(diff / 86400000);
-    let relative;
-    if (days > 1) relative = `${days} day${days !== 1 ? 's' : ''}`;
-    else if (hours > 1) relative = `${hours} hour${hours !== 1 ? 's' : ''}`;
-    else if (minutes > 1) relative = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
-    else relative = `${seconds} second${seconds !== 1 ? 's' : ''}`;
-    return `${new Date(timestamp).toLocaleString()} (~${relative})`;
+    return `<t:${Math.floor(timestamp / 1000)}:R>`;
 }
 
 async function generateStatsEmbed(page, interaction, user) {
@@ -105,8 +95,8 @@ async function generateStatsEmbed(page, interaction, user) {
             embed.setTitle(`${user.displayName }'s General Stats`)
             embed.setFields(
                 { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName }`, inline: false },
-                { name: "Discord Member Since", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: true },
-                { name: "Joined Server", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: true },
+                { name: "Discord Member Since", value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: "Joined Server", value: `<t:${Math.floor(interaction.guild.members.cache.get(user.id).joinedTimestamp / 1000)}:R>`, inline: true },
                 { name: "Roles", value: `${fetchedUser.roles.cache.map(role => role.toString()).join(' ')}`, inline: false },
             );
             break;
