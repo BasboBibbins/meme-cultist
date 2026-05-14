@@ -62,6 +62,10 @@ function splitAtWordBoundary(text, maxLength = 1997) {
   return chunks;
 }
 
+function sanitizeMentions(text) {
+    return text.replace(/@everyone/g, "@​everyone").replace(/@here/g, "@​here");
+}
+
 function cleanupExpiredFacts(facts) {
   if (!FACT_TTL_DAYS || !Array.isArray(facts)) return facts;
 
@@ -1088,7 +1092,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
             if (now - lastEdit >= editThrottleMs) {
                 const text = accumulated.trim() || "...";
                 if (text.length <= 2000) {
-                    await placeholder.edit(text);
+                    await placeholder.edit(sanitizeMentions(text));
                     lastEdit = now;
                 }
             }
@@ -1102,14 +1106,14 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
 
         const text = accumulated.trim() || "...";
         if (text.length <= 2000) {
-            await placeholder.edit(text);
+            await placeholder.edit(sanitizeMentions(text));
         } else {
             await placeholder.delete().catch(() => {});
             const chunks = splitAtWordBoundary(text, 1997);
             for (let i = 0; i < chunks.length; i++) {
                 let chunk = chunks[i];
                 if (i < chunks.length - 1) chunk += "...";
-                const sent = await targetChannel.send(chunk);
+                const sent = await targetChannel.send(sanitizeMentions(chunk));
                 if (i === 0) placeholder = sent;
             }
         }
@@ -1731,7 +1735,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
               try {
                 if (revised.length <= 2000) {
                   const msg = await targetChannel.messages.fetch(streamedMessageId);
-                  await msg.edit(revised);
+                  await msg.edit(sanitizeMentions(revised));
                 } else {
                   const msg = await targetChannel.messages.fetch(streamedMessageId);
                   await msg.delete().catch(() => {});
@@ -1739,7 +1743,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
                   for (let i = 0; i < chunks.length; i++) {
                     let chunk = chunks[i];
                     if (i < chunks.length - 1) chunk += "...";
-                    await targetChannel.send(chunk);
+                    await targetChannel.send(sanitizeMentions(chunk));
                   }
                 }
               } catch (err) {
@@ -1772,17 +1776,17 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           let chunk = chunks[i];
           if (i < chunks.length - 1) {
             chunk += "...";
-            const sent = await targetChannel.send(chunk);
+            const sent = await targetChannel.send(sanitizeMentions(chunk));
             sentMessageIds.push(sent.id);
           } else {
-            const sent = await targetChannel.send(pendingFiles.length > 0 ? { content: chunk, files: pendingFiles } : chunk);
+            const sent = await targetChannel.send(pendingFiles.length > 0 ? { content: sanitizeMentions(chunk), files: pendingFiles } : sanitizeMentions(chunk));
             sentMessageIds.push(sent.id);
           }
         }
         logger.debug(`Response sent in ${chunks.length} chunks.`);
       } else if (response) {
         logger.debug("Response is within Discord's character limit, sending as a single message.");
-        const sent = await targetChannel.send(pendingFiles.length > 0 ? { content: response, files: pendingFiles } : response);
+        const sent = await targetChannel.send(pendingFiles.length > 0 ? { content: sanitizeMentions(response), files: pendingFiles } : sanitizeMentions(response));
         sentMessageIds.push(sent.id);
       } else if (pendingFiles.length > 0) {
         logger.debug("No text response but attachments are pending — sending files only.");
