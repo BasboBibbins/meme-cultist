@@ -7,7 +7,8 @@ module.exports = {
         .setName('uptime')
         .setDescription('Check the uptime of the bot.'),
     async execute(interaction) {
-        const uptime = await formatTimeSince(interaction.client.uptime)
+        const startTimestamp = Date.now() - interaction.client.uptime;
+        const uptime = await formatTimeSince(startTimestamp)
         const user = interaction.user;
         const embed = new EmbedBuilder()
             .setAuthor({ name: `${user.displayName }`, iconURL: user.displayAvatarURL({ dynamic: true }) })

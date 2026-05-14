@@ -132,10 +132,7 @@ module.exports = {
         // Cooldown check
         const challengerCooldown = await db.get(`${challenger.id}.cooldowns.duel`) || 0;
         if (challengerCooldown > Date.now()) {
-            const timeLeft = new Date(challengerCooldown - Date.now());
-            const minutes = timeLeft.getMinutes();
-            const seconds = timeLeft.getSeconds();
-            errorEmbed.setDescription(`You must wait ${minutes > 0 ? `${minutes}m ` : ""}${seconds}s before dueling again!`);
+            errorEmbed.setDescription(`Duel cooldown active. You can duel again **<t:${Math.floor(challengerCooldown / 1000)}:R>**.`);
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
 
