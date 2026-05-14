@@ -76,6 +76,8 @@ const config = {
     WINDOW_SIZE: 60,
     IMAGE_GEN_LIMIT: 5,
     IMAGE_GEN_WINDOW: 1800, // seconds (30 minutes)
+    MENTION_LIMIT: 3,
+    MENTION_WINDOW: 3600, // seconds (1 hour)
 
     // Currency/game settings
     CURRENCY_NAME: "koku",

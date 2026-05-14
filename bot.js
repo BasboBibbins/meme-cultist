@@ -16,7 +16,7 @@ const { interest } = require("./utils/bank")
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
 const { describeImage } = require("./utils/llm")
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext")
-const { isChatbotChannel } = require("./utils/channels")
+const { isChatbotChannel, formatChatbotChannelMentions } = require("./utils/channels")
 const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
@@ -521,9 +521,12 @@ if (DELETE_SLASH) {
 
         if (!isChatbotChannelResult && !isMentioned) return;
 
-        const { allowed, reason } = rateLimiter.canProceed(client, message.author.id, isMentioned && !isChatbotChannelResult);
-        if (!allowed) {
-            return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
+        if (!isChatbotChannelResult) {
+            const rateCheck = rateLimiter.canMentionBot(message.author.id);
+            if (!rateCheck.allowed) {
+                const channelText = formatChatbotChannelMentions(client);
+                return message.reply({ content: `⏳ ${rateCheck.reason} You can chat with me unlimited times in ${channelText}.`, ephemeral: true });
+            }
         }
 
         let extraContext = null;

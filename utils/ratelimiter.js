@@ -4,10 +4,11 @@ const { formatChatbotChannelMentions } = require("./channels");
 const userCooldowns = new Map();
 const mentionCooldowns = new Map();
 const imageGenTimestamps = new Map();
+const mentionTimestamps = new Map();
 let requestTimestamps = [];
 let requestCount = 0;
 
-const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, IMAGE_GEN_LIMIT, IMAGE_GEN_WINDOW} = require("../config.js")
+const {USER_COOLDOWN, MENTION_COOLDOWN, GLOBAL_LIMIT, WINDOW_SIZE, IMAGE_GEN_LIMIT, IMAGE_GEN_WINDOW, MENTION_LIMIT, MENTION_WINDOW} = require("../config.js")
 
 function cleanupTimestamps() {
   const now = Date.now();
@@ -23,8 +24,9 @@ function canProceed(client, userId, isMention = false) {
   const lastUsed = cooldownMap.get(userId) || 0;
   if (now - lastUsed < cooldown * 1000) {
     const remaining = Math.ceil((cooldown * 1000 - (now - lastUsed)) / 1000);
+    const retryAt = Math.floor((now + remaining * 1000) / 1000);
     const channelText = formatChatbotChannelMentions(client);
-    return { allowed: false, reason: `Too many requests! Please wait ${remaining}s before next use, or use ${channelText}` };
+    return { allowed: false, reason: `Too many requests! Please wait <t:${retryAt}:R> before next use, or use ${channelText}` };
   }
 
   // Clean up expired timestamps periodically (every 100 requests)
@@ -42,9 +44,10 @@ function canProceed(client, userId, isMention = false) {
     const retryIn = Math.ceil(
       (WINDOW_SIZE * 1000 - (now - requestTimestamps[0])) / 1000
     );
+    const retryAt = Math.floor((now + retryIn * 1000) / 1000);
     return {
       allowed: false,
-      reason: `Global rate limit reached! Try again in ${retryIn}s.`,
+      reason: `Global rate limit reached! Try again <t:${retryAt}:R>.`,
     };
   }
 
@@ -60,6 +63,27 @@ function canProceed(client, userId, isMention = false) {
   return { allowed: true };
 }
 
+function canMentionBot(userId) {
+  const now = Date.now();
+  const windowMs = MENTION_WINDOW * 1000;
+  const history = (mentionTimestamps.get(userId) || []).filter(ts => now - ts < windowMs);
+
+  if (history.length >= MENTION_LIMIT) {
+    const retryIn = Math.ceil((windowMs - (now - history[0])) / 1000);
+    const retryAt = Math.floor((now + retryIn * 1000) / 1000);
+    mentionTimestamps.set(userId, history);
+    return {
+      allowed: false,
+      reason: `Mention limit reached (${MENTION_LIMIT} per hour). Try again <t:${retryAt}:R>.`,
+      retryIn,
+    };
+  }
+
+  history.push(now);
+  mentionTimestamps.set(userId, history);
+  return { allowed: true };
+}
+
 function canGenerateImage(userId) {
   const now = Date.now();
   const windowMs = IMAGE_GEN_WINDOW * 1000;
@@ -67,10 +91,11 @@ function canGenerateImage(userId) {
 
   if (history.length >= IMAGE_GEN_LIMIT) {
     const retryIn = Math.ceil((windowMs - (now - history[0])) / 1000);
+    const retryAt = Math.floor((now + retryIn * 1000) / 1000);
     imageGenTimestamps.set(userId, history);
     return {
       allowed: false,
-      reason: `Image generation limit reached (${IMAGE_GEN_LIMIT} per ${Math.round(IMAGE_GEN_WINDOW / 60)} min). Try again in ${retryIn}s.`,
+      reason: `Image generation limit reached (${IMAGE_GEN_LIMIT} per ${Math.round(IMAGE_GEN_WINDOW / 60)} min). Try again <t:${retryAt}:R>.`,
       retryIn,
     };
   }
@@ -84,4 +109,5 @@ module.exports = {
   canProceed,
   cleanupTimestamps,
   canGenerateImage,
+  canMentionBot,
 };
