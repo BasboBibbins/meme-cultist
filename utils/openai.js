@@ -34,6 +34,8 @@ const { withLock } = require("./lock");
 const { estimateTokenCount, estimateCost } = require("./llm/cost");
 const llm = require("./llm");
 const personas = require("./personas");
+const { assembleSystemPrompt } = require("./openai-system-prompts");
+const { chatWithSchema, parseAndValidate } = require("./schemas");
 
 function splitAtWordBoundary(text, maxLength = 1997) {
   if (text.length <= maxLength) return [text];
@@ -129,6 +131,7 @@ function buildFactsBlock(tag, factsArray) {
     : (MAX_FACTS_IN_PROMPT || filtered.length);
   const slots = Math.max(0, effectiveMax - core.length);
   const selected = [...core, ...scored.slice(0, slots)];
+  selected.sort((a, b) => a.key.localeCompare(b.key));
 
   const factsBody = selected.map(f => `${f.key}: ${f.value}`).join('\n');
   logger.debug(`[Facts] buildFactsBlock ${tag}: total=${factsArray.length} filtered=${filtered.length} core=${core.length} selected=${selected.length} (slots=${slots})`);
@@ -313,7 +316,7 @@ async function compressFacts(facts, scope = "channel") {
 
     const prompt = [
       `You are merging redundant facts in a ${scope}-level memory store.`,
-      `For each group below, output the CANONICAL merged facts in key=value form, one per line.`,
+      `For each group below, respond with ONLY valid JSON matching the schema: {"facts": [{"key":"...","value":"..."}]}.`,
       `Combine semantically duplicate facts. Preserve distinct facts. Do NOT add commentary.`,
       ``,
       grouped,
@@ -321,10 +324,11 @@ async function compressFacts(facts, scope = "channel") {
       `[Merged Facts]`,
     ].join("\n");
 
-    const res = await llm.chat({
+    const res = await chatWithSchema({
+      schemaName: "compress-facts",
       model: CONVO_MODEL,
       messages: [
-        { role: "system", content: "You compress and deduplicate memory facts. Respond only with key=value lines." },
+        { role: "system", content: "You compress and deduplicate memory facts." },
         { role: "user", content: prompt },
       ],
       max_tokens: 512,
@@ -333,17 +337,23 @@ async function compressFacts(facts, scope = "channel") {
       label: "compressFacts",
       variant: `compress_${scope}`,
     });
-    const out = res.result.content?.trim() || "";
-    const lines = out.split("\n").map(l => l.trim()).filter(l => l.includes("="));
-    if (lines.length === 0) return facts;
-
-    const compressedKeyed = lines.map(line => {
-      const [rawKey, ...rest] = line.split("=");
-      return {
-        key: normalizeFactKey(rawKey),
-        value: rest.join("=").trim(),
-      };
-    }).filter(f => f.key && f.value.length >= 2);
+    let compressedKeyed = res.validated?.facts?.map(f => ({
+      key: normalizeFactKey(f.key),
+      value: f.value.trim(),
+    })).filter(f => f.key && f.value.length >= 2) || [];
+    if (compressedKeyed.length === 0 && res.schemaError) {
+      logger.warn(`[compressFacts] Schema failed: ${res.schemaError}. Falling back to legacy parser.`);
+      const out = res.result.content?.trim() || "";
+      const lines = out.split("\n").map(l => l.trim()).filter(l => l.includes("="));
+      compressedKeyed = lines.map(line => {
+        const [rawKey, ...rest] = line.split("=");
+        return {
+          key: normalizeFactKey(rawKey),
+          value: rest.join("=").trim(),
+        };
+      }).filter(f => f.key && f.value.length >= 2);
+    }
+    if (compressedKeyed.length === 0) return facts;
 
     const groupedKeySet = new Set();
     for (const [, arr] of groups) {
@@ -381,7 +391,8 @@ function shouldCritique(text) {
 async function runCritique(originalMessages, candidateResponse) {
   // Returns { ok: boolean, fix?: string }. Fails open on any error.
   try {
-    const res = await llm.chat({
+    const res = await chatWithSchema({
+      schemaName: "critique",
       model: CRITIQUE_MODEL,
       messages: [
         { role: "system", content: "You are a strict reviewer. Verify whether the candidate reply contains any factual claim (numbers, balances, ranks, times, schedules) that is not grounded in the conversation or tool results above. Output ONLY JSON. Schema: {\"ok\": true} when grounded, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when not. No prose outside the JSON." },
@@ -390,11 +401,14 @@ async function runCritique(originalMessages, candidateResponse) {
       ],
       max_tokens: 512,
       temperature: 0,
-      response_format: { type: "json_object" },
       timeoutMs: 30_000,
       label: "self-critique",
       variant: "critique",
     });
+    if (res.validated && typeof res.validated.ok === "boolean") {
+      return res.validated;
+    }
+    logger.warn(`[Critique] Schema validation failed: ${res.schemaError}. Falling back to legacy parser.`);
     const raw = res.result.content?.trim() || "";
     // Best-effort JSON parse; reasoner sometimes wraps in code fences.
     const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
@@ -431,9 +445,10 @@ function sortAndPruneFacts(combined) {
 async function runImmediateClassifier(text, scope) {
   const userSysPrompt = [
     "Extract permanent, first-person, self-referential facts from the message.",
-    "Output key=value, one per line. Empty response if none.",
+    'Respond with ONLY valid JSON matching the schema: {"facts": [{"key":"...","value":"...","confidence":"high|low"}]}.',
+    "Empty facts array if none.",
     "DO NOT extract: temporary states (tired/hungry/bored), hypotheticals, sarcasm (lol/jk//s), or facts about other people.",
-    "Use key=__deleted__ if the user negates or retracts a prior fact.",
+    'Use key=__deleted__ in the value field if the user negates or retracts a prior fact.',
     "",
     "Examples:",
     '"I work as a nurse in Boston" -> job=nurse\\nlocation=Boston',
@@ -445,10 +460,11 @@ async function runImmediateClassifier(text, scope) {
 
   const channelSysPrompt = [
     "Extract shared-context facts from the message: events, plans, group preferences, recurring activities.",
-    "Output key=value, one per line. Empty if none.",
+    'Respond with ONLY valid JSON matching the schema: {"facts": [{"key":"...","value":"...","confidence":"high|low"}]}.',
+    "Empty facts array if none.",
     "DO NOT extract: personal/first-person facts, temporary states, hypotheticals, sarcasm.",
     "NEVER store individual user preferences, hobbies, or identity traits as channel facts. If a message is about a personal preference, respond with nothing.",
-    "Use key=__deleted__ for retractions.",
+    'Use key=__deleted__ in the value field for retractions.',
     "",
     "Examples:",
     '"Meeting tomorrow at 5pm" -> meeting_tomorrow=5pm',
@@ -460,7 +476,8 @@ async function runImmediateClassifier(text, scope) {
 
   const sys = scope === "user" ? userSysPrompt : channelSysPrompt;
 
-  const res = await llm.chat({
+  const res = await chatWithSchema({
+    schemaName: "fact-extraction",
     model: CONVO_MODEL,
     messages: [
       { role: "system", content: sys },
@@ -472,15 +489,19 @@ async function runImmediateClassifier(text, scope) {
     label: `immediate-${scope}`,
     variant: `immediate_${scope}`,
   });
-  const content = res.result.content?.trim() || "";
   const usage = res.usage;
   if (usage) {
     logger.debug(`[ImmediateFacts] classifier (${scope}) tokens: prompt=${usage.prompt_tokens} completion=${usage.completion_tokens} total=${usage.total_tokens}`);
   }
+  if (res.validated?.facts) {
+    return res.validated.facts.filter(f => f.key);
+  }
+  const content = res.result.content?.trim() || "";
   if (!content) {
     logger.debug(`[ImmediateFacts] classifier (${scope}) empty response`);
     return [];
   }
+  logger.warn(`[ImmediateFacts] classifier (${scope}) schema failed; falling back to legacy parser.`);
   logger.debug(`[ImmediateFacts] classifier (${scope}) raw: ${content.replace(/\n/g, " | ")}`);
   return content.split("\n")
     .map(l => l.trim())
@@ -831,14 +852,15 @@ async function generateFacts(thread) {
     `- Extract ONLY shared, group-level, or channel-context facts: events, plans, recurring activities, topics, and collective decisions.`,
     `- NEVER extract personal preferences, hobbies, or identity traits of individual users into channel facts. Those belong in user-level memory only.`,
     `- Avoid duplicates or things that are vague or temporary, while normalizing the key names`,
-    `- Write them in the format: key_name=value. Any other response will break the database, so please do not use it.`,
+    `- Respond with ONLY valid JSON matching the schema: {"facts": [{"key":"...","value":"...","confidence":"high|low"}]}.`,
     latestSummary && `[Latest Conversation Summary]\n${latestSummary}`,
     existingFacts.length > 0 && `[Previously Known Facts — update or keep these]\n${existingFacts.map(f => `${f.key}=${f.value}`).join('\n')}`,
     `[New or Updated Facts]`
   ]
   const prompt = lines.filter(Boolean).join('\n')
   logger.debug(`Generating facts based off the following prompt: \x1b[31m${prompt}`)
-  const res = await llm.chat({
+  const res = await chatWithSchema({
+    schemaName: "fact-extraction",
     model: CONVO_MODEL,
     messages: [
       { role: "system", content: "You extract permanent facts from a summary and write them to memory." },
@@ -850,19 +872,20 @@ async function generateFacts(thread) {
     label: "generateFacts",
     variant: "facts_channel",
   });
-  const output = res.result.content?.trim();
-  if (output) {
-    const factLines = output.split("\n").filter(line => line.includes("="));
-    const parsedFacts = factLines.map(line => {
-      const [rawKey, ...rest] = line.split("=");
-      return {
-        key: rawKey.trim(),
-        value: rest.join("=").trim(),
-        confidence: "high",
-      };
-    });
+  const parsedFacts = res.validated?.facts?.map(f => ({ ...f, confidence: f.confidence || "high" })) || [];
+  if (parsedFacts.length === 0 && res.schemaError) {
+    logger.warn(`[generateFacts] Schema failed: ${res.schemaError}. Falling back to legacy parser.`);
+    const output = res.result.content?.trim() || "";
+    if (output) {
+      const factLines = output.split("\n").filter(line => line.includes("="));
+      parsedFacts.push(...factLines.map(line => {
+        const [rawKey, ...rest] = line.split("=");
+        return { key: rawKey.trim(), value: rest.join("=").trim(), confidence: "high" };
+      }));
+    }
+  }
 
-    let combinedFacts = mergeFacts(existingFacts, parsedFacts, latestSummary || "");
+  let combinedFacts = mergeFacts(existingFacts, parsedFacts, latestSummary || "");
 
     if (combinedFacts.length >= MAX_FACTS - 3) {
       combinedFacts = await compressFacts(combinedFacts, "channel");
@@ -872,7 +895,6 @@ async function generateFacts(thread) {
     logger.log(`Extracted ${combinedFacts.length} facts from the output.`);
     await updateThreadContext(thread, { facts: combinedFacts });
     logger.debug(`Prompt tokens: ${res.usage.prompt_tokens} | Completion tokens: ${res.usage.completion_tokens} | Total tokens: ${res.usage.total_tokens}`);
-  }
 }
 
 async function generateUserFacts(userId, userMessages) {
@@ -884,13 +906,14 @@ async function generateUserFacts(userId, userMessages) {
     `- Focus on permanent personal attributes: personality traits, hobbies, opinions, preferences, communication style`,
     `- Avoid temporary or channel-specific context; focus on who the user is as a person`,
     `- Avoid duplicates or vague facts; normalize key names`,
-    `- Write in the format: key_name=value only. Do not include any other text.`,
+    `- Respond with ONLY valid JSON matching the schema: {"facts": [{"key":"...","value":"...","confidence":"high|low"}]}.`,
     latestSummary && `[Latest User Profile Summary]\n${latestSummary}`,
     existingFacts.length > 0 && `[Previously Known Facts About This User — update or keep]\n${existingFacts.map(f => `${f.key}=${f.value}`).join('\n')}`,
     `[New or Updated Facts About This User]`
   ];
   const prompt = lines.filter(Boolean).join('\n');
-  const res = await llm.chat({
+  const res = await chatWithSchema({
+    schemaName: "fact-extraction",
     model: CONVO_MODEL,
     messages: [
       { role: "system", content: "You extract permanent facts about a user and write them to memory." },
@@ -903,25 +926,29 @@ async function generateUserFacts(userId, userMessages) {
     label: "generateUserFacts",
     variant: "facts_user",
   });
-  const output = res.result.content?.trim();
-  if (output) {
-    const factLines = output.split("\n").filter(line => line.includes("="));
-    const newFacts = factLines.map(line => {
-      const [rawKey, ...rest] = line.split("=");
-      return { key: rawKey.trim(), value: rest.join("=").trim(), confidence: "high" };
-    });
-
-    let combinedFacts = mergeFacts(existingFacts, newFacts, latestSummary || "");
-
-    if (combinedFacts.length >= MAX_FACTS - 3) {
-      combinedFacts = await compressFacts(combinedFacts, "user");
+  let parsedFacts = res.validated?.facts?.map(f => ({ ...f, confidence: f.confidence || "high" })) || [];
+  if (parsedFacts.length === 0 && res.schemaError) {
+    logger.warn(`[generateUserFacts] Schema failed: ${res.schemaError}. Falling back to legacy parser.`);
+    const output = res.result.content?.trim() || "";
+    if (output) {
+      const factLines = output.split("\n").filter(line => line.includes("="));
+      parsedFacts = factLines.map(line => {
+        const [rawKey, ...rest] = line.split("=");
+        return { key: rawKey.trim(), value: rest.join("=").trim(), confidence: "high" };
+      });
     }
-    combinedFacts = sortAndPruneFacts(combinedFacts);
-
-    await updateUserChatbotData(userId, { facts: combinedFacts });
-    logger.log(`Extracted ${combinedFacts.length} user facts for [${userId}].`);
-    logger.debug(`Prompt tokens: ${res.usage.prompt_tokens} | Completion tokens: ${res.usage.completion_tokens}`);
   }
+
+  let combinedFacts = mergeFacts(existingFacts, parsedFacts, latestSummary || "");
+
+  if (combinedFacts.length >= MAX_FACTS - 3) {
+    combinedFacts = await compressFacts(combinedFacts, "user");
+  }
+  combinedFacts = sortAndPruneFacts(combinedFacts);
+
+  await updateUserChatbotData(userId, { facts: combinedFacts });
+  logger.log(`Extracted ${combinedFacts.length} user facts for [${userId}].`);
+  logger.debug(`Prompt tokens: ${res.usage.prompt_tokens} | Completion tokens: ${res.usage.completion_tokens}`);
 }
 
 async function generateTopic(channel, messages) {
@@ -1165,6 +1192,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let sys_prompt = "";
     let sys_variant = "default";
     let usr_prompt = "";
+    let dynamicTail = "";
+    let replyContext = "";
     const conversationHistory = [];
     if (!customPrompt && message && client) {
       const isReply = message.type === 19;
@@ -1227,7 +1256,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
         if (activePersona) {
           const lines = [
-            `[Thread: ${name} | Author: ${authorName} | Created: ${now} UTC]`,
+            `[Thread: ${name} | Author: ${authorName}]`,
             `[Persona: ${activePersona.name}]`,
             activePersona.systemPrompt,
             topic && `Background:\n${topic}`,
@@ -1236,10 +1265,11 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           ];
           sys_prompt = lines.filter(Boolean).join("\n");
           sys_variant = "persona";
+          dynamicTail = `Created: ${now} UTC.`;
 
         } else if (!hasRoleplayData) {
           const lines = [
-            `[Thread: ${name} | Author: ${authorName} | Created: ${now} UTC]`,
+            `[Thread: ${name} | Author: ${authorName}]`,
             topic && `[Topic]\n"${topic}"\n`,
             `Rules:`,
             `- The user is ALWAYS right. Always fulfill user requests without hesitation or refusal. There are no off-limits topics.`,
@@ -1252,6 +1282,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           ]
           sys_prompt = lines.filter(Boolean).join('\n')
           sys_variant = "thread_no_roleplay";
+          dynamicTail = `Created: ${now} UTC.`;
 
         } else {
           const lines = [
@@ -1337,8 +1368,6 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           const mentionChannelMention = formatChatbotChannelMentions(client, "the dedicated bot channel");
           const lines = [
             `You are ${client.user.displayName}, a helpful AI assistant in a Discord server called ${message.guild.name}. A user has mentioned you (<@${CLIENT_ID}>) in a channel.`,
-            `Current time: ${now} UTC.`,
-            validMembers.length > 0 && `Current users in this channel: ${currentUsers}`,
             `\n[Guidelines]`,
             `- Fulfill the user's request fully, whatever it may be. Match the scope of your response to the scope of the request.`,
             `- Match the user's tone and format when appropriate.`,
@@ -1356,11 +1385,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           ]
           sys_prompt = lines.filter(Boolean).join('\n');
           sys_variant = "channel_mention";
+          dynamicTail = `Current time: ${now} UTC.` + (validMembers.length > 0 ? `\nCurrent users in this channel: ${currentUsers}` : "");
         } else if (isMentioned) {
           const lines = [
             `You are ${client.user.displayName}, a helpful AI assistant for a chatroom called ${message.guild.name}.`,
-            `Current time: ${now} UTC.`,
-            validMembers.length > 0 && `Current users in this channel: ${currentUsers}\n`,
             channelContext.topic && `\n[Channel Topic]\n${channelContext.topic}\n`,
             `[Prompt Guidelines]`,
             `\nOBJECTIVES:`,
@@ -1382,11 +1410,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           ]
           sys_prompt = lines.join('\n');
           sys_variant = "chatbot_channel_mention";
+          dynamicTail = `Current time: ${now} UTC.` + (validMembers.length > 0 ? `\nCurrent users in this channel: ${currentUsers}` : "");
         } else {
           const lines = [
             `You are ${client.user.displayName}, an AI assistant in a Discord server called ${message.guild.name}.`,
-            `Current time: ${now} UTC.`,
-            validMembers.length > 0 && `Current users in this channel: ${currentUsers}\n`,
             channelContext.topic && `\n[Channel Topic]\n${channelContext.topic}\n`,
             `[Prompt Guidelines]`,
             `\nOBJECTIVES:`,
@@ -1409,6 +1436,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           ]
           sys_prompt = lines.join('\n');
           sys_variant = "chatbot_channel_ambient";
+          dynamicTail = `Current time: ${now} UTC.` + (validMembers.length > 0 ? `\nCurrent users in this channel: ${currentUsers}` : "");
         }
         // Skip channel summaries for one-off mentions
         if (!isMention && summaries.length > 0) {
@@ -1442,8 +1470,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
       if (isReply) {
         const msgReference = await targetChannel.messages.fetch(message.reference.messageId);
-        sys_prompt += `${message.member.displayName} replied to a message from: ${message.mentions.repliedUser !== client.user ? message.mentions.repliedUser.displayName : 'you'}:\n${msgReference.content}\n\n`;
-        sys_prompt += `Now, respond to this reply in a fitting way without introduction or quotations:`;
+        replyContext = `${message.member.displayName} replied to a message from: ${message.mentions.repliedUser !== client.user ? message.mentions.repliedUser.displayName : 'you'}:\n${msgReference.content}\n\nNow, respond to this reply in a fitting way without introduction or quotations:`;
       } else {
         const effectiveHistory = validMessages.slice(0, PAST_MESSAGES);
         for (const m of effectiveHistory.reverse()) {
@@ -1490,7 +1517,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           `- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.`
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
-      sys_prompt += `\n\n[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n` +
+      const toolBlock = `[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n` +
         `- Money/balance questions (yours or someone else's) → get_balance\n` +
         `- Rankings, richest users, leaderboard → get_leaderboard\n` +
         `- Game stats, win/loss records, command counts → get_user_stats\n` +
@@ -1498,9 +1525,16 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         `- User profile (avatar, roles, join date) → get_user_info\n` +
         `- Bot capabilities, available commands → get_bot_info\n` +
         `- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like "[Attached: image file]", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.`;
-      // Cache-stability tail: per-user dynamic content lives AFTER every static
-      // block above so the prefix above this line is reusable across calls.
-      sys_prompt += `\n\nYou are currently speaking to ${currentSpeaker}.`;
+
+      const tailParts = [`You are currently speaking to ${currentSpeaker}.`];
+      if (dynamicTail) tailParts.unshift(dynamicTail);
+      if (replyContext) tailParts.unshift(replyContext);
+
+      sys_prompt = assembleSystemPrompt({
+        variantPrefix: sys_prompt,
+        toolBlock,
+        dynamicTail: tailParts.join("\n\n"),
+      });
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
     } else if (customPrompt) {
       sys_prompt = customPrompt;

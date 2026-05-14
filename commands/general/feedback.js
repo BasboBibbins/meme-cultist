@@ -4,6 +4,7 @@ const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { sendDM } = require("../../utils/dm");
+const { chatWithSchema } = require("../../utils/schemas");
 const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: `./db/feedback.sqlite` });
@@ -43,13 +44,11 @@ async function validateFeedback(type, description, username) {
 
     const typeLabels = { bug: 'Bug Report', suggestion: 'Feature Suggestion', general: 'General Feedback' };
 
-    const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON (NO MARKDOWN):
+    const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON.
 
 Feedback Type: ${typeLabels[type]}
 From User: ${username}
 Content: "${description}"
-
-{"valid": boolean, "reason": "brief explanation if invalid", "category": "legitimate"|"spam"|"abusive"|"nonsense"|"empty"}
 
 Legitimate: genuine bug reports, feature suggestions, or constructive feedback.
 Spam: repetitive, advertisements, gibberish.
@@ -58,7 +57,8 @@ Nonsense: random characters, meaningless.
 Empty: < 5 characters of content.`;
 
     try {
-        const response = await llm.chat({
+        const response = await chatWithSchema({
+            schemaName: "feedback-validation",
             model: CONVO_MODEL,
             messages: [
                 { role: "system", content: "You respond only with valid JSON." },
@@ -70,6 +70,10 @@ Empty: < 5 characters of content.`;
             variant: "validate_feedback",
         });
 
+        if (response.validated && typeof response.validated.valid === "boolean") {
+            return response.validated;
+        }
+        logger.warn(`[Feedback] Schema validation failed: ${response.schemaError}. Falling back to legacy parser.`);
         let content = response.result.content?.trim();
         if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
         content = cleanMarkdownCode(content);
