@@ -356,7 +356,7 @@ module.exports = {
     craps: {
         name: "Craps",
         description: `
-            Craps is a dice game where you roll two dice and bet on the outcome. The game is played in rounds, each starting with a "come-out" roll.
+            Street-style craps: one shooter throws two dice, everyone else bets on the outcome. Each round starts with a "come-out" roll.
 
             **Come-out roll:**
             • Roll **7** or **11** → Pass Line wins immediately.
@@ -364,38 +364,33 @@ module.exports = {
             • Any other roll (**4, 5, 6, 8, 9, 10**) sets the **point**.
 
             **Point phase:**
-            Keep rolling until the point repeats (Pass wins) or a **7** comes first (Pass loses, "seven-out"). A new come-out roll then begins.
+            The shooter keeps rolling until the point repeats (Pass wins) or a **7** comes first (Pass loses — "seven-out" — and the dice pass to the next player).
 
-            **Key bets:**
-            • **Pass Line** — bet the shooter wins. Pays 1:1.
-            • **Don't Pass** — bet the shooter loses. Pays 1:1, but 12 on come-out is a push.
-            • **Come / Don't Come** — like Pass / Don't Pass, but placed after a point is set. They travel to their own point number on the next roll.
-            • **Field** — one-roll bet that wins on 3, 4, 9, 10, 11 (1:1), 2 (2:1), or 12 (3:1).
-            • **Place** — bet a specific number (4, 5, 6, 8, 9, 10) is rolled before a 7.
-            • **Hard Ways** — bet a number is rolled as a pair (e.g., 3+3) before a 7 or the easy way.
-            • **Odds** — extra bet behind Pass/Come or Don't Pass/Come that pays true odds (no house edge). Requires the parent bet first.
-            • **Props** — high-risk one-roll bets on exact totals (e.g., Any 7, Yo, Boxcars).
+            **Bets:**
+            • **Pass Line** — bet with the shooter. Pays 1:1. Come-out only.
+            • **Don't Pass** — bet against the shooter. Pays 1:1, but 12 on come-out is a push. Come-out only.
+            • **Field** — one-roll bet that wins on 3/4/9/10/11 (1:1), 2 (2:1), or 12 (3:1).
+            • **Any 7** — one-roll bet, pays 4:1 on a 7.
+            • **Any Craps** — one-roll bet, pays 7:1 on 2, 3, or 12.
 
-            Use \`/craps play [bet]\` to start a session and \`/craps paytable\` to see all payouts.
+            Use \`/craps play <type> <amount>\` to join (or start) a session and \`/craps paytable\` to see the payouts.
             `,
         rules: `
-            1. Start a session with \`/craps play [chip size]\`. This opens an interactive canvas table with buttons.
-            2. Place bets using the buttons below the table. Some bets are only available during the come-out or point phase.
-            3. Press **Roll** to throw the dice. Bets resolve automatically and stay on the table between rolls until they win, lose, or are cleared.
-            4. One-roll bets (Field, Props) are removed after every roll. Multi-roll bets (Pass, Come, Place, Hard Ways) stay until resolved.
-            5. You can change your chip size mid-session with the **Chip Size** button.
-            6. Press **Clear Bets** to refund all standing bets without ending the session.
-            7. Press **End** to close the session and refund standing bets.
-            8. Sessions idle out after 5 minutes of inactivity — standing bets are refunded automatically.
-            9. Only one session per user per channel at a time.`,
+            1. Start a session with \`/craps play <type> <amount>\`. The first player becomes the shooter; the message is the channel's table.
+            2. Anyone can place a bet by pressing the bet buttons on the session message — a modal will ask for the amount. Running \`/craps play\` again also works.
+            3. Only the shooter can press **Roll**. The dice pass to the next player when the shooter sevens out.
+            4. Pass / Don't Pass can only be placed during the come-out roll. Field / Any 7 / Any Craps can be placed any time.
+            5. One-roll bets (Field, Any 7, Any Craps) resolve every roll. Pass / Don't Pass stay across the come-out → point transition until they win or lose.
+            6. Only the player who started the session can press **End Session** — that refunds all standing bets.
+            7. Sessions idle out after 5 minutes of no rolls — standing bets are refunded automatically.
+            8. One session per channel.`,
         example: `
-            \`/craps play 100\` — Start a session with a 100 koku chip size.
-            \`/craps play half\` — Start a session with half your balance as the chip size.
-            \`/craps paytable\` — Show the full payout table as a canvas image.`,
+            \`/craps play type:pass amount:100\` — Start (or join) a session with 100 koku on the Pass Line.
+            \`/craps play type:field amount:half\` — Place a Field bet of half your balance on the existing session.
+            \`/craps paytable\` — Show the payout table as a canvas image.`,
         note: `
-            Odds bets require a parent Pass/Come or Don't Pass/Come bet first. The Odds menu will show available options only after the parent bet exists (and for Come/Don't Come, only after they have traveled to a point).
-            Duplicate Place, Hard Way, Big 6/8, and Odds bets are blocked — clear the existing bet first if you want to move it.
-            The canvas disables betting zones that are not legal for the current phase.
+            Pass / Don't Pass placements are rejected once a point is set — wait for the come-out roll.
+            The shooter rotates on a seven-out, in join order.
             Craps contributes to the progressive jackpot at the same rate as other games.`
     },
     reminder: {
