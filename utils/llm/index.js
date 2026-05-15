@@ -10,6 +10,7 @@ module.exports = {
     chatStream: router.chatStream,
     describeImage: router.describeImage,
     generateImage: router.generateImage,
+    embed: router.embed,
     getCacheStats: router.getCacheStats,
     estimateCost,
     estimateTokenCount,

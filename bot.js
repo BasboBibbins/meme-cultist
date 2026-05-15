@@ -253,6 +253,99 @@ if (DELETE_SLASH) {
         // will queue.register(...) elsewhere before any enqueue.
         const jobs = require("./utils/jobs");
         const { REMINDER_DM_FALLBACK, REMINDER_MAX_GROUP_SIZE } = require("./config.js");
+        const kbStore = require("./utils/kb");
+        const llm = require("./utils/llm");
+        jobs.register("kb_embed", async (payload) => {
+            const { guildId, slug } = payload;
+            const entry = kbStore.getBySlug(guildId, slug);
+            if (!entry) {
+                logger.warn(`[KB Embed] Entry ${slug} not found in guild ${guildId}`);
+                return;
+            }
+            try {
+                const text = `${entry.title}\n${entry.content}`;
+                const { embedding } = await llm.embed({ text });
+                kbStore.setEmbedding(guildId, slug, embedding);
+                logger.log(`[KB Embed] Embedded "${slug}" (${embedding.length} dims)`);
+            } catch (err) {
+                logger.error(`[KB Embed] Failed for "${slug}": ${err.message}`);
+            }
+        });
+
+        const messageArchive = require("./utils/messageArchive");
+        jobs.register("message_embed", async (payload) => {
+            const { channelId, chunkIds } = payload;
+            if (!chunkIds || chunkIds.length === 0) return;
+            try {
+                const unembedded = messageArchive.getUnembeddedForChannel(channelId, 100)
+                    .filter(r => chunkIds.includes(r.id));
+                if (unembedded.length === 0) return;
+
+                const llm = require("./utils/llm");
+                for (const chunk of unembedded) {
+                    try {
+                        const { embedding } = await llm.embed({ text: chunk.content });
+                        messageArchive.setEmbedding(chunk.id, embedding);
+                    } catch (err) {
+                        logger.error(`[MessageEmbed] Failed for chunk ${chunk.id}: ${err.message}`);
+                    }
+                }
+                logger.log(`[MessageEmbed] Embedded ${unembedded.length} chunks for ${channelId}`);
+            } catch (err) {
+                logger.error(`[MessageEmbed] Batch failed for ${channelId}: ${err.message}`);
+            }
+        });
+
+        jobs.register("backfill_messages", async (payload) => {
+            const { channelIds } = payload;
+            if (!channelIds || channelIds.length === 0) return;
+            const llm = require("./utils/llm");
+            for (const channelId of channelIds) {
+                try {
+                    const channel = await client.channels.fetch(channelId);
+                    if (!channel) continue;
+                    let lastId = messageArchive.getMaxMessageIdForChannel(channelId);
+                    let totalInserted = 0;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const options = lastId ? { limit: 100, before: lastId } : { limit: 100 };
+                        const fetched = await channel.messages.fetch(options);
+                        if (fetched.size === 0) {
+                            hasMore = false;
+                            break;
+                        }
+                        const msgs = Array.from(fetched.values()).reverse();
+                        for (const msg of msgs) {
+                            if (!msg.content) continue;
+                            const id = messageArchive.insertChunk({
+                                channelId,
+                                messageId: msg.id,
+                                authorId: msg.author.id,
+                                content: msg.content,
+                                chunkIndex: 0,
+                                createdAt: msg.createdTimestamp,
+                            });
+                            if (id) totalInserted++;
+                            lastId = msg.id;
+                        }
+                        if (fetched.size < 100) hasMore = false;
+                    }
+                    if (totalInserted > 0) {
+                        jobs.enqueue({
+                            kind: "message_embed",
+                            payload: { channelId, chunkIds: [] },
+                            run_at: Date.now(),
+                        });
+                        logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed job.`);
+                    } else {
+                        logger.log(`[Backfill] No new messages for ${channelId}.`);
+                    }
+                } catch (err) {
+                    logger.error(`[Backfill] Failed for ${channelId}: ${err.message}`);
+                }
+            }
+        });
+
         jobs.register("reminder", async (payload) => {
             const { userId, channelId, text, targets, recurrence } = payload;
             const notifyIds = targets && targets.length > 0 ? targets : [userId];
@@ -331,6 +424,22 @@ if (DELETE_SLASH) {
             }
         });
         jobs.start();
+
+        const { CHATBOT_CHANNELS } = require("./config.js");
+        for (const channelId of CHATBOT_CHANNELS) {
+            try {
+                if (messageArchive.countForChannel(channelId) === 0) {
+                    jobs.enqueue({
+                        kind: "backfill_messages",
+                        payload: { channelIds: [channelId] },
+                        run_at: Date.now(),
+                    });
+                    logger.log(`[Backfill] Triggered for channel ${channelId}`);
+                }
+            } catch (err) {
+                logger.error(`[Backfill] Trigger failed for ${channelId}: ${err.message}`);
+            }
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
