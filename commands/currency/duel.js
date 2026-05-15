@@ -6,6 +6,7 @@ const { renderDuel } = require("../../utils/duelCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getDuelColors } = require("../../themes/resolver");
 const logger = require("../../utils/logger");
+const { sendDM } = require("../../utils/dm");
 const { withUserLock } = require("../../utils/userlock");
 
 const ACCEPT_TIMEOUT = 60000;
@@ -132,10 +133,7 @@ module.exports = {
         // Cooldown check
         const challengerCooldown = await db.get(`${challenger.id}.cooldowns.duel`) || 0;
         if (challengerCooldown > Date.now()) {
-            const timeLeft = new Date(challengerCooldown - Date.now());
-            const minutes = timeLeft.getMinutes();
-            const seconds = timeLeft.getSeconds();
-            errorEmbed.setDescription(`You must wait ${minutes > 0 ? `${minutes}m ` : ""}${seconds}s before dueling again!`);
+            errorEmbed.setDescription(`Duel cooldown active. You can duel again **<t:${Math.floor(challengerCooldown / 1000)}:R>**.`);
             return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
         }
 
@@ -210,15 +208,13 @@ module.exports = {
         const msg = await interaction.editReply({ content: `${opponent}`, embeds: [embed], components: [acceptRow] });
 
         // DM the challenged user with a jump link to the channel message.
-        try {
-            await opponent.send({ embeds: [new EmbedBuilder()
-                .setTitle("You've been challenged to a duel!")
-                .setThumbnail(challenger.displayAvatarURL({ dynamic: true, size: 1024 }))
-                .setDescription(`**${challenger.displayName}** has challenged you to a Rock-Paper-Scissors duel for **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\n[Jump to the duel](${msg.url}) to **Accept** or **Decline**.\n\n${walletLine}`)
-                .setColor(colors.embedColor || 0x0f4c25)
-                .setTimestamp()
-                .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })] });
-        } catch (_) {}
+        await sendDM(opponent, { embeds: [new EmbedBuilder()
+            .setTitle("You've been challenged to a duel!")
+            .setThumbnail(challenger.displayAvatarURL({ dynamic: true, size: 1024 }))
+            .setDescription(`**${challenger.displayName}** has challenged you to a Rock-Paper-Scissors duel for **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\n[Jump to the duel](${msg.url}) to **Accept** or **Decline**.\n\n${walletLine}`)
+            .setColor(colors.embedColor || 0x0f4c25)
+            .setTimestamp()
+            .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })] });
 
         const session = client.duelGames.get(sessionKey);
         if (session) {
@@ -469,14 +465,12 @@ async function runRpsPhase({ session, challenger, opponent, bet, colors, msg, cl
 
         await msg.edit({ embeds: [forfeitEmbed], components: [], files: forfeitAttachment ? [forfeitAttachment] : [] });
 
-        try {
-            await loser.send({ embeds: [new EmbedBuilder()
-                .setTitle("You lost a duel!")
-                .setThumbnail(winner.displayAvatarURL({ dynamic: true, size: 1024 }))
-                .setDescription(`**${winner.displayName}** won **${(bet * 2).toLocaleString("en-US")}** ${CURRENCY_NAME} from you by forfeit in ${msg.guild?.name || "the server"}!`)
-                .setColor(0xFF0000)
-                .setTimestamp()] });
-        } catch (_) {}
+        await sendDM(loser, { embeds: [new EmbedBuilder()
+            .setTitle("You lost a duel!")
+            .setThumbnail(winner.displayAvatarURL({ dynamic: true, size: 1024 }))
+            .setDescription(`**${winner.displayName}** won **${(bet * 2).toLocaleString("en-US")}** ${CURRENCY_NAME} from you by forfeit in ${msg.guild?.name || "the server"}!`)
+            .setColor(0xFF0000)
+            .setTimestamp()] });
 
         logger.info(`Duel ${sessionKey} forfeited — ${winner.username} wins ${bet * 2} ${CURRENCY_NAME}.`);
         client.duelGames.delete(sessionKey);
@@ -565,14 +559,12 @@ async function resolveDuel(session, choices, challenger, opponent, bet, colors, 
     }
 
     // DM the loser
-    try {
-        await loser.send({ embeds: [new EmbedBuilder()
-            .setTitle("You lost a duel!")
-            .setThumbnail(winner.displayAvatarURL({ dynamic: true, size: 1024 }))
-            .setDescription(`**${winner.displayName}** won **${(bet * 2).toLocaleString("en-US")}** ${CURRENCY_NAME} from you in ${msg.guild?.name || "the server"}!\n\nYou chose ${CHOICE_EMOJIS[choices.get(loser.id)]} and they chose ${CHOICE_EMOJIS[choices.get(winner.id)]}.`)
-            .setColor(0xFF0000)
-            .setTimestamp()] });
-    } catch (_) {}
+    await sendDM(loser, { embeds: [new EmbedBuilder()
+        .setTitle("You lost a duel!")
+        .setThumbnail(winner.displayAvatarURL({ dynamic: true, size: 1024 }))
+        .setDescription(`**${winner.displayName}** won **${(bet * 2).toLocaleString("en-US")}** ${CURRENCY_NAME} from you in ${msg.guild?.name || "the server"}!\n\nYou chose ${CHOICE_EMOJIS[choices.get(loser.id)]} and they chose ${CHOICE_EMOJIS[choices.get(winner.id)]}.`)
+        .setColor(0xFF0000)
+        .setTimestamp()] });
 
     client.duelGames.delete(sessionKey);
     logger.info(`Duel ${sessionKey} resolved — ${winner.username} wins ${bet * 2} ${CURRENCY_NAME}.`);

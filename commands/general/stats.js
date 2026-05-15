@@ -3,7 +3,10 @@ const { CURRENCY_NAME } = require("../../config.js");
 const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require('../../utils/openai');
 const logger = require("../../utils/logger");
+const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { todayStamp } = require('../../utils/time.js');
+const { AttachmentBuilder } = require('discord.js');
 
 function totalNumOfCmds(type) {
     return Object.keys(type).reduce((a, b) => a + type[b], 0);
@@ -73,17 +76,7 @@ function formatProfit(value) {
 
 function formatCooldown(timestamp) {
     if (!timestamp || timestamp <= Date.now()) return '**Available now!**';
-    const diff = timestamp - Date.now();
-    const seconds = Math.round(diff / 1000);
-    const minutes = Math.round(diff / 60000);
-    const hours = Math.round(diff / 3600000);
-    const days = Math.round(diff / 86400000);
-    let relative;
-    if (days > 1) relative = `${days} day${days !== 1 ? 's' : ''}`;
-    else if (hours > 1) relative = `${hours} hour${hours !== 1 ? 's' : ''}`;
-    else if (minutes > 1) relative = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
-    else relative = `${seconds} second${seconds !== 1 ? 's' : ''}`;
-    return `${new Date(timestamp).toLocaleString()} (~${relative})`;
+    return `<t:${Math.floor(timestamp / 1000)}:R>`;
 }
 
 async function generateStatsEmbed(page, interaction, user) {
@@ -105,8 +98,8 @@ async function generateStatsEmbed(page, interaction, user) {
             embed.setTitle(`${user.displayName }'s General Stats`)
             embed.setFields(
                 { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName }`, inline: false },
-                { name: "Discord Member Since", value: `${new Date(user.createdTimestamp).toLocaleString()}`, inline: true },
-                { name: "Joined Server", value: `${new Date(interaction.guild.members.cache.get(user.id).joinedTimestamp).toLocaleString()}`, inline: true },
+                { name: "Discord Member Since", value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: "Joined Server", value: `<t:${Math.floor(interaction.guild.members.cache.get(user.id).joinedTimestamp / 1000)}:R>`, inline: true },
                 { name: "Roles", value: `${fetchedUser.roles.cache.map(role => role.toString()).join(' ')}`, inline: false },
             );
             break;
@@ -271,7 +264,7 @@ async function generateStatsEmbed(page, interaction, user) {
                 { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
                 { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
                 { name: "\u200b", value: "\u200b", inline: false },
-                { name: "See more info by using the command", value: "`/context`", inline: true },
+                { name: "See more info by using the command", value: "`/whatdoyouknow`", inline: true },
             );
             break;
         }
@@ -288,8 +281,8 @@ module.exports = {
                 .setDescription('The user to check the stats of.')
                 .setRequired(false))
         .addBooleanOption(option =>
-            option.setName('details')
-                .setDescription('Detailed stats for nerd emojis.')
+            option.setName('export')
+                .setDescription('Export stats in JSON format. Useful for nerd emojis (like Basbo).')
                 .setRequired(false)),
     async execute(interaction) {
         await interaction.deferReply();
@@ -313,18 +306,31 @@ module.exports = {
                     .setStyle(ButtonStyle.Primary),
             );
         let page = 1;
-        msg = await interaction.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
+        const msg = await interaction.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
         const filter = i => i.customId === 'previous' || i.customId === 'next';
-        const collector = await msg.createMessageComponentCollector({ filter, time: 60000 });
+        const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
 
-        if (interaction.options.getBoolean('details')) {
-            const chunks = [];
-            const data = JSON.stringify(dbUser, null, 4);
-            for (let i = 0; i < data.length; i += 1900) {
-                chunks.push(data.substring(i, i + 1900));
-            }
-            for (let i = 0; i < chunks.length; i++) {
-                await interaction.user.send(`\`\`\`json\n${chunks[i]}\`\`\``);
+        if (interaction.options.getBoolean('export')) {
+            const dump = {
+                exportedAt: new Date().toISOString(),
+                userId: interaction.user.id,
+                username: interaction.user.tag,
+                dbEntry: dbUser || {}
+            };
+            const buffer = Buffer.from(JSON.stringify(dump, null, 2), "utf-8");
+            const filename = `dataexport-${interaction.user.id}-${todayStamp()}.json`;
+            const attachment = new AttachmentBuilder(buffer).setName(filename);
+
+            const dm = await sendDM(interaction.user, {
+                content: `Here is your data exported in JSON format.`,
+                files: [attachment],
+            });
+            if (dm) {
+                logger.log(`[ExportData] ${interaction.user.tag} data exported to JSON. DM sent successfully.`);
+                await interaction.followUp({ content: "Check your DMs — I sent you a JSON file with your stats.", ephemeral: true });
+            } else {
+                logger.warn(`[ExportData] DM failed or disabled for ${interaction.user.tag}. Falling back to ephemeral reply.`);
+                await interaction.followUp({ content: `Here is your data exported in JSON format.`, files: [attachment], ephemeral: true });
             }
         }
 

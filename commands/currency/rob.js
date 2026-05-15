@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require("discord.js")
 const { addNewDBUser, db } = require("../../database")
 const { CURRENCY_NAME } = require("../../config.js")
 const logger = require("../../utils/logger")
+const { sendDM } = require("../../utils/dm")
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -46,12 +47,11 @@ module.exports = {
         const chance = Math.floor(Math.random() * 100) + 1;
         const cooldown = 60000 * 5;
 
-        if (await db.get(`${user.id}.cooldowns.rob`) > Date.now()) {
-            const timeLeft = new Date(await db.get(`${user.id}.cooldowns.rob`) - Date.now());
-            logger.debug(`current date: ${Date.now()} | cooldown: ${await db.get(`${user.id}.cooldowns.rob`) - Date.now()} | timeLeft: ${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s`);
+        const robCooldown = await db.get(`${user.id}.cooldowns.rob`);
+        if (robCooldown > Date.now()) {
             const embed = new EmbedBuilder()
                 .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
-                .setDescription(`You have already attempted to rob someone recently! You can rob again in **${timeLeft.getMinutes() > 0 ? timeLeft.getMinutes() + "m" : ""} ${timeLeft.getSeconds()}s**.`)
+                .setDescription(`Rob cooldown active. You can rob again **<t:${Math.floor(robCooldown / 1000)}:R>**.`)
                 .setColor(0xFF0000)
                 .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                 .setTimestamp();
@@ -73,7 +73,7 @@ module.exports = {
             embed.setColor("#00ff00");
             embed.setDescription(`${user.displayName } has successfully robbed **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} from ${victim.displayName }!`);
             await interaction.editReply({ embeds: [embed] });
-            await victim.send({ embeds: [new EmbedBuilder()
+            await sendDM(victim, { embeds: [new EmbedBuilder()
                 .setTitle("Oh no!")
                 .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }))
                 .setDescription(`**${user.displayName }** just robbed you of **${amount.toLocaleString('en-US')}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\nBe sure to keep your ${CURRENCY_NAME} safe by depositing it into your bank next time!`)
