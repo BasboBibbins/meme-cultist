@@ -4,6 +4,7 @@ const { CURRENCY_NAME } = require("../../config.js")
 const { parseBet } = require("../../utils/betparse")
 const logger = require("../../utils/logger")
 const { randomHexColor } = require("../../utils/randomcolor")
+const { sendDM } = require("../../utils/dm")
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -61,7 +62,7 @@ module.exports = {
             .setColor(randomHexColor())
             .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
-        await receiver.send({ embeds: [dm_embed] });
+        await sendDM(receiver, { embeds: [dm_embed] });
     }
 }
 

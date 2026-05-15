@@ -1,25 +1,6 @@
-const { OpenAIApi, Configuration } = require('openai');
-const { CHATBOT_LOCAL, CONVO_MODEL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../config.js');
+const { CONVO_MODEL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require('../config.js');
 const logger = require('./logger');
-
-let _openaiClient = null;
-function getOpenAIClient(key) {
-    if (!_openaiClient || _openaiClient._key !== key) {
-        const configuration = new Configuration({
-            apiKey: key,
-            basePath: CHATBOT_LOCAL ? 'http://127.0.0.1:3000/v1/' : 'https://api.deepseek.com'
-        });
-        const client = new OpenAIApi(configuration);
-        client._key = key;
-        _openaiClient = client;
-    }
-    return _openaiClient;
-}
-
-function withTimeout(promise, ms, err = "Request timed out") {
-    const timeout = new Promise((_, reject) => setTimeout(() => reject(err), ms));
-    return Promise.race([promise, timeout]);
-}
+const llm = require('./llm');
 
 const ADJECTIVES = [
     // Generic
@@ -318,14 +299,7 @@ function getDefaultRaceStats() {
     return { wins: 0, losses: 0, biggestWin: 0, biggestLoss: 0, totalBet: 0 };
 }
 
-async function generateRaceCommentary(apiKey) {
-    if (!apiKey) {
-        logger.warn('No API key provided for race commentary generation');
-        return getDefaultCommentary();
-    }
-
-    const openai = getOpenAIClient(apiKey);
-
+async function generateRaceCommentary() {
     const prompt = `You are an energetic horse racing commentator. Generate 15 short, exciting one-line commentary phrases for a horse race.
 
 Rules:
@@ -345,23 +319,21 @@ Example style:
 Generate 15 unique commentary lines:`;
 
     try {
-        const res = await withTimeout(
-            openai.createChatCompletion({
-                model: CONVO_MODEL,
-                messages: [
-                    { role: 'system', content: 'You are an exciting horse racing commentator. Respond with only numbered commentary lines, one per line. Never use specific horse names.' },
-                    { role: 'user', content: prompt }
-                ],
-                max_tokens: 1024,
-                temperature: 0.9
-            }),
-            15_000,
-            'Race commentary generation timed out'
-        );
+        const res = await llm.chat({
+            model: CONVO_MODEL,
+            messages: [
+                { role: 'system', content: 'You are an exciting horse racing commentator. Respond with only numbered commentary lines, one per line. Never use specific horse names.' },
+                { role: 'user', content: prompt },
+            ],
+            max_tokens: 1024,
+            temperature: 0.9,
+            timeoutMs: 15_000,
+            label: 'race-commentary',
+            variant: 'race_commentary',
+        });
 
-        const { choices } = res.data;
-        if (choices.length > 0 && choices[0].message) {
-            const content = choices[0].message.content.trim();
+        const content = res.result.content?.trim();
+        if (content) {
             const lines = content
                 .split('\n')
                 .map(line => line.replace(/^\d+\.\s*/, '').trim())

@@ -125,8 +125,8 @@ module.exports = {
           topic != '' && `**Topic:** ${topic}`,
           summaries.length > 0 && `**Summaries:** ${summaries.length}`,
           facts && `**Facts:** ${facts.length}`,
-          summaries.length > 0 && `**Last Summary At:** ${new Date(summaries[summaries.length - 1].timestamp).toLocaleString()}`,
-          facts && facts.length > 0 && facts[0].updatedAt && `**Last Facts Update:** ${new Date(facts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0].updatedAt).toLocaleString()}`
+          summaries.length > 0 && `**Last Summary At:** <t:${Math.floor(summaries[summaries.length - 1].timestamp / 1000)}:R>`,
+          facts && facts.length > 0 && facts[0].updatedAt && `**Last Facts Update:** <t:${Math.floor(facts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0].updatedAt / 1000)}:R>`
         ]
         desc = list.filter(Boolean).join('\n')
         embed 
@@ -250,7 +250,7 @@ module.exports = {
         const summaryFields = summarySlice.map((s, i) => {
           const globalIndex = reversedSummaries.length - ((summaryPage - 1) * SUMMARIES_PER_PAGE + i);
           const preview = s.context.length > 1024 ? s.context.slice(0, 1021) + '...' : s.context;
-          const meta = [s.timestamp && `Generated: ${new Date(s.timestamp).toLocaleString()}`, s.mergedFrom && `Merged from: ${s.mergedFrom}`].filter(Boolean).join('\n');
+          const meta = [s.timestamp && `Generated: <t:${Math.floor(s.timestamp / 1000)}:R>`, s.mergedFrom && `Merged from: ${s.mergedFrom}`].filter(Boolean).join('\n');
           return { name: `Summary #${globalIndex}`, value: [preview, meta].filter(Boolean).join('\n'), inline: false };
         });
         const summaryPageLabel = summaryTotalPages > 1 ? ` (Page ${summaryPage}/${summaryTotalPages})` : '';

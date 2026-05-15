@@ -7,16 +7,16 @@ const { Routes } = require("discord-api-types/v9")
 const fs = require("fs")
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player")
 const { YoutubeiExtractor } = require('discord-player-youtubei');
-const { GatewayIntentBits, Events, Client, Collection, InteractionType } = require("discord.js")
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, EmbedBuilder } = require("discord.js")
 const { initDB, db, applyCommandStatsResets } = require("./database")
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js")
 const { trackStart, trackEnd } = require("./utils/musicPlayer")
 const { welcome, goodbye } = require("./utils/welcome")
 const { interest } = require("./utils/bank")
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai")
-const { describeImage } = require("./utils/gemini")
+const { describeImage } = require("./utils/llm")
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext")
-const { isChatbotChannel } = require("./utils/channels")
+const { isChatbotChannel, formatChatbotChannelMentions } = require("./utils/channels")
 const { initJackpot, addJackpotInterest } = require("./utils/jackpot")
 const moment = require("dayjs")
 const logger = require("./utils/logger")
@@ -24,6 +24,7 @@ const schedule = require("node-schedule")
 const rateLimiter = require('./utils/ratelimiter')
 const { DefaultExtractors } = require("@discord-player/extractor")
 const playdl = require('play-dl');
+const { sendDM } = require("./utils/dm");
 
 const TOKEN = process.env.TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
@@ -49,10 +50,14 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences
-    ]
+    ],
+    // Reaction handling on uncached messages requires these partials —
+    // most 📌 reactions arrive on older messages the bot has never seen.
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 })
 
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
@@ -99,6 +104,12 @@ process.on("unhandledRejection", (reason, p) => {
     logger.error(err.stack);
     process.exit(1);
 })
+
+function shutdownJobs() {
+    try { require("./utils/jobs").stop(); } catch (_) {}
+}
+process.on("SIGINT", () => { shutdownJobs(); process.exit(0); });
+process.on("SIGTERM", () => { shutdownJobs(); process.exit(0); });
 
 let commands = []
 
@@ -236,6 +247,199 @@ if (DELETE_SLASH) {
         } catch (err) {
             logger.warn('Stats reset sweep failed.', { error: err });
         }
+
+        // Start the durable job queue. Ships with no handlers registered;
+        // future features (reminders, async embeddings, proactive triggers)
+        // will queue.register(...) elsewhere before any enqueue.
+        const jobs = require("./utils/jobs");
+        const { REMINDER_DM_FALLBACK, REMINDER_MAX_GROUP_SIZE } = require("./config.js");
+        const kbStore = require("./utils/kb");
+        const llm = require("./utils/llm");
+        jobs.register("kb_embed", async (payload) => {
+            const { guildId, slug } = payload;
+            const entry = kbStore.getBySlug(guildId, slug);
+            if (!entry) {
+                logger.warn(`[KB Embed] Entry ${slug} not found in guild ${guildId}`);
+                return;
+            }
+            try {
+                const text = `${entry.title}\n${entry.content}`;
+                const { embedding } = await llm.embed({ text });
+                kbStore.setEmbedding(guildId, slug, embedding);
+                logger.log(`[KB Embed] Embedded "${slug}" (${embedding.length} dims)`);
+            } catch (err) {
+                logger.error(`[KB Embed] Failed for "${slug}": ${err.message}`);
+            }
+        });
+
+        const messageArchive = require("./utils/messageArchive");
+        jobs.register("message_embed", async (payload) => {
+            const { channelId, chunkIds } = payload;
+            if (!chunkIds || chunkIds.length === 0) return;
+            try {
+                const unembedded = messageArchive.getUnembeddedForChannel(channelId, 100)
+                    .filter(r => chunkIds.includes(r.id));
+                if (unembedded.length === 0) return;
+
+                const llm = require("./utils/llm");
+                for (const chunk of unembedded) {
+                    try {
+                        const { embedding } = await llm.embed({ text: chunk.content });
+                        messageArchive.setEmbedding(chunk.id, embedding);
+                    } catch (err) {
+                        logger.error(`[MessageEmbed] Failed for chunk ${chunk.id}: ${err.message}`);
+                    }
+                }
+                logger.log(`[MessageEmbed] Embedded ${unembedded.length} chunks for ${channelId}`);
+            } catch (err) {
+                logger.error(`[MessageEmbed] Batch failed for ${channelId}: ${err.message}`);
+            }
+        });
+
+        jobs.register("backfill_messages", async (payload) => {
+            const { channelIds } = payload;
+            if (!channelIds || channelIds.length === 0) return;
+            const llm = require("./utils/llm");
+            for (const channelId of channelIds) {
+                try {
+                    const channel = await client.channels.fetch(channelId);
+                    if (!channel) continue;
+                    let lastId = messageArchive.getMaxMessageIdForChannel(channelId);
+                    let totalInserted = 0;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const options = lastId ? { limit: 100, before: lastId } : { limit: 100 };
+                        const fetched = await channel.messages.fetch(options);
+                        if (fetched.size === 0) {
+                            hasMore = false;
+                            break;
+                        }
+                        const msgs = Array.from(fetched.values()).reverse();
+                        for (const msg of msgs) {
+                            if (!msg.content) continue;
+                            const id = messageArchive.insertChunk({
+                                channelId,
+                                messageId: msg.id,
+                                authorId: msg.author.id,
+                                content: msg.content,
+                                chunkIndex: 0,
+                                createdAt: msg.createdTimestamp,
+                            });
+                            if (id) totalInserted++;
+                            lastId = msg.id;
+                        }
+                        if (fetched.size < 100) hasMore = false;
+                    }
+                    if (totalInserted > 0) {
+                        jobs.enqueue({
+                            kind: "message_embed",
+                            payload: { channelId, chunkIds: [] },
+                            run_at: Date.now(),
+                        });
+                        logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed job.`);
+                    } else {
+                        logger.log(`[Backfill] No new messages for ${channelId}.`);
+                    }
+                } catch (err) {
+                    logger.error(`[Backfill] Failed for ${channelId}: ${err.message}`);
+                }
+            }
+        });
+
+        jobs.register("reminder", async (payload) => {
+            const { userId, channelId, text, targets, recurrence } = payload;
+            const notifyIds = targets && targets.length > 0 ? targets : [userId];
+            const guild = client.guilds.cache.get(GUILD_ID);
+
+            const resolvedUserIds = new Set();
+            for (const id of notifyIds) {
+                if (id.startsWith("role:")) {
+                    const roleId = id.slice(5);
+                    if (!guild) continue;
+                    try {
+                        const role = await guild.roles.fetch(roleId);
+                        if (role) {
+                            for (const [memberId] of role.members) {
+                                resolvedUserIds.add(memberId);
+                            }
+                        }
+                    } catch (_) {}
+                } else {
+                    resolvedUserIds.add(id);
+                }
+            }
+
+            if (resolvedUserIds.size > REMINDER_MAX_GROUP_SIZE) {
+                logger.warn(`[Reminder] Group size ${resolvedUserIds.size} exceeds limit ${REMINDER_MAX_GROUP_SIZE}, truncating.`);
+                const trimmed = Array.from(resolvedUserIds).slice(0, REMINDER_MAX_GROUP_SIZE);
+                resolvedUserIds.clear();
+                for (const uid of trimmed) resolvedUserIds.add(uid);
+            }
+
+            const reminderEmbed = new EmbedBuilder()
+                .setTitle("⏰ Reminder")
+                .setDescription(text)
+                .setColor(0xFFD700)
+                .setTimestamp();
+
+            for (const uid of resolvedUserIds) {
+                let sent = false;
+                if (REMINDER_DM_FALLBACK) {
+                    try {
+                        const user = await client.users.fetch(uid);
+                        const dm = await sendDM(user, { embeds: [reminderEmbed] });
+                        if (dm) sent = true;
+                    } catch (_) {}
+                }
+                if (!sent && channelId) {
+                    try {
+                        const channel = await client.channels.fetch(channelId);
+                        await channel.send({ embeds: [reminderEmbed] });
+                        sent = true;
+                    } catch (_) {}
+                }
+                if (!sent) {
+                    logger.warn(`[Reminder] No reachable target for user ${uid}, dropping reminder.`);
+                }
+            }
+
+            if (recurrence) {
+                const nextCount = (recurrence.firedCount || 0) + 1;
+                const nextRunAt = Date.now() + recurrence.intervalMs;
+                const hitEnd = (recurrence.endAt && nextRunAt > recurrence.endAt) ||
+                    (recurrence.maxOccurrences && nextCount >= recurrence.maxOccurrences);
+                if (!hitEnd) {
+                    jobs.enqueue({
+                        kind: "reminder",
+                        payload: {
+                            ...payload,
+                            recurrence: { ...recurrence, firedCount: nextCount }
+                        },
+                        run_at: nextRunAt,
+                    });
+                    logger.log(`[Reminder] Scheduled next occurrence (count=${nextCount})`);
+                } else {
+                    logger.log(`[Reminder] Recurrence ended after ${nextCount} occurrence(s).`);
+                }
+            }
+        });
+        jobs.start();
+
+        const { CHATBOT_CHANNELS } = require("./config.js");
+        for (const channelId of CHATBOT_CHANNELS) {
+            try {
+                if (messageArchive.countForChannel(channelId) === 0) {
+                    jobs.enqueue({
+                        kind: "backfill_messages",
+                        payload: { channelIds: [channelId] },
+                        run_at: Date.now(),
+                    });
+                    logger.log(`[Backfill] Triggered for channel ${channelId}`);
+                }
+            } catch (err) {
+                logger.error(`[Backfill] Trigger failed for ${channelId}: ${err.message}`);
+            }
+        }
     })
 
     if (DEBUG_MODE) client.on(Events.Debug, (info) => logger.debug(info));
@@ -256,9 +460,9 @@ if (DELETE_SLASH) {
 
     client.on(Events.InteractionCreate, async interaction => {
         if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
-            return await interaction.member.createDM().then(async dm => {
-                await dm.send(`You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`)
-            })
+            return await sendDM(interaction.user, {
+                content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`,
+            });
         }
         if (interaction.isChatInputCommand()) {
             interaction.channel.sendTyping().then(async () => {
@@ -396,6 +600,14 @@ if (DELETE_SLASH) {
         }
     });
 
+    client.on(Events.MessageReactionAdd, async (reaction, user) => {
+        try {
+            await require("./utils/bookmarks").handleBookmarkReaction(reaction, user);
+        } catch (err) {
+            logger.error(`[Bookmark] Reaction handler failed: ${err.message}`);
+        }
+    });
+
     client.on(Events.MessageCreate, async (message) => {
         if (message.author.bot) return;
         if (!CHATBOT_ENABLED) {
@@ -407,12 +619,15 @@ if (DELETE_SLASH) {
         }
         if (message.member.roles.cache.has(banned)) {
             logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`)
-            await message.member.createDM().then(async dm => {
-                const isLastMsgBot = dm.lastMessage && dm.lastMessage.author.id == client.user.id;
+            const dmChannel = await message.author.createDM().catch(() => null);
+            if (dmChannel) {
+                const isLastMsgBot = dmChannel.lastMessage && dmChannel.lastMessage.author.id == client.user.id;
                 if (isLastMsgBot) {
-                    await dm.send(`You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`)
+                    await sendDM(message.author, {
+                        content: `You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`,
+                    });
                 }
-            })
+            }
             return
         }
 
@@ -421,9 +636,12 @@ if (DELETE_SLASH) {
 
         if (!isChatbotChannelResult && !isMentioned) return;
 
-        const { allowed, reason } = rateLimiter.canProceed(client, message.author.id, isMentioned && !isChatbotChannelResult);
-        if (!allowed) {
-            return message.reply({ content: `⏳ ${reason}`, ephemeral: true });
+        if (!isChatbotChannelResult) {
+            const rateCheck = rateLimiter.canMentionBot(message.author.id);
+            if (!rateCheck.allowed) {
+                const channelText = formatChatbotChannelMentions(client);
+                return message.reply({ content: `⏳ ${rateCheck.reason} You can chat with me unlimited times in ${channelText}.`, ephemeral: true });
+            }
         }
 
         let extraContext = null;
@@ -431,7 +649,7 @@ if (DELETE_SLASH) {
         if (imageAttachment) {
             message.channel.sendTyping().catch(() => {});
             const displayName = message.member?.displayName || message.author.username;
-            const result = await describeImage(imageAttachment.url, message.content || null);
+            const result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
             if (result?.description) {
                 extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
             } else if (result?.error) {
@@ -451,9 +669,9 @@ if (DELETE_SLASH) {
         }
 
         if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
-            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, false, extraContext);
+            await handleBotMessage(client, message, null, null, false, extraContext);
         } else if (isMentioned) {
-            await handleBotMessage(client, message, OPENAI_API_KEY, null, null, true, extraContext);
+            await handleBotMessage(client, message, null, null, true, extraContext);
         }
     })
 

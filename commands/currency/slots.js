@@ -49,11 +49,11 @@ module.exports = {
 
             case 'daily':
                 if ((dbUserFresh?.cooldowns?.freespins || 0) > Date.now()) {
-                    const timeLeft = new Date(dbUserFresh.cooldowns.freespins - Date.now());
-                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown is ${await formatTimeLeft(timeLeft)}`)
+                    const nextAvailable = dbUserFresh.cooldowns.freespins;
+                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown ends at ${nextAvailable}`);
                     const embed = new EmbedBuilder()
                         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                        .setDescription(`You have already used your daily free spins! You can use them again in **${await formatTimeLeft(timeLeft)}**.`)
+                        .setDescription(`You have already used your daily free spins! Next available **${await formatTimeLeft(nextAvailable)}**.`)
                         .setColor(0xFF0000)
                         .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
                         .setTimestamp();

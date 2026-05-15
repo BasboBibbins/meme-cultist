@@ -15,17 +15,19 @@ async function ripGen(guildMember, prompt) {
     let joinedAt = guildMember.joinedAt || `??/??/20XX`;
     let joinDate = new Date(joinedAt);
     let leaveDate = new Date();
-    ripLines = buffer - (((joinDate.toLocaleDateString("en-US").length + leaveDate.toLocaleDateString("en-US").length)+5)/2);
-    rip += `\n${'-'.repeat(ripLines)} ${joinDate.toLocaleDateString("en-US")} - ${leaveDate.toLocaleDateString("en-US")} ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
+    const joinStr = joinDate.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+    const leaveStr = leaveDate.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+    ripLines = buffer - (((joinStr.length + leaveStr.length)+5)/2);
+    rip += `\n${'-'.repeat(ripLines)} ${joinStr} - ${leaveStr} ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
 
-    let promptLines = prompt.match(/.{1,40}(\s|$)|\S+?(\s|$)/g); 
-    if (!promptLines.includes("\n") && !promptLines.includes(" ")) promptLines = prompt.match(/.{1,40}/g); 
+    let promptLines = prompt.match(/.{1,40}(\s|$)|\S+?(\s|$)/g);
+    if (!promptLines.includes("\n") && !promptLines.includes(" ")) promptLines = prompt.match(/.{1,40}/g);
     for (let i = 0; i < promptLines.length; i++) {
         if (promptLines[i].endsWith(" ")) promptLines[i] = promptLines[i].slice(0, -1);
         ripLines = buffer - ((promptLines[i].length+2)/2);
         rip += `\n${'-'.repeat(ripLines)} ${promptLines[i]} ${'-'.repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
     }
-    
+
     const sincerely = "Sincerely,";
     const sincerelyLines = buffer - ((sincerely.length+2)/2);
     rip += `\n${'-'.repeat(sincerelyLines)} ${sincerely} ${'-'.repeat(sincerelyLines %1==0? sincerelyLines-1 : sincerelyLines)}\n`;
@@ -48,7 +50,7 @@ module.exports = {
         logger.info(`${dbUser ? ``: `New user `}${member.user.username} (${member.user.id}) has ${dbUser ? `re`:``}joined ${member.guild.name}!`);
 
         member.roles.add(member.guild.roles.cache.find(role => role.name === DEFAULT_ROLE));
-        const fetchedUser = await member.user.fetch();  
+        const fetchedUser = await member.user.fetch();
         let accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : "#FFFFFF";
         const embed = new EmbedBuilder()
             .setColor(`${accentColor}`)
@@ -144,13 +146,20 @@ module.exports = {
             `I think maxwell's is more your speed, ${member.user.displayName }`,
             `${member.user.displayName }? literally who?`,
         ]
+        const ripText = await ripGen(member, prompt);
+        const joinDate = new Date(member.joinedAt || 0);
         const embed = new EmbedBuilder()
             .setColor(randomHexColor())
             .setTitle(titles[Math.floor(Math.random() * titles.length)])
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-            .setDescription(await ripGen(member, prompt))
+            .setDescription(ripText)
+            .addFields(
+                { name: "Joined", value: member.joinedAt ? `<t:${Math.floor(joinDate.getTime() / 1000)}:R>` : "Unknown", inline: true },
+                { name: "Left", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+            )
             .setFooter({ text: `${client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
-        await channel.send({ embeds: [embed] });
+        const message = await channel.send({ embeds: [embed] });
+        return message;
     }
 }

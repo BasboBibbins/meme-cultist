@@ -398,6 +398,28 @@ module.exports = {
             The canvas disables betting zones that are not legal for the current phase.
             Craps contributes to the progressive jackpot at the same rate as other games.`
     },
+    reminder: {
+        name: "Reminders",
+        description: `
+            Set reminders so the bot pings you later. You can use the slash command \`/remind\` or just ask the chatbot directly ("remind me in 2 hours to check the oven").
+
+            **Slash command:**
+            • \`/remind add when:\"in 30 minutes\" message:\"stretch\"\` — set a new reminder
+            • \`/remind add when:\"tomorrow at 8pm\" message:\"walk the dog\" frequency:daily end_date:\"in 2 weeks\"\` — recurring reminder
+            • \`/remind add when:\"in 10 minutes\" message:\"meeting\" target:@User\` — group reminder
+            • \`/remind list\` — show your pending reminders
+            • \`/remind cancel id:<ID>\` — cancel a reminder by its ID
+
+            The bot tries to DM each recipient first. If DMs are closed, it falls back to the channel where the reminder was set.
+        `,
+        rules: `
+            1. Natural-language time works: "in 2 hours", "tomorrow at 3pm", "next tuesday", "5 minutes from now".
+            2. You can have up to 10 active reminders at once.
+            3. Reminders persist across bot restarts.
+            4. If the bot can't reach you (DMs closed and channel gone), the reminder is dropped and logged.
+            5. Group reminders can target a user or a role. Role targets are resolved to individual DMs for each member.
+            6. Recurring reminders repeat daily or weekly. Cancelling the pending job breaks the chain — no future instances fire.`
+    },
     aifeatures: {
         name: "AI Features",
         description: `
@@ -416,5 +438,37 @@ module.exports = {
 
             For image generation: the chatbot only triggers on direct, explicit requests to create an image, not casual mentions or metaphorical uses of "imagine."
         `
+    },
+    persona: {
+        name: "Personas",
+        description: `
+            Personas let you create reusable custom voices for the chatbot. Instead of changing the bot's behavior one message at a time, you can define a persistent identity and pin it to any channel or thread.
+
+            **Creating a persona:**
+            Use \`/persona create name:my-persona prompt:"You are a sarcastic pirate." public:true\`
+            • **name** — lowercase letters, numbers, and hyphens only; 1–32 characters.
+            • **prompt** — the system prompt that tells the bot how to behave (up to 2000 characters). Be specific: personality, tone, knowledge boundaries, and how it should refer to itself.
+            • **public** — \`true\` lets anyone in the server use it; \`false\` restricts it to you.
+
+            **Using a persona:**
+            \`/persona use name:my-persona\` pins it to the current channel or thread. The bot will adopt that voice for all messages in that context until you clear it.
+
+            **Managing personas:**
+            • \`/persona list\` — see all personas in the server and which one is pinned here.
+            • \`/persona clear\` — remove the pinned persona and return to the default voice.
+            • \`/persona edit\` — update the prompt or visibility of a persona you own.
+            • \`/persona delete\` — permanently remove a persona you own.
+        `,
+        rules: `
+            1. Personas are scoped to the server they were created in.
+            2. You can only edit or delete personas you created. Server admins and the bot owner can also modify any persona.
+            3. Private personas can only be pinned by their creator (or the bot owner).
+            4. A persona pinned to a channel stays active until \`/persona clear\` is used or the persona is deleted.
+            5. If a pinned persona is deleted, channels that had it will fall back to the default bot voice automatically.
+            6. Personas override thread-level roleplay settings from \`/context set\` — the persona prompt takes priority.`,
+        note: `
+            Personas work in both regular chatbot channels and threads. Each channel/thread can have its own pinned persona.
+            For best results, write prompts that describe the persona's personality, speech patterns, and boundaries rather than scripting specific responses.
+            The prompt becomes part of the system message sent to the LLM on every turn, so keep it concise and focused.`
     }
 }

@@ -4,6 +4,7 @@ const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE
 const { parseBet } = require('../../utils/betparse');
 const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require('../../utils/race');
 const logger = require('../../utils/logger');
+const { sendDM } = require('../../utils/dm');
 const { randomHexColor } = require('../../utils/randomcolor');
 const wait = require('node:timers/promises').setTimeout;
 
@@ -93,7 +94,7 @@ async function handleStartRace(interaction, client, user) {
     // Generate commentary asynchronously (don't await - use default if not ready)
     let commentaryPromise = null;
     if (OPENAI_API_KEY) {
-        commentaryPromise = generateRaceCommentary(OPENAI_API_KEY);
+        commentaryPromise = generateRaceCommentary();
     }
 
     const endTime = Date.now() + BETTING_TIME;
@@ -546,9 +547,8 @@ async function resolveRace(client, channel, message, game) {
                 .setColor(result.won ? 0x00AA00 : 0xFF0000)
                 .setTimestamp();
 
-            await dmUser.send({ embeds: [dmEmbed] });
+            await sendDM(dmUser, { embeds: [dmEmbed] });
         } catch (e) {
-            // DM failed, user may have DMs disabled
             logger.debug(`Could not send DM to user ${result.userId}: ${e.message}`);
         }
     }

@@ -2,12 +2,17 @@ const { AttachmentBuilder } = require("discord.js");
 const { db: usersDb } = require("../database");
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
-const { generateImage } = require("./gemini");
+const { generateImage, embed } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
-const { CURRENCY_NAME } = require("../config.js");
+const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
+const kbStore = require("./kb");
+const messageArchive = require("./messageArchive");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
+const jobs = require("./jobs");
+const { parseWhen } = require("./reminders/parse");
 
 // Tool definitions for DeepSeek function calling
-const SIDE_EFFECT_TOOLS = new Set(["generate_image"]);
+const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
 
 const TOOLS = [
   {
@@ -112,6 +117,76 @@ const TOOLS = [
           }
         },
         required: ["prompt"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_reminder",
+      description: "Set a reminder for the user. The bot will send a message at the requested time.",
+      parameters: {
+        type: "object",
+        properties: {
+          when: { type: "string", description: "When to remind, e.g. 'in 2 hours', 'tomorrow at 3pm'" },
+          message: { type: "string", description: "What to remind the user about" },
+          channel_id: { type: "string", description: "Discord channel ID to post in (default: DM the user)" },
+          targets: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional Discord user IDs or role IDs to notify. Role IDs must be prefixed with 'role:'. Defaults to the requesting user."
+          },
+          frequency: {
+            type: "string",
+            enum: ["once", "daily", "weekly"],
+            description: "How often to repeat. Default: once"
+          },
+          end_date: {
+            type: "string",
+            description: "When to stop repeating, e.g. 'in 2 weeks', 'next month'"
+          },
+          occurrences: {
+            type: "integer",
+            description: "Max number of repetitions"
+          }
+        },
+        required: ["when", "message"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "lookup_kb",
+      description:
+        "Search the server's knowledge base for articles related to a topic. Returns up to 3 relevant entries. " +
+        "USE THIS TOOL whenever the user asks about server rules, FAQs, wiki topics, or curated knowledge. " +
+        "Do not guess — search the knowledge base first.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The topic or question to look up in the knowledge base." }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_history",
+      description:
+        "Search the channel's message history for past discussions related to a topic. Returns up to 5 relevant messages. " +
+        "CALL THIS TOOL whenever the user asks about past conversations, says 'do you remember', 'what did we say about', " +
+        "or refers to earlier messages. You CANNOT rely on your context window for old messages. " +
+        "Always call this tool before claiming you do not remember something.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The topic to search for in message history." },
+          limit: { type: "integer", description: "Number of results to return (default 5, max 10)." }
+        },
+        required: ["query"]
       }
     }
   }
@@ -310,13 +385,17 @@ async function handleGetBotInfo(args, message, client) {
 }
 
 async function handleGenerateImage(args, message, client, toolCtx) {
+  if (!isChatbotChannel(message.channelId, message.channel?.parentId)) {
+    const mentions = formatChatbotChannelMentions(client);
+    return { error: `Image generation is only available in chatbot channels: ${mentions}.` };
+  }
   if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
   const rateCheck = canGenerateImage(message.author.id);
   if (!rateCheck.allowed) {
     return { error: rateCheck.reason };
   }
   try {
-    const { buffer, mimeType } = await generateImage(args.prompt);
+    const { buffer, mimeType } = await generateImage({ prompt: args.prompt });
     if (toolCtx) {
       const ext = mimeType?.includes("png") ? "png" : "jpg";
       toolCtx.pendingAttachments.push(
@@ -333,6 +412,150 @@ async function handleGenerateImage(args, message, client, toolCtx) {
   }
 }
 
+async function handleSetReminder(args, message, client, toolCtx) {
+  if (!args?.when || !args?.message) {
+    return { error: "Missing required 'when' or 'message' argument." };
+  }
+
+  const parsed = parseWhen(args.when);
+  if (!parsed.ok) {
+    return { error: parsed.reason };
+  }
+
+  const userId = message.author.id;
+  const activeCount = jobs.list("reminder", row => {
+    try {
+      return JSON.parse(row.payload).userId === userId;
+    } catch (_) {
+      return false;
+    }
+  }).length;
+
+  if (activeCount >= REMINDER_MAX_ACTIVE_PER_USER) {
+    return { error: `You already have ${activeCount} active reminders. Cancel one first.` };
+  }
+
+  // Always target the message author; ignore any hallucinated IDs from the model.
+  const targets = [userId];
+
+  let recurrence = null;
+  const frequency = args.frequency || "once";
+  if (frequency === "daily" || frequency === "weekly") {
+    const intervalMs = frequency === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    let endAt = null;
+    let maxOccurrences = null;
+    if (args.end_date) {
+      const endParsed = parseWhen(args.end_date);
+      if (endParsed.ok) {
+        endAt = endParsed.runAt;
+      }
+    }
+    if (typeof args.occurrences === "number" && args.occurrences > 0) {
+      maxOccurrences = args.occurrences;
+    }
+    recurrence = { frequency, intervalMs, endAt, maxOccurrences, firedCount: 0 };
+  }
+
+  const jobId = jobs.enqueue({
+    kind: "reminder",
+    payload: {
+      userId,
+      channelId: args.channel_id || message.channelId,
+      text: args.message,
+      targets,
+      createdBy: "chatbot",
+      recurrence,
+    },
+    run_at: parsed.runAt,
+  });
+
+  let confirm = `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:R>.`;
+  if (targets.length > 1) {
+    confirm += ` Notifying ${targets.length} target(s).`;
+  }
+  if (recurrence) {
+    const freqLabel = recurrence.frequency === "daily" ? "Daily" : "Weekly";
+    confirm += ` Repeats ${freqLabel}`;
+    if (recurrence.endAt) {
+      confirm += ` until <t:${Math.floor(recurrence.endAt / 1000)}:R>`;
+    } else if (recurrence.maxOccurrences) {
+      confirm += ` for ${recurrence.maxOccurrences} occurrence(s)`;
+    }
+    confirm += ".";
+  }
+
+  return {
+    success: true,
+    message: confirm,
+    reminder_id: jobId,
+  };
+}
+
+async function handleLookupKb(args, message, client) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const guild = message.guild;
+  if (!guild) return { error: "Knowledge base is only available in servers." };
+
+  try {
+    const { embedding } = await embed({ text: args.query });
+    const results = kbStore.search(guild.id, embedding, 3);
+    if (results.length === 0) {
+      return { results: [], message: "No matching knowledge base entries found." };
+    }
+    return {
+      results: results.map(r => ({
+        slug: r.slug,
+        title: r.title,
+        content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
+      })),
+    };
+  } catch (err) {
+    logger.error(`[lookup_kb] ${err.message}`);
+    return { error: `Knowledge base lookup failed: ${err.message}` };
+  }
+}
+
+async function handleSearchHistory(args, message, client) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const limit = Math.min(Math.max(args.limit || 5, 1), 10);
+  const channelId = message.channelId;
+
+  try {
+    const ftsResults = messageArchive.searchFTS(channelId, args.query, 30);
+    if (ftsResults.length === 0) {
+      return { results: [], message: "No matching messages found in this channel's history." };
+    }
+
+    let finalResults = ftsResults.slice(0, limit);
+    const topRank = ftsResults[0]?.rank;
+    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+
+    if (needsSemantic) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const candidateIds = ftsResults.map(r => r.id);
+        const semanticResults = messageArchive.searchSemantic(channelId, embedding, candidateIds, limit);
+        if (semanticResults.length > 0) {
+          finalResults = semanticResults;
+        }
+      } catch (err) {
+        logger.warn(`[search_history] Semantic re-rank failed: ${err.message}`);
+      }
+    }
+
+    return {
+      results: finalResults.map(r => ({
+        author_id: r.author_id,
+        content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
+        created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
+      })),
+    };
+  } catch (err) {
+    logger.error(`[search_history] ${err.message}`);
+    return { error: `Message history search failed: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -340,7 +563,10 @@ const TOOL_HANDLERS = {
   get_guild_info: handleGetGuildInfo,
   get_user_info: handleGetUserInfo,
   get_bot_info: handleGetBotInfo,
-  generate_image: handleGenerateImage
+  generate_image: handleGenerateImage,
+  set_reminder: handleSetReminder,
+  lookup_kb: handleLookupKb,
+  search_history: handleSearchHistory,
 };
 
 async function executeToolCall(toolCall, message, client, toolCtx = null) {

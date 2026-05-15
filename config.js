@@ -76,6 +76,8 @@ const config = {
     WINDOW_SIZE: 60,
     IMAGE_GEN_LIMIT: 5,
     IMAGE_GEN_WINDOW: 1800, // seconds (30 minutes)
+    MENTION_LIMIT: 3,
+    MENTION_WINDOW: 3600, // seconds (1 hour)
 
     // Currency/game settings
     CURRENCY_NAME: "koku",
@@ -158,7 +160,34 @@ const config = {
         "bobs",
         "hentai",
         "rule34"
-    ]
+    ],
+
+    // Cloudflare Workers AI credentials (used by utils/llm/adapters/cloudflare.js)
+    CF_ACCOUNT_ID: process.env.CF_ACCOUNT_ID || "",
+    CF_API_KEY: process.env.CF_API_KEY || "",
+
+    // LLM provider layer (utils/llm/)
+    LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
+    LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),
+
+    // Durable job queue (utils/jobs/)
+    JOB_TICK_MS: parseInt(process.env.JOB_TICK_MS || "2000", 10),
+    JOB_BATCH_SIZE: parseInt(process.env.JOB_BATCH_SIZE || "5", 10),
+    JOB_DB_PATH: process.env.JOB_DB_PATH || "db/jobs.sqlite",
+
+    // Persistent personas (utils/personas/)
+    PERSONA_DB_PATH: process.env.PERSONA_DB_PATH || "db/personas.sqlite",
+
+    // Polish-milestone toggles
+    LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
+    CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
+    BOOKMARK_EMOJI: process.env.BOOKMARK_EMOJI || "📌",
+    STREAMING_ENABLED: /^(1|true|yes|on)$/i.test(process.env.STREAMING_ENABLED || ""),
+
+    // Reminders
+    REMINDER_MAX_ACTIVE_PER_USER: parseInt(process.env.REMINDER_MAX_ACTIVE_PER_USER || "10", 10),
+    REMINDER_DM_FALLBACK: /^(1|true|yes|on)$/i.test(process.env.REMINDER_DM_FALLBACK || "1"),
+    REMINDER_MAX_GROUP_SIZE: parseInt(process.env.REMINDER_MAX_GROUP_SIZE || "25", 10),
 };
 
 module.exports = config;

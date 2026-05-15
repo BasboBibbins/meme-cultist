@@ -21,10 +21,9 @@ module.exports = {
         const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
 
         if (dbUser.cooldowns.daily > Date.now()) {
-            const timeLeft = new Date(dbUser.cooldowns.daily - Date.now());
             const embed = new EmbedBuilder()
                 .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! You can claim it again in **${await formatTimeLeft(timeLeft)}**.`)
+                .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.daily)}**.`)
                 .setColor(0xFF0000)
                 .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
                 .setTimestamp();

@@ -85,7 +85,8 @@ module.exports = {
                 }
                 if (!desc) desc = 'The shop is empty today. Check back tomorrow!';
 
-                const resetIn = await formatTimeSince(msUntilNextShopReset());
+                const resetIn = `<t:${msUntilNextShopReset()}:R>`
+                // await formatTimeSince(msUntilNextShopReset());
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: `Daily Shop — ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
                     .setDescription(desc.trim())
