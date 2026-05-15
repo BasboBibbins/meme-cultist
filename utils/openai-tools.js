@@ -158,7 +158,10 @@ const TOOLS = [
     type: "function",
     function: {
       name: "lookup_kb",
-      description: "Search the server's knowledge base for articles related to a topic. Returns up to 3 relevant entries.",
+      description:
+        "Search the server's knowledge base for articles related to a topic. Returns up to 3 relevant entries. " +
+        "USE THIS TOOL whenever the user asks about server rules, FAQs, wiki topics, or curated knowledge. " +
+        "Do not guess — search the knowledge base first.",
       parameters: {
         type: "object",
         properties: {
@@ -172,7 +175,11 @@ const TOOLS = [
     type: "function",
     function: {
       name: "search_history",
-      description: "Search the channel's message history for past discussions related to a topic. Returns up to 5 relevant messages.",
+      description:
+        "Search the channel's message history for past discussions related to a topic. Returns up to 5 relevant messages. " +
+        "CALL THIS TOOL whenever the user asks about past conversations, says 'do you remember', 'what did we say about', " +
+        "or refers to earlier messages. You CANNOT rely on your context window for old messages. " +
+        "Always call this tool before claiming you do not remember something.",
       parameters: {
         type: "object",
         properties: {
