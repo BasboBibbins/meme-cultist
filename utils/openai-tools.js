@@ -2,9 +2,11 @@ const { AttachmentBuilder } = require("discord.js");
 const { db: usersDb } = require("../database");
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
-const { generateImage } = require("./llm");
+const { generateImage, embed } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
+const kbStore = require("./kb");
+const messageArchive = require("./messageArchive");
 const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
@@ -149,6 +151,35 @@ const TOOLS = [
           }
         },
         required: ["when", "message"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "lookup_kb",
+      description: "Search the server's knowledge base for articles related to a topic. Returns up to 3 relevant entries.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The topic or question to look up in the knowledge base." }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_history",
+      description: "Search the channel's message history for past discussions related to a topic. Returns up to 5 relevant messages.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The topic to search for in message history." },
+          limit: { type: "integer", description: "Number of results to return (default 5, max 10)." }
+        },
+        required: ["query"]
       }
     }
   }
@@ -458,6 +489,71 @@ async function handleSetReminder(args, message, client, toolCtx) {
   };
 }
 
+async function handleLookupKb(args, message, client) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const guild = message.guild;
+  if (!guild) return { error: "Knowledge base is only available in servers." };
+
+  try {
+    const { embedding } = await embed({ text: args.query });
+    const results = kbStore.search(guild.id, embedding, 3);
+    if (results.length === 0) {
+      return { results: [], message: "No matching knowledge base entries found." };
+    }
+    return {
+      results: results.map(r => ({
+        slug: r.slug,
+        title: r.title,
+        content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
+      })),
+    };
+  } catch (err) {
+    logger.error(`[lookup_kb] ${err.message}`);
+    return { error: `Knowledge base lookup failed: ${err.message}` };
+  }
+}
+
+async function handleSearchHistory(args, message, client) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const limit = Math.min(Math.max(args.limit || 5, 1), 10);
+  const channelId = message.channelId;
+
+  try {
+    const ftsResults = messageArchive.searchFTS(channelId, args.query, 30);
+    if (ftsResults.length === 0) {
+      return { results: [], message: "No matching messages found in this channel's history." };
+    }
+
+    let finalResults = ftsResults.slice(0, limit);
+    const topRank = ftsResults[0]?.rank;
+    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+
+    if (needsSemantic) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const candidateIds = ftsResults.map(r => r.id);
+        const semanticResults = messageArchive.searchSemantic(channelId, embedding, candidateIds, limit);
+        if (semanticResults.length > 0) {
+          finalResults = semanticResults;
+        }
+      } catch (err) {
+        logger.warn(`[search_history] Semantic re-rank failed: ${err.message}`);
+      }
+    }
+
+    return {
+      results: finalResults.map(r => ({
+        author_id: r.author_id,
+        content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
+        created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
+      })),
+    };
+  } catch (err) {
+    logger.error(`[search_history] ${err.message}`);
+    return { error: `Message history search failed: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -467,6 +563,8 @@ const TOOL_HANDLERS = {
   get_bot_info: handleGetBotInfo,
   generate_image: handleGenerateImage,
   set_reminder: handleSetReminder,
+  lookup_kb: handleLookupKb,
+  search_history: handleSearchHistory,
 };
 
 async function executeToolCall(toolCall, message, client, toolCtx = null) {

@@ -34,6 +34,7 @@ const { withLock } = require("./lock");
 const { estimateTokenCount, estimateCost } = require("./llm/cost");
 const llm = require("./llm");
 const personas = require("./personas");
+const messageArchive = require("./messageArchive");
 const { assembleSystemPrompt } = require("./openai-system-prompts");
 const { chatWithSchema, parseAndValidate } = require("./schemas");
 
@@ -1001,6 +1002,11 @@ async function tickMessageCount(channel, messages, userId) {
     } catch (err) {
       logger.error(`[MemoryTick] Summarization failed for ${channel.name}: ${err.message}`);
     }
+    try {
+      archiveMessages(channel.id, messages);
+    } catch (err) {
+      logger.error(`[MemoryTick] Archive failed for ${channel.name}: ${err.message}`);
+    }
   } else if (factsCount >= FACTS_INTERVAL) {
     await updateThreadContext(channel, { messagesSinceLastSummary: summaryCount, messagesSinceLastFacts: 0, messagesSinceLastTopic: topicCount });
     logger.log(`[MemoryTick] Generating facts for ${channel.name} [${channel.id}] after ${FACTS_INTERVAL} messages.`);
@@ -1861,6 +1867,32 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
   } finally {
     typing = false;
   }
+}
+
+function archiveMessages(channelId, messages) {
+    if (!messages || messages.length === 0) return;
+    const jobs = require("./jobs");
+    const insertedIds = [];
+    for (const msg of messages) {
+        if (!msg || !msg.id || !msg.author || !msg.content) continue;
+        const id = messageArchive.insertChunk({
+            channelId,
+            messageId: msg.id,
+            authorId: msg.author.id,
+            content: msg.content,
+            chunkIndex: 0,
+            createdAt: msg.createdTimestamp || Date.now(),
+        });
+        if (id) insertedIds.push(id);
+    }
+    if (insertedIds.length > 0) {
+        jobs.enqueue({
+            kind: "message_embed",
+            payload: { channelId, chunkIds: insertedIds },
+            run_at: Date.now(),
+        });
+        logger.log(`[Archive] Inserted ${insertedIds.length} chunks for ${channelId}, enqueued embedding job.`);
+    }
 }
 
 // Alias functions for channel context management

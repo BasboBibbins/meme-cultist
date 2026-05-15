@@ -77,6 +77,14 @@ async function generateImage(args) {
     return { ...out, latency_ms };
 }
 
+async function embed(args) {
+    const { out, latency_ms } = await _run("embed", () => cloudflare.embedText(args), {
+        timeoutMs: args.timeoutMs ?? 30000,
+        retries: args.retries ?? 2,
+    });
+    return { ...out, latency_ms };
+}
+
 async function* chatStream(args) {
     const label = args.label || "chatStream";
     // Streaming does not retry automatically; callers should fall back to
@@ -84,4 +92,4 @@ async function* chatStream(args) {
     yield* deepseek.chatStream(args);
 }
 
-module.exports = { chat, chatStream, describeImage, generateImage, getCacheStats };
+module.exports = { chat, chatStream, describeImage, generateImage, embed, getCacheStats };

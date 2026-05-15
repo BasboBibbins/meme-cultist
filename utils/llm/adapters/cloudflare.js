@@ -10,9 +10,14 @@ const config = require("../../../config.js");
 const logger = require("../../logger");
 
 const IMAGE_MODEL = "black-forest-labs/flux-1-schnell";
+const EMBED_MODEL = "baai/bge-base-en-v1.5";
 
 function imageUrl() {
     return `https://api.cloudflare.com/client/v4/accounts/${config.CF_ACCOUNT_ID}/ai/run/@cf/${IMAGE_MODEL}`;
+}
+
+function embedUrl() {
+    return `https://api.cloudflare.com/client/v4/accounts/${config.CF_ACCOUNT_ID}/ai/run/@cf/${EMBED_MODEL}`;
 }
 
 async function generateImage({ prompt }) {
@@ -55,4 +60,40 @@ async function generateImage({ prompt }) {
     return { buffer, mimeType, text: null };
 }
 
-module.exports = { generateImage };
+async function embedText({ text }) {
+    if (!config.CF_ACCOUNT_ID || !config.CF_API_KEY) {
+        logger.error("[CF] CF_ACCOUNT_ID or CF_API_KEY is not set.");
+        throw new Error("CF_ACCOUNT_ID or CF_API_KEY is not set.");
+    }
+
+    const url = embedUrl();
+    logger.debug(`[CF] embedText text="${text.slice(0, 80)}..." url=${url}`);
+
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${config.CF_API_KEY}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+    });
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        logger.error(`[CF] embed non-OK response body: ${JSON.stringify(err)}`);
+        throw new Error(`Cloudflare embed failed: ${JSON.stringify(err)}`);
+    }
+
+    const body = await response.json();
+    const embedding = body?.result?.data?.[0];
+    if (!Array.isArray(embedding)) {
+        logger.error(`[CF] No embedding in result. Full body preview: ${JSON.stringify(body).slice(0, 500)}`);
+        throw new Error("Cloudflare returned no embedding data.");
+    }
+
+    const floatArray = new Float32Array(embedding);
+    logger.debug(`[CF] embedding length=${floatArray.length}`);
+    return { embedding: floatArray };
+}
+
+module.exports = { generateImage, embedText };
