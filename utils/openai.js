@@ -1530,7 +1530,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         `- Server info (member count, channels, roles) → get_guild_info\n` +
         `- User profile (avatar, roles, join date) → get_user_info\n` +
         `- Bot capabilities, available commands → get_bot_info\n` +
-        `- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like "[Attached: image file]", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.`;
+        `- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like "[Attached: image file]", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.\n` +
+        `- Past conversations, "do you remember", "what did we say about", references to earlier messages → search_history. You CANNOT rely on your context window for old messages. Always call this tool when the user refers to past discussions. Never claim you do not remember something without calling search_history first.\n` +
+        `- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. Use this when the user asks about stored server information.\n` +
+        `- Reminders (e.g. "remind me in 2 hours") → set_reminder`;
 
       const tailParts = [`You are currently speaking to ${currentSpeaker}.`];
       if (dynamicTail) tailParts.unshift(dynamicTail);
@@ -1746,61 +1749,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
     }
 
-    // Self-critique gate: for replies that make verifiable factual claims
-    // (numbers, balances, ranks, times), ask a separate reasoner pass to
-    // confirm grounding. Regenerate once if the critique disagrees.
-    if (response && !LOW_BUDGET_MODE && shouldCritique(response)) {
-      logger.debug(`[Critique] Triggered for reply preview="${response.substring(0, 80)}..."`);
-      const verdict = await runCritique(messages, response);
-      if (!verdict.ok && verdict.fix) {
-        logger.warn(`[Critique] Reply needs revision: ${verdict.fix.substring(0, 200)}`);
-        try {
-          const revision = await llm.chat({
-            model: CONVO_MODEL,
-            messages: [
-              ...messages,
-              { role: "assistant", content: response },
-              { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply with the correction. Keep the original tone and length.` },
-            ],
-            temperature: 0.5,
-            timeoutMs: 60_000,
-            label: "critique-revision",
-            variant: "critique_revision",
-          });
-          const revised = revision.result.content?.trim();
-          if (revised) {
-            logger.log(`[Critique] Regenerated reply after critique.`);
-            response = revised;
-            if (streamedMessageId) {
-              try {
-                if (revised.length <= 2000) {
-                  const msg = await targetChannel.messages.fetch(streamedMessageId);
-                  await msg.edit(sanitizeMentions(revised));
-                } else {
-                  const msg = await targetChannel.messages.fetch(streamedMessageId);
-                  await msg.delete().catch(() => {});
-                  const chunks = splitAtWordBoundary(revised, 1997);
-                  for (let i = 0; i < chunks.length; i++) {
-                    let chunk = chunks[i];
-                    if (i < chunks.length - 1) chunk += "...";
-                    await targetChannel.send(sanitizeMentions(chunk));
-                  }
-                }
-              } catch (err) {
-                logger.warn(`[Critique] Failed to edit streamed message: ${err.message}`);
-              }
-            }
-          }
-        } catch (err) {
-          logger.warn(`[Critique] Revision failed, keeping original: ${err.message}`);
-        }
-      } else {
-        logger.debug(`[Critique] Reply approved.`);
-      }
-    }
-
     const pendingFiles = toolCtx.pendingAttachments;
     const sentMessageIds = [];
+    let firstSentMessage = null;
+
+    // Send the response to Discord immediately so the user isn't blocked
+    // by background memory processing (summaries, facts, archiving).
     try {
       if (streamedMessageId) {
         // Response was already streamed to Discord. Track the message for tool-call history.
@@ -1820,6 +1774,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
             sentMessageIds.push(sent.id);
           } else {
             const sent = await targetChannel.send(pendingFiles.length > 0 ? { content: sanitizeMentions(chunk), files: pendingFiles } : sanitizeMentions(chunk));
+            firstSentMessage = sent;
             sentMessageIds.push(sent.id);
           }
         }
@@ -1827,10 +1782,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       } else if (response) {
         logger.debug("Response is within Discord's character limit, sending as a single message.");
         const sent = await targetChannel.send(pendingFiles.length > 0 ? { content: sanitizeMentions(response), files: pendingFiles } : sanitizeMentions(response));
+        firstSentMessage = sent;
         sentMessageIds.push(sent.id);
       } else if (pendingFiles.length > 0) {
         logger.debug("No text response but attachments are pending — sending files only.");
         const sent = await targetChannel.send({ files: pendingFiles });
+        firstSentMessage = sent;
         sentMessageIds.push(sent.id);
       }
 
@@ -1848,9 +1805,81 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     } finally {
       typing = false;
     }
-    // Skip memory accumulation for one-off mentions
+
+    // Self-critique gate: runs in the background after the message is sent.
+    // If the critique finds an issue, it edits the already-posted message.
+    if (response && !LOW_BUDGET_MODE && shouldCritique(response)) {
+      (async () => {
+        logger.debug(`[Critique] Triggered for reply preview="${response.substring(0, 80)}..."`);
+        try {
+          const verdict = await runCritique(messages, response);
+          if (!verdict.ok && verdict.fix) {
+            logger.warn(`[Critique] Reply needs revision: ${verdict.fix.substring(0, 200)}`);
+            const revision = await llm.chat({
+              model: CONVO_MODEL,
+              messages: [
+                ...messages,
+                { role: "assistant", content: response },
+                { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply with the correction. Keep the original tone and length.` },
+              ],
+              temperature: 0.5,
+              timeoutMs: 60_000,
+              label: "critique-revision",
+              variant: "critique_revision",
+            });
+            const revised = revision.result.content?.trim();
+            if (revised) {
+              logger.log(`[Critique] Regenerated reply after critique.`);
+              if (streamedMessageId) {
+                try {
+                  if (revised.length <= 2000) {
+                    const msg = await targetChannel.messages.fetch(streamedMessageId);
+                    await msg.edit(sanitizeMentions(revised));
+                  } else {
+                    const msg = await targetChannel.messages.fetch(streamedMessageId);
+                    await msg.delete().catch(() => {});
+                    const chunks = splitAtWordBoundary(revised, 1997);
+                    for (let i = 0; i < chunks.length; i++) {
+                      let chunk = chunks[i];
+                      if (i < chunks.length - 1) chunk += "...";
+                      await targetChannel.send(sanitizeMentions(chunk));
+                    }
+                  }
+                } catch (err) {
+                  logger.warn(`[Critique] Failed to edit streamed message: ${err.message}`);
+                }
+              } else if (firstSentMessage) {
+                try {
+                  if (revised.length <= 2000) {
+                    await firstSentMessage.edit(sanitizeMentions(revised));
+                  } else {
+                    await firstSentMessage.delete().catch(() => {});
+                    const chunks = splitAtWordBoundary(revised, 1997);
+                    for (let i = 0; i < chunks.length; i++) {
+                      let chunk = chunks[i];
+                      if (i < chunks.length - 1) chunk += "...";
+                      await targetChannel.send(sanitizeMentions(chunk));
+                    }
+                  }
+                } catch (err) {
+                  logger.warn(`[Critique] Failed to edit sent message: ${err.message}`);
+                }
+              }
+            }
+          } else {
+            logger.debug(`[Critique] Reply approved.`);
+          }
+        } catch (err) {
+          logger.warn(`[Critique] Background revision failed, keeping original: ${err.message}`);
+        }
+      })();
+    }
+
+    // Skip memory accumulation for one-off mentions.
+    // Run everything in the background so the user sees the reply immediately.
     if (!isMention) {
-      await tickMessageCount(targetChannel, validMessages, message.author.id);
+      tickMessageCount(targetChannel, validMessages, message.author.id)
+        .catch(err => logger.error(`[MemoryTick] Background tick failed: ${err.message}`));
       if (IMMEDIATE_FACTS_ENABLED && message?.author && !message.author.bot) {
         extractImmediateFacts(message, message.author.id)
           .catch(err => logger.error(`[ImmediateFacts] user: ${err.message}`));
