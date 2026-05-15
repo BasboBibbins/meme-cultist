@@ -435,13 +435,8 @@ async function handleSetReminder(args, message, client, toolCtx) {
     return { error: `You already have ${activeCount} active reminders. Cancel one first.` };
   }
 
-  const targets = Array.isArray(args.targets) && args.targets.length > 0
-    ? args.targets
-    : [userId];
-
-  if (targets.length > REMINDER_MAX_GROUP_SIZE) {
-    return { error: `Too many targets. Maximum group size is ${REMINDER_MAX_GROUP_SIZE}.` };
-  }
+  // Always target the message author; ignore any hallucinated IDs from the model.
+  const targets = [userId];
 
   let recurrence = null;
   const frequency = args.frequency || "once";
