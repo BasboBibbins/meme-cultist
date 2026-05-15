@@ -1,7 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, CRAPS_MIN_BET, CRAPS_MAX_BET, CRAPS_ROUND_TIMEOUT, CRAPS_ANIMATION_HOLD_MS } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
+const { openBetModal } = require("../../utils/betModal");
 const { BET_DEFINITIONS, validateBetAllowed, resolveBets, rollDice } = require("../../utils/craps");
 const { drawCrapsTable, drawDiceAnimation, drawPaytable } = require("../../utils/crapsCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -320,33 +321,15 @@ async function handleBetButton(buttonInt, state, betKey, client) {
         return buttonInt.reply({ content: preCheck.reason, ephemeral: true });
     }
 
-    const modalId = `craps_modal_${betKey}_${buttonInt.id}`;
-    const modal = new ModalBuilder()
-        .setCustomId(modalId)
-        .setTitle(`Place ${def.label} bet`)
-        .addComponents(
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder()
-                    .setCustomId("amount")
-                    .setLabel(`Amount of ${CURRENCY_NAME}`)
-                    .setStyle(TextInputStyle.Short)
-                    .setPlaceholder("e.g. 100, half, max, 50*2")
-                    .setRequired(true),
-            ),
-        );
-    await buttonInt.showModal(modal);
+    const result = await openBetModal(buttonInt, {
+        title: `Place ${def.label} bet`,
+        min: CRAPS_MIN_BET,
+        max: CRAPS_MAX_BET,
+    });
+    if (!result) return;
+    const { amount, submit } = result;
 
-    let submit;
-    try {
-        submit = await buttonInt.awaitModalSubmit({
-            filter: m => m.customId === modalId && m.user.id === buttonInt.user.id,
-            time: 60000,
-        });
-    } catch {
-        return;
-    }
-
-    // Re-resolve the session — buttons are slow paths, anything could have happened.
+    // Re-resolve the session — the modal sat open for up to 60s, anything could have happened.
     const current = client.crapsGames.get(state.channelId);
     if (!current || current.status === "ended") {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, "This craps session is no longer active.")], ephemeral: true });
@@ -354,34 +337,9 @@ async function handleBetButton(buttonInt, state, betKey, client) {
     if (current.status !== "active") {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, "A roll is in progress — try again in a moment.")], ephemeral: true });
     }
-
-    const amountStr = submit.fields.getTextInputValue("amount");
-    const amount = Number(await parseBet(amountStr, submit.user.id));
-    if (isNaN(amount) || amount % 1 !== 0) {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, `You must bet a valid whole-number amount of ${CURRENCY_NAME}.`)], ephemeral: true });
-    }
-    if (amount <= 0) {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, `Bet must be greater than zero.`)], ephemeral: true });
-    }
-    if (CRAPS_MIN_BET && amount < CRAPS_MIN_BET) {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, `You must bet at least ${CRAPS_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
-    }
-    if (CRAPS_MAX_BET && amount > CRAPS_MAX_BET) {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, `You can bet at most ${CRAPS_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
-    }
-
     const postCheck = validateBetAllowed(betKey, current.phase, current.point, current.bets);
     if (!postCheck.allowed) {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, postCheck.reason)], ephemeral: true });
-    }
-
-    let dbUser = await db.get(submit.user.id);
-    if (!dbUser) {
-        await addNewDBUser(submit.user);
-        dbUser = await db.get(submit.user.id);
-    }
-    if ((dbUser.balance || 0) < amount) {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, `Insufficient funds in wallet!`)], ephemeral: true });
     }
 
     return handleAddBet(submit, client, submit.user, betKey, amount, current);
