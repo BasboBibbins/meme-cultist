@@ -1,14 +1,23 @@
-const { createCanvas, loadImage } = require("canvas");
+const { createCanvas } = require("canvas");
 const { AttachmentBuilder } = require("discord.js");
 const { getThemeColors } = require("../themes/resolver");
 const { encodeGIF } = require("./gifUtil");
 const { BET_DEFINITIONS } = require("./craps");
 const logger = require("./logger");
+const {
+    withAlpha,
+    roundRect,
+    drawBackground,
+    drawAtmosphere,
+    drawTitle,
+    drawPanel,
+    drawPanelHeading,
+    drawAvatarCircle,
+    loadAvatarByUrl,
+} = require("./canvasCommon");
 
 const DEFAULT_COLORS = getThemeColors("classic", "craps");
 
-const BG_CACHE = new Map();
-const AVATAR_CACHE = new Map();
 
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
@@ -80,54 +89,6 @@ const PIP_POSITIONS = {
     6: [[0.25, 0.25], [0.75, 0.25], [0.25, 0.5], [0.75, 0.5], [0.25, 0.75], [0.75, 0.75]],
 };
 
-function withAlpha(color, a) {
-    if (!color || typeof color !== "string") return `rgba(0,0,0,${a})`;
-    const trimmed = color.trim();
-    const m = trimmed.match(/^rgba?\s*\(\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)/i);
-    if (m) return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
-    let h = trimmed.replace("#", "");
-    if (h.length === 3) h = h.split("").map(c => c + c).join("");
-    if (h.length !== 6) return `rgba(0,0,0,${a})`;
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    if (isNaN(r) || isNaN(g) || isNaN(b)) return `rgba(0,0,0,${a})`;
-    return `rgba(${r},${g},${b},${a})`;
-}
-
-let noiseTileCache = null;
-function getNoiseTile() {
-    if (noiseTileCache) return noiseTileCache;
-    const size = 64;
-    const c = createCanvas(size, size);
-    const cctx = c.getContext("2d");
-    const img = cctx.createImageData(size, size);
-    for (let i = 0; i < img.data.length; i += 4) {
-        const v = 110 + ((Math.random() * 36) | 0);
-        img.data[i] = v;
-        img.data[i + 1] = v;
-        img.data[i + 2] = v;
-        img.data[i + 3] = 255;
-    }
-    cctx.putImageData(img, 0, 0);
-    noiseTileCache = c;
-    return c;
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
 
 function drawDieFace(ctx, x, y, size, value, colors, rotationRad = 0) {
     ctx.save();
@@ -351,20 +312,7 @@ function drawHeader(ctx, state, colors) {
     const gold = colors.gold || "#ffd700";
     const felt = colors.feltColor || colors.feltDark || "#0f4c25";
 
-    // Title — outlined + glowing, same treatment as duel/blackjack.
-    ctx.save();
-    ctx.font = "bold 46px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.shadowColor = withAlpha(gold, 0.85);
-    ctx.shadowBlur = 22;
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = felt;
-    ctx.strokeText("CRAPS", CANVAS_W / 2, MARGIN + 32);
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = gold;
-    ctx.fillText("CRAPS", CANVAS_W / 2, MARGIN + 32);
-    ctx.restore();
+    drawTitle(ctx, CANVAS_W / 2, MARGIN + 32, "CRAPS", gold, colors);
 
     // Phase ribbon directly under the title.
     const ribbonText = state.phase === "point"
@@ -409,80 +357,6 @@ function drawHeader(ctx, state, colors) {
         drawDieFace(ctx, dx, dy + 12, dieSize, d1, colors);
         drawDieFace(ctx, dx + dieSize + gap, dy + 12, dieSize, d2, colors);
     }
-}
-
-function drawPanel(ctx, x, y, w, h, colors, opts = {}) {
-    const felt = colors.feltDark || colors.feltOuter || colors.feltColor || "#0a3a1a";
-    const border = colors.layoutLine || colors.gold || "#ffd700";
-
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 4;
-    ctx.fillStyle = withAlpha(felt, 0.82);
-    roundRect(ctx, x, y, w, h, 14);
-    ctx.fill();
-    ctx.restore();
-
-    // Inner vignette so panels feel spotlit.
-    ctx.save();
-    roundRect(ctx, x, y, w, h, 14);
-    ctx.clip();
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    const vg = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.15, cx, cy, Math.max(w, h) * 0.75);
-    vg.addColorStop(0, "rgba(0,0,0,0)");
-    vg.addColorStop(1, "rgba(0,0,0,0.45)");
-    ctx.fillStyle = vg;
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-
-    ctx.strokeStyle = opts.accent ? (colors.gold || border) : border;
-    ctx.lineWidth = opts.accent ? 2.5 : 1.5;
-    roundRect(ctx, x, y, w, h, 14);
-    ctx.stroke();
-}
-
-function drawPanelHeading(ctx, x, y, w, label, colors) {
-    const gold = colors.gold || "#ffd700";
-    ctx.save();
-    ctx.font = "bold 13px Arial";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = withAlpha(gold, 0.95);
-    ctx.fillText(label, x + 14, y + 16);
-
-    // Underline divider.
-    ctx.strokeStyle = withAlpha(gold, 0.4);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x + 14, y + 28);
-    ctx.lineTo(x + w - 14, y + 28);
-    ctx.stroke();
-    ctx.restore();
-}
-
-function drawAvatarCircle(ctx, cx, cy, radius, img, ringColor, fillFallback) {
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
-    ctx.fillStyle = ringColor;
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.clip();
-    if (img) {
-        ctx.drawImage(img, cx - radius, cy - radius, radius * 2, radius * 2);
-    } else {
-        ctx.fillStyle = fillFallback || "#222";
-        ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
-    }
-    ctx.restore();
 }
 
 function truncateToWidth(ctx, text, maxWidth) {
@@ -853,58 +727,6 @@ function drawRollChip(ctx, x, y, w, h, entry, colors, isLatest) {
     }
 }
 
-function drawAtmosphere(ctx, width, height, colors) {
-    // Outer vignette.
-    ctx.save();
-    const vg = ctx.createRadialGradient(
-        width / 2, height / 2, Math.min(width, height) * 0.35,
-        width / 2, height / 2, Math.max(width, height) * 0.7,
-    );
-    vg.addColorStop(0, withAlpha(colors.feltColor || "#0f4c25", 0));
-    vg.addColorStop(1, withAlpha(colors.feltColor || "#0f4c25", 0.55));
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
-
-    // Grain.
-    ctx.save();
-    const tile = getNoiseTile();
-    const pattern = ctx.createPattern(tile, "repeat");
-    if (pattern) {
-        ctx.globalAlpha = 0.04;
-        ctx.fillStyle = pattern;
-        ctx.fillRect(0, 0, width, height);
-    }
-    ctx.restore();
-
-}
-
-async function loadBackground(ctx, colors) {
-    if (colors.background) {
-        try {
-            let bgImg = BG_CACHE.get(colors.background);
-            if (!bgImg) {
-                bgImg = await loadImage(colors.background);
-                BG_CACHE.set(colors.background, bgImg);
-            }
-            const scale = Math.max(CANVAS_W / bgImg.width, CANVAS_H / bgImg.height);
-            const drawW = bgImg.width * scale;
-            const drawH = bgImg.height * scale;
-            const dx = (CANVAS_W - drawW) / 2;
-            const dy = (CANVAS_H - drawH) / 2;
-            ctx.drawImage(bgImg, dx, dy, drawW, drawH);
-            return;
-        } catch (err) {
-            logger.warn(`Failed to load craps background image, using fallback color: ${err}`);
-        }
-    }
-    const grad = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, 80, CANVAS_W / 2, CANVAS_H / 2, CANVAS_W * 0.7);
-    grad.addColorStop(0, colors.feltInner || colors.feltColor || "#237a3d");
-    grad.addColorStop(0.7, colors.feltMid || colors.feltColor || "#1a6b35");
-    grad.addColorStop(1, colors.feltOuter || colors.feltDark || "#145228");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-}
 
 function aggregateBets(bets) {
     const out = {};
@@ -932,20 +754,9 @@ function disabledZones(state) {
 async function resolveAvatars(userAvatars) {
     if (!userAvatars) return {};
     const out = {};
-    const entries = Object.entries(userAvatars);
-    await Promise.all(entries.map(async ([uid, url]) => {
-        if (!url) return;
-        if (AVATAR_CACHE.has(url)) {
-            out[uid] = AVATAR_CACHE.get(url);
-            return;
-        }
-        try {
-            const img = await loadImage(url);
-            AVATAR_CACHE.set(url, img);
-            out[uid] = img;
-        } catch {
-            // Skip — avatar falls back to a solid color block.
-        }
+    await Promise.all(Object.entries(userAvatars).map(async ([uid, url]) => {
+        const img = await loadAvatarByUrl(url);
+        if (img) out[uid] = img;
     }));
     return out;
 }
@@ -959,7 +770,7 @@ async function drawCrapsTable(state, themeColors) {
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext("2d");
 
-    await loadBackground(ctx, colors);
+    await drawBackground(ctx, CANVAS_W, CANVAS_H, colors);
     drawAtmosphere(ctx, CANVAS_W, CANVAS_H, colors);
 
     drawHeader(ctx, state, colors);
