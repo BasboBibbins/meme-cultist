@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, CRAPS_MIN_BET, CRAPS_MAX_BET, CRAPS_ROUND_TIMEOUT, CRAPS_ANIMATION_HOLD_MS } = require("../../config.js");
-const { parseBet } = require("../../utils/betparse");
 const { openBetModal } = require("../../utils/betModal");
 const { BET_DEFINITIONS, validateBetAllowed, resolveBets, rollDice } = require("../../utils/craps");
 const { drawCrapsTable, drawDiceAnimation, drawPaytable } = require("../../utils/crapsCanvas");
@@ -16,23 +15,13 @@ const wait = require("node:timers/promises").setTimeout;
 
 const PACKAGE_VERSION = require("../../package.json").version;
 
-const BET_CHOICES = [
-    { name: "Pass Line (come-out only)", value: "pass" },
-    { name: "Don't Pass (come-out only)", value: "dontPass" },
-    { name: "Field (one-roll: 2/3/4/9/10/11/12)", value: "field" },
-    { name: "Any 7 (one-roll, pays 4:1)", value: "any7" },
-    { name: "Any Craps (one-roll on 2/3/12, pays 7:1)", value: "anyCraps" },
-];
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("craps")
         .setDescription(`Play a game of craps for ${CURRENCY_NAME}.`)
         .addSubcommand(s => s
             .setName("play")
-            .setDescription("Join the channel's craps session (or start one) with a bet.")
-            .addStringOption(o => o.setName("type").setDescription("Bet type").setRequired(true).addChoices(...BET_CHOICES))
-            .addStringOption(o => o.setName("amount").setDescription(`Amount of ${CURRENCY_NAME} to bet.`).setRequired(true)))
+            .setDescription("Open a craps table in this channel. Place bets via the buttons below the table."))
         .addSubcommand(s => s
             .setName("paytable")
             .setDescription("Show the craps payout table.")),
@@ -77,70 +66,22 @@ async function handlePlay(interaction) {
     const user = interaction.user;
     const channelId = interaction.channelId;
 
-    const betKey = interaction.options.getString("type");
-    const amountStr = interaction.options.getString("amount");
-
-    const def = BET_DEFINITIONS[betKey];
-    if (!def) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, "Unknown bet type.")], ephemeral: true });
-    }
-
-    const amount = Number(await parseBet(amountStr, user.id));
-    if (isNaN(amount) || amount % 1 !== 0) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet a valid whole-number amount of ${CURRENCY_NAME}.`)], ephemeral: true });
-    }
-    if (CRAPS_MIN_BET && amount < CRAPS_MIN_BET) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least ${CRAPS_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
-    }
-    if (CRAPS_MAX_BET && amount > CRAPS_MAX_BET) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `You can bet at most ${CRAPS_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    const existing = client.crapsGames.get(channelId);
+    if (existing) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, "A craps session is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
     }
 
     let dbUser = await db.get(user.id);
     if (!dbUser) {
         await addNewDBUser(user);
-        dbUser = await db.get(user.id);
     }
 
-    const existing = client.crapsGames.get(channelId);
-    if (existing && existing.status !== "active") {
-        return interaction.reply({ embeds: [errorEmbed(user, client, "This game is mid-roll. Try again in a moment.")], ephemeral: true });
-    }
-    if (existing) {
-        const check = validateBetAllowed(betKey, existing.phase, existing.point, existing.bets);
-        if (!check.allowed) {
-            return interaction.reply({ embeds: [errorEmbed(user, client, check.reason)], ephemeral: true });
-        }
-    } else if (!def.allowedBeforePoint) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `${def.label} can't open a new round. Start with a Pass / Don't Pass / Field / Any 7 / Any Craps bet.`)], ephemeral: true });
-    }
-
-    if ((dbUser.balance || 0) < amount) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `Insufficient funds in wallet!`)], ephemeral: true });
-    }
-
-    if (existing) {
-        return handleAddBet(interaction, client, user, betKey, amount, existing);
-    }
-    return handleNewGame(interaction, client, user, betKey, amount);
+    return handleNewGame(interaction, client, user);
 }
 
-async function handleNewGame(interaction, client, user, betKey, amount) {
+async function handleNewGame(interaction, client, user) {
     const channel = interaction.channel;
     const channelId = channel.id;
-    const def = BET_DEFINITIONS[betKey];
-
-    const debited = await withUserLock(user.id, async () => {
-        const balance = await db.get(`${user.id}.balance`) ?? 0;
-        if (balance < amount) return false;
-        await db.sub(`${user.id}.balance`, amount);
-        return true;
-    });
-    if (!debited) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `Insufficient funds in wallet!`)], ephemeral: true });
-    }
-    await db.add(`${user.id}.stats.craps.totalBet`, amount);
-    await contributeToJackpot(amount);
 
     await interaction.deferReply();
 
@@ -159,22 +100,23 @@ async function handleNewGame(interaction, client, user, betKey, amount) {
         shooterOrder: [user.id],
         phase: "comeout",
         point: null,
-        bets: [{ userId: user.id, username: user.displayName, betKey, amount }],
+        bets: [],
         userAvatars: { [user.id]: avatarUrl },
         userColors: { [user.id]: chipColor },
         themeId,
         themeColors,
         lastRoll: null,
-        totals: { [user.id]: { wagered: amount, won: 0 } },
+        totals: { [user.id]: { wagered: 0, won: 0 } },
+        userBetAmounts: {},
         rolling: false,
         status: "active",
         collector: null,
         idleTimer: null,
     };
 
-    logger.log(`${user.username} (${user.id}) opened a craps session in #${channel.name} with ${amount} ${CURRENCY_NAME} on ${def.label}.`);
+    logger.log(`${user.username} (${user.id}) opened a craps session in #${channel.name}.`);
 
-    const message = await interaction.editReply(await renderMessage(state, `🎲 New craps session — **${state.shooterUsername}** is the shooter. Run \`/craps play\` to join.`));
+    const message = await interaction.editReply(await renderMessage(state, `🎲 New craps session — **${state.shooterUsername}** is the shooter. Place a bet below to begin.`));
     state.messageId = message.id;
     client.crapsGames.set(channelId, state);
 
@@ -212,12 +154,7 @@ async function handleAddBet(interaction, client, user, betKey, amount, state) {
 
     logger.log(`${user.username} (${user.id}) added ${amount} ${CURRENCY_NAME} on ${def.label} to craps session in ${state.channelId}.`);
 
-    const localEmbed = new EmbedBuilder()
-        .setAuthor({ name: "Bet placed", iconURL: user.displayAvatarURL({ dynamic: true }) })
-        .setColor(state.themeColors.embedColor || randomHexColor())
-        .setDescription(`Placed **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on **${def.label}**.`)
-        .setTimestamp();
-    await interaction.reply({ embeds: [localEmbed], ephemeral: true });
+    await interaction.deferUpdate().catch(() => {});
 
     try {
         const gameMessage = await interaction.channel.messages.fetch(state.messageId);
@@ -261,6 +198,11 @@ function buildComponents(state, opts = {}) {
             .setStyle(ButtonStyle.Success)
             .setDisabled(disableAll || state.bets.length === 0),
         new ButtonBuilder()
+            .setCustomId("craps_changeBet")
+            .setLabel("Change Bet")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disableAll),
+        new ButtonBuilder()
             .setCustomId("craps_end")
             .setLabel("End Session")
             .setStyle(ButtonStyle.Danger)
@@ -287,6 +229,9 @@ function attachCollector(client, channel, message, state) {
                     return i.reply({ content: `Only the shooter (**${state.shooterUsername}**) can roll. Place a bet to join the table.`, ephemeral: true });
                 }
                 return handleRoll(i, state, client);
+            }
+            if (i.customId === "craps_changeBet") {
+                return handleChangeBet(i, state);
             }
             if (i.customId === "craps_end") {
                 if (i.user.id !== state.creatorId) {
@@ -321,6 +266,11 @@ async function handleBetButton(buttonInt, state, betKey, client) {
         return buttonInt.reply({ content: preCheck.reason, ephemeral: true });
     }
 
+    const cachedAmount = state.userBetAmounts[buttonInt.user.id];
+    if (cachedAmount) {
+        return handleAddBet(buttonInt, client, buttonInt.user, betKey, cachedAmount, state);
+    }
+
     const result = await openBetModal(buttonInt, {
         title: `Place ${def.label} bet`,
         min: CRAPS_MIN_BET,
@@ -342,7 +292,32 @@ async function handleBetButton(buttonInt, state, betKey, client) {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, postCheck.reason)], ephemeral: true });
     }
 
+    current.userBetAmounts[submit.user.id] = amount;
     return handleAddBet(submit, client, submit.user, betKey, amount, current);
+}
+
+async function handleChangeBet(buttonInt, state) {
+    const client = buttonInt.client;
+    const result = await openBetModal(buttonInt, {
+        title: "Set craps bet amount",
+        min: CRAPS_MIN_BET,
+        max: CRAPS_MAX_BET,
+    });
+    if (!result) return;
+    const { amount, submit } = result;
+
+    const current = client.crapsGames.get(state.channelId);
+    if (!current || current.status === "ended") {
+        return submit.reply({ embeds: [errorEmbed(submit.user, client, "This craps session is no longer active.")], ephemeral: true });
+    }
+    current.userBetAmounts[submit.user.id] = amount;
+
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: "Bet amount updated", iconURL: submit.user.displayAvatarURL({ dynamic: true }) })
+        .setColor(current.themeColors.embedColor || randomHexColor())
+        .setDescription(`Your bet amount is now **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click any bet button to place it.`)
+        .setTimestamp();
+    return submit.reply({ embeds: [embed], ephemeral: true });
 }
 
 async function handleRoll(i, state, client) {
