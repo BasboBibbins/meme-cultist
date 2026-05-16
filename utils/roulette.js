@@ -698,6 +698,33 @@ function calculateWinnings(betType, betNumber, betAmount, winningNumber) {
     return won ? betAmount * multiplier : 0;
 }
 
+const BET_TYPE_KEYS = new Set([
+    'straight', 'red', 'black', 'even', 'odd', 'low', 'high',
+    'dozen1', 'dozen2', 'dozen3', 'column1', 'column2', 'column3'
+]);
+
+function validateBet(type, numberValue) {
+    if (!BET_TYPE_KEYS.has(type)) {
+        return { allowed: false, reason: 'Unknown bet type.' };
+    }
+    if (type === 'straight') {
+        if (!Number.isInteger(numberValue) || numberValue < 0 || numberValue > 36) {
+            return { allowed: false, reason: 'Straight bets require a whole number between 0 and 36.' };
+        }
+    }
+    return { allowed: true };
+}
+
+function resolveBets(bets, winningNumber) {
+    return bets.map(bet => {
+        const winnings = calculateWinnings(bet.type, bet.numberValue, bet.amount, winningNumber);
+        if (winnings > 0) {
+            return { betKey: bet.type, status: 'win', payoutAmount: winnings, originalAmount: bet.amount };
+        }
+        return { betKey: bet.type, status: 'lose', payoutAmount: 0, originalAmount: bet.amount };
+    });
+}
+
 /**
  * Generate an empty-bet roulette table preview PNG for the shop.
  */
@@ -715,6 +742,8 @@ module.exports = {
     getRedBlack,
     getNumberPosition,
     roulettePreview,
+    validateBet,
+    resolveBets,
     ROULETTE_NUMBERS,
     RED_NUMBERS
 };

@@ -32,6 +32,7 @@ async function openBetModal(buttonInt, opts) {
         max,
         timeoutMs = DEFAULT_TIMEOUT_MS,
         extras = [],
+        defaultAmount,
     } = opts;
 
     const client = buttonInt.client;
@@ -41,16 +42,16 @@ async function openBetModal(buttonInt, opts) {
         throw new Error(`openBetModal: at most 4 extras allowed (Discord modal cap is 5 inputs, amount uses 1). Got ${extras.length}.`);
     }
 
-    const rows = [
-        new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-                .setCustomId("amount")
-                .setLabel(label)
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder(placeholder)
-                .setRequired(true),
-        ),
-    ];
+    const amountInput = new TextInputBuilder()
+        .setCustomId("amount")
+        .setLabel(label)
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder(placeholder)
+        .setRequired(true);
+    if (typeof defaultAmount === "string" && defaultAmount.length > 0) {
+        amountInput.setValue(defaultAmount);
+    }
+    const rows = [new ActionRowBuilder().addComponents(amountInput)];
     for (const extra of extras) {
         const input = new TextInputBuilder()
             .setCustomId(extra.customId)
