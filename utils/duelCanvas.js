@@ -1,89 +1,12 @@
-const { createCanvas, loadImage } = require("canvas");
+const { createCanvas } = require("canvas");
 const { AttachmentBuilder } = require("discord.js");
-
-
-function withAlpha(color, a) {
-    if (!color || typeof color !== "string") return `rgba(0,0,0,${a})`;
-    const trimmed = color.trim();
-    // Themed feltColors are stored as `rgb(r, g, b, a)` / `rgba(...)` strings;
-    // extract the channels and substitute our alpha.
-    const m = trimmed.match(/^rgba?\s*\(\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)/i);
-    if (m) return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
-    let h = trimmed.replace("#", "");
-    if (h.length === 3) h = h.split("").map(c => c + c).join("");
-    if (h.length !== 6) return `rgba(0,0,0,${a})`;
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    if (isNaN(r) || isNaN(g) || isNaN(b)) return `rgba(0,0,0,${a})`;
-    return `rgba(${r},${g},${b},${a})`;
-}
-
-let noiseTileCache = null;
-function getNoiseTile() {
-    if (noiseTileCache) return noiseTileCache;
-    const size = 64;
-    const c = createCanvas(size, size);
-    const cctx = c.getContext("2d");
-    const img = cctx.createImageData(size, size);
-    for (let i = 0; i < img.data.length; i += 4) {
-        // Low-contrast grayscale grain centered around mid-gray; final tile is
-        // drawn at low globalAlpha so only the variance reads.
-        const v = 110 + ((Math.random() * 36) | 0);
-        img.data[i] = v;
-        img.data[i + 1] = v;
-        img.data[i + 2] = v;
-        img.data[i + 3] = 255;
-    }
-    cctx.putImageData(img, 0, 0);
-    noiseTileCache = c;
-    return c;
-}
-
-const spriteCache = new Map();
-function loadSprite(p) {
-    if (!p) return Promise.resolve(null);
-    if (spriteCache.has(p)) return spriteCache.get(p);
-    const promise = loadImage(p).catch(() => null);
-    spriteCache.set(p, promise);
-    return promise;
-}
-
-const bgCache = new Map();
-function loadBackground(p) {
-    if (!p) return Promise.resolve(null);
-    if (bgCache.has(p)) return bgCache.get(p);
-    const promise = loadImage(p).catch(() => null);
-    bgCache.set(p, promise);
-    return promise;
-}
-
-async function drawBackground(ctx, width, height, colors) {
-    const felt = colors.feltColor || "#0f4c25";
-    const bg = await loadBackground(colors.background);
-
-    if (bg) {
-        // Cover-fit the image to the canvas while preserving aspect.
-        const scale = Math.max(width / bg.width, height / bg.height);
-        const dw = bg.width * scale;
-        const dh = bg.height * scale;
-        ctx.drawImage(bg, (width - dw) / 2, (height - dh) / 2, dw, dh);
-        // Felt tint over the bg keeps the table readable. Themed feltColor
-        // tokens carry baked-in alpha so the bg shows through.
-        ctx.fillStyle = felt;
-        ctx.fillRect(0, 0, width, height);
-        return;
-    }
-
-    // No image: solid felt base + tableGreen→felt radial fade.
-    ctx.fillStyle = felt;
-    ctx.fillRect(0, 0, width, height);
-    const grad = ctx.createRadialGradient(width / 2, height / 2, 50, width / 2, height / 2, 400);
-    grad.addColorStop(0, colors.tableGreen || "#1a6b35");
-    grad.addColorStop(1, felt);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, width, height);
-}
+const {
+    withAlpha,
+    loadSprite,
+    loadUserAvatar,
+    drawBackground,
+    drawAtmosphere: drawAtmosphereCommon,
+} = require("./canvasCommon");
 
 const AVATAR_SIZE = 100;
 const AVATAR_Y = 100;
@@ -339,73 +262,9 @@ function drawMotionStreaks(ctx, iconCX, iconCY, align, colors) {
     ctx.restore();
 }
 
+// Duel uses the optional corner-bracket flourish on top of vignette + grain.
 function drawAtmosphere(ctx, width, height, colors) {
-    // Vignette: transparent at canvas center, dark feltColor at corners.
-    ctx.save();
-    const vg = ctx.createRadialGradient(
-        width / 2, height / 2, Math.min(width, height) * 0.3,
-        width / 2, height / 2, Math.max(width, height) * 0.65,
-    );
-    vg.addColorStop(0, withAlpha(colors.feltColor || "#0f4c25", 0));
-    vg.addColorStop(1, withAlpha(colors.feltColor || "#0f4c25", 0.55));
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, width, height);
-    ctx.restore();
-
-    // Tiled noise grain across the felt.
-    ctx.save();
-    const tile = getNoiseTile();
-    const pattern = ctx.createPattern(tile, "repeat");
-    if (pattern) {
-        ctx.globalAlpha = 0.04;
-        ctx.fillStyle = pattern;
-        ctx.fillRect(0, 0, width, height);
-    }
-    ctx.restore();
-
-    // Corner brackets framing the canvas.
-    ctx.save();
-    ctx.strokeStyle = withAlpha(colors.gold || "#ffd700", 0.55);
-    ctx.lineWidth = 3;
-    ctx.lineCap = "square";
-    const inset = 18;
-    const len = 32;
-    const corners = [
-        { x: inset, y: inset, dx: 1, dy: 1 },
-        { x: width - inset, y: inset, dx: -1, dy: 1 },
-        { x: inset, y: height - inset, dx: 1, dy: -1 },
-        { x: width - inset, y: height - inset, dx: -1, dy: -1 },
-    ];
-    for (const c of corners) {
-        ctx.beginPath();
-        ctx.moveTo(c.x + c.dx * len, c.y);
-        ctx.lineTo(c.x, c.y);
-        ctx.lineTo(c.x, c.y + c.dy * len);
-        ctx.stroke();
-    }
-    ctx.restore();
-}
-
-// Cache decoded avatars across the four-phase duel lifecycle (challenge, choose,
-// result, rematch). Without this, every phase re-fetched both avatars — up to 8
-// fetches per duel against Discord's CDN.
-const avatarCache = new Map();
-function loadUserAvatar(user) {
-    if (!user) return Promise.resolve(null);
-    const url = user.displayAvatarURL({ extension: "png", size: 128 });
-    if (avatarCache.has(url)) return avatarCache.get(url);
-    const promise = (async () => {
-        try {
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const buf = Buffer.from(await res.arrayBuffer());
-            return await loadImage(buf);
-        } catch {
-            return null;
-        }
-    })();
-    avatarCache.set(url, promise);
-    return promise;
+    drawAtmosphereCommon(ctx, width, height, colors, { brackets: true });
 }
 
 async function renderDuel({ challenger, opponent, bet, challengerChoice, opponentChoice, result, colors }) {

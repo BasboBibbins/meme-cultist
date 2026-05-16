@@ -1,8 +1,17 @@
-const { createCanvas, loadImage } = require("canvas");
+const { createCanvas } = require("canvas");
 const logger = require("./logger");
 const { AttachmentBuilder } = require("discord.js");
 const { loadCardSheet, getCardSpriteCoords } = require("./cards");
 const { getHandValue, statusFromValue } = require("./blackjack");
+const {
+    withAlpha,
+    roundRect,
+    loadSprite,
+    loadUserAvatar,
+    drawBackground,
+    drawAtmosphere,
+    drawTitle,
+} = require("./canvasCommon");
 
 const CARD_W = 110;
 const CARD_H = 165;
@@ -22,64 +31,6 @@ function hexToRgba(hex, alpha) {
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function withAlpha(color, a) {
-    if (!color || typeof color !== "string") return `rgba(0,0,0,${a})`;
-    const trimmed = color.trim();
-    const m = trimmed.match(/^rgba?\s*\(\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)/i);
-    if (m) return `rgba(${m[1]},${m[2]},${m[3]},${a})`;
-    let h = trimmed.replace("#", "");
-    if (h.length === 3) h = h.split("").map(c => c + c).join("");
-    if (h.length !== 6) return `rgba(0,0,0,${a})`;
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
-    if (isNaN(r) || isNaN(g) || isNaN(b)) return `rgba(0,0,0,${a})`;
-    return `rgba(${r},${g},${b},${a})`;
-}
-
-const spriteCache = new Map();
-function loadSprite(p) {
-    if (!p) return Promise.resolve(null);
-    if (spriteCache.has(p)) return spriteCache.get(p);
-    const promise = loadImage(p).catch(() => null);
-    spriteCache.set(p, promise);
-    return promise;
-}
-
-const avatarCache = new Map();
-async function loadUserAvatar(user) {
-    if (!user) return null;
-    const url = user.displayAvatarURL({ extension: "png", size: 128 });
-    if (avatarCache.has(url)) return avatarCache.get(url);
-    const promise = (async () => {
-        try {
-            const res = await fetch(url);
-            if (!res.ok) return null;
-            const buf = Buffer.from(await res.arrayBuffer());
-            return await loadImage(buf);
-        } catch {
-            return null;
-        }
-    })();
-    avatarCache.set(url, promise);
-    return promise;
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
 }
 
 function drawSectionBg(ctx, x, y, w, h, colors) {
@@ -270,28 +221,10 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
         const canvas = createCanvas(CANVAS_W, CANVAS_H);
         const ctx = canvas.getContext("2d");
 
-        // Background
-        if (colors.background) {
-            try {
-                const bgImg = await loadImage(colors.background);
-                const scale = Math.max(CANVAS_W / bgImg.width, CANVAS_H / bgImg.height);
-                const drawW = bgImg.width * scale;
-                const drawH = bgImg.height * scale;
-                const dx = (CANVAS_W - drawW) / 2;
-                const dy = (CANVAS_H - drawH) / 2;
-                ctx.drawImage(bgImg, dx, dy, drawW, drawH);
-            } catch (err) {
-                logger.warn("Failed to load blackjack background image, using fallback color", { error: err });
-                ctx.fillStyle = colors.feltColor;
-                ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-            }
-        } else {
-            ctx.fillStyle = colors.feltColor;
-            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-        }
+        await drawBackground(ctx, CANVAS_W, CANVAS_H, colors);
+        drawAtmosphere(ctx, CANVAS_W, CANVAS_H, colors);
 
-        // Title — outlined, glowing, matching the duel banner treatment.
-        // Once the game resolves, the title swaps to the player-perspective result.
+        // Title — once the game resolves, swaps to the player-perspective result.
         let titleText = "BLACKJACK";
         let titleAccent = colors.gold;
         if (playerOutcome === "win") {
@@ -304,21 +237,7 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             titleText = "PUSH";
             titleAccent = colors.gold;
         }
-        ctx.save();
-        ctx.font = "bold 40px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.shadowColor = withAlpha(titleAccent, 0.85);
-        ctx.shadowBlur = 22;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = colors.feltColor || "#0f4c25";
-        ctx.strokeText(titleText, CANVAS_W / 2, MARGIN);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = titleAccent;
-        ctx.fillText(titleText, CANVAS_W / 2, MARGIN);
-        ctx.restore();
+        drawTitle(ctx, CANVAS_W / 2, MARGIN, titleText, titleAccent, colors, { size: 40, baseline: "top" });
 
         // Pre-load avatars and shared outcome sprites in parallel.
         const [dealerAvatar, playerAvatar, crownImg, fractureImg] = await Promise.all([
