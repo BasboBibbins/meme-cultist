@@ -106,7 +106,9 @@ async function handleNewGame(interaction, client, user) {
         themeId,
         themeColors,
         lastRoll: null,
-        totals: { [user.id]: { wagered: 0, won: 0 } },
+        rollHistory: [],
+        shooterStreak: 0,
+        totals: { [user.id]: { wagered: 0, won: 0, username: user.displayName } },
         userBetAmounts: {},
         rolling: false,
         status: "active",
@@ -147,7 +149,8 @@ async function handleAddBet(interaction, client, user, betKey, amount, state) {
     if (!state.userColors[user.id]) {
         state.userColors[user.id] = await resolveChipColor(interaction, user);
     }
-    if (!state.totals[user.id]) state.totals[user.id] = { wagered: 0, won: 0 };
+    if (!state.totals[user.id]) state.totals[user.id] = { wagered: 0, won: 0, username: user.displayName };
+    state.totals[user.id].username = user.displayName;
     state.totals[user.id].wagered += amount;
 
     state.bets.push({ userId: user.id, username: user.displayName, betKey, amount });
@@ -388,6 +391,29 @@ async function handleRoll(i, state, client) {
     state.lastRoll = { d1: roll.d1, d2: roll.d2, total: roll.total, isHard: roll.isHard };
 
     const pointJustSet = oldPhase === "comeout" && newPhase === "point";
+
+    // Roll history feeds the canvas strip. Kind classification mirrors the
+    // dice-result language the embed uses.
+    let rollKind = "neutral";
+    if (sevenOut) rollKind = "sevenOut";
+    else if (pointHit) rollKind = "pointHit";
+    else if (pointJustSet) rollKind = "pointSet";
+    else if (oldPhase === "comeout" && (roll.total === 7 || roll.total === 11)) rollKind = "natural";
+    else if (oldPhase === "comeout" && [2, 3, 12].includes(roll.total)) rollKind = "crap";
+    state.rollHistory.push({
+        d1: roll.d1,
+        d2: roll.d2,
+        total: roll.total,
+        isHard: roll.isHard,
+        kind: rollKind,
+        point: pointJustSet ? newPoint : (oldPhase === "point" ? oldPoint : null),
+    });
+    if (state.rollHistory.length > 32) state.rollHistory.shift();
+
+    // Streak = consecutive clean rolls without a seven-out, used by the
+    // spotlight to flag a "hot hand" between rolls.
+    if (sevenOut) state.shooterStreak = 0;
+    else state.shooterStreak = (state.shooterStreak || 0) + 1;
 
     const dbWrites = [];
     for (const [uid, u] of Object.entries(perUser)) {
