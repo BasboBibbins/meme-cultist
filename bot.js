@@ -540,17 +540,10 @@ if (DELETE_SLASH) {
                 logger.error(error);
             }
         } else if (interaction.type === InteractionType.ModalSubmit) {
-            logger.info(`${interaction.user.tag} submitted a modal in #${interaction.channel.name} in ${interaction.guild.name}.`);
-            await interaction.deferReply({ ephemeral: true }).then(async () => {
-                if (DEBUG_MODE) {
-                    await interaction.editReply({ content: "Your modal has been submitted!", ephemeral: true })
-                } else {
-                    await interaction.deleteReply();
-                }
-            }).catch(async error => {
-                logger.error(error)
-                await interaction.editReply({ content: "There was an error submitting your request!", ephemeral: true })
-            })
+            // Modals are owned by their originating command via awaitModalSubmit
+            // (e.g. utils/betModal.js uses customId "betmodal_*"). Acknowledging
+            // here would race the collector and produce 10062 Unknown Interaction.
+            logger.info(`${interaction.user.tag} submitted modal ${interaction.customId} in #${interaction.channel.name} in ${interaction.guild.name}.`);
         }
     });
     // Musicbot events
