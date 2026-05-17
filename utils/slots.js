@@ -513,7 +513,13 @@ async function generatePaytable(interaction) {
     const theme = getTheme(themeId);
     const jackpotDisplayStr = await getJackpotDisplay();
     const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS, theme);
-    await interaction.reply({ files: [attachment] });
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+        .setColor(theme.colors.embedColor || 0x0f4c25)
+        .setImage("attachment://paytable.png")
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+    return interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
 }
 
 module.exports = {

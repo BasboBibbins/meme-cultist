@@ -7,8 +7,11 @@ const CanvasUtil = require('./Canvas');
 const logger = require('./logger');
 const {
     roundRect,
+    withAlpha,
     drawBackground,
     drawAtmosphere,
+    drawTitle,
+    drawPanel,
     loadBackgroundImage,
 } = require('./canvasCommon');
 
@@ -577,107 +580,94 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
     const c = theme.colors;
     const plColors = getPaylineColors(theme);
 
-    const PT_W = 650;
-    const PADDING = 20;
+    const PT_W = 720;
+    const MARGIN_X = 24;
     const displayOrder = [...symbolTable].reverse();
 
-    // Compute layout heights
-    const titleY = 38;
-    const bannerTop = 50;
-    const bannerH = 28;
-    const symbolStartY = bannerTop + bannerH + 16;
-    const symbolRowH = 32;
-    const symbolSectionH = displayOrder.length * symbolRowH;
-    const plTitleY = symbolStartY + symbolSectionH + 18;
-    const plLabelY = plTitleY + 24;
-    const plGridY = plLabelY + 16;
+    const titleY = 56;
+    const jackpotTop = 86;
+    const jackpotH = 50;
+    const symbolsTop = jackpotTop + jackpotH + 18;
+    const symbolRowH = 36;
+    const symbolsH = displayOrder.length * symbolRowH + 18;
+    const plPanelTop = symbolsTop + symbolsH + 16;
     const miniCell = 16;
     const miniGridH = 3 * miniCell;
-    const rulesY = plGridY + miniGridH + 16;
-    const PT_H = rulesY + 36 + PADDING;
+    const plPanelH = 36 + 22 + miniGridH + 18;
+    const rulesTop = plPanelTop + plPanelH + 18;
+    const rulesH = 56;
+    const PT_H = rulesTop + rulesH + MARGIN_X;
 
     const canvas = createCanvas(PT_W, PT_H);
     const ctx = canvas.getContext('2d');
 
     await drawBackground(ctx, PT_W, PT_H, c);
     drawAtmosphere(ctx, PT_W, PT_H, c);
-    roundRect(ctx, 8, 8, PT_W - 16, PT_H - 16, 12);
-    ctx.fillStyle = c.feltColor;
-    ctx.fill();
-    ctx.strokeStyle = c.frameColor;
-    ctx.lineWidth = 3;
-    ctx.stroke();
 
-    // Title
-    ctx.font = 'bold 22px Arial';
-    ctx.fillStyle = c.textPrimary;
+    drawTitle(ctx, PT_W / 2, titleY, 'SLOTS PAYTABLE', c.frameColor || c.gold || '#ffd700', c, { size: 34 });
+
+    // Jackpot banner \u2014 accented panel
+    drawPanel(ctx, MARGIN_X, jackpotTop, PT_W - MARGIN_X * 2, jackpotH, c, { accent: true, radius: 10 });
+    ctx.save();
     ctx.textAlign = 'center';
-    ctx.fillText('SLOTS PAYTABLE', PT_W / 2, titleY);
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 12px Arial';
+    ctx.fillStyle = withAlpha(c.textPrimary || c.gold || '#ffd700', 0.95);
+    ctx.fillText('\uD83C\uDFB0 PROGRESSIVE JACKPOT', PT_W / 2, jackpotTop + 16);
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = c.textPrimary || c.gold || '#ffd700';
+    ctx.fillText(jackpotDisplay, PT_W / 2, jackpotTop + jackpotH - 18);
+    ctx.restore();
 
-    // Jackpot banner
-    const bannerW = 340;
-    const bannerX = (PT_W - bannerW) / 2;
-    roundRect(ctx, bannerX, bannerTop, bannerW, bannerH, 6);
-    ctx.fillStyle = c.bannerBackground;
-    ctx.fill();
-    ctx.strokeStyle = c.frameColor;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.font = 'bold 13px Arial';
-    ctx.fillStyle = c.textPrimary;
-    ctx.fillText(`PROGRESSIVE JACKPOT: ${jackpotDisplay}`, PT_W / 2, bannerTop + 18);
-
-    // Symbol payouts
+    // Symbol payouts panel
+    drawPanel(ctx, MARGIN_X, symbolsTop, PT_W - MARGIN_X * 2, symbolsH, c);
     ctx.textAlign = 'left';
     for (let i = 0; i < displayOrder.length; i++) {
         const sym = displayOrder[i];
-        const y = symbolStartY + i * symbolRowH + symbolRowH / 2;
+        const y = symbolsTop + 12 + i * symbolRowH + symbolRowH / 2;
 
-        drawSymbol(ctx, sym.index, 46, y, 26, theme);
+        drawSymbol(ctx, sym.index, MARGIN_X + 28, y, 26, theme);
 
         ctx.font = 'bold 13px Arial';
         ctx.fillStyle = c.textWhite;
-
         const themeSym = theme.symbols[sym.index];
-        ctx.fillText(themeSym?.label || sym.name || 'Symbol', 74, y + 4);
+        ctx.fillText(themeSym?.label || sym.name || 'Symbol', MARGIN_X + 58, y + 4);
 
         ctx.font = '12px Arial';
         if (sym.index === 7) {
             ctx.fillStyle = c.textWin;
-            ctx.fillText(`3-match: JACKPOT  |  2-match: ${sym.partial}x`, 160, y + 4);
+            ctx.fillText(`3-match: JACKPOT  |  2-match: ${sym.partial}x`, MARGIN_X + 150, y + 4);
         } else if (sym.index === 8) {
             ctx.fillStyle = c.textPrimary;
-            ctx.fillText('Substitutes for any symbol (except Scatter)', 160, y + 4);
+            ctx.fillText('Substitutes for any symbol (except Scatter)', MARGIN_X + 150, y + 4);
         } else if (sym.index === 9) {
             ctx.fillStyle = c.textPrimary;
-            ctx.fillText('3+ anywhere = Bonus Free Spins (2x multiplier)', 160, y + 4);
+            ctx.fillText('3+ anywhere = Bonus Free Spins (2x multiplier)', MARGIN_X + 150, y + 4);
         } else {
             ctx.fillStyle = c.textWin;
-            ctx.fillText(`3-match: ${sym.multiplier}x  |  2-match: ${sym.partial}x`, 160, y + 4);
+            ctx.fillText(`3-match: ${sym.multiplier}x  |  2-match: ${sym.partial}x`, MARGIN_X + 150, y + 4);
         }
     }
 
-    // Separator
-    ctx.strokeStyle = c.frameDarkColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PADDING + 20, plTitleY - 8);
-    ctx.lineTo(PT_W - PADDING - 20, plTitleY - 8);
-    ctx.stroke();
-
-    // Paylines title
-    ctx.font = 'bold 16px Arial';
-    ctx.fillStyle = c.textPrimary;
+    // Paylines panel
+    drawPanel(ctx, MARGIN_X, plPanelTop, PT_W - MARGIN_X * 2, plPanelH, c);
+    ctx.save();
+    ctx.font = 'bold 14px Arial';
+    ctx.fillStyle = withAlpha(c.textPrimary || c.gold || '#ffd700', 0.95);
     ctx.textAlign = 'center';
-    ctx.fillText('PAYLINES', PT_W / 2, plTitleY + 6);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('PAYLINES', PT_W / 2, plPanelTop + 18);
+    ctx.restore();
 
     const lineNames = ['Top Row', 'Middle Row', 'Bottom Row', 'Diagonal Down', 'Diagonal Up'];
     const miniGridW = 3 * miniCell;
     const colCount = 5;
-    const colW = (PT_W - PADDING * 2) / colCount;
+    const colW = (PT_W - MARGIN_X * 2) / colCount;
+    const plLabelY = plPanelTop + 40;
+    const plGridY = plLabelY + 16;
 
     for (let i = 0; i < colCount; i++) {
-        const colCenterX = PADDING + colW * i + colW / 2;
+        const colCenterX = MARGIN_X + colW * i + colW / 2;
         const gridLeft = colCenterX - miniGridW / 2;
 
         ctx.font = '11px Arial';
@@ -699,7 +689,7 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
                 const mx = gridLeft + ci * miniCell;
                 const my = plGridY + r * miniCell;
 
-                ctx.fillStyle = '#2a2a2a';
+                ctx.fillStyle = withAlpha(c.reelBackground || c.feltDark || '#1a1a1a', 0.8);
                 ctx.fillRect(mx, my, miniCell - 1, miniCell - 1);
 
                 const isOnLine = PAYLINES[i].some(([pr, pc]) => pr === r && pc === ci);
@@ -713,20 +703,16 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
         }
     }
 
-    // Separator
-    ctx.strokeStyle = c.frameDarkColor;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PADDING + 20, rulesY - 6);
-    ctx.lineTo(PT_W - PADDING - 20, rulesY - 6);
-    ctx.stroke();
-
-    // Rules
+    // Rules panel
+    drawPanel(ctx, MARGIN_X, rulesTop, PT_W - MARGIN_X * 2, rulesH, c);
+    ctx.save();
     ctx.font = '11px Arial';
-    ctx.fillStyle = '#aaaaaa';
+    ctx.fillStyle = withAlpha(c.textWhite || '#ffffff', 0.7);
     ctx.textAlign = 'center';
-    ctx.fillText('Bet is per line. Total cost = bet \u00D7 lines. Default: 1 line (middle row).', PT_W / 2, rulesY + 6);
-    ctx.fillText('WILD substitutes for all symbols except SCATTER. 3+ SCATTER = Bonus Free Spins!', PT_W / 2, rulesY + 22);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Bet is per line. Total cost = bet \u00D7 lines. Default: 1 line (middle row).', PT_W / 2, rulesTop + 20);
+    ctx.fillText('WILD substitutes for all symbols except SCATTER. 3+ SCATTER = Bonus Free Spins!', PT_W / 2, rulesTop + 38);
+    ctx.restore();
 
     const buffer = canvas.toBuffer('image/png');
     return new AttachmentBuilder(buffer, { name: 'paytable.png' });
