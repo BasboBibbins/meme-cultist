@@ -5,16 +5,38 @@ const { getThemeColors } = require('../themes/resolver');
 const { loadCardSheet, getCardSpriteCoords } = require('./cards');
 const {
     roundRect,
+    withAlpha,
     loadSprite,
     loadUserAvatar,
     drawBackground,
     drawAtmosphere,
     drawTitle,
+    drawPanel,
     drawAvatarCircle,
     drawSectionBg,
     stampAvatarOutcome,
     applyOutcomeOverlay,
 } = require('./canvasCommon');
+
+const PAYTABLE_ENTRIES = [
+    { label: "Royal Flush",     payout: "JACKPOT",  note: "10·J·Q·K·A of one suit (above jackpot min bet).", featured: true },
+    { label: "Straight Flush",  payout: "50x",      note: "Five consecutive cards, same suit." },
+    { label: "Four of a Kind",  payout: "25x",      note: "Four cards of the same rank." },
+    { label: "Full House",      payout: "9x",       note: "Three of a kind plus a pair." },
+    { label: "Flush",           payout: "6x",       note: "Five cards of the same suit, any order." },
+    { label: "Straight",        payout: "4x",       note: "Five consecutive cards, any suits." },
+    { label: "Three of a Kind", payout: "3x",       note: "Three cards of the same rank." },
+    { label: "Two Pair",        payout: "2x",       note: "Two separate pairs." },
+    { label: "Jacks or Better", payout: "1x",       note: "A pair of jacks, queens, kings, or aces." },
+];
+
+const EXPLANATION_LINES = [
+    "Five-card draw video poker. You ante up, the bot deals five cards.",
+    "Click HOLD on any cards you want to keep, then click Draw.",
+    "Held cards stay; the rest are replaced from the deck.",
+    "Final hand is scored against the paytable below. No pair below jacks = loss.",
+    "A Royal Flush at or above the jackpot minimum bet wins the progressive jackpot.",
+];
 
 const CARD_W = 90;
 const CARD_H = 135;
@@ -210,6 +232,124 @@ async function canvasHand(hand, score, colors = DEFAULT_COLORS, themeId = 'class
     }
 }
 
+async function drawPokerPaytable(themeColors, opts = {}) {
+    const colors = themeColors || DEFAULT_COLORS;
+    const { jackpotAmount = null, minBet = null, currencyName = "koku" } = opts;
+
+    const PT_W = 720;
+    const MARGIN_X = 24;
+    const TITLE_Y = 56;
+
+    const explTop = 96;
+    const explLineH = 18;
+    const explPadX = 18;
+    const explPadY = 14;
+    const explH = explLineH * EXPLANATION_LINES.length + explPadY * 2;
+
+    const rowH = 56;
+    const rowGap = 8;
+    const rowsTop = explTop + explH + 20;
+    const totalRowsH = PAYTABLE_ENTRIES.length * (rowH + rowGap);
+
+    const jackpotPillH = jackpotAmount != null ? 64 : 0;
+    const jackpotGap = jackpotAmount != null ? 18 : 0;
+    const PT_H = rowsTop + totalRowsH + jackpotGap + jackpotPillH + MARGIN_X;
+
+    const canvas = createCanvas(PT_W, PT_H);
+    const ctx = canvas.getContext("2d");
+
+    await drawBackground(ctx, PT_W, PT_H, colors);
+    drawAtmosphere(ctx, PT_W, PT_H, colors);
+
+    drawTitle(ctx, PT_W / 2, TITLE_Y, "POKER PAYTABLE", colors.gold || "#ffd700", colors, { size: 36 });
+
+    // Explanation panel
+    const explX = MARGIN_X;
+    const explW = PT_W - MARGIN_X * 2;
+    drawPanel(ctx, explX, explTop, explW, explH, colors);
+
+    ctx.save();
+    ctx.font = "13px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = colors.textWhite || "#ffffff";
+    for (let i = 0; i < EXPLANATION_LINES.length; i++) {
+        const ly = explTop + explPadY + explLineH / 2 + i * explLineH;
+        ctx.fillText(EXPLANATION_LINES[i], PT_W / 2, ly);
+    }
+    ctx.restore();
+
+    // Hand rows
+    const rowX = MARGIN_X;
+    const rowW = PT_W - MARGIN_X * 2;
+    for (let i = 0; i < PAYTABLE_ENTRIES.length; i++) {
+        const e = PAYTABLE_ENTRIES[i];
+        const ry = rowsTop + i * (rowH + rowGap);
+        drawPanel(ctx, rowX, ry, rowW, rowH, colors, { accent: !!e.featured, radius: 10 });
+
+        // Featured (Royal Flush) row gets a subtle gold glow tint.
+        if (e.featured) {
+            ctx.save();
+            roundRect(ctx, rowX, ry, rowW, rowH, 10);
+            ctx.clip();
+            const glow = ctx.createLinearGradient(rowX, ry, rowX + rowW, ry);
+            glow.addColorStop(0, withAlpha(colors.gold || "#ffd700", 0.18));
+            glow.addColorStop(0.5, withAlpha(colors.gold || "#ffd700", 0.05));
+            glow.addColorStop(1, withAlpha(colors.gold || "#ffd700", 0.18));
+            ctx.fillStyle = glow;
+            ctx.fillRect(rowX, ry, rowW, rowH);
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.font = "bold 17px Arial";
+        ctx.fillStyle = e.featured ? (colors.gold || "#ffd700") : (colors.textWhite || "#ffffff");
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(e.label, rowX + 16, ry + 19);
+
+        ctx.font = "12px Arial";
+        ctx.fillStyle = withAlpha(colors.textWhite || "#ffffff", 0.65);
+        ctx.fillText(e.note, rowX + 16, ry + 39);
+
+        ctx.font = "bold 20px Arial";
+        ctx.fillStyle = e.featured ? (colors.gold || "#ffd700") : (colors.textWin || colors.gold || "#ffd700");
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText(e.payout, rowX + rowW - 18, ry + rowH / 2);
+        ctx.restore();
+    }
+
+    // Jackpot pill at the bottom
+    if (jackpotAmount != null) {
+        const pillY = rowsTop + totalRowsH + jackpotGap;
+        drawPanel(ctx, rowX, pillY, rowW, jackpotPillH, colors, { accent: true, radius: 12 });
+
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.font = "bold 13px Arial";
+        ctx.fillStyle = withAlpha(colors.gold || "#ffd700", 0.95);
+        ctx.fillText("🎰 PROGRESSIVE JACKPOT", PT_W / 2, pillY + 18);
+
+        ctx.font = "bold 22px Arial";
+        ctx.fillStyle = colors.gold || "#ffd700";
+        const amountText = `${jackpotAmount.toLocaleString("en-US")} ${currencyName}`;
+        ctx.fillText(amountText, PT_W / 2, pillY + 42);
+
+        if (minBet != null) {
+            ctx.font = "11px Arial";
+            ctx.fillStyle = withAlpha(colors.textWhite || "#ffffff", 0.6);
+            ctx.fillText(`Royal Flush at or above ${minBet.toLocaleString("en-US")} ${currencyName} bet wins it.`, PT_W / 2, pillY + jackpotPillH - 10);
+        }
+        ctx.restore();
+    }
+
+    const buffer = canvas.toBuffer("image/png");
+    return new AttachmentBuilder(buffer, { name: "poker-paytable.png" });
+}
+
 module.exports = {
     pokerScore: async (hand) => {
         try {
@@ -220,5 +360,6 @@ module.exports = {
         }
     },
     canvasHand,
+    drawPokerPaytable,
     pokerPreview,
 };
