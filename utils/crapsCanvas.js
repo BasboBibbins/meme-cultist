@@ -891,100 +891,81 @@ async function drawPaytable(themeColors) {
     const c = colors;
 
     const PT_W = 720;
-    const PADDING = 20;
-    const titleY = 38;
+    const MARGIN_X = 24;
+    const TITLE_Y = 56;
 
-    const explTop = 55;
+    const explTop = 96;
     const explLineH = 18;
-    const explPadding = 12;
-    const explH = explLineH * EXPLANATION_LINES.length + explPadding * 2;
+    const explPadY = 14;
+    const explH = explLineH * EXPLANATION_LINES.length + explPadY * 2;
 
     const rowH = 56;
     const rowGap = 8;
-    const rowsTop = explTop + explH + 20;
+    const rowsTop = explTop + explH + 18;
     const totalRowsH = PAYTABLE_ENTRIES.length * (rowH + rowGap);
-    const rulesY = rowsTop + totalRowsH + 10;
-    const PT_H = rulesY + 40 + PADDING;
+    const rulesTop = rowsTop + totalRowsH + 8;
+    const rulesH = 56;
+    const PT_H = rulesTop + rulesH + MARGIN_X;
 
     const canvas = createCanvas(PT_W, PT_H);
     const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = c.feltDark || c.feltOuter || "#0a3a1a";
-    ctx.fillRect(0, 0, PT_W, PT_H);
-    roundRect(ctx, 8, 8, PT_W - 16, PT_H - 16, 12);
-    ctx.fillStyle = c.feltColor || c.feltMid || "#0f4c25";
-    ctx.fill();
-    ctx.strokeStyle = c.layoutLine || c.gold || "#ffd700";
-    ctx.lineWidth = 3;
-    ctx.stroke();
+    await drawBackground(ctx, PT_W, PT_H, c);
+    drawAtmosphere(ctx, PT_W, PT_H, c);
 
-    ctx.font = "bold 24px Arial";
-    ctx.fillStyle = c.textPrimary || c.gold || "#ffd700";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    ctx.fillText("CRAPS PAYTABLE", PT_W / 2, titleY);
+    drawTitle(ctx, PT_W / 2, TITLE_Y, "CRAPS PAYTABLE", c.gold || "#ffd700", c, { size: 34 });
 
-    const explX = PADDING + 12;
-    const explW = PT_W - (PADDING + 12) * 2;
-    roundRect(ctx, explX, explTop, explW, explH, 8);
-    ctx.fillStyle = c.bannerBackground || c.feltDark || "rgba(0,0,0,0.35)";
-    ctx.fill();
-    ctx.strokeStyle = c.layoutLine || c.gold || "#ffd700";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    const sideX = MARGIN_X;
+    const sideW = PT_W - MARGIN_X * 2;
 
+    // Explanation panel
+    drawPanel(ctx, sideX, explTop, sideW, explH, c);
+    ctx.save();
     ctx.font = "13px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = c.textWhite || "#ffffff";
     for (let i = 0; i < EXPLANATION_LINES.length; i++) {
-        const ly = explTop + explPadding + explLineH / 2 + i * explLineH;
+        const ly = explTop + explPadY + explLineH / 2 + i * explLineH;
         ctx.fillText(EXPLANATION_LINES[i], PT_W / 2, ly);
     }
+    ctx.restore();
 
-    const rowX = PADDING + 4;
-    const rowW = PT_W - (PADDING + 4) * 2;
+    // Bet rows
     for (let i = 0; i < PAYTABLE_ENTRIES.length; i++) {
         const e = PAYTABLE_ENTRIES[i];
         const ry = rowsTop + i * (rowH + rowGap);
+        drawPanel(ctx, sideX, ry, sideW, rowH, c, { radius: 10 });
 
-        roundRect(ctx, rowX, ry, rowW, rowH, 8);
-        ctx.fillStyle = c.bannerBackground || c.feltDark || "rgba(0,0,0,0.4)";
-        ctx.fill();
-        ctx.strokeStyle = c.layoutLine || c.gold || "#ffd700";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        ctx.font = "bold 16px Arial";
+        ctx.save();
+        ctx.font = "bold 17px Arial";
         ctx.fillStyle = c.textWhite || "#ffffff";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(e.label, rowX + 14, ry + 18);
+        ctx.fillText(e.label, sideX + 16, ry + 19);
 
         ctx.font = "12px Arial";
-        ctx.fillStyle = "#cccccc";
-        ctx.fillText(e.note, rowX + 14, ry + 38);
+        ctx.fillStyle = withAlpha(c.textWhite || "#ffffff", 0.65);
+        ctx.fillText(e.note, sideX + 16, ry + 39);
 
-        ctx.font = "bold 18px Arial";
+        ctx.font = "bold 20px Arial";
         ctx.fillStyle = c.textWin || c.gold || "#ffd700";
         ctx.textAlign = "right";
         ctx.textBaseline = "middle";
-        ctx.fillText(e.payout, rowX + rowW - 16, ry + rowH / 2);
+        ctx.fillText(e.payout, sideX + sideW - 18, ry + rowH / 2);
+        ctx.restore();
     }
 
-    ctx.strokeStyle = c.frameDarkColor || c.layoutLine || c.gold || "#c8a830";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PADDING + 20, rulesY - 2);
-    ctx.lineTo(PT_W - PADDING - 20, rulesY - 2);
-    ctx.stroke();
-
+    // Rules panel
+    drawPanel(ctx, sideX, rulesTop, sideW, rulesH, c);
+    ctx.save();
     ctx.font = "11px Arial";
-    ctx.fillStyle = "#aaaaaa";
+    ctx.fillStyle = withAlpha(c.textWhite || "#ffffff", 0.7);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("Multiple players can join the same session. Only the shooter can roll.", PT_W / 2, rulesY + 12);
-    ctx.fillText("Pass / Don't Pass: come-out only. Side bets: any time. Shooter rotates on a seven-out.", PT_W / 2, rulesY + 28);
+    ctx.fillText("Multiple players can join the same session. Only the shooter can roll.", PT_W / 2, rulesTop + 20);
+    ctx.fillText("Pass / Don't Pass: come-out only. Side bets: any time. Shooter rotates on a seven-out.", PT_W / 2, rulesTop + 38);
+    ctx.restore();
 
     const buffer = canvas.toBuffer("image/png");
     return new AttachmentBuilder(buffer, { name: "craps-paytable.png" });

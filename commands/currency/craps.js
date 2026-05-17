@@ -43,15 +43,16 @@ function errorEmbed(user, client, description) {
 }
 
 async function handlePaytable(interaction) {
-    await interaction.deferReply();
     const themeId = await getEquippedTheme(interaction.user.id);
     const themeColors = getThemeColors(themeId, "craps");
     const attachment = await drawPaytable(themeColors);
     const embed = new EmbedBuilder()
+        .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
         .setColor(themeColors.embedColor || 0x0f4c25)
-        .setTitle("Craps Paytable")
-        .setImage("attachment://craps-paytable.png");
-    await interaction.editReply({ embeds: [embed], files: [attachment] });
+        .setImage("attachment://craps-paytable.png")
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+    return interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
 }
 
 async function resolveChipColor(interaction, user) {
