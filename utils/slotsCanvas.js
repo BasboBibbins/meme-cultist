@@ -5,14 +5,17 @@ const { getTheme } = require('./slotsThemes');
 const { encodeGIF } = require('./gifUtil');
 const CanvasUtil = require('./Canvas');
 const logger = require('./logger');
+const {
+    roundRect,
+    drawBackground,
+    drawAtmosphere,
+    loadBackgroundImage,
+} = require('./canvasCommon');
 
-// Background image cache to avoid reloading from disk on every animation frame
-const _bgCache = new Map();
+// Slot-specific symbol/sprite caches still live here. Background images are
+// served by canvasCommon's loadBackgroundImage cache.
 async function loadCachedImage(path) {
-    if (_bgCache.has(path)) return _bgCache.get(path);
-    const img = await loadImage(path);
-    _bgCache.set(path, img);
-    return img;
+    return loadBackgroundImage(path);
 }
 
 // Payline definitions (game logic, not themed)
@@ -84,21 +87,6 @@ function getPaylineColors(theme) {
 }
 
 // ─── Shape helpers ───────────────────────────────────────────────────
-
-function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
 
 function drawStar(ctx, cx, cy, spikes, outerR, innerR) {
     let rot = Math.PI / 2 * 3;
@@ -269,25 +257,8 @@ async function drawFrame(ctx, jackpotDisplay, activeLines, bet, isBonus, isFreeP
     const c = theme.colors;
     const plColors = getPaylineColors(theme);
 
-    // Background
-    if (c.background) {
-        try {
-            const bgImg = await loadCachedImage(c.background);
-            const scale = Math.max(W / bgImg.width, H / bgImg.height);
-            const drawW = bgImg.width * scale;
-            const drawH = bgImg.height * scale;
-            const dx = (W - drawW) / 2;
-            const dy = (H - drawH) / 2;
-            ctx.drawImage(bgImg, dx, dy, drawW, drawH);
-        } catch (err) {
-            logger.warn('Failed to load slot background image, using fallback color', { error: err });
-            ctx.fillStyle = c.feltDark;
-            ctx.fillRect(0, 0, W, H);
-        }
-    } else {
-        ctx.fillStyle = c.feltDark;
-        ctx.fillRect(0, 0, W, H);
-    }
+    await drawBackground(ctx, W, H, c);
+    drawAtmosphere(ctx, W, H, c);
 
     // Main felt area
     roundRect(ctx, 10, 10, W - 20, H - 20, 16);
@@ -628,9 +599,8 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
     const canvas = createCanvas(PT_W, PT_H);
     const ctx = canvas.getContext('2d');
 
-    // Background
-    ctx.fillStyle = c.feltDark;
-    ctx.fillRect(0, 0, PT_W, PT_H);
+    await drawBackground(ctx, PT_W, PT_H, c);
+    drawAtmosphere(ctx, PT_W, PT_H, c);
     roundRect(ctx, 8, 8, PT_W - 16, PT_H - 16, 12);
     ctx.fillStyle = c.feltColor;
     ctx.fill();
