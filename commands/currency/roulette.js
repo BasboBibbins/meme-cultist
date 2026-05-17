@@ -22,6 +22,14 @@ const wait = require("node:timers/promises").setTimeout;
 
 const PACKAGE_VERSION = require("../../package.json").version;
 
+// Theme tokens like textWin/pocketRed are stored as `#rrggbb` strings;
+// Discord embeds need integers. embedColor is already an int.
+function themeColor(c, fallback = 0) {
+    if (typeof c === "number") return c;
+    if (!c) return fallback;
+    return parseInt(String(c).replace(/^#/, ""), 16) || fallback;
+}
+
 const BET_DEFINITIONS = {
     red:     { label: "Red",        style: ButtonStyle.Danger,    chip: "red" },
     black:   { label: "Black",      style: ButtonStyle.Secondary, chip: "black" },
@@ -503,9 +511,14 @@ async function handleSpin(i, state, client) {
 
     const finalFile = await drawResult(winningNumber, totalWinnings, true, lockedBets, state.userAvatars, state.userColors, state.themeColors);
     const totalPool = lockedBets.reduce((sum, b) => sum + b.amount, 0);
+    const winningColorInt = color === "red"
+        ? themeColor(state.themeColors.numberRed || state.themeColors.pocketRed, 0xFF0000)
+        : color === "black"
+            ? themeColor(state.themeColors.numberBlack || state.themeColors.pocketBlack, 0x000000)
+            : themeColor(state.themeColors.zeroGreen || state.themeColors.pocketGreen, 0x00AA00);
     const resultEmbed = new EmbedBuilder()
         .setAuthor({ name: `${state.creatorUsername}'s Roulette`, iconURL: state.userAvatars[state.creatorId] })
-        .setColor(color === "red" ? 0xFF0000 : (color === "black" ? 0x000000 : 0x00AA00))
+        .setColor(winningColorInt)
         .setTitle(`Winning Number: ${winningNumber} (${color})`)
         .setDescription(`Total pool: ${totalPool.toLocaleString("en-US")} ${CURRENCY_NAME}\nTotal winnings paid: ${totalWinnings.toLocaleString("en-US")} ${CURRENCY_NAME}`)
         .setImage("attachment://roulette.png")
@@ -729,9 +742,14 @@ async function sendSessionDM(client, state, userId, resolvedBets, winningNumber,
         lines.push("");
         lines.push(`New balance: **${balance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`);
 
+        const dmColor = net > 0
+            ? themeColor(state.themeColors.textWin, 0x00AA00)
+            : net < 0
+                ? themeColor(state.themeColors.textLoss, 0xFF0000)
+                : themeColor(state.themeColors.embedColor, 0x888888);
         const embed = new EmbedBuilder()
             .setTitle(net > 0 ? "Roulette Results — You Won!" : (net < 0 ? "Roulette Results — You Lost" : "Roulette Results"))
-            .setColor(net > 0 ? 0x00AA00 : (net < 0 ? 0xFF0000 : 0x888888))
+            .setColor(dmColor)
             .setDescription(lines.join("\n"))
             .setTimestamp();
         await sendDM(dmUser, { embeds: [embed] });
