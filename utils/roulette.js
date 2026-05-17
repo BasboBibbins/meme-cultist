@@ -2,6 +2,13 @@ const { createCanvas, loadImage } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
 const { getThemeColors } = require('../themes/resolver');
 const logger = require('./logger');
+const {
+    roundRect,
+    drawBackground,
+    drawAtmosphere,
+    drawTitle: drawTitleCommon,
+    loadAvatarByUrl,
+} = require('./canvasCommon');
 
 // Resolve classic roulette colors as the default fallback
 const DEFAULT_COLORS = getThemeColors('classic', 'roulette');
@@ -44,21 +51,6 @@ const GRID_W = CELL_W * GRID_COLS, GRID_H = CELL_H * GRID_ROWS;
 const COL21_W = 56, TABLE_Y = 88, PAD = 3;
 const DOZEN_H = 44, DOZEN_Y = TABLE_Y + GRID_H + 2;
 const EVEN_H = 44, EVEN_Y = DOZEN_Y + DOZEN_H + 2;
-
-function roundRect(ctx, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
 
 function getNumberPosition(number) {
     // Handle non-number bet types - return position in betting area
@@ -460,35 +452,15 @@ function drawBettingTable(ctx, highlightNumber = null, colors = DEFAULT_COLORS) 
 }
 
 function drawTitle(ctx, colors = DEFAULT_COLORS) {
-    ctx.fillStyle = colors.gold;
-    ctx.font = 'bold 28px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`ROULETTE`, CANVAS_W / 2, 46);
+    drawTitleCommon(ctx, CANVAS_W / 2, 32, "ROULETTE", colors.gold || "#ffd700", colors, { size: 36 });
 }
 
 async function drawRouletteTable(bets = [], userAvatars = {}, userColors = {}, colors = DEFAULT_COLORS) {
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
-    if (colors.background) {
-        try {
-            const bgImg = await loadImage(colors.background);
-            const scale = Math.max(CANVAS_W / bgImg.width, CANVAS_H / bgImg.height);
-            const drawW = bgImg.width * scale;
-            const drawH = bgImg.height * scale;
-            const dx = (CANVAS_W - drawW) / 2;
-            const dy = (CANVAS_H - drawH) / 2;
-            ctx.drawImage(bgImg, dx, dy, drawW, drawH);
-        } catch (err) {
-            logger.warn('Failed to load roulette background image, using fallback color', { error: err });
-            ctx.fillStyle = colors.feltColor;
-            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-        }
-    } else {
-        ctx.fillStyle = colors.feltColor;
-        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    }
+    await drawBackground(ctx, CANVAS_W, CANVAS_H, colors);
+    drawAtmosphere(ctx, CANVAS_W, CANVAS_H, colors);
 
     drawWheel(ctx, null, colors);
     drawBettingTable(ctx, null, colors);
@@ -499,7 +471,8 @@ async function drawRouletteTable(bets = [], userAvatars = {}, userColors = {}, c
     await Promise.all(uniqueUserIds.map(async userId => {
         const url = userAvatars[userId];
         if (url) {
-            try { avatarImages[userId] = await loadImage(url); } catch { /* fall back to solid */ }
+            const img = await loadAvatarByUrl(url);
+            if (img) avatarImages[userId] = img;
         }
     }));
 
@@ -536,18 +509,8 @@ async function drawResult(number, totalWinnings = 0, isFinal = false, bets = [],
     const canvas = createCanvas(CANVAS_W, CANVAS_H);
     const ctx = canvas.getContext('2d');
 
-    if (colors.background) {
-        try {
-            const bgImg = await loadImage(colors.background);
-            ctx.drawImage(bgImg, 0, 0, CANVAS_W, CANVAS_H);
-        } catch (err) {
-            ctx.fillStyle = colors.feltColor;
-            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-        }
-    } else {
-        ctx.fillStyle = colors.feltColor;
-        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    }
+    await drawBackground(ctx, CANVAS_W, CANVAS_H, colors);
+    drawAtmosphere(ctx, CANVAS_W, CANVAS_H, colors);
 
     drawWheel(ctx, number, colors);
     drawBallOnWheel(ctx, number);

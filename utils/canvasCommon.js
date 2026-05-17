@@ -276,6 +276,57 @@ function drawAvatarCircle(ctx, cx, cy, radius, img, ringColor, fillFallback) {
     ctx.restore();
 }
 
+// Card-game section: translucent tableGreen-tinted box with inner vignette
+// and a goldDark border. Used by blackjack and poker for hand rows.
+function drawSectionBg(ctx, x, y, w, h, colors) {
+    ctx.fillStyle = withAlpha(colors.tableGreen, 0.65);
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.fill();
+
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.clip();
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const grad = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.18, cx, cy, Math.max(w, h) * 0.7);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+
+    ctx.strokeStyle = colors.goldDark || colors.gold || "#c8a830";
+    ctx.lineWidth = 3;
+    roundRect(ctx, x, y, w, h, 12);
+    ctx.stroke();
+}
+
+// Stamp the winner-crown above an avatar or the loser-fracture over it.
+// Wins/losses rely on the sprite alone; pushes get nothing.
+function stampAvatarOutcome(ctx, avatarX, avatarY, size, outcome, sprites) {
+    if (outcome === "win" && sprites.crown) {
+        const w = Math.round(size * 0.72);
+        const h = w;
+        ctx.drawImage(sprites.crown, avatarX + (size - w) / 2, avatarY - h + 4, w, h);
+    } else if (outcome === "loss" && sprites.fracture) {
+        const w = Math.round(size * 0.95);
+        const h = w;
+        ctx.drawImage(sprites.fracture, avatarX + (size - w) / 2, avatarY + (size - h) / 2, w, h);
+    }
+}
+
+// Loss-only dim overlay clipped to a section/panel. Reliable in node-canvas
+// (unlike globalCompositeOperation).
+function applyOutcomeOverlay(ctx, x, y, w, h, outcome, radius = 12) {
+    if (outcome !== "loss") return;
+    ctx.save();
+    roundRect(ctx, x, y, w, h, radius);
+    ctx.clip();
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+}
+
 module.exports = {
     withAlpha,
     roundRect,
@@ -290,4 +341,7 @@ module.exports = {
     drawPanel,
     drawPanelHeading,
     drawAvatarCircle,
+    drawSectionBg,
+    stampAvatarOutcome,
+    applyOutcomeOverlay,
 };

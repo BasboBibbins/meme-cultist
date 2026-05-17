@@ -11,6 +11,10 @@ const {
     drawBackground,
     drawAtmosphere,
     drawTitle,
+    drawSectionBg,
+    stampAvatarOutcome,
+    applyOutcomeOverlay,
+    drawAvatarCircle: drawAvatarCircleCommon,
 } = require("./canvasCommon");
 
 const CARD_W = 110;
@@ -26,89 +30,10 @@ const SECTION_PADDING = 16;
 const SECTION_GAP = 20;
 const MAX_CARDS_BEFORE_SCALE = 3;
 
-function hexToRgba(hex, alpha) {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function drawSectionBg(ctx, x, y, w, h, colors) {
-    ctx.fillStyle = hexToRgba(colors.tableGreen, 0.65);
-    roundRect(ctx, x, y, w, h, 12);
-    ctx.fill();
-
-    // Dark radial vignette overlay clipped to the section — darkens edges to
-    // give each hand a "spotlit" feel.
-    ctx.save();
-    roundRect(ctx, x, y, w, h, 12);
-    ctx.clip();
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    const grad = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.18, cx, cy, Math.max(w, h) * 0.7);
-    grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(1, "rgba(0,0,0,0.55)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-
-    ctx.strokeStyle = colors.goldDark;
-    ctx.lineWidth = 3;
-    roundRect(ctx, x, y, w, h, 12);
-    ctx.stroke();
-}
-
+// Local adapter — blackjack call sites pass (x, y, size, img, colors); the
+// shared helper takes (cx, cy, radius, img, ringColor, fillFallback).
 function drawAvatarCircle(ctx, x, y, size, img, colors) {
-    const cx = x + size / 2;
-    const cy = y + size / 2;
-    // Gold ring
-    ctx.beginPath();
-    ctx.arc(cx, cy, size / 2 + 3, 0, Math.PI * 2);
-    ctx.fillStyle = colors.gold || "#ffd700";
-    ctx.fill();
-
-    if (img) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(img, x, y, size, size);
-        ctx.restore();
-    } else {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, size / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.fillRect(x, y, size, size);
-        ctx.restore();
-    }
-}
-
-function stampAvatarOutcome(ctx, avatarX, avatarY, size, outcome, sprites) {
-    if (outcome === "win" && sprites.crown) {
-        const w = Math.round(size * 0.72);
-        const h = w;
-        ctx.drawImage(sprites.crown, avatarX + (size - w) / 2, avatarY - h + 4, w, h);
-    } else if (outcome === "loss" && sprites.fracture) {
-        const w = Math.round(size * 0.95);
-        const h = w;
-        ctx.drawImage(sprites.fracture, avatarX + (size - w) / 2, avatarY + (size - h) / 2, w, h);
-    }
-}
-
-function applyOutcomeOverlay(ctx, x, y, w, h, outcome) {
-    // Losers get a dimming overlay clipped to the section. Wins and pushes
-    // rely on the sprite stamp alone — no colored frame.
-    if (outcome !== "loss") return;
-    ctx.save();
-    roundRect(ctx, x, y, w, h, 12);
-    ctx.clip();
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
+    drawAvatarCircleCommon(ctx, x + size / 2, y + size / 2, size / 2, img, colors.gold, colors.feltDark);
 }
 
 function drawBadge(ctx, x, y, type) {
