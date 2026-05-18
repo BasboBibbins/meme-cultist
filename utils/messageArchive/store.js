@@ -168,6 +168,58 @@ function close() {
     }
 }
 
+// Retention: drop rows older than `retentionDays`, then trim each channel's
+// remaining rows to at most `maxRowsPerChannel`. Either can be zero/falsy to
+// skip that stage. Returns a summary so the scheduled caller can log it.
+//
+// SD-card-class hosts cannot grow this archive forever; a Pi 3B with a 16 GB
+// card and ~500 messages/day across 5 chatbot channels would crowd out the
+// rest of the data directory within ~3 months at full retention. The dual
+// (TTL + per-channel cap) approach makes both axes bounded.
+function prune({ retentionDays = 0, maxRowsPerChannel = 0 } = {}) {
+    const db = openDb();
+    let deletedByAge = 0;
+    let deletedByCap = 0;
+
+    if (retentionDays > 0) {
+        const cutoff = Date.now() - retentionDays * 86400000;
+        const oldIds = db.prepare(`SELECT id FROM message_chunks WHERE created_at < ?`).all(cutoff).map(r => r.id);
+        if (oldIds.length > 0) {
+            const placeholders = oldIds.map(() => "?").join(",");
+            // FTS5 contentless table is content_rowid-linked; deleting from the
+            // base table does not auto-delete the FTS row, so do both.
+            try { db.prepare(`DELETE FROM message_chunks_fts WHERE rowid IN (${placeholders})`).run(...oldIds); }
+            catch (err) { logger.warn(`[MessageArchive] FTS prune (age) failed: ${err.message}`); }
+            const info = db.prepare(`DELETE FROM message_chunks WHERE id IN (${placeholders})`).run(...oldIds);
+            deletedByAge = info.changes;
+        }
+    }
+
+    if (maxRowsPerChannel > 0) {
+        const channels = db.prepare(`SELECT DISTINCT channel_id FROM message_chunks`).all();
+        for (const { channel_id } of channels) {
+            const count = db.prepare(`SELECT COUNT(*) AS c FROM message_chunks WHERE channel_id = ?`).get(channel_id).c;
+            if (count <= maxRowsPerChannel) continue;
+            const toDrop = count - maxRowsPerChannel;
+            const ids = db.prepare(`SELECT id FROM message_chunks WHERE channel_id = ? ORDER BY created_at ASC LIMIT ?`).all(channel_id, toDrop).map(r => r.id);
+            if (ids.length === 0) continue;
+            const placeholders = ids.map(() => "?").join(",");
+            try { db.prepare(`DELETE FROM message_chunks_fts WHERE rowid IN (${placeholders})`).run(...ids); }
+            catch (err) { logger.warn(`[MessageArchive] FTS prune (cap) failed: ${err.message}`); }
+            const info = db.prepare(`DELETE FROM message_chunks WHERE id IN (${placeholders})`).run(...ids);
+            deletedByCap += info.changes;
+        }
+    }
+
+    // Reclaim SD-card space when a big prune lands. Cheap when nothing changed.
+    if (deletedByAge + deletedByCap > 0) {
+        try { db.exec(`PRAGMA wal_checkpoint(TRUNCATE)`); }
+        catch (err) { logger.warn(`[MessageArchive] wal_checkpoint failed: ${err.message}`); }
+    }
+
+    return { deletedByAge, deletedByCap };
+}
+
 module.exports = {
     insertChunk,
     searchFTS,
@@ -176,5 +228,6 @@ module.exports = {
     setEmbedding,
     getMaxMessageIdForChannel,
     countForChannel,
+    prune,
     close,
 };
