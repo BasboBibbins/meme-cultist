@@ -519,7 +519,7 @@ async function generatePaytable(interaction) {
         .setImage("attachment://paytable.png")
         .setFooter({ text: `${interaction.client.user.username} | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
-    return interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
+    return interaction.reply({ embeds: [embed], files: [attachment]});
 }
 
 module.exports = {
