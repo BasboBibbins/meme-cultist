@@ -3,6 +3,7 @@ const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL } = require("../../config.js");
 const { openBetModal } = require("../../utils/betModal");
 const { withUserLock } = require("../../utils/userlock");
+const { applyRaceAggregates } = require("../../utils/guildStats");
 const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
@@ -124,6 +125,7 @@ async function handleStartRace(interaction, client, user) {
 
     const game = {
         channelId,
+        guildId: channel.guild?.id ?? interaction.guildId,
         messageId: message.id,
         creatorId: user.id,
         creatorUsername: user.displayName,
@@ -510,9 +512,20 @@ async function resolveRace(client, channel, message, game) {
     const finishCommentary = buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.topThree.firstIndex, finishOrder);
 
     const results = [];
+    // Per-horse-name accumulator for the guild aggregate write at the end of
+    // the resolve. Bundling avoids N writes per race.
+    const horseDeltas = {};
+    let topSingleBet = null;
+    let topSinglePayout = null;
+
     for (const bet of game.bets) {
         const horsePosition = finishOrder.indexOf(bet.horseIndex);
         const betType = bet.betType || "win";
+        const horseSnapshot = {
+            emoji: horses[bet.horseIndex].emoji,
+            name: horses[bet.horseIndex].name,
+            displayOdds: horses[bet.horseIndex].displayOdds,
+        };
         let won = false;
 
         if (betType === "win") {
@@ -539,6 +552,7 @@ async function resolveRace(client, channel, message, game) {
             const biggestWin = await db.get(`${bet.userId}.stats.race.biggestWin`) || 0;
             if (winnings > biggestWin) {
                 await db.set(`${bet.userId}.stats.race.biggestWin`, winnings);
+                await db.set(`${bet.userId}.stats.race.biggestWinHorse`, horseSnapshot);
             }
         } else {
             await db.add(`${bet.userId}.stats.race.losses`, 1);
@@ -546,10 +560,58 @@ async function resolveRace(client, channel, message, game) {
             const biggestLoss = await db.get(`${bet.userId}.stats.race.biggestLoss`) || 0;
             if (bet.amount > biggestLoss) {
                 await db.set(`${bet.userId}.stats.race.biggestLoss`, bet.amount);
+                await db.set(`${bet.userId}.stats.race.biggestLossHorse`, horseSnapshot);
             }
         }
 
+        // Guild-wide aggregate accumulators
+        const horseName = horseSnapshot.name;
+        if (!horseDeltas[horseName]) {
+            horseDeltas[horseName] = {
+                emoji: horseSnapshot.emoji,
+                displayOdds: horseSnapshot.displayOdds,
+                bets: 0,
+                wagered: 0,
+                payouts: 0,
+            };
+        }
+        horseDeltas[horseName].bets += 1;
+        horseDeltas[horseName].wagered += bet.amount;
+        horseDeltas[horseName].payouts += winnings;
+
+        if (!topSingleBet || bet.amount > topSingleBet.amount) {
+            topSingleBet = {
+                userId: bet.userId,
+                username: bet.username,
+                amount: bet.amount,
+                horse: horseSnapshot,
+                betType,
+                timestamp: Date.now(),
+            };
+        }
+        if (won && (!topSinglePayout || winnings > topSinglePayout.amount)) {
+            topSinglePayout = {
+                userId: bet.userId,
+                username: bet.username,
+                amount: winnings,
+                horse: horseSnapshot,
+                betType,
+                timestamp: Date.now(),
+            };
+        }
+
         results.push({ ...bet, won, winnings, horsePosition });
+    }
+
+    if (game.guildId && Object.keys(horseDeltas).length > 0) {
+        try {
+            await applyRaceAggregates(game.guildId, horseDeltas, {
+                biggestSingleBet: topSingleBet,
+                biggestSinglePayout: topSinglePayout,
+            });
+        } catch (err) {
+            logger.warn(`[race] failed to write guild aggregates for ${game.guildId}: ${err.message}`);
+        }
     }
 
     for (const result of results) {

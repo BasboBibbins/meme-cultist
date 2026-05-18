@@ -208,8 +208,12 @@ async function generateStatsEmbed(page, interaction, user) {
                     `*Races:* **${calcTotalGames(gameStats, 'race')}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'race')}%**`,
                     rc.totalBet && `*Total Bet:* **${rc.totalBet}**`,
-                    rc.biggestWin && `*Biggest Win:* **${rc.biggestWin}**`,
-                    rc.biggestLoss && `*Biggest Loss:* **${rc.biggestLoss}**`,
+                    rc.biggestWin && (rc.biggestWinHorse
+                        ? `*Biggest Win:* **${rc.biggestWin}** on ${rc.biggestWinHorse.emoji} ${rc.biggestWinHorse.name} [${rc.biggestWinHorse.displayOdds}x]`
+                        : `*Biggest Win:* **${rc.biggestWin}**`),
+                    rc.biggestLoss && (rc.biggestLossHorse
+                        ? `*Biggest Loss:* **${rc.biggestLoss}** on ${rc.biggestLossHorse.emoji} ${rc.biggestLossHorse.name} [${rc.biggestLossHorse.displayOdds}x]`
+                        : `*Biggest Loss:* **${rc.biggestLoss}**`),
                     `*Net Profit:* **${formatProfit(rc.profit || 0)}**`
                 ]), inline: true },
                 { name: "Craps", value: buildDesc([

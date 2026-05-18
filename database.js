@@ -111,6 +111,8 @@ async function getDefaultDB(user) {
                 "losses": 0,
                 "biggestWin": 0,
                 "biggestLoss": 0,
+                "biggestWinHorse": null,
+                "biggestLossHorse": null,
                 "totalBet": 0,
                 "profit": 0,
             },
