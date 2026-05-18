@@ -71,7 +71,7 @@ const config = {
 
     // Rate limiting
     USER_COOLDOWN: 5,
-    MENTION_COOLDOWN: 60,
+    MENTION_COOLDOWN: parseInt(process.env.MENTION_COOLDOWN || "60", 10),
     GLOBAL_LIMIT: 30,
     WINDOW_SIZE: 60,
     IMAGE_GEN_LIMIT: 5,
