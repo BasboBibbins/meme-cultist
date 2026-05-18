@@ -17,8 +17,8 @@ const cloudflare = require("./adapters/cloudflare");
 const _cacheStats = new Map();
 function recordCacheStats(variant, usage) {
     if (!variant) return;
-    const hit = usage?.prompt_tokens_hit_tokens || usage?.prompt_cache_hit_tokens || 0;
-    const miss = usage?.prompt_tokens_missed_tokens || usage?.prompt_cache_miss_tokens || 0;
+    const hit = usage?.prompt_cache_hit_tokens || 0;
+    const miss = usage?.prompt_cache_miss_tokens || 0;
     const entry = _cacheStats.get(variant) || { hit: 0, miss: 0, calls: 0 };
     entry.hit += hit;
     entry.miss += miss;
@@ -85,11 +85,51 @@ async function embed(args) {
     return { ...out, latency_ms };
 }
 
+// Streaming does not retry automatically (mid-stream retry would require
+// replaying any text already shown to the user). The router still applies a
+// first-chunk timeout and a per-chunk inactivity watchdog so a stalled
+// upstream cannot hang a Discord reply indefinitely, and emits latency /
+// chunk-count telemetry on completion to match the non-streaming `chat()`
+// observability.
 async function* chatStream(args) {
     const label = args.label || "chatStream";
-    // Streaming does not retry automatically; callers should fall back to
-    // the non-streaming chat() if the generator throws.
-    yield* deepseek.chatStream(args);
+    const firstChunkMs = args.timeoutMs ?? config.LLM_DEFAULT_TIMEOUT_MS ?? 60000;
+    const idleMs = args.streamIdleTimeoutMs ?? config.LLM_STREAM_IDLE_TIMEOUT_MS ?? 30000;
+    const start = Date.now();
+    let firstChunkAt = null;
+    let chunks = 0;
+
+    const inner = deepseek.chatStream(args);
+    const iter = inner[Symbol.asyncIterator]();
+
+    try {
+        while (true) {
+            const waitMs = firstChunkAt === null ? firstChunkMs : idleMs;
+            const next = iter.next();
+            const timeoutErr = new Error(
+                firstChunkAt === null
+                    ? `${label} first chunk timed out (${waitMs}ms)`
+                    : `${label} stalled — no chunk for ${waitMs}ms`
+            );
+            let step;
+            try {
+                step = await withTimeout(next, waitMs, timeoutErr);
+            } catch (err) {
+                // Best-effort close the upstream iterator so the socket releases.
+                try { await iter.return?.(); } catch (_) {}
+                logger.warn(`[llm] ${label} stream aborted after ${Date.now() - start}ms (${chunks} chunks): ${err.message}`);
+                throw err;
+            }
+            if (step.done) break;
+            if (firstChunkAt === null) firstChunkAt = Date.now();
+            chunks += 1;
+            yield step.value;
+        }
+    } finally {
+        const total = Date.now() - start;
+        const ttfb = firstChunkAt !== null ? firstChunkAt - start : null;
+        logger.debug(`[llm] ${label} stream done chunks=${chunks} ttfb_ms=${ttfb ?? "n/a"} total_ms=${total}`);
+    }
 }
 
 module.exports = { chat, chatStream, describeImage, generateImage, embed, getCacheStats };
