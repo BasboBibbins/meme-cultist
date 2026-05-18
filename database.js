@@ -178,6 +178,9 @@ async function getDefaultDB(user) {
             "lastBet": "",
             "lastLines": 1,
         },
+        "race": {
+            "lastBet": "",
+        },
     }
 }
 module.exports = {
