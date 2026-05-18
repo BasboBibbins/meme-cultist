@@ -180,6 +180,7 @@ async function getDefaultDB(user) {
         },
         "race": {
             "lastBet": "",
+            "lastBetType": "win",
         },
     }
 }
