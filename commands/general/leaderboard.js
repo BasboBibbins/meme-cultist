@@ -2,10 +2,16 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { getAllTimeTopUsers, getCurrentTopUsers } = require("../../utils/bank");
+const { getRaceStats } = require("../../utils/guildStats");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 
-const TOTAL_PAGES = 5;
+const TOTAL_PAGES = 6;
+
+function formatHorse(horse) {
+    if (!horse) return "—";
+    return `${horse.emoji} ${horse.name} [${horse.displayOdds}x]`;
+}
 
 function totalNumOfCmds(type) {
     if (!type || typeof type !== 'object') return 0;
@@ -108,6 +114,54 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
             break;
         }
         case 5: {
+            embed.setDescription("🏇 Server-wide horse racing records.");
+            const raceStats = await getRaceStats(interaction.guild.id);
+            const horseEntries = Object.values(raceStats.horses || {});
+
+            const byWagered = horseEntries
+                .filter(h => h.wagered > 0)
+                .sort((a, b) => b.wagered - a.wagered)
+                .slice(0, 5);
+            const mostBetValue = byWagered.length
+                ? byWagered.map((h, i) =>
+                    `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.bets.toLocaleString('en-US')} bet${h.bets === 1 ? '' : 's'} / ${h.wagered.toLocaleString('en-US')} ${CURRENCY_NAME}`
+                ).join('\n')
+                : '*No bets recorded yet*';
+            embed.addFields({ name: "Biggest Horse Bet (most wagered)", value: mostBetValue, inline: false });
+
+            const byProfit = horseEntries
+                .map(h => ({ ...h, profit: h.payouts - h.wagered }))
+                .filter(h => h.wagered > 0)
+                .sort((a, b) => b.profit - a.profit)
+                .slice(0, 5);
+            const profitValue = byProfit.length
+                ? byProfit.map((h, i) => {
+                    const sign = h.profit >= 0 ? '+' : '';
+                    return `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.wagered.toLocaleString('en-US')} wagered / ${sign}${h.profit.toLocaleString('en-US')} ${CURRENCY_NAME} profit`;
+                }).join('\n')
+                : '*No bets recorded yet*';
+            embed.addFields({ name: "Most Profitable Horse (bettor POV)", value: profitValue, inline: false });
+
+            const singleBet = raceStats.biggestSingleBet;
+            embed.addFields({
+                name: "Biggest Single Bet",
+                value: singleBet
+                    ? `<@${singleBet.userId}> — **${singleBet.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on ${formatHorse(singleBet.horse)} (${(singleBet.betType || 'win').charAt(0).toUpperCase() + (singleBet.betType || 'win').slice(1)})`
+                    : '*No bets recorded yet*',
+                inline: false,
+            });
+
+            const singlePayout = raceStats.biggestSinglePayout;
+            embed.addFields({
+                name: "Biggest Single Payout",
+                value: singlePayout
+                    ? `<@${singlePayout.userId}> — won **${singlePayout.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on ${formatHorse(singlePayout.horse)} (${(singlePayout.betType || 'win').charAt(0).toUpperCase() + (singlePayout.betType || 'win').slice(1)})`
+                    : '*No payouts recorded yet*',
+                inline: false,
+            });
+            break;
+        }
+        case 6: {
             embed.setDescription("Who's been using the server the most.");
             embed.addFields(
                 { name: "Most Commands Used", value: formatTopList(topBy(allUsers, u => totalNumOfCmds(u.value.stats?.commands?.total))), inline: true },
