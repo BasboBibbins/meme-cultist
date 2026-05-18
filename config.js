@@ -169,6 +169,10 @@ const config = {
     // LLM provider layer (utils/llm/)
     LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
     LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),
+    // Per-chunk inactivity watchdog for streaming completions. Lower than the
+    // overall LLM timeout because once chunks are flowing, a 30s gap is already
+    // pathological.
+    LLM_STREAM_IDLE_TIMEOUT_MS: parseInt(process.env.LLM_STREAM_IDLE_TIMEOUT_MS || "30000", 10),
 
     // Durable job queue (utils/jobs/)
     JOB_TICK_MS: parseInt(process.env.JOB_TICK_MS || "2000", 10),
