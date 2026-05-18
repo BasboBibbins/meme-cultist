@@ -31,7 +31,7 @@ async function getGameStats(userId) {
         'flip.wins', 'flip.losses', 'flip.biggestWin', 'flip.biggestLoss', 'flip.profit',
         'begs.wins', 'begs.losses', 'begs.profit',
         'roulette.wins', 'roulette.losses', 'roulette.totalBet', 'roulette.biggestWin', 'roulette.biggestLoss', 'roulette.profit',
-        'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss', 'race.profit',
+        'race.wins', 'race.losses', 'race.totalBet', 'race.biggestWin', 'race.biggestLoss', 'race.biggestWinHorse', 'race.biggestLossHorse', 'race.profit',
         'craps.rolls', 'craps.wins', 'craps.losses', 'craps.pushes', 'craps.pointsHit', 'craps.sevenOuts', 'craps.totalBet', 'craps.biggestWin', 'craps.biggestLoss', 'craps.profit',
         'duel.wins', 'duel.losses', 'duel.draws', 'duel.totalBet', 'duel.biggestWin', 'duel.biggestLoss', 'duel.profit',
         'poker.wins', 'poker.losses', 'poker.royals', 'poker.biggestWin', 'poker.biggestLoss', 'poker.profit'
@@ -69,8 +69,8 @@ function calcWinRate(gameStats, gameName) {
 }
 
 function formatProfit(value) {
-    if (value > 0) return `+${value.toLocaleString()}`;
-    if (value < 0) return `${value.toLocaleString()}`;
+    if (value > 0) return `+${value.toLocaleString("en-US")}`;
+    if (value < 0) return `${value.toLocaleString("en-US")}`;
     return '0';
 }
 
@@ -110,11 +110,11 @@ async function generateStatsEmbed(page, interaction, user) {
             const { daily, monthly, yearly, total } = commands;
             embed.setTitle(`${user.displayName }'s Command Stats`)
             embed.setFields(
-                { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily || {})}**\n*Favorite Command:* **${getFavoriteCommand(daily || {}).command} (${getFavoriteCommand(daily || {}).uses})**`, inline: true },
-                { name: "This Month", value: `*Commands Used:* **${totalNumOfCmds(monthly || {})}**\n*Favorite Command:* **${getFavoriteCommand(monthly || {}).command} (${getFavoriteCommand(monthly || {}).uses})**`, inline: true },
+                { name: "Today", value: `*Commands Used:* **${totalNumOfCmds(daily || {}).toLocaleString("en-US")}**\n*Favorite Command:* **${getFavoriteCommand(daily || {}).command} (${getFavoriteCommand(daily || {}).uses.toLocaleString("en-US")})**`, inline: true },
+                { name: "This Month", value: `*Commands Used:* **${totalNumOfCmds(monthly || {}).toLocaleString("en-US")}**\n*Favorite Command:* **${getFavoriteCommand(monthly || {}).command} (${getFavoriteCommand(monthly || {}).uses.toLocaleString("en-US")})**`, inline: true },
                 { name: " ", value: " ", inline: false},
-                { name: "This Year", value: `*Commands Used:* **${totalNumOfCmds(yearly || {})}**\n*Favorite Command:* **${getFavoriteCommand(yearly || {}).command} (${getFavoriteCommand(yearly || {}).uses})**`, inline: true },
-                { name: "All Time", value: `*Commands Used:* **${totalNumOfCmds(total || {})}**\n*Favorite Command:* **${getFavoriteCommand(total || {}).command} (${getFavoriteCommand(total || {}).uses})**`, inline: true },
+                { name: "This Year", value: `*Commands Used:* **${totalNumOfCmds(yearly || {}).toLocaleString("en-US")}**\n*Favorite Command:* **${getFavoriteCommand(yearly || {}).command} (${getFavoriteCommand(yearly || {}).uses.toLocaleString("en-US")})**`, inline: true },
+                { name: "All Time", value: `*Commands Used:* **${totalNumOfCmds(total || {}).toLocaleString("en-US")}**\n*Favorite Command:* **${getFavoriteCommand(total || {}).command} (${getFavoriteCommand(total || {}).uses.toLocaleString("en-US")})**`, inline: true },
             );
             break;
         }
@@ -125,27 +125,27 @@ async function generateStatsEmbed(page, interaction, user) {
             const cooldowns = stats?.cooldowns || {};
             embed.setTitle(`${user.displayName }'s Currency Stats`)
             embed.setFields(
-                { name: "Current Balance", value: `${stats?.balance ?? 0} ${CURRENCY_NAME}`, inline: true },
-                { name: "Bank Balance", value: `${stats?.bank ?? 0} ${CURRENCY_NAME}`, inline: true },
+                { name: "Current Balance", value: `${(stats?.balance ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
+                { name: "Bank Balance", value: `${(stats?.bank ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
                 { name: " ", value: " ", inline: false},
-                { name: "Largest Balance", value: `${stats?.stats?.largestBalance ?? 0} ${CURRENCY_NAME}`, inline: true },
-                { name: "Largest Bank Balance", value: `${stats?.stats?.largestBank ?? 0} ${CURRENCY_NAME}`, inline: true },
+                { name: "Largest Balance", value: `${(stats?.stats?.largestBalance ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
+                { name: "Largest Bank Balance", value: `${(stats?.stats?.largestBank ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
                 { name: " ", value: " ", inline: false},
                 { name: "Dailies", value: buildDesc([
-                    `*Total Claimed:* **${dailies.claimed ?? 0}**`,
-                    `*Current Streak:* **${dailies.currentStreak ?? 0}**`,
-                    `*Longest Streak:* **${dailies.longestStreak ?? 0}**`,
+                    `*Total Claimed:* **${(dailies.claimed ?? 0).toLocaleString("en-US")}**`,
+                    `*Current Streak:* **${(dailies.currentStreak ?? 0).toLocaleString("en-US")}**`,
+                    `*Longest Streak:* **${(dailies.longestStreak ?? 0).toLocaleString("en-US")}**`,
                     `*Next Available:* ${formatCooldown(cooldowns.daily)}`
                 ]), inline: true },
                 { name: "Weeklies", value: buildDesc([
-                    `*Total Claimed:* **${weeklies.claimed ?? 0}**`,
+                    `*Total Claimed:* **${(weeklies.claimed ?? 0).toLocaleString("en-US")}**`,
                     `*Next Available:* ${formatCooldown(cooldowns.weekly)}`
                 ]), inline: true },
                 { name: " ", value: " ", inline: false},
                 { name: "Shop", value: buildDesc([
-                    `*Purchases:* **${shop.purchases ?? 0}**`,
-                    `*Total Spent:* **${(shop.spent ?? 0).toLocaleString()} ${CURRENCY_NAME}**`,
-                    `*Biggest Purchase:* **${(shop.biggestPurchase ?? 0).toLocaleString()} ${CURRENCY_NAME}**`,
+                    `*Purchases:* **${(shop.purchases ?? 0).toLocaleString("en-US")}**`,
+                    `*Total Spent:* **${(shop.spent ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+                    `*Biggest Purchase:* **${(shop.biggestPurchase ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
                 ]), inline: true },
             );
             break;
@@ -166,75 +166,75 @@ async function generateStatsEmbed(page, interaction, user) {
             embed.setTitle(`${user.displayName }'s Game Stats`)
             embed.setFields(
                 { name: "Blackjack", value: buildDesc([
-                    `*Games Played:* **${calcTotalGames(gameStats, 'blackjack')}**`,
+                    `*Games Played:* **${calcTotalGames(gameStats, 'blackjack').toLocaleString("en-US")}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'blackjack')}%**`,
-                    bj.blackjacks && `*Blackjacks:* **${bj.blackjacks}**`,
-                    bj.biggestWin && `*Biggest Win:* **${bj.biggestWin}**`,
-                    bj.biggestLoss && `*Biggest Loss:* **${bj.biggestLoss}**`,
+                    bj.blackjacks && `*Blackjacks:* **${bj.blackjacks.toLocaleString("en-US")}**`,
+                    bj.biggestWin && `*Biggest Win:* **${bj.biggestWin.toLocaleString("en-US")}**`,
+                    bj.biggestLoss && `*Biggest Loss:* **${bj.biggestLoss.toLocaleString("en-US")}**`,
                     `*Net Profit:* **${formatProfit(bj.profit || 0)}**`
                 ]), inline: true },
                 { name: "Slots", value: buildDesc([
-                    `*Games Played:* **${calcTotalGames(gameStats, 'slots')}**`,
+                    `*Games Played:* **${calcTotalGames(gameStats, 'slots').toLocaleString("en-US")}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'slots')}%**`,
                     `*Next Free Spin:* ${formatCooldown(cooldowns.freespins)}`,
-                    sl.jackpots && `*Jackpots:* **${sl.jackpots}**`,
-                    sl.biggestWin && `*Biggest Win:* **${sl.biggestWin}**`,
-                    sl.biggestLoss && `*Biggest Loss:* **${sl.biggestLoss}**`,
+                    sl.jackpots && `*Jackpots:* **${sl.jackpots.toLocaleString("en-US")}**`,
+                    sl.biggestWin && `*Biggest Win:* **${sl.biggestWin.toLocaleString("en-US")}**`,
+                    sl.biggestLoss && `*Biggest Loss:* **${sl.biggestLoss.toLocaleString("en-US")}**`,
                     `*Net Profit:* **${formatProfit(sl.profit || 0)}**`
                 ]), inline: true },
                 { name: " ", value: " ", inline: false},
                 { name: "Flip", value: buildDesc([
-                    `*Total Flips:* **${calcTotalGames(gameStats, 'flip')}**`,
+                    `*Total Flips:* **${calcTotalGames(gameStats, 'flip').toLocaleString("en-US")}**`,
                     `*Success Rate:* **${calcWinRate(gameStats, 'flip')}%**`,
-                    fl.biggestWin && `*Biggest Win:* **${fl.biggestWin}**`,
-                    fl.biggestLoss && `*Biggest Loss:* **${fl.biggestLoss}**`,
+                    fl.biggestWin && `*Biggest Win:* **${fl.biggestWin.toLocaleString("en-US")}**`,
+                    fl.biggestLoss && `*Biggest Loss:* **${fl.biggestLoss.toLocaleString("en-US")}**`,
                     `*Net Profit:* **${formatProfit(fl.profit || 0)}**`
                 ]), inline: true },
                 { name: "Beg", value: buildDesc([
-                    `*Total Begs:* **${calcTotalGames(gameStats, 'begs')}**`,
+                    `*Total Begs:* **${calcTotalGames(gameStats, 'begs').toLocaleString("en-US")}**`,
                     `*Success Rate:* **${calcWinRate(gameStats, 'begs')}%**`,
                     `*Net Profit:* **${formatProfit(bg.profit || 0)}**`
                 ]), inline: true },
                 { name: " ", value: " ", inline: false},
                 { name: "Roulette", value: buildDesc([
-                    `*Games Played:* **${calcTotalGames(gameStats, 'roulette')}**`,
+                    `*Games Played:* **${calcTotalGames(gameStats, 'roulette').toLocaleString("en-US")}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'roulette')}%**`,
-                    rl.totalBet && `*Total Bet:* **${rl.totalBet}**`,
-                    rl.biggestWin && `*Biggest Win:* **${rl.biggestWin}**`,
-                    rl.biggestLoss && `*Biggest Loss:* **${rl.biggestLoss}**`,
+                    rl.totalBet && `*Total Bet:* **${rl.totalBet.toLocaleString("en-US")}**`,
+                    rl.biggestWin && `*Biggest Win:* **${rl.biggestWin.toLocaleString("en-US")}**`,
+                    rl.biggestLoss && `*Biggest Loss:* **${rl.biggestLoss.toLocaleString("en-US")}**`,
                     `*Net Profit:* **${formatProfit(rl.profit || 0)}**`
                 ]), inline: true },
                 { name: "Race", value: buildDesc([
-                    `*Races:* **${calcTotalGames(gameStats, 'race')}**`,
+                    `*Races:* **${calcTotalGames(gameStats, 'race').toLocaleString("en-US")}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'race')}%**`,
-                    rc.totalBet && `*Total Bet:* **${rc.totalBet}**`,
+                    rc.totalBet && `*Total Bet:* **${rc.totalBet.toLocaleString("en-US")}**`,
                     rc.biggestWin && (rc.biggestWinHorse
-                        ? `*Biggest Win:* **${rc.biggestWin}** on ${rc.biggestWinHorse.emoji} ${rc.biggestWinHorse.name} [${rc.biggestWinHorse.displayOdds}x]`
-                        : `*Biggest Win:* **${rc.biggestWin}**`),
+                        ? `*Biggest Win:* **${rc.biggestWin.toLocaleString("en-US")}** on ${rc.biggestWinHorse.emoji} ${rc.biggestWinHorse.name} [${rc.biggestWinHorse.displayOdds}x]`
+                        : `*Biggest Win:* **${rc.biggestWin.toLocaleString("en-US")}**`),
                     rc.biggestLoss && (rc.biggestLossHorse
-                        ? `*Biggest Loss:* **${rc.biggestLoss}** on ${rc.biggestLossHorse.emoji} ${rc.biggestLossHorse.name} [${rc.biggestLossHorse.displayOdds}x]`
-                        : `*Biggest Loss:* **${rc.biggestLoss}**`),
+                        ? `*Biggest Loss:* **${rc.biggestLoss.toLocaleString("en-US")}** on ${rc.biggestLossHorse.emoji} ${rc.biggestLossHorse.name} [${rc.biggestLossHorse.displayOdds}x]`
+                        : `*Biggest Loss:* **${rc.biggestLoss.toLocaleString("en-US")}**`),
                     `*Net Profit:* **${formatProfit(rc.profit || 0)}**`
                 ]), inline: true },
                 { name: "Craps", value: buildDesc([
-                    `*Rolls:* **${cr.rolls || 0}**`,
+                    `*Rolls:* **${(cr.rolls || 0).toLocaleString("en-US")}**`,
                     `*Win Rate:* **${calcWinRate(gameStats, 'craps')}%**`,
-                    cr.pointsHit && `*Points Hit:* **${cr.pointsHit}**`,
-                    cr.sevenOuts && `*Seven Outs:* **${cr.sevenOuts}**`,
-                    cr.biggestWin && `*Biggest Win:* **${cr.biggestWin}**`,
-                    cr.biggestLoss && `*Biggest Loss:* **${cr.biggestLoss}**`,
+                    cr.pointsHit && `*Points Hit:* **${cr.pointsHit.toLocaleString("en-US")}**`,
+                    cr.sevenOuts && `*Seven Outs:* **${cr.sevenOuts.toLocaleString("en-US")}**`,
+                    cr.biggestWin && `*Biggest Win:* **${cr.biggestWin.toLocaleString("en-US")}**`,
+                    cr.biggestLoss && `*Biggest Loss:* **${cr.biggestLoss.toLocaleString("en-US")}**`,
                     `*Net Profit:* **${formatProfit(cr.profit || 0)}**`
                 ]), inline: true },
             );
             if (du.wins || du.losses || du.draws) {
                 embed.addFields(
                     { name: "Duel", value: buildDesc([
-                        `*Duels:* **${calcTotalGames(gameStats, 'duel')}**`,
+                        `*Duels:* **${calcTotalGames(gameStats, 'duel').toLocaleString("en-US")}**`,
                         `*Win Rate:* **${calcWinRate(gameStats, 'duel')}%**`,
-                        du.draws && `*Draws:* **${du.draws}**`,
-                        du.totalBet && `*Total Bet:* **${du.totalBet}**`,
-                        du.biggestWin && `*Biggest Win:* **${du.biggestWin}**`,
-                        du.biggestLoss && `*Biggest Loss:* **${du.biggestLoss}**`,
+                        du.draws && `*Draws:* **${du.draws.toLocaleString("en-US")}**`,
+                        du.totalBet && `*Total Bet:* **${du.totalBet.toLocaleString("en-US")}**`,
+                        du.biggestWin && `*Biggest Win:* **${du.biggestWin.toLocaleString("en-US")}**`,
+                        du.biggestLoss && `*Biggest Loss:* **${du.biggestLoss.toLocaleString("en-US")}**`,
                         `*Net Profit:* **${formatProfit(du.profit || 0)}**`
                     ]), inline: true },
                 );
@@ -242,11 +242,11 @@ async function generateStatsEmbed(page, interaction, user) {
             if (pk.wins || pk.losses) {
                 embed.addFields(
                     { name: "Poker", value: buildDesc([
-                        `*Games Played:* **${calcTotalGames(gameStats, 'poker')}**`,
+                        `*Games Played:* **${calcTotalGames(gameStats, 'poker').toLocaleString("en-US")}**`,
                         `*Win Rate:* **${calcWinRate(gameStats, 'poker')}%**`,
-                        pk.royals && `*Royal Flushes:* **${pk.royals}**`,
-                        pk.biggestWin && `*Biggest Win:* **${pk.biggestWin}**`,
-                        pk.biggestLoss && `*Biggest Loss:* **${pk.biggestLoss}**`,
+                        pk.royals && `*Royal Flushes:* **${pk.royals.toLocaleString("en-US")}**`,
+                        pk.biggestWin && `*Biggest Win:* **${pk.biggestWin.toLocaleString("en-US")}**`,
+                        pk.biggestLoss && `*Biggest Loss:* **${pk.biggestLoss.toLocaleString("en-US")}**`,
                         `*Net Profit:* **${formatProfit(pk.profit || 0)}**`
                     ]), inline: true },
                 );
@@ -263,7 +263,7 @@ async function generateStatsEmbed(page, interaction, user) {
                 ? chatbotData.facts.map(f => `**${f.key.replace(/_/g, ' ')}:** ${f.value}`).join('\n')
                 : 'No facts recorded yet. Keep chatting!';
             embed.setFields(
-                { name: "Messages sent to chatbot", value: `${chatbotData.messageCount}`, inline: true },
+                { name: "Messages sent to chatbot", value: `${(chatbotData.messageCount ?? 0).toLocaleString("en-US")}`, inline: true },
                 { name: "\u200b", value: "\u200b", inline: false },
                 { name: "Personal Summary", value: latestUserSummary.slice(0, 1024), inline: false },
                 { name: "Known Facts", value: userFactsText.slice(0, 1024), inline: false },
