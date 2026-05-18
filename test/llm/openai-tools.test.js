@@ -148,7 +148,8 @@ async function run() {
                 {}
             );
             assert.deepStrictEqual(result.results, []);
-            assert.ok(result.message.includes("No matching"));
+            assert.strictEqual(result.total_matches, 0);
+            assert.ok(result.note.includes("No matches"));
         } finally {
             require("../../utils/messageArchive").searchFTS = originalSearchFTS;
         }

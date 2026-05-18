@@ -1610,9 +1610,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let streamedMessageId = null;
     let toolCallDepth = 0;
     const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
-    const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [] };
+    const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
+      const finalSlot = toolCallDepth === MAX_TOOL_DEPTH - 1;
       logger.debug(`[API Request] tools: ${JSON.stringify(TOOLS.map(t => t.function.name))}`);
       logger.debug(`[API Request] last user message: ${messages[messages.length - 1]?.content?.substring(0, 100)}...`);
 
@@ -1657,12 +1658,15 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
       }
 
+      if (finalSlot) {
+        logger.debug(`[ToolCall] Final budget slot — forcing tool_choice=none to synthesize from existing results.`);
+      }
       const completion = await llm.chat({
         model: CONVO_MODEL,
         messages: messages,
         temperature: 0.9,
         tools: TOOLS,
-        tool_choice: "auto",
+        tool_choice: finalSlot ? "none" : "auto",
         timeoutMs: 120_000,
         label: "handleBotMessage",
         variant: sys_variant,

@@ -104,7 +104,7 @@ module.exports = {
                 return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, ephemeral: true });
             }
             if (kbStore.getBySlug(guildId, slug)) {
-                return interaction.reply({ content: `Entry **${slug}** already exists. Use \/kb edit to modify it.`, ephemeral: true });
+                return interaction.reply({ content: `Entry **${slug}** already exists. Use \`\/kb edit\` to modify it.`, ephemeral: true });
             }
 
             const entry = await kbStore.create({ guildId, slug, title, content, tags, creatorId: interaction.user.id });
@@ -170,7 +170,7 @@ module.exports = {
         if (sub === "list") {
             const all = kbStore.listForGuild(guildId);
             if (all.length === 0) {
-                return interaction.reply({ content: "No knowledge base entries yet. Admins can add them with \/kb add.", ephemeral: true });
+                return interaction.reply({ content: "No knowledge base entries yet. Admins can add them with `\/kb add`.", ephemeral: true });
             }
             const lines = all.map(e => `**${e.slug}** — ${e.title}`);
             const embed = new EmbedBuilder()

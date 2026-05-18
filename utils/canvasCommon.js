@@ -1,7 +1,6 @@
 const { createCanvas, loadImage } = require("canvas");
 
-// Shared canvas helpers for every game renderer. See docs/CANVAS-STYLE-GUIDE.md
-// for which helpers are required and the visual contract they implement.
+// Shared canvas helpers for every game renderer.
 
 function withAlpha(color, a) {
     if (!color || typeof color !== "string") return `rgba(0,0,0,${a})`;
@@ -178,8 +177,7 @@ function drawAtmosphere(ctx, width, height, colors, opts = {}) {
 }
 
 // Outlined + glowing title. Stroke in feltColor, fill in accent. Same
-// treatment is reused for win/loss banners (pass colors.textWin / textLoss
-// as accent).
+// treatment is reused for win/loss banners (pass colors.textWin / textLoss as accent).
 function drawTitle(ctx, cx, y, text, accent, colors, opts = {}) {
     const felt = colors.feltColor || "#0f4c25";
     const size = opts.size || 46;

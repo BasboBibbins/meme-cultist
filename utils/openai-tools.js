@@ -7,6 +7,9 @@ const { canGenerateImage } = require("./ratelimiter");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
 const kbStore = require("./kb");
 const messageArchive = require("./messageArchive");
+const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
+const { getDailyShopStock, msUntilNextShopReset, formatPrice } = require("./inventory");
+const explanations = require("./explanations");
 const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
@@ -174,16 +177,55 @@ const TOOLS = [
   {
     type: "function",
     function: {
-      name: "search_history",
+      name: "get_jackpot",
       description:
-        "Search the channel's message history for past discussions related to a topic. Returns up to 5 relevant messages. " +
-        "CALL THIS TOOL whenever the user asks about past conversations, says 'do you remember', 'what did we say about', " +
-        "or refers to earlier messages. You CANNOT rely on your context window for old messages. " +
-        "Always call this tool before claiming you do not remember something.",
+        "Get the current progressive jackpot amount, the last winner (if any), and the minimum bet required to be eligible. " +
+        "Call this whenever the user asks about the jackpot, the prize pool, who last hit the jackpot, or how big the pot is.",
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_command_help",
+      description:
+        "Look up help on a slash command or a feature explanation (the same content surfaced by /help and the /help explanations dropdown). " +
+        "Resolves command names first (e.g. 'slots', 'balance'), then falls back to feature explanations (e.g. 'currency', 'dailyweekly'). " +
+        "Supports prefix/substring matching, so 'slot' will resolve to 'slots'. " +
+        "Call this whenever the user asks how a command works, what a command does, what its options are, or how a feature/game works.",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "The topic to search for in message history." },
+          name: { type: "string", description: "The slash command name or feature key (e.g. 'slots', 'balance', 'currency')." }
+        },
+        required: ["name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_shop",
+      description:
+        "Get today's daily shop stock for this guild. Returns the rotating items currently for sale (name, price, rarity, tier, description) " +
+        "and the relative time until the shop next resets. Call this when the user asks what's in the shop, what's for sale today, " +
+        "what they can buy, or when the shop resets.",
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_history",
+      description:
+        "Semantic + FTS search of this channel's past message history. " +
+        "Call AT MOST ONCE per turn with a single, comprehensive query covering everything you want to find. " +
+        "If results are empty or thin, synthesize from what is returned — do NOT retry with re-phrasings. " +
+        "Returns up to 5 hits with author, content, and timestamp.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "A single comprehensive query covering everything you want to find." },
           limit: { type: "integer", description: "Number of results to return (default 5, max 10)." }
         },
         required: ["query"]
@@ -523,7 +565,11 @@ async function handleSearchHistory(args, message, client) {
   try {
     const ftsResults = messageArchive.searchFTS(channelId, args.query, 30);
     if (ftsResults.length === 0) {
-      return { results: [], message: "No matching messages found in this channel's history." };
+      return {
+        results: [],
+        total_matches: 0,
+        note: "No matches in this channel's history for that query. Do not retry with paraphrases — answer from prior context or state that you do not have a record.",
+      };
     }
 
     let finalResults = ftsResults.slice(0, limit);
@@ -543,16 +589,174 @@ async function handleSearchHistory(args, message, client) {
       }
     }
 
-    return {
+    const out = {
       results: finalResults.map(r => ({
         author_id: r.author_id,
         content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
         created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
       })),
+      total_matches: ftsResults.length,
     };
+    if (finalResults.length < limit) {
+      out.note = "These are all matches for this query. Do not re-query with variations — synthesize from these results.";
+    }
+    return out;
   } catch (err) {
     logger.error(`[search_history] ${err.message}`);
     return { error: `Message history search failed: ${err.message}` };
+  }
+}
+
+function describeCommand(command) {
+  const data = command.data;
+  const options = (data.options || []).map(opt => {
+    const json = typeof opt.toJSON === "function" ? opt.toJSON() : opt;
+    return {
+      name: json.name,
+      description: json.description,
+      required: !!json.required,
+      type: json.type,
+    };
+  });
+  const usage = options.length
+    ? `/${data.name} ${options.map(o => o.required ? `<${o.name}>` : `[${o.name}]`).join(" ")}`
+    : `/${data.name}`;
+  return {
+    name: data.name,
+    description: data.description,
+    usage,
+    options,
+  };
+}
+
+function describeExplanation(key) {
+  const ex = explanations[key];
+  if (!ex) return null;
+  const out = { key, name: ex.name, description: ex.description?.trim?.() || ex.description };
+  if (ex.rules) out.rules = ex.rules.trim?.() || ex.rules;
+  if (ex.example) out.example = ex.example.trim?.() || ex.example;
+  if (ex.note) out.note = ex.note.trim?.() || ex.note;
+  return out;
+}
+
+function findFuzzyMatches(query, names) {
+  const q = query.toLowerCase().replace(/^\//, "");
+  const prefix = names.filter(n => n.toLowerCase().startsWith(q));
+  if (prefix.length) return prefix;
+  return names.filter(n => n.toLowerCase().includes(q));
+}
+
+async function handleGetCommandHelp(args, message, client) {
+  if (!args?.name || typeof args.name !== "string") {
+    return { error: "Missing required 'name' argument." };
+  }
+  const raw = args.name.trim().toLowerCase().replace(/^\//, "");
+  if (!raw) return { error: "Empty 'name' argument." };
+
+  try {
+    const commands = client?.slashcommands;
+    const explanationKeys = Object.keys(explanations);
+
+    if (commands?.has?.(raw)) {
+      const out = { match_type: "command", ...describeCommand(commands.get(raw)) };
+      const ex = describeExplanation(raw);
+      if (ex) out.explanation = ex;
+      return out;
+    }
+
+    if (explanations[raw]) {
+      return { match_type: "explanation", ...describeExplanation(raw) };
+    }
+
+    const commandNames = commands ? Array.from(commands.keys()) : [];
+    const cmdFuzzy = findFuzzyMatches(raw, commandNames);
+    if (cmdFuzzy.length === 1) {
+      const out = { match_type: "command", resolved_from: raw, ...describeCommand(commands.get(cmdFuzzy[0])) };
+      const ex = describeExplanation(cmdFuzzy[0]);
+      if (ex) out.explanation = ex;
+      return out;
+    }
+
+    const exFuzzy = findFuzzyMatches(raw, explanationKeys);
+    if (cmdFuzzy.length === 0 && exFuzzy.length === 1) {
+      return { match_type: "explanation", resolved_from: raw, ...describeExplanation(exFuzzy[0]) };
+    }
+
+    const candidates = [...new Set([...cmdFuzzy, ...exFuzzy])].slice(0, 5);
+    if (candidates.length > 0) {
+      return {
+        match_type: "ambiguous",
+        candidates,
+        note: `Multiple matches for "${raw}". Re-call get_command_help with one of the candidate names.`,
+      };
+    }
+
+    return {
+      match_type: "not_found",
+      query: raw,
+      available_commands: commandNames,
+      available_explanations: explanationKeys,
+      note: `No command or explanation matches "${raw}".`,
+    };
+  } catch (err) {
+    logger.error(`[get_command_help] ${err.message}`);
+    return { error: `Command help lookup failed: ${err.message}` };
+  }
+}
+
+async function handleGetJackpot(args, message, client) {
+  try {
+    const jackpot = await getJackpot();
+    const out = {
+      amount: jackpot.amount,
+      display: `${jackpot.amount.toLocaleString()} koku`,
+      min_bet_eligible: JACKPOT_MIN_BET,
+      contribution_rate_percent: Math.round(JACKPOT_RATE * 10000) / 100,
+      last_winner: null,
+    };
+    if (jackpot.lastWinner && jackpot.lastWon) {
+      out.last_winner = {
+        user_id: jackpot.lastWinner.id,
+        name: jackpot.lastWinner.name,
+        amount_won: jackpot.lastWinner.wonAmount,
+        won_at: `<t:${Math.floor(jackpot.lastWon / 1000)}:R>`,
+      };
+    }
+    return out;
+  } catch (err) {
+    logger.error(`[get_jackpot] ${err.message}`);
+    return { error: `Jackpot lookup failed: ${err.message}` };
+  }
+}
+
+async function handleGetShop(args, message, client) {
+  const guildId = message.guild?.id;
+  if (!guildId) return { error: "This tool can only be called from within a guild." };
+
+  try {
+    const stock = getDailyShopStock(guildId);
+    const resetMs = msUntilNextShopReset();
+    const resetEpoch = Math.floor((Date.now() + resetMs) / 1000);
+
+    return {
+      items: stock.map(item => ({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        category: item.category,
+        tier: item.tier,
+        rarity: item.rarity,
+        price: item.price,
+        price_display: formatPrice(item.price),
+      })),
+      resets_at: `<t:${resetEpoch}:R>`,
+      note: stock.length === 0
+        ? "The shop is currently empty."
+        : "These items reset daily at midnight UTC.",
+    };
+  } catch (err) {
+    logger.error(`[get_shop] ${err.message}`);
+    return { error: `Shop lookup failed: ${err.message}` };
   }
 }
 
@@ -567,13 +771,41 @@ const TOOL_HANDLERS = {
   set_reminder: handleSetReminder,
   lookup_kb: handleLookupKb,
   search_history: handleSearchHistory,
+  get_jackpot: handleGetJackpot,
+  get_shop: handleGetShop,
+  get_command_help: handleGetCommandHelp,
 };
+
+function normalizeArgs(args) {
+  if (!args || typeof args !== "object") return JSON.stringify(args ?? null);
+  const out = {};
+  for (const key of Object.keys(args).sort()) {
+    const v = args[key];
+    if (typeof v === "string") {
+      out[key] = v.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean).sort().join(" ");
+    } else {
+      out[key] = v;
+    }
+  }
+  return JSON.stringify(out);
+}
 
 async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const fnName = toolCall.function.name;
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
 
   logger.log(`[ToolCall] ${fnName}(${JSON.stringify(fnArgs)})`);
+
+  const cacheable = toolCtx?.queryCache && !SIDE_EFFECT_TOOLS.has(fnName);
+  const cacheKey = cacheable ? `${fnName}:${normalizeArgs(fnArgs)}` : null;
+  if (cacheable && toolCtx.queryCache.has(cacheKey)) {
+    const cached = toolCtx.queryCache.get(cacheKey);
+    logger.log(`[ToolCall] Dedup hit ${cacheKey}`);
+    const dedupNote = "Duplicate query — synthesize from the prior tool message for this call.";
+    const cloned = { ...cached };
+    cloned.note = cloned.note ? `${cloned.note} ${dedupNote}` : dedupNote;
+    return cloned;
+  }
 
   let result;
   try {
@@ -587,6 +819,8 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);
     result = { error: err.message };
   }
+
+  if (cacheable) toolCtx.queryCache.set(cacheKey, result);
 
   logger.debug(`[ToolCall] Result: ${JSON.stringify(result)}`);
   return result;
