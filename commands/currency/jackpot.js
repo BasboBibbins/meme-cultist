@@ -29,7 +29,7 @@ module.exports = {
             const lastWonDate = new Date(jackpot.lastWon);
             embed.addFields({
                 name: 'Last Winner',
-                value: `**${jackpot.lastWinner.name}** won ${jackpot.amount.toLocaleString('en-US')} ${CURRENCY_NAME}\n<t:${Math.floor(lastWonDate.getTime() / 1000)}:R>`,
+                value: `**${jackpot.lastWinner.name}** won ${jackpot.amount.toLocaleString('en-US')} ${CURRENCY_NAME}\n<t:${Math.floor(lastWonDate.getTime() / 1000)}:f>`,
                 inline: false
             });
         }

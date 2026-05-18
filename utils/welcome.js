@@ -153,10 +153,6 @@ module.exports = {
             .setTitle(titles[Math.floor(Math.random() * titles.length)])
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
             .setDescription(ripText)
-            .addFields(
-                { name: "Joined", value: member.joinedAt ? `<t:${Math.floor(joinDate.getTime() / 1000)}:R>` : "Unknown", inline: true },
-                { name: "Left", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
-            )
             .setFooter({ text: `${client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
             .setTimestamp();
         const message = await channel.send({ embeds: [embed] });

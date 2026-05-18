@@ -1,16 +1,15 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { CURRENCY_NAME } = require('../../config.js');
 const logger = require('../../utils/logger');
-const { formatTimeSince } = require('../../utils/time');
 const {
     RARITY, RARITY_ORDER,
     getItemById,
-    getDailyShopStock, msUntilNextShopReset,
+    getDailyShopStock, nextShopResetEpoch,
     ownsItem, purchaseItem,
     isThemeAvailable, formatAvailability,
     buildFooter, formatPrice, buildThemeInfoEmbed,
     PREVIEW_GAMES, GAME_LABELS, GAME_EMOJIS, GAME_FILES,
-    getPreviewAttachment,
+    getPreviewAttachment
 } = require('../../utils/inventory');
 
 module.exports = {
@@ -85,8 +84,7 @@ module.exports = {
                 }
                 if (!desc) desc = 'The shop is empty today. Check back tomorrow!';
 
-                const resetIn = `<t:${msUntilNextShopReset()}:R>`
-                // await formatTimeSince(msUntilNextShopReset());
+                const resetIn = `<t:${nextShopResetEpoch()}:t>`;
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: `Daily Shop — ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
                     .setDescription(desc.trim())

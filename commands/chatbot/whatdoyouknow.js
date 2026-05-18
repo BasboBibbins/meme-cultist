@@ -5,7 +5,7 @@ const { MAX_FACTS_IN_PROMPT } = require("../../config.js");
 
 function fmtTimestamp(ts) {
     if (!ts) return "unknown";
-    return `<t:${Math.floor(ts / 1000)}:R>`;
+    return `<t:${Math.floor(ts / 1000)}:S>`;
 }
 
 function factLines(facts) {
