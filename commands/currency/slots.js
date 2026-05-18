@@ -574,7 +574,17 @@ module.exports = {
         .setDescription(`Play a game of slots for ${CURRENCY_NAME}.`)
         .addSubcommand(s => s
             .setName("spin")
-            .setDescription("Open a persistent slots panel in this channel."))
+            .setDescription("Open a persistent slots panel in this channel.")
+            .addStringOption(o => o
+                .setName("bet")
+                .setDescription(`The amount to bet (e.g. 100, half, max / 2).`)
+                .setRequired(false))
+            .addIntegerOption(o => o
+                .setName("lines")
+                .setDescription(`The number of active paylines (1-${SLOTS_MAX_LINES}).`)
+                .setMinValue(1)
+                .setMaxValue(SLOTS_MAX_LINES)
+                .setRequired(false)))
         .addSubcommand(s => s
             .setName("paytable")
             .setDescription("View the paytable for the slots."))
@@ -614,7 +624,69 @@ module.exports = {
         }
 
         if (sub === "spin") {
+            const betOption = interaction.options.getString("bet");
+            const linesOption = interaction.options.getInteger("lines");
+
+            // Lines-only override: persist before opening the panel so its
+            // initial render uses the new value.
+            if (!betOption && typeof linesOption === "number") {
+                await persistPreferences(user.id, undefined, linesOption);
+            }
+
+            if (betOption) {
+                return spinFromSlash(interaction, user, client, betOption, linesOption);
+            }
             return openSlotsPanel(interaction, user, client);
         }
     },
 };
+
+// Fast path for `/slots spin bet:X [lines:Y]` — overwrites saved bet/lines,
+// opens the panel message, runs the spin immediately, and leaves the hub
+// buttons in place for follow-up spins. Mirrors blackjack's `/blackjack bet:X`
+// fast path.
+async function spinFromSlash(interaction, user, client, betExpression, linesOption) {
+    const key = sessionKey(interaction.channelId, user.id);
+    const existing = client.slotsPanels.get(key);
+    if (existing && existing.status !== "ended") {
+        return interaction.reply({
+            embeds: [errorEmbed(user, client, "You already have a slots panel open in this channel. Use the buttons on your existing message.")],
+            ephemeral: true,
+        });
+    }
+
+    const dbUser = (await db.get(user.id)) || {};
+    const safeLines = typeof linesOption === "number"
+        ? Math.min(Math.max(linesOption, 1), SLOTS_MAX_LINES)
+        : Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
+
+    const resolved = await resolveBet(betExpression, user.id);
+    if (!resolved.ok) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, resolved.reason)], ephemeral: true });
+    }
+    const totalCost = resolved.amount * safeLines;
+    const balance = dbUser.balance ?? 0;
+    if (totalCost > balance) {
+        return interaction.reply({
+            embeds: [errorEmbed(user, client, `Need **${totalCost.toLocaleString("en-US")}** ${CURRENCY_NAME} for this spin (${resolved.amount.toLocaleString("en-US")} × ${safeLines}); you have **${balance.toLocaleString("en-US")}**.`)],
+            ephemeral: true,
+        });
+    }
+
+    // Overwrite saved defaults (expression + lines) so they survive panel close.
+    await persistPreferences(user.id, betExpression.trim(), safeLines);
+
+    await interaction.deferReply();
+    const message = await interaction.fetchReply();
+
+    const session = createSession(
+        user.id, interaction.channelId, key, message.id,
+        resolved.amount, safeLines, balance, betExpression.trim(),
+    );
+    client.slotsPanels.set(key, session);
+
+    return spinWithSettings(
+        interaction, session, client, interaction.channel, user,
+        resolved.amount, safeLines, /* deferUpdate */ false,
+    );
+}
