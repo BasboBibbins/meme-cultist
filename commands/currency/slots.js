@@ -7,7 +7,7 @@ const {
     CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES,
     PANEL_IDLE_TIMEOUT,
 } = require("../../config.js");
-const { openBetModal } = require("../../utils/betModal");
+const { openBetModal, resolveBet } = require("../../utils/betModal");
 const { generatePaytable, buildPaytablePayload, playSlots } = require("../../utils/slots");
 const { drawSlotMachine } = require("../../utils/slotsCanvas");
 const { getTheme } = require("../../utils/slotsThemes");
@@ -111,13 +111,14 @@ async function buildIdlePanelAttachment(user, lastBet, lastLines) {
 
 // ─── session helpers ─────────────────────────────────────────────────────────
 
-function createSession(userId, channelId, key, messageId, lastBet, lastLines, startBalance) {
+function createSession(userId, channelId, key, messageId, lastBet, lastLines, startBalance, lastBetExpression) {
     return {
         userId,
         channelId,
         key,
         messageId,
         lastBet: lastBet || 0,
+        lastBetExpression: lastBetExpression || null,
         lastLines: Math.min(Math.max(lastLines || 1, 1), SLOTS_MAX_LINES),
         status: "waiting",
         collector: null,
@@ -135,9 +136,20 @@ function createSession(userId, channelId, key, messageId, lastBet, lastLines, st
     };
 }
 
-async function persistPreferences(userId, lastBet, lastLines) {
-    if (typeof lastBet === "number") await db.set(`${userId}.slots.lastBet`, lastBet);
+async function persistPreferences(userId, lastBetExpression, lastLines) {
+    if (typeof lastBetExpression === "string") {
+        await db.set(`${userId}.slots.lastBet`, lastBetExpression);
+    }
     if (typeof lastLines === "number") await db.set(`${userId}.slots.lastLines`, lastLines);
+}
+
+// Read the persisted lastBet expression, tolerating the pre-dynamic schema
+// where it was stored as an integer. An empty/zero value means no cached bet.
+function readPersistedBetExpression(dbUser) {
+    const raw = dbUser?.slots?.lastBet;
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+    if (typeof raw === "number" && raw > 0) return String(raw);
+    return null;
 }
 
 // ─── session lifecycle ───────────────────────────────────────────────────────
@@ -159,8 +171,17 @@ async function openSlotsPanel(interaction, user, client) {
     }
 
     const balance = dbUser.balance ?? 0;
-    const lastBet = dbUser.slots?.lastBet ?? 0;
+    const lastBetExpression = readPersistedBetExpression(dbUser);
     const lastLines = Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
+
+    // Resolve the cached expression to a live number for the initial display.
+    // A failed resolve (e.g. balance dropped below `max`) just leaves the panel
+    // in the "no bet set" state — the next Spin click will open the modal.
+    let lastBet = 0;
+    if (lastBetExpression) {
+        const resolved = await resolveBet(lastBetExpression, user.id, { requireBalance: false });
+        if (resolved.ok) lastBet = resolved.amount;
+    }
 
     await interaction.deferReply();
     const attachment = await buildIdlePanelAttachment(user, lastBet, lastLines);
@@ -174,7 +195,7 @@ async function openSlotsPanel(interaction, user, client) {
         files: attachment ? [attachment] : [],
     });
 
-    const session = createSession(user.id, interaction.channelId, key, message.id, lastBet, lastLines, balance);
+    const session = createSession(user.id, interaction.channelId, key, message.id, lastBet, lastLines, balance, lastBet > 0 ? lastBetExpression : null);
     client.slotsPanels.set(key, session);
     attachSessionCollector(client, message, session, interaction.channel);
 }
@@ -287,28 +308,52 @@ async function buildSessionSummaryEmbed(user, client, session, reason) {
 async function handleSpin(buttonInt, session, client, channel) {
     const user = buttonInt.user;
 
-    // No saved bet → open a combined bet+lines modal first, then spin.
-    if (!session.lastBet || session.lastBet < 1) {
-        const result = await openBetModal(buttonInt, {
-            title: "Place your slots bet",
-            placeholder: "e.g. 100, half, max",
-            extras: [linesInputSpec(session.lastLines)],
+    // Cached bet path — re-resolve the cached expression so dynamic bets like
+    // `max * 0.2` always reflect the live balance. On failure (expression
+    // resolves to 0, exceeds balance, etc.), clear the cache so the next click
+    // falls through to the bet modal.
+    if (session.lastBetExpression) {
+        const resolved = await resolveBet(session.lastBetExpression, user.id, {
+            requireBalance: false, // balance check happens after multiplying by lines
         });
-        if (!result) return;
-        const { amount, submit } = result;
+        const totalCost = resolved.ok ? resolved.amount * session.lastLines : 0;
+        const balance = (await db.get(`${user.id}.balance`)) ?? 0;
 
-        const lines = parseLinesField(submit);
-        if (lines === null) {
-            return submit.reply({ embeds: [errorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], ephemeral: true });
+        if (!resolved.ok || resolved.amount < 1 || totalCost > balance) {
+            session.lastBet = 0;
+            session.lastBetExpression = null;
+            const reason = !resolved.ok
+                ? resolved.reason
+                : `\`${session.lastBetExpression || ""}\` × ${session.lastLines} = ${totalCost.toLocaleString("en-US")} ${CURRENCY_NAME}, but you only have ${balance.toLocaleString("en-US")}.`;
+            return buttonInt.reply({
+                embeds: [errorEmbed(user, client, `${reason} Click **Spin** again to enter a new bet.`)],
+                ephemeral: true,
+            });
         }
 
-        session.lastBet = amount;
-        session.lastLines = lines;
-        await persistPreferences(user.id, amount, lines);
-        return spinWithSettings(submit, session, client, channel, user, amount, lines, /* deferUpdate */ true);
+        session.lastBet = resolved.amount;
+        return spinWithSettings(buttonInt, session, client, channel, user, resolved.amount, session.lastLines, /* deferUpdate */ true);
     }
 
-    return spinWithSettings(buttonInt, session, client, channel, user, session.lastBet, session.lastLines, /* deferUpdate */ true);
+    // No saved bet → open the combined bet+lines modal.
+    const result = await openBetModal(buttonInt, {
+        title: "Place your slots bet",
+        placeholder: "e.g. 100, half, max",
+        extras: [linesInputSpec(session.lastLines)],
+    });
+    if (!result) return;
+    const { amount, expression, submit } = result;
+
+    const lines = parseLinesField(submit);
+    if (lines === null) {
+        return submit.reply({ embeds: [errorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], ephemeral: true });
+    }
+
+    session.lastBet = amount;
+    session.lastBetExpression = expression;
+    session.lastLines = lines;
+    await persistPreferences(user.id, expression, lines);
+    return spinWithSettings(submit, session, client, channel, user, amount, lines, /* deferUpdate */ true);
 }
 
 // Shared spec for the lines text input. Discord modals only support length
@@ -411,7 +456,9 @@ async function spinWithSettings(interaction, session, client, channel, user, bet
     if (profit > current.biggestWin) current.biggestWin = profit;
     if (-profit > current.biggestLoss) current.biggestLoss = -profit;
 
-    await persistPreferences(user.id, bet, safeLines);
+    // Only the lines changed inside spinWithSettings — bet expression is
+    // persisted by the caller (handleSpin) at the modal-submit moment.
+    await persistPreferences(user.id, undefined, safeLines);
     await finishSpin(client, msg, current, channel);
 }
 
@@ -440,17 +487,20 @@ async function handleChangeBet(buttonInt, session, client) {
     const result = await openBetModal(buttonInt, {
         title: "Change slots bet",
         placeholder: "e.g. 100, half, max",
-        defaultAmount: session.lastBet > 0 ? String(session.lastBet) : undefined,
+        // Pre-fill with the cached expression (e.g. `max * 0.2`) when present
+        // so dynamic bets stay editable as-typed instead of becoming a literal.
+        defaultAmount: session.lastBetExpression || (session.lastBet > 0 ? String(session.lastBet) : undefined),
     });
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
 
     const current = client.slotsPanels.get(session.key);
     if (!current || current.status === "ended") {
         return submit.reply({ embeds: [errorEmbed(user, client, "Your slots panel is no longer active.")], ephemeral: true });
     }
     current.lastBet = amount;
-    await persistPreferences(user.id, amount, null);
+    current.lastBetExpression = expression;
+    await persistPreferences(user.id, expression, null);
 
     return submit.reply({
         embeds: [new EmbedBuilder()

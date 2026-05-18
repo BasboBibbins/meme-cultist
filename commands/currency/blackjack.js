@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, BLACKJACK_MAX_HANDS, PANEL_IDLE_TIMEOUT } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
-const { openBetModal } = require("../../utils/betModal");
+const { openBetModal, resolveBet } = require("../../utils/betModal");
 const wait = require("node:timers/promises").setTimeout;
 const { getHandValue, statusFromValue, checkHand, canSplit, isAcePair } = require("../../utils/blackjack");
 const { newDeck, drawCard } = require("../../utils/cards");
@@ -138,6 +138,7 @@ function createSession(userId, channelId, key, messageId, lastBet, status, start
         key,
         messageId,
         lastBet,
+        lastBetExpression: null,
         status,
         collector: null,
         startBalance,
@@ -267,13 +268,14 @@ async function handleChangeBet(buttonInt, session, client) {
         placeholder: "e.g. 100, half, max",
     });
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
 
     const current = client.blackjackTables.get(session.key);
     if (!current || current.status === "ended") {
         return submit.reply({ embeds: [errorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
     }
     current.lastBet = amount;
+    current.lastBetExpression = expression;
 
     return submit.reply({
         embeds: [new EmbedBuilder()
@@ -287,10 +289,19 @@ async function handleChangeBet(buttonInt, session, client) {
 async function handleDeal(buttonInt, session, client, channel) {
     const user = buttonInt.user;
 
-    // If a bet amount is already cached on the session, skip the modal and
-    // reuse it — matches the craps/roulette "cached bet" UX.
-    if (session.lastBet) {
-        return dealWithAmount(buttonInt, session, client, channel, user, session.lastBet, /* deferUpdate */ true);
+    // If a bet expression is cached on the session, re-resolve against the
+    // user's current balance so dynamic expressions like `max * 0.2` always
+    // reflect the live balance.
+    if (session.lastBetExpression) {
+        const resolved = await resolveBet(session.lastBetExpression, user.id);
+        if (!resolved.ok) {
+            session.lastBetExpression = null;
+            return buttonInt.reply({
+                embeds: [errorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
+                ephemeral: true,
+            });
+        }
+        return dealWithAmount(buttonInt, session, client, channel, user, resolved.amount, /* deferUpdate */ true);
     }
 
     const result = await openBetModal(buttonInt, {
@@ -298,7 +309,8 @@ async function handleDeal(buttonInt, session, client, channel) {
         placeholder: "e.g. 100, half, max",
     });
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
+    session.lastBetExpression = expression;
     return dealWithAmount(submit, session, client, channel, user, amount, /* deferUpdate */ true);
 }
 
@@ -324,6 +336,8 @@ async function dealWithAmount(interaction, session, client, channel, user, amoun
 
     current.lastBet = amount;
     current.status = "playing";
+    // lastBetExpression is set by handleDeal (modal path); cached path keeps the
+    // existing expression so the next deal re-resolves the same formula.
 
     if (deferUpdate) await interaction.deferUpdate();
 
@@ -825,6 +839,9 @@ module.exports = {
         // Create session before the hand so finishHand can find it
         const message = await interaction.fetchReply();
         const session = createSession(user.id, interaction.channelId, key, message.id, originalBet, "playing", startBalance);
+        // Seed expression from the slash-option string so follow-on Deal Again
+        // re-resolves dynamic bets like `max` against current balance.
+        session.lastBetExpression = String(betOption).trim();
         client.blackjackTables.set(key, session);
 
         await runHand(interaction, user, client, session, originalBet, message, interaction.channel);

@@ -6,6 +6,40 @@ const { parseBet } = require("./betparse");
 const PACKAGE_VERSION = require("../package.json").version;
 const DEFAULT_TIMEOUT_MS = 60000;
 
+// Re-resolve a cached bet expression against the user's *current* balance and
+// run the same validation chain openBetModal applies at submit time. Returns
+// { ok: true, amount } on success, or { ok: false, reason } on failure.
+// Callers use this for any bet that was cached as a raw expression string —
+// e.g. `max * 0.2` should evaluate to the user's current balance × 0.2, not
+// the value frozen the first time they typed it.
+async function resolveBet(expression, userId, opts = {}) {
+    const { min, max, requireBalance = true } = opts;
+    if (typeof expression !== "string" || expression.trim().length === 0) {
+        return { ok: false, reason: "Bet expression is empty." };
+    }
+
+    const amount = Number(await parseBet(expression, userId));
+    if (isNaN(amount) || amount % 1 !== 0) {
+        return { ok: false, reason: `\`${expression}\` no longer resolves to a valid whole number of ${CURRENCY_NAME}.` };
+    }
+    if (amount <= 0) {
+        return { ok: false, reason: `\`${expression}\` now resolves to 0 ${CURRENCY_NAME}.` };
+    }
+    if (min && amount < min) {
+        return { ok: false, reason: `\`${expression}\` now resolves to ${amount.toLocaleString("en-US")} — below the ${min.toLocaleString("en-US")} ${CURRENCY_NAME} minimum.` };
+    }
+    if (max && amount > max) {
+        return { ok: false, reason: `\`${expression}\` now resolves to ${amount.toLocaleString("en-US")} — above the ${max.toLocaleString("en-US")} ${CURRENCY_NAME} maximum.` };
+    }
+    if (requireBalance) {
+        const balance = (await db.get(`${userId}.balance`)) ?? 0;
+        if (balance < amount) {
+            return { ok: false, reason: `Insufficient funds — \`${expression}\` resolves to ${amount.toLocaleString("en-US")} ${CURRENCY_NAME}, you have ${balance.toLocaleString("en-US")}.` };
+        }
+    }
+    return { ok: true, amount };
+}
+
 function buildErrorEmbed(user, client, description) {
     return new EmbedBuilder()
         .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
@@ -80,6 +114,7 @@ async function openBetModal(buttonInt, opts) {
 
     const user = submit.user;
     const amountStr = submit.fields.getTextInputValue("amount");
+    const expression = amountStr.trim();
     const amount = Number(await parseBet(amountStr, user.id));
 
     if (isNaN(amount) || amount % 1 !== 0) {
@@ -109,7 +144,7 @@ async function openBetModal(buttonInt, opts) {
         return null;
     }
 
-    return { amount, submit };
+    return { amount, expression, submit };
 }
 
-module.exports = { openBetModal };
+module.exports = { openBetModal, resolveBet };
