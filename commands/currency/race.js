@@ -272,6 +272,10 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     const horse = game.horses[horseIndex];
 
     const cachedExpression = await db.get(`${user.id}.race.lastBet`);
+    const cachedBetTypeRaw = await db.get(`${user.id}.race.lastBetType`);
+    const cachedBetType = BET_TYPES.has((cachedBetTypeRaw || "").toLowerCase())
+        ? cachedBetTypeRaw.toLowerCase()
+        : "win";
 
     const modalOpts = {
         title: `Bet on Horse ${horse.number}`,
@@ -280,7 +284,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
             customId: "betType",
             label: "Bet Type (win / place / show)",
             placeholder: "win",
-            value: "win",
+            value: cachedBetType,
             minLength: 3,
             maxLength: 5,
         }],
@@ -315,6 +319,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     }
     await db.add(`${user.id}.stats.race.totalBet`, amount);
     await db.set(`${user.id}.race.lastBet`, expression);
+    await db.set(`${user.id}.race.lastBetType`, betTypeRaw);
 
     const betObj = {
         userId: user.id,
