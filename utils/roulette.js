@@ -69,8 +69,8 @@ function getNumberPosition(number) {
             case 'dozen2': return { x: GRID_X + dozenW * 1.5, y: DOZEN_Y + DOZEN_H / 2 };
             case 'dozen3': return { x: GRID_X + dozenW * 2.5, y: DOZEN_Y + DOZEN_H / 2 };
             case 'column1': return { x: GRID_X + GRID_W + COL21_W * 0.5, y: TABLE_Y + CELL_H * 0.5 };
-            case 'column2': return { x: GRID_X + GRID_W + COL21_W * 1.5, y: TABLE_Y + CELL_H * 1.5 };
-            case 'column3': return { x: GRID_X + GRID_W + COL21_W * 2.5, y: TABLE_Y + CELL_H * 2.5 };
+            case 'column2': return { x: GRID_X + GRID_W + COL21_W * 0.5, y: TABLE_Y + CELL_H * 1.5 };
+            case 'column3': return { x: GRID_X + GRID_W + COL21_W * 0.5, y: TABLE_Y + CELL_H * 2.5 };
             default: return null;
         }
     }
