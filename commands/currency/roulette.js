@@ -1,8 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, ROULETTE_MIN_BET, ROULETTE_MAX_BET, ROULETTE_IDLE_TIMEOUT } = require("../../config.js");
-const { openBetModal } = require("../../utils/betModal");
-const { parseBet } = require("../../utils/betparse");
+const { openBetModal, resolveBet } = require("../../utils/betModal");
 const {
     drawRouletteTable,
     drawResult,
@@ -69,23 +68,19 @@ module.exports = {
             await addNewDBUser(user);
         }
 
-        let initialAmount = null;
+        // Slash-supplied default bet is stashed as the raw expression so that
+        // subsequent bet-button clicks re-resolve it against the live balance.
+        let initialExpression = null;
         const amountStr = interaction.options.getString("amount");
         if (amountStr) {
-            const parsed = Number(await parseBet(amountStr, user.id));
-            if (isNaN(parsed) || parsed % 1 !== 0 || parsed <= 0) {
-                return interaction.reply({ embeds: [errorEmbed(user, client, `Default bet must be a positive whole number of ${CURRENCY_NAME}.`)], ephemeral: true });
+            const check = await resolveBet(amountStr, user.id, { min: ROULETTE_MIN_BET, max: ROULETTE_MAX_BET, requireBalance: false });
+            if (!check.ok) {
+                return interaction.reply({ embeds: [errorEmbed(user, client, check.reason)], ephemeral: true });
             }
-            if (ROULETTE_MIN_BET && parsed < ROULETTE_MIN_BET) {
-                return interaction.reply({ embeds: [errorEmbed(user, client, `Bet must be at least ${ROULETTE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}.`)], ephemeral: true });
-            }
-            if (ROULETTE_MAX_BET && parsed > ROULETTE_MAX_BET) {
-                return interaction.reply({ embeds: [errorEmbed(user, client, `Bet must be at most ${ROULETTE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}.`)], ephemeral: true });
-            }
-            initialAmount = parsed;
+            initialExpression = amountStr.trim();
         }
 
-        return handleNewGame(interaction, client, user, initialAmount);
+        return handleNewGame(interaction, client, user, initialExpression);
     },
 };
 
@@ -123,7 +118,7 @@ function buildBetsDescription(bets) {
         .join("\n");
 }
 
-async function handleNewGame(interaction, client, user, initialAmount = null) {
+async function handleNewGame(interaction, client, user, initialExpression = null) {
     const channel = interaction.channel;
     const channelId = channel.id;
 
@@ -142,7 +137,9 @@ async function handleNewGame(interaction, client, user, initialAmount = null) {
         bets: [],
         userAvatars: { [user.id]: avatarUrl },
         userColors: { [user.id]: chipColor },
-        userBetAmounts: initialAmount ? { [user.id]: initialAmount } : {},
+        // Cached as raw expression strings; resolved against the live balance
+        // each time a bet button is clicked.
+        userBetAmounts: initialExpression ? { [user.id]: initialExpression } : {},
         playerOrder: [user.id],
         totals: { [user.id]: { wagered: 0, won: 0, username: user.displayName } },
         themeId,
@@ -275,11 +272,24 @@ async function handleBetButton(buttonInt, state, betKey, client) {
         return buttonInt.reply({ content: "Unknown bet type.", ephemeral: true });
     }
 
-    const cachedAmount = state.userBetAmounts[buttonInt.user.id];
+    const cachedExpression = state.userBetAmounts[buttonInt.user.id];
 
-    // Straight always opens modal (needs number). Non-straight uses cache when present.
-    if (betKey !== "straight" && cachedAmount) {
-        return handleAddBet(buttonInt, client, buttonInt.user, betKey, null, cachedAmount, state);
+    // Straight always opens modal (needs number). Non-straight uses cache when
+    // present — re-resolve the cached expression so dynamic bets like
+    // `max * 0.2` always reflect the live balance.
+    if (betKey !== "straight" && cachedExpression) {
+        const resolved = await resolveBet(cachedExpression, buttonInt.user.id, {
+            min: ROULETTE_MIN_BET,
+            max: ROULETTE_MAX_BET,
+        });
+        if (!resolved.ok) {
+            delete state.userBetAmounts[buttonInt.user.id];
+            return buttonInt.reply({
+                embeds: [errorEmbed(buttonInt.user, client, `${resolved.reason} Click the bet button again to enter a new amount.`)],
+                ephemeral: true,
+            });
+        }
+        return handleAddBet(buttonInt, client, buttonInt.user, betKey, null, resolved.amount, state);
     }
 
     const modalOpts = {
@@ -294,12 +304,12 @@ async function handleBetButton(buttonInt, state, betKey, client) {
             placeholder: "e.g. 17",
             maxLength: 2,
         }];
-        if (cachedAmount) modalOpts.defaultAmount = String(cachedAmount);
+        if (cachedExpression) modalOpts.defaultAmount = cachedExpression;
     }
 
     const result = await openBetModal(buttonInt, modalOpts);
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
 
     let numberValue = null;
     if (betKey === "straight") {
@@ -319,27 +329,27 @@ async function handleBetButton(buttonInt, state, betKey, client) {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, "The wheel is spinning — try again next round.")], ephemeral: true });
     }
 
-    current.userBetAmounts[submit.user.id] = amount;
+    current.userBetAmounts[submit.user.id] = expression;
     return handleAddBet(submit, client, submit.user, betKey, numberValue, amount, current);
 }
 
 async function handleChangeBet(buttonInt, state) {
     const client = buttonInt.client;
-    const cached = state.userBetAmounts[buttonInt.user.id];
+    const cachedExpression = state.userBetAmounts[buttonInt.user.id];
     const result = await openBetModal(buttonInt, {
         title: "Set roulette bet amount",
         min: ROULETTE_MIN_BET,
         max: ROULETTE_MAX_BET,
-        defaultAmount: cached ? String(cached) : undefined,
+        defaultAmount: cachedExpression || undefined,
     });
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
 
     const current = client.rouletteGames.get(state.channelId);
     if (!current || current.status === "ended") {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
     }
-    current.userBetAmounts[submit.user.id] = amount;
+    current.userBetAmounts[submit.user.id] = expression;
 
     const embed = new EmbedBuilder()
         .setAuthor({ name: "Bet amount updated", iconURL: submit.user.displayAvatarURL({ dynamic: true }) })

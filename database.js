@@ -175,7 +175,7 @@ async function getDefaultDB(user) {
             incognitoChannels: [],
         },
         "slots": {
-            "lastBet": 0,
+            "lastBet": "",
             "lastLines": 1,
         },
     }
