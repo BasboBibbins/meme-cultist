@@ -70,14 +70,18 @@ const config = {
     FACT_CONFIDENCE_THRESHOLD: 2,
 
     // Rate limiting
-    USER_COOLDOWN: 5,
     MENTION_COOLDOWN: parseInt(process.env.MENTION_COOLDOWN || "60", 10),
-    GLOBAL_LIMIT: 30,
-    WINDOW_SIZE: 60,
     IMAGE_GEN_LIMIT: 5,
     IMAGE_GEN_WINDOW: 1800, // seconds (30 minutes)
     MENTION_LIMIT: 3,
     MENTION_WINDOW: 3600, // seconds (1 hour)
+
+    // Chatbot-channel throttle (reply-gated + rolling burst cap).
+    // In-flight timeout protects against a handler that threw or a restart
+    // mid-turn so a user is never permanently locked out.
+    CHAT_INFLIGHT_TIMEOUT_MS: parseInt(process.env.CHAT_INFLIGHT_TIMEOUT_MS || "120000", 10),
+    CHAT_BURST_LIMIT: parseInt(process.env.CHAT_BURST_LIMIT || "12", 10),
+    CHAT_BURST_WINDOW_MS: parseInt(process.env.CHAT_BURST_WINDOW_MS || "300000", 10),
 
     // Currency/game settings
     CURRENCY_NAME: "koku",
