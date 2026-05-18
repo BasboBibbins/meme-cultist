@@ -59,7 +59,7 @@ async function showPaytable(interaction, themeColors) {
         .setImage("attachment://poker-paytable.png")
         .setFooter(footer(interaction))
         .setTimestamp();
-    return interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
+    return interaction.reply({ embeds: [embed], files: [attachment] });
 }
 
 module.exports = {

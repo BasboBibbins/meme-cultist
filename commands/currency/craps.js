@@ -52,7 +52,7 @@ async function handlePaytable(interaction) {
         .setImage("attachment://craps-paytable.png")
         .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
-    return interaction.reply({ embeds: [embed], files: [attachment], ephemeral: true });
+    return interaction.reply({ embeds: [embed], files: [attachment] });
 }
 
 async function resolveChipColor(interaction, user) {
