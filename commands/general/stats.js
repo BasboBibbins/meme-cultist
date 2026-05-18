@@ -98,8 +98,8 @@ async function generateStatsEmbed(page, interaction, user) {
             embed.setTitle(`${user.displayName }'s General Stats`)
             embed.setFields(
                 { name: "General", value: `**Username:** ${user.username}\n**Nickname:** ${user.displayName }`, inline: false },
-                { name: "Discord Member Since", value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: "Joined Server", value: `<t:${Math.floor(interaction.guild.members.cache.get(user.id).joinedTimestamp / 1000)}:R>`, inline: true },
+                { name: "Discord Member Since", value: `<t:${Math.floor(user.createdTimestamp / 1000)}:f>`, inline: true },
+                { name: "Joined Server", value: `<t:${Math.floor(interaction.guild.members.cache.get(user.id).joinedTimestamp / 1000)}:f>`, inline: true },
                 { name: "Roles", value: `${fetchedUser.roles.cache.map(role => role.toString()).join(' ')}`, inline: false },
             );
             break;

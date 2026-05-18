@@ -8,7 +8,7 @@ const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels")
 const kbStore = require("./kb");
 const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
-const { getDailyShopStock, msUntilNextShopReset, formatPrice } = require("./inventory");
+const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
 const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
 const jobs = require("./jobs");
@@ -511,7 +511,7 @@ async function handleSetReminder(args, message, client, toolCtx) {
     run_at: parsed.runAt,
   });
 
-  let confirm = `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:R>.`;
+  let confirm = `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:S>.`;
   if (targets.length > 1) {
     confirm += ` Notifying ${targets.length} target(s).`;
   }
@@ -519,7 +519,7 @@ async function handleSetReminder(args, message, client, toolCtx) {
     const freqLabel = recurrence.frequency === "daily" ? "Daily" : "Weekly";
     confirm += ` Repeats ${freqLabel}`;
     if (recurrence.endAt) {
-      confirm += ` until <t:${Math.floor(recurrence.endAt / 1000)}:R>`;
+      confirm += ` until <t:${Math.floor(recurrence.endAt / 1000)}:F>`;
     } else if (recurrence.maxOccurrences) {
       confirm += ` for ${recurrence.maxOccurrences} occurrence(s)`;
     }
@@ -735,8 +735,7 @@ async function handleGetShop(args, message, client) {
 
   try {
     const stock = getDailyShopStock(guildId);
-    const resetMs = msUntilNextShopReset();
-    const resetEpoch = Math.floor((Date.now() + resetMs) / 1000);
+    const resetEpoch = nextShopResetEpoch();
 
     return {
       items: stock.map(item => ({
@@ -749,7 +748,7 @@ async function handleGetShop(args, message, client) {
         price: item.price,
         price_display: formatPrice(item.price),
       })),
-      resets_at: `<t:${resetEpoch}:R>`,
+      resets_at: `<t:${resetEpoch}:T>`,
       note: stock.length === 0
         ? "The shop is currently empty."
         : "These items reset daily at midnight UTC.",

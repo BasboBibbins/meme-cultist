@@ -279,11 +279,11 @@ function getDailyShopStock(guildId, date = new Date()) {
     return stock;
 }
 
-function msUntilNextShopReset(date = new Date()) {
+function nextShopResetEpoch(date = new Date()) {
     const next = new Date(Date.UTC(
         date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 0, 0, 0, 0,
     ));
-    return next.getTime() - date.getTime();
+    return Math.floor(next.getTime() / 1000);
 }
 
 // ── Purchase flow ───────────────────────────────────────────────────
@@ -501,6 +501,6 @@ module.exports = {
     getOwnedItems,
     getEquipped,
     getDailyShopStock,
-    msUntilNextShopReset,
+    nextShopResetEpoch,
     purchaseItem,
 };

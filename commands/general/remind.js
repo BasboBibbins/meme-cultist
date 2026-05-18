@@ -152,7 +152,7 @@ module.exports = {
                 const freqLabel = recurrence.frequency === "daily" ? "Daily" : "Weekly";
                 let recurText = `\n🔁 Repeats **${freqLabel}**`;
                 if (recurrence.endAt) {
-                    recurText += ` until <t:${Math.floor(recurrence.endAt / 1000)}:R>`;
+                    recurText += ` until <t:${Math.floor(recurrence.endAt / 1000)}:F>`;
                 }
                 description += recurText;
             }
@@ -195,7 +195,7 @@ module.exports = {
             const fields = rows.map(row => {
                 const payload = JSON.parse(row.payload);
                 const preview = payload.text.length > 40 ? payload.text.slice(0, 40) + "..." : payload.text;
-                let label = `ID ${row.id} — <t:${Math.floor(row.run_at / 1000)}:R>`;
+                let label = `ID ${row.id} — <t:${Math.floor(row.run_at / 1000)}:S>`;
                 if (payload.recurrence) {
                     const freq = payload.recurrence.frequency === "daily" ? "Daily" : "Weekly";
                     label += ` (${freq})`;
