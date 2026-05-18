@@ -36,8 +36,13 @@ async function applyRaceAggregates(guildId, perHorseDeltas, hallOfFameCandidates
                 bets: 0,
                 wagered: 0,
                 payouts: 0,
+                bettorIds: [],
                 lastSeen: 0,
             };
+            // Merge new bettor ids into the persistent set so the
+            // distinct-bettor count accumulates across races.
+            const merged = new Set(prev.bettorIds || []);
+            for (const uid of (delta.bettorIds || [])) merged.add(uid);
             horses[name] = {
                 name,
                 lastEmoji: delta.emoji ?? prev.lastEmoji,
@@ -45,6 +50,7 @@ async function applyRaceAggregates(guildId, perHorseDeltas, hallOfFameCandidates
                 bets: prev.bets + delta.bets,
                 wagered: prev.wagered + delta.wagered,
                 payouts: prev.payouts + delta.payouts,
+                bettorIds: Array.from(merged),
                 lastSeen: now,
             };
         }

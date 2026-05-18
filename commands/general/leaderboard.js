@@ -129,6 +129,18 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
                 : '*No bets recorded yet*';
             embed.addFields({ name: "Biggest Horse Bet (most wagered)", value: mostBetValue, inline: false });
 
+            const byBettors = horseEntries
+                .map(h => ({ ...h, uniqueBettors: (h.bettorIds || []).length }))
+                .filter(h => h.uniqueBettors > 0)
+                .sort((a, b) => (b.uniqueBettors - a.uniqueBettors) || (b.wagered - a.wagered))
+                .slice(0, 5);
+            const popularValue = byBettors.length
+                ? byBettors.map((h, i) =>
+                    `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.uniqueBettors.toLocaleString('en-US')} bettor${h.uniqueBettors === 1 ? '' : 's'} / ${h.wagered.toLocaleString('en-US')} ${CURRENCY_NAME}`
+                ).join('\n')
+                : '*No bets recorded yet*';
+            embed.addFields({ name: "Most Popular Horse (unique bettors)", value: popularValue, inline: false });
+
             const byProfit = horseEntries
                 .map(h => ({ ...h, profit: h.payouts - h.wagered }))
                 .filter(h => h.wagered > 0)
