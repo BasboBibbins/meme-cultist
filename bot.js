@@ -64,6 +64,19 @@ const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM e
     logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`)
     await interest(client)
     await addJackpotInterest()
+    try {
+        const { ARCHIVE_RETENTION_DAYS, ARCHIVE_MAX_ROWS_PER_CHANNEL } = require("./config.js")
+        const messageArchive = require("./utils/messageArchive")
+        const summary = messageArchive.prune({
+            retentionDays: ARCHIVE_RETENTION_DAYS,
+            maxRowsPerChannel: ARCHIVE_MAX_ROWS_PER_CHANNEL,
+        })
+        if (summary.deletedByAge + summary.deletedByCap > 0) {
+            logger.log(`[MessageArchive] Daily prune: ${summary.deletedByAge} aged out, ${summary.deletedByCap} over cap`)
+        }
+    } catch (err) {
+        logger.warn(`[MessageArchive] Daily prune failed: ${err.message}`)
+    }
 })
 
 client.slashcommands = new Collection()

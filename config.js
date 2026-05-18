@@ -182,6 +182,14 @@ const config = {
     // Persistent personas (utils/personas/)
     PERSONA_DB_PATH: process.env.PERSONA_DB_PATH || "db/personas.sqlite",
 
+    // Message archive retention (utils/messageArchive/). Pruned daily by the
+    // midnight job in bot.js. Both axes are independent: rows older than
+    // ARCHIVE_RETENTION_DAYS are dropped first, then each channel is trimmed
+    // down to ARCHIVE_MAX_ROWS_PER_CHANNEL most-recent rows. Set either to 0
+    // to disable that axis.
+    ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "90", 10),
+    ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "10000", 10),
+
     // Polish-milestone toggles
     LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
     CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
