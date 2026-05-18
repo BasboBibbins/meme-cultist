@@ -174,6 +174,10 @@ async function getDefaultDB(user) {
             incognitoMode: false,
             incognitoChannels: [],
         },
+        "slots": {
+            "lastBet": 0,
+            "lastLines": 1,
+        },
     }
 }
 module.exports = {

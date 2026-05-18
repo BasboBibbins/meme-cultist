@@ -1,40 +1,542 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { addNewDBUser, setDBValue, db } = require("../../database");
-const { CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES, TESTING_MODE } = require("../../config.js");
-const { parseBet } = require('../../utils/betparse');
-const { generatePaytable, playSlots } = require('../../utils/slots');
-const { formatTimeLeft } = require('../../utils/time')
+const {
+    SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle,
+} = require("discord.js");
+const { addNewDBUser, db } = require("../../database");
+const {
+    CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES,
+    PANEL_IDLE_TIMEOUT,
+} = require("../../config.js");
+const { openBetModal } = require("../../utils/betModal");
+const { generatePaytable, buildPaytablePayload, playSlots } = require("../../utils/slots");
+const { drawSlotMachine } = require("../../utils/slotsCanvas");
+const { getTheme } = require("../../utils/slotsThemes");
+const { getEquippedTheme } = require("../../themes/manager");
+const { getJackpotDisplay } = require("../../utils/jackpot");
+const { withUserLock } = require("../../utils/userlock");
+const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
+
+const PACKAGE_VERSION = require("../../package.json").version;
+const PANEL_IDLE = PANEL_IDLE_TIMEOUT || 5 * 60 * 1000;
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+function errorEmbed(user, client, description) {
+    return new EmbedBuilder()
+        .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setColor(0xFF0000)
+        .setDescription(description)
+        .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+}
+
+function footerText(client) {
+    return `${client.user.username} | Version ${PACKAGE_VERSION}`;
+}
+
+function sessionKey(channelId, userId) {
+    return `${channelId}:${userId}`;
+}
+
+// ─── panel components ────────────────────────────────────────────────────────
+
+function buildPanelComponents() {
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId("slots_spin").setLabel("Spin").setEmoji("🎰").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId("slots_bet").setLabel("Change Bet").setEmoji("💰").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("slots_lines").setLabel("Change Lines").setEmoji("📏").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("slots_paytable").setLabel("Paytable").setEmoji("📖").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId("slots_leave").setLabel("Leave").setEmoji("🚪").setStyle(ButtonStyle.Danger),
+    );
+    return [row1];
+}
+
+function buildDisabledPanelComponents() {
+    return [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId("slots_spin").setLabel("Spin").setEmoji("🎰").setStyle(ButtonStyle.Success).setDisabled(true),
+            new ButtonBuilder().setCustomId("slots_bet").setLabel("Change Bet").setEmoji("💰").setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId("slots_lines").setLabel("Change Lines").setEmoji("📏").setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId("slots_paytable").setLabel("Paytable").setEmoji("📖").setStyle(ButtonStyle.Secondary).setDisabled(true),
+            new ButtonBuilder().setCustomId("slots_leave").setLabel("Leave").setEmoji("🚪").setStyle(ButtonStyle.Danger).setDisabled(true),
+        ),
+    ];
+}
+
+function buildPanelEmbed(user, client, balance, lastBet, lastLines, lastResultDesc) {
+    const betLine = lastBet > 0
+        ? `Bet: **${lastBet.toLocaleString("en-US")}** ${CURRENCY_NAME} × **${lastLines}** line${lastLines === 1 ? "" : "s"} = **${(lastBet * lastLines).toLocaleString("en-US")}** ${CURRENCY_NAME}/spin`
+        : `No bet set — click **Spin** or **Change Bet** to begin.`;
+    const balLine = `Balance: **${balance.toLocaleString("en-US")}** ${CURRENCY_NAME}`;
+
+    const embed = new EmbedBuilder()
+        .setAuthor({ name: `${user.displayName}'s slot machine`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setColor(0x0f4c25)
+        .setFooter({ text: footerText(client), iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+
+    embed.setDescription(lastResultDesc
+        ? `${lastResultDesc}\n\n${betLine}\n${balLine}`
+        : `${betLine}\n${balLine}`);
+
+    return embed;
+}
+
+// ─── idle slot machine render for the initial panel ──────────────────────────
+
+function idleGrid() {
+    // A static 3x3 grid of low-value symbols for the placeholder render.
+    return [
+        [0, 1, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+    ];
+}
+
+async function buildIdlePanelAttachment(user, lastBet, lastLines) {
+    const themeId = await getEquippedTheme(user.id);
+    const theme = getTheme(themeId);
+    const jackpotDisplay = await getJackpotDisplay();
+    return drawSlotMachine(idleGrid(), {
+        jackpotDisplay,
+        activeLines: Math.max(1, lastLines || 1),
+        bet: lastBet || 0,
+        totalWin: 0,
+        balance: await db.get(`${user.id}.balance`) ?? 0,
+        winResults: [],
+        theme,
+    });
+}
+
+// ─── session helpers ─────────────────────────────────────────────────────────
+
+function createSession(userId, channelId, key, messageId, lastBet, lastLines, startBalance) {
+    return {
+        userId,
+        channelId,
+        key,
+        messageId,
+        lastBet: lastBet || 0,
+        lastLines: Math.min(Math.max(lastLines || 1, 1), SLOTS_MAX_LINES),
+        status: "waiting",
+        collector: null,
+        startBalance: startBalance ?? 0,
+        rounds: 0,
+        spins: 0,
+        wins: 0,
+        losses: 0,
+        jackpots: 0,
+        bonusesTriggered: 0,
+        totalWagered: 0,
+        totalReturned: 0,
+        biggestWin: 0,
+        biggestLoss: 0,
+    };
+}
+
+async function persistPreferences(userId, lastBet, lastLines) {
+    if (typeof lastBet === "number") await db.set(`${userId}.slots.lastBet`, lastBet);
+    if (typeof lastLines === "number") await db.set(`${userId}.slots.lastLines`, lastLines);
+}
+
+// ─── session lifecycle ───────────────────────────────────────────────────────
+
+async function openSlotsPanel(interaction, user, client) {
+    const key = sessionKey(interaction.channelId, user.id);
+    const existing = client.slotsPanels.get(key);
+    if (existing && existing.status !== "ended") {
+        return interaction.reply({
+            embeds: [errorEmbed(user, client, "You already have a slots panel open in this channel. Use the buttons on your existing message.")],
+            ephemeral: true,
+        });
+    }
+
+    let dbUser = await db.get(user.id);
+    if (!dbUser) {
+        await addNewDBUser(user);
+        dbUser = await db.get(user.id);
+    }
+
+    const balance = dbUser.balance ?? 0;
+    const lastBet = dbUser.slots?.lastBet ?? 0;
+    const lastLines = Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
+
+    await interaction.deferReply();
+    const attachment = await buildIdlePanelAttachment(user, lastBet, lastLines);
+    const embed = buildPanelEmbed(user, client, balance, lastBet, lastLines, null);
+    embed.setTitle("Slots — pick a bet and pull the lever");
+    if (attachment) embed.setImage("attachment://slots-result.png");
+
+    const message = await interaction.editReply({
+        embeds: [embed],
+        components: buildPanelComponents(),
+        files: attachment ? [attachment] : [],
+    });
+
+    const session = createSession(user.id, interaction.channelId, key, message.id, lastBet, lastLines, balance);
+    client.slotsPanels.set(key, session);
+    attachSessionCollector(client, message, session, interaction.channel);
+}
+
+function attachSessionCollector(client, message, session, channel) {
+    if (session.collector) {
+        try { session.collector.stop("replaced"); } catch (_) {}
+    }
+
+    const collector = message.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        filter: i => i.user.id === session.userId && [
+            "slots_spin", "slots_bet", "slots_lines", "slots_paytable", "slots_leave",
+        ].includes(i.customId),
+        idle: PANEL_IDLE,
+    });
+    session.collector = collector;
+
+    collector.on("collect", async (i) => {
+        try {
+            if (session.status !== "waiting") {
+                return i.deferUpdate().catch(() => {});
+            }
+            if (i.customId === "slots_spin") return handleSpin(i, session, client, channel);
+            if (i.customId === "slots_bet") return handleChangeBet(i, session, client);
+            if (i.customId === "slots_lines") return handleChangeLines(i, session, client);
+            if (i.customId === "slots_paytable") return handlePaytable(i, client);
+            if (i.customId === "slots_leave") return endSession(client, message, session, "ended", i);
+        } catch (err) {
+            logger.error(`[slots] collector error: ${err && err.stack || err}`);
+            try {
+                if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong.", ephemeral: true });
+            } catch (_) {}
+        }
+    });
+
+    collector.on("end", async (_collected, reason) => {
+        if (!client.slotsPanels.has(session.key)) return;
+        if (reason === "idle" || reason === "time") {
+            const current = client.slotsPanels.get(session.key);
+            if (current && current.status === "spinning") return;
+            await endSession(client, message, session, "idle", null);
+        }
+    });
+}
+
+async function endSession(client, message, session, reason, interaction) {
+    if (!client.slotsPanels.has(session.key)) return;
+    if (session.status === "ended") return;
+    session.status = "ended";
+    client.slotsPanels.delete(session.key);
+    if (session.collector) {
+        try { session.collector.stop(reason); } catch (_) {}
+    }
+
+    const user = interaction?.user ?? { displayName: "Player", displayAvatarURL: () => null, id: session.userId };
+    const embed = await buildSessionSummaryEmbed(user, client, session, reason);
+
+    try {
+        if (interaction && !interaction.replied && !interaction.deferred) {
+            await interaction.update({ embeds: [embed], components: [], files: [], attachments: [] });
+        } else if (interaction && interaction.deferred) {
+            await interaction.editReply({ embeds: [embed], components: [], files: [], attachments: [] });
+        } else {
+            await message.edit({ embeds: [embed], components: [], files: [], attachments: [] });
+        }
+    } catch (_) {}
+}
+
+async function buildSessionSummaryEmbed(user, client, session, reason) {
+    const newBalance = await db.get(`${session.userId}.balance`) ?? 0;
+    const netProfit = session.totalReturned - session.totalWagered;
+    const decided = session.wins + session.losses;
+    const winPct = decided > 0 ? (session.wins / decided) * 100 : 0;
+    const startBal = session.startBalance ?? newBalance;
+
+    const profitLine = netProfit > 0
+        ? `🟢 **+${netProfit.toLocaleString("en-US")}** ${CURRENCY_NAME}`
+        : netProfit < 0
+            ? `🔴 **${netProfit.toLocaleString("en-US")}** ${CURRENCY_NAME}`
+            : `⚪ **0** ${CURRENCY_NAME}`;
+    const color = netProfit > 0 ? 0x00AE86 : netProfit < 0 ? 0xFF0000 : 0xAAAAAA;
+
+    const headline = reason === "idle"
+        ? "Slots panel closed due to inactivity."
+        : "You left the slots panel.";
+
+    return new EmbedBuilder()
+        .setAuthor({ name: `${user.displayName}'s Slots Session`, iconURL: user.displayAvatarURL?.({ dynamic: true }) || undefined })
+        .setColor(color)
+        .setDescription(headline)
+        .addFields(
+            { name: "Rounds", value: `**${session.rounds.toLocaleString("en-US")}**`, inline: true },
+            { name: "Spins", value: `**${session.spins.toLocaleString("en-US")}** (${session.wins}W / ${session.losses}L)`, inline: true },
+            { name: "Win Rate", value: decided > 0 ? `**${winPct.toFixed(1)}%**` : "—", inline: true },
+            { name: "Wagered", value: `**${session.totalWagered.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: true },
+            { name: "Returned", value: `**${session.totalReturned.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: true },
+            { name: "Net Profit", value: profitLine, inline: true },
+            { name: "Best / Worst Round", value: `+${session.biggestWin.toLocaleString("en-US")} / -${session.biggestLoss.toLocaleString("en-US")}`, inline: true },
+            { name: "Bonuses Triggered", value: `**${session.bonusesTriggered}**`, inline: true },
+            { name: "​", value: "​", inline: false },
+            { name: "Current Balance", value: `**${newBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: false },
+        )
+        .setFooter({ text: footerText(client), iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+}
+
+// ─── button handlers ─────────────────────────────────────────────────────────
+
+async function handleSpin(buttonInt, session, client, channel) {
+    const user = buttonInt.user;
+
+    // No saved bet → open a combined bet+lines modal first, then spin.
+    if (!session.lastBet || session.lastBet < 1) {
+        const result = await openBetModal(buttonInt, {
+            title: "Place your slots bet",
+            placeholder: "e.g. 100, half, max",
+            extras: [linesInputSpec(session.lastLines)],
+        });
+        if (!result) return;
+        const { amount, submit } = result;
+
+        const lines = parseLinesField(submit);
+        if (lines === null) {
+            return submit.reply({ embeds: [errorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], ephemeral: true });
+        }
+
+        session.lastBet = amount;
+        session.lastLines = lines;
+        await persistPreferences(user.id, amount, lines);
+        return spinWithSettings(submit, session, client, channel, user, amount, lines, /* deferUpdate */ true);
+    }
+
+    return spinWithSettings(buttonInt, session, client, channel, user, session.lastBet, session.lastLines, /* deferUpdate */ true);
+}
+
+// Shared spec for the lines text input. Discord modals only support length
+// validation natively, so we constrain to the number of digits SLOTS_MAX_LINES
+// occupies — any in-range value fits, any out-of-range value with too many
+// digits is rejected by Discord before submit. Range/parse validation still
+// runs server-side in parseLinesField below.
+function linesInputSpec(currentLines) {
+    const maxDigits = String(SLOTS_MAX_LINES).length;
+    return {
+        customId: "lines",
+        label: `Paylines (1-${SLOTS_MAX_LINES})`,
+        placeholder: `1-${SLOTS_MAX_LINES}`,
+        value: String(Math.min(Math.max(currentLines || 1, 1), SLOTS_MAX_LINES)),
+        minLength: 1,
+        maxLength: maxDigits,
+        required: true,
+    };
+}
+
+function parseLinesField(submit) {
+    const raw = submit.fields.getTextInputValue("lines").trim();
+    const lines = parseInt(raw, 10);
+    if (isNaN(lines) || lines < 1 || lines > SLOTS_MAX_LINES || String(lines) !== raw) return null;
+    return lines;
+}
+
+async function spinWithSettings(interaction, session, client, channel, user, bet, lines, deferUpdate) {
+    const current = client.slotsPanels.get(session.key);
+    if (!current || current.status !== "waiting") {
+        return interaction.reply({ embeds: [errorEmbed(user, client, "Your slots panel is no longer available.")], ephemeral: true });
+    }
+
+    if (bet % 1 !== 0 || bet < 1) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet a positive whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
+    }
+    const safeLines = Math.min(Math.max(Math.trunc(lines) || 1, 1), SLOTS_MAX_LINES);
+    const totalCost = bet * safeLines;
+
+    const debited = await withUserLock(user.id, async () => {
+        const bal = await db.get(`${user.id}.balance`) ?? 0;
+        if (bal < totalCost) return false;
+        await db.sub(`${user.id}.balance`, totalCost);
+        return true;
+    });
+    if (!debited) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}! Need **${totalCost.toLocaleString("en-US")}** for this spin.`)], ephemeral: true });
+    }
+
+    current.status = "spinning";
+    current.lastBet = bet;
+    current.lastLines = safeLines;
+
+    if (deferUpdate) {
+        try { await interaction.deferUpdate(); } catch (_) {}
+    }
+
+    const msg = await channel.messages.fetch(current.messageId).catch(() => null);
+    if (msg) {
+        try { await msg.edit({ components: buildDisabledPanelComponents() }); } catch (_) {}
+    }
+
+    // Snapshot stats + balance so we can attribute per-round outcomes to the
+    // session without modifying playSlots' return signature.
+    const balanceBefore = (await db.get(`${user.id}.balance`) ?? 0) + totalCost; // pre-debit
+    const statsBefore = {
+        wins: (await db.get(`${user.id}.stats.slots.wins`)) ?? 0,
+        losses: (await db.get(`${user.id}.stats.slots.losses`)) ?? 0,
+        jackpots: (await db.get(`${user.id}.stats.slots.jackpots`)) ?? 0,
+    };
+
+    try {
+        // playSlots handles the jackpot contribution internally for paid spins.
+        await playSlots(interaction, bet, user, { lines: safeLines });
+    } catch (err) {
+        logger.error(`[slots] playSlots error: ${err && err.stack || err}`);
+    }
+
+    const balanceAfter = await db.get(`${user.id}.balance`) ?? 0;
+    const statsAfter = {
+        wins: (await db.get(`${user.id}.stats.slots.wins`)) ?? 0,
+        losses: (await db.get(`${user.id}.stats.slots.losses`)) ?? 0,
+        jackpots: (await db.get(`${user.id}.stats.slots.jackpots`)) ?? 0,
+    };
+
+    const winDelta = statsAfter.wins - statsBefore.wins;
+    const lossDelta = statsAfter.losses - statsBefore.losses;
+    const jackpotDelta = statsAfter.jackpots - statsBefore.jackpots;
+    const profit = balanceAfter - balanceBefore;
+    const returned = profit + totalCost; // winnings credited this round
+
+    current.rounds += 1;
+    current.spins += winDelta + lossDelta; // bonus spins included
+    current.wins += winDelta;
+    current.losses += lossDelta;
+    current.jackpots += jackpotDelta;
+    if (winDelta + lossDelta > 1) current.bonusesTriggered += 1;
+    current.totalWagered += totalCost;
+    current.totalReturned += Math.max(0, returned);
+    if (profit > current.biggestWin) current.biggestWin = profit;
+    if (-profit > current.biggestLoss) current.biggestLoss = -profit;
+
+    await persistPreferences(user.id, bet, safeLines);
+    await finishSpin(client, msg, current, channel);
+}
+
+async function finishSpin(client, message, session, channel) {
+    if (!client.slotsPanels.has(session.key)) return;
+    session.status = "waiting";
+
+    const user = await channel.guild.members.fetch(session.userId).then(m => m.user).catch(() => null);
+    const balance = user ? (await db.get(`${session.userId}.balance`) ?? 0) : 0;
+
+    // playSlots leaves the message showing the result image + per-spin embed.
+    // We only restore hub buttons; embed and image stay as-is so the player can
+    // still see the spin outcome alongside the controls.
+    if (!message) return;
+    try {
+        await message.edit({ components: buildPanelComponents() });
+    } catch (err) {
+        logger.error(`[slots] finishSpin edit failed: ${err}`);
+    }
+
+    attachSessionCollector(client, message, session, channel);
+}
+
+async function handleChangeBet(buttonInt, session, client) {
+    const user = buttonInt.user;
+    const result = await openBetModal(buttonInt, {
+        title: "Change slots bet",
+        placeholder: "e.g. 100, half, max",
+        defaultAmount: session.lastBet > 0 ? String(session.lastBet) : undefined,
+    });
+    if (!result) return;
+    const { amount, submit } = result;
+
+    const current = client.slotsPanels.get(session.key);
+    if (!current || current.status === "ended") {
+        return submit.reply({ embeds: [errorEmbed(user, client, "Your slots panel is no longer active.")], ephemeral: true });
+    }
+    current.lastBet = amount;
+    await persistPreferences(user.id, amount, null);
+
+    return submit.reply({
+        embeds: [new EmbedBuilder()
+            .setColor(0x0f4c25)
+            .setDescription(`Bet updated to **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click **Spin** to play.`)
+            .setTimestamp()],
+        ephemeral: true,
+    });
+}
+
+async function handleChangeLines(buttonInt, session, client) {
+    const user = buttonInt.user;
+    const modalId = `slots_lines_${buttonInt.id}`;
+    const spec = linesInputSpec(session.lastLines);
+    const input = new TextInputBuilder()
+        .setCustomId(spec.customId)
+        .setLabel(spec.label)
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder(spec.placeholder)
+        .setRequired(true)
+        .setMinLength(spec.minLength)
+        .setMaxLength(spec.maxLength)
+        .setValue(spec.value);
+    const modal = new ModalBuilder()
+        .setCustomId(modalId)
+        .setTitle("Change paylines")
+        .addComponents(new ActionRowBuilder().addComponents(input));
+    await buttonInt.showModal(modal);
+
+    let submit;
+    try {
+        submit = await buttonInt.awaitModalSubmit({
+            filter: m => m.customId === modalId && m.user.id === user.id,
+            time: 60000,
+        });
+    } catch {
+        return;
+    }
+
+    const lines = parseLinesField(submit);
+    if (lines === null) {
+        return submit.reply({ embeds: [errorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], ephemeral: true });
+    }
+
+    const current = client.slotsPanels.get(session.key);
+    if (!current || current.status === "ended") {
+        return submit.reply({ embeds: [errorEmbed(user, client, "Your slots panel is no longer active.")], ephemeral: true });
+    }
+    current.lastLines = lines;
+    await persistPreferences(user.id, null, lines);
+
+    return submit.reply({
+        embeds: [new EmbedBuilder()
+            .setColor(0x0f4c25)
+            .setDescription(`Active paylines updated to **${lines}**. Click **Spin** to play.`)
+            .setTimestamp()],
+        ephemeral: true,
+    });
+}
+
+async function handlePaytable(buttonInt, client) {
+    const { embed, attachment } = await buildPaytablePayload(buttonInt.user, client);
+    return buttonInt.reply({ embeds: [embed], files: [attachment], ephemeral: true });
+}
+
+// ─── command entry point ─────────────────────────────────────────────────────
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("slots")
         .setDescription(`Play a game of slots for ${CURRENCY_NAME}.`)
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('bet')
-                .setDescription(`Bet an amount of ${CURRENCY_NAME} on slots.`)
-                .addStringOption(option =>
-                    option.setName('amount')
-                        .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
-                        .setRequired(true))
-                .addIntegerOption(option =>
-                    option.setName('lines')
-                        .setDescription(`Number of paylines to bet on (1-${SLOTS_MAX_LINES})`)
-                        .setMinValue(1)
-                        .setMaxValue(SLOTS_MAX_LINES)
-                        .setRequired(false)))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('paytable')
-                .setDescription(`View the paytable for the slots.`))
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('daily')
-                .setDescription(`Use your daily free spins.`)),
+        .addSubcommand(s => s
+            .setName("spin")
+            .setDescription("Open a persistent slots panel in this channel."))
+        .addSubcommand(s => s
+            .setName("paytable")
+            .setDescription("View the paytable for the slots."))
+        .addSubcommand(s => s
+            .setName("daily")
+            .setDescription("Use your daily free spins.")),
+
     async execute(interaction) {
         const user = interaction.user;
-        const option = interaction.options.getSubcommand();
+        const client = interaction.client;
+        const sub = interaction.options.getSubcommand();
+
         const dbUser = await db.get(user.id);
         if (!dbUser) {
             logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
@@ -42,68 +544,27 @@ module.exports = {
         }
         const dbUserFresh = await db.get(user.id);
 
-        switch (option) {
-            case 'paytable':
-                await generatePaytable(interaction);
-                break;
+        if (sub === "paytable") {
+            return generatePaytable(interaction);
+        }
 
-            case 'daily':
-                if ((dbUserFresh?.cooldowns?.freespins || 0) > Date.now()) {
-                    const nextAvailable = dbUserFresh.cooldowns.freespins;
-                    logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown ends at ${nextAvailable}`);
-                    const embed = new EmbedBuilder()
-                        .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-                        .setDescription(`You have already used your daily free spins! Next available **${await formatTimeLeft(nextAvailable)}**.`)
-                        .setColor(0xFF0000)
-                        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                        .setTimestamp();
-                    return await interaction.reply({ embeds: [embed], ephemeral: true });
-                } else {
-                    logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
-                    await db.set(`${user.id}.cooldowns.freespins`, Date.now() + SLOTS_DAILY_COOLDOWN);
-                    await interaction.deferReply();
-                    await playSlots(interaction, 0, user, { lines: SLOTS_DAILY_LINES });
-                }
-                break;
+        if (sub === "daily") {
+            if ((dbUserFresh?.cooldowns?.freespins || 0) > Date.now()) {
+                const nextAvailable = dbUserFresh.cooldowns.freespins;
+                logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown ends at ${nextAvailable}`);
+                return interaction.reply({
+                    embeds: [errorEmbed(user, client, `You have already used your daily free spins! Next available **${await formatTimeLeft(nextAvailable)}**.`)],
+                    ephemeral: true,
+                });
+            }
+            logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
+            await db.set(`${user.id}.cooldowns.freespins`, Date.now() + SLOTS_DAILY_COOLDOWN);
+            await interaction.deferReply();
+            return playSlots(interaction, 0, user, { lines: SLOTS_DAILY_LINES });
+        }
 
-            case 'bet':
-                const bet = Number(await parseBet(interaction.options.getString('amount'), user.id));
-                const lines = interaction.options.getInteger('lines') || 1;
-
-                const error_embed = new EmbedBuilder()
-                    .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-                    .setColor(0xFF0000)
-                    .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-                    .setTimestamp();
-
-                if (isNaN(bet)) {
-                    error_embed.setDescription(`You must bet a number of ${CURRENCY_NAME}!`);
-                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
-                    break;
-                }
-                if (bet % 1 !== 0) {
-                    error_embed.setDescription(`You must bet a whole number of ${CURRENCY_NAME}!`);
-                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
-                    break;
-                }
-                if (bet < 1) {
-                    error_embed.setDescription(`You must bet at least 1 ${CURRENCY_NAME}!`);
-                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
-                    break;
-                }
-
-                const totalCost = bet * lines;
-                const balance = await db.get(`${interaction.user.id}.balance`);
-                if (totalCost > balance) {
-                    error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}! (Need ${totalCost.toLocaleString('en-US')}, have ${balance.toLocaleString('en-US')})`);
-                    await interaction.reply({ embeds: [error_embed], ephemeral: true });
-                    break;
-                }
-
-                await interaction.deferReply();
-                await db.sub(`${user.id}.balance`, totalCost);
-                await playSlots(interaction, bet, user, { lines });
-                break;
+        if (sub === "spin") {
+            return openSlotsPanel(interaction, user, client);
         }
     },
 };

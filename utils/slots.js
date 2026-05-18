@@ -508,21 +508,27 @@ async function handleFailure(user, bet, lines) {
     }
 }
 
-async function generatePaytable(interaction) {
-    const themeId = await getEquippedTheme(interaction.user.id);
+async function buildPaytablePayload(user, client) {
+    const themeId = await getEquippedTheme(user.id);
     const theme = getTheme(themeId);
     const jackpotDisplayStr = await getJackpotDisplay();
     const attachment = await drawPaytable(jackpotDisplayStr, SYMBOLS, theme);
     const embed = new EmbedBuilder()
-        .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+        .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
         .setColor(theme.colors.embedColor || 0x0f4c25)
         .setImage("attachment://paytable.png")
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setFooter({ text: `${client.user.username} | Version ${require('../package.json').version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
-    return interaction.reply({ embeds: [embed], files: [attachment]});
+    return { embed, attachment };
+}
+
+async function generatePaytable(interaction) {
+    const { embed, attachment } = await buildPaytablePayload(interaction.user, interaction.client);
+    return interaction.reply({ embeds: [embed], files: [attachment] });
 }
 
 module.exports = {
     generatePaytable,
+    buildPaytablePayload,
     playSlots,
 };
