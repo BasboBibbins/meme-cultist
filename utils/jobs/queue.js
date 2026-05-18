@@ -165,8 +165,21 @@ function list(kind, filterFn = null) {
     return filterFn ? rows.filter(filterFn) : rows;
 }
 
-function cancel(id) {
+// Callers that accept a user-supplied job id (e.g. `/remind cancel`) MUST pass
+// `ownerPredicate` so a user cannot cancel another user's job by guessing ids.
+// The predicate runs against the row's parsed payload; returning false leaves
+// the row untouched and `cancel` reports `false`. When the id is internal
+// (e.g. job handler self-cancellation), omit the predicate.
+function cancel(id, ownerPredicate = null) {
     const db = openDb();
+    if (ownerPredicate) {
+        const row = db.prepare(`SELECT id, kind, payload, status FROM jobs WHERE id = ?`).get(id);
+        if (!row || (row.status !== "pending" && row.status !== "running")) return false;
+        let payload;
+        try { payload = JSON.parse(row.payload); }
+        catch (_) { return false; }
+        if (!ownerPredicate(payload, row)) return false;
+    }
     const info = db.prepare(`UPDATE jobs SET status='cancelled', updated_at=? WHERE id=? AND status IN ('pending','running')`).run(Date.now(), id);
     return info.changes > 0;
 }

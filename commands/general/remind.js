@@ -219,16 +219,9 @@ module.exports = {
         if (subcommand === "cancel") {
             const id = interaction.options.getInteger("id");
 
-            const rows = jobs.list("reminder", row => {
-                try {
-                    return JSON.parse(row.payload).userId === userId;
-                } catch (_) {
-                    return false;
-                }
-            });
-            const owns = rows.some(row => row.id === id);
+            const ok = jobs.cancel(id, (payload, row) => row.kind === "reminder" && payload.userId === userId);
 
-            if (!owns) {
+            if (!ok) {
                 const embed = new EmbedBuilder()
                     .setTitle("❌ Not Found")
                     .setDescription("You don't have a pending reminder with that ID. Use \`/remind list\` to see your reminders.")
@@ -238,11 +231,10 @@ module.exports = {
                 return;
             }
 
-            const ok = jobs.cancel(id);
             const embed = new EmbedBuilder()
-                .setTitle(ok ? "✅ Cancelled" : "❌ Error")
-                .setDescription(ok ? "That reminder has been cancelled." : "Could not cancel the reminder. It may have already fired.")
-                .setColor(ok ? "#44FF44" : "#FF0000")
+                .setTitle("✅ Cancelled")
+                .setDescription("That reminder has been cancelled.")
+                .setColor("#44FF44")
                 .setTimestamp();
             await interaction.editReply({ embeds: [embed] });
             logger.log(`[Remind] User ${interaction.user.tag} cancelled reminder ${id}`);
