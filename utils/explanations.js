@@ -415,6 +415,30 @@ module.exports = {
             5. Group reminders can target a user or a role. Role targets are resolved to individual DMs for each member.
             6. Recurring reminders repeat daily or weekly. Cancelling the pending job breaks the chain — no future instances fire.`
     },
+    kb: {
+        name: "Knowledge Base",
+        description: `
+            A per-server knowledge base the chatbot can search and cite. Admins curate the entries; anyone can read or search them.
+
+            **Slash command:**
+            • \`/kb add slug:<id> title:"…" content:"…" tags:"a,b"\` — add an entry (admin only)
+            • \`/kb edit slug:<id> [title|content|tags]\` — edit an entry (admin only)
+            • \`/kb delete slug:<id>\` — remove an entry (admin only)
+            • \`/kb list\` — list all entries in this server
+            • \`/kb search query:"…"\` — semantic search across entries
+
+            **From chat:** the bot can call the \`lookup_kb\` tool automatically when you ask "what did we decide about X" or "is there a doc on Y" — it returns the highest-scoring entry.
+        `,
+        rules: `
+            1. Slugs are short identifiers: 1-64 lowercase letters, digits, or hyphens.
+            2. Titles cap at 100 characters; entry content caps at 4000 characters.
+            3. Add/edit/delete are admin-gated using the same rule as \`/koku\`: the bot owner can always use them, and guild administrators can if \`ADMIN_COMMANDS_OWNER_ONLY\` is false.
+            4. New and edited entries are embedded asynchronously by a background job, so semantic search may take a few seconds to reflect changes.
+            5. List and search are public — every member can read entries.
+            6. Entries are scoped to the server they were created in.`,
+        note: `
+            Use the KB for stable, shared facts (rules, role guides, server lore, recurring how-tos). For personal preferences, use the chatbot's user memory (\`/whatdoyouknow\`, \`/forget\`) instead.`
+    },
     aifeatures: {
         name: "AI Features",
         description: `
