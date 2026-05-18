@@ -102,6 +102,9 @@ const config = {
     RACE_PLACE_MULTIPLIER: 0.45,
     RACE_SHOW_MULTIPLIER: 0.28,
 
+    // Shared panel idle timeout (blackjack, poker, slots hub panels)
+    PANEL_IDLE_TIMEOUT: 5 * 60 * 1000, // 5 min idle -> session ends
+
     // Craps settings
     CRAPS_MIN_BET: 10,
     CRAPS_MAX_BET: 0, // 0 = no cap

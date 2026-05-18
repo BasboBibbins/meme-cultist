@@ -52,11 +52,28 @@ const { loadImage } = require("canvas");
 const { getCardSheet } = require("../themes/resolver");
 
 const sheetCache = new Map();
+const backCache = new Map();
 
 async function loadCardSheet(themeId) {
     const cfg = getCardSheet(themeId);
     if (!sheetCache.has(cfg.sheet)) sheetCache.set(cfg.sheet, await loadImage(cfg.sheet));
     return { img: sheetCache.get(cfg.sheet), cfg };
+}
+
+// Returns the cached card-back image for a theme, or null if the theme has no
+// back asset or the image fails to load. Cached null marks "tried and failed"
+// to avoid retrying broken paths on every render.
+async function loadCardBack(themeId) {
+    const cfg = getCardSheet(themeId);
+    if (!cfg.back) return null;
+    if (!backCache.has(cfg.back)) {
+        try {
+            backCache.set(cfg.back, await loadImage(cfg.back));
+        } catch (_) {
+            backCache.set(cfg.back, null);
+        }
+    }
+    return backCache.get(cfg.back);
 }
 
 function getCardSpriteCoords(cardCode, cfg) {
@@ -108,6 +125,7 @@ module.exports = {
         return cards;
     },
     loadCardSheet,
+    loadCardBack,
     getCardSpriteCoords,
     warmCardCache,
 };

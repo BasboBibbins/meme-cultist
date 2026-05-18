@@ -85,6 +85,7 @@ client.contextResetPoints = new Map();
 client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.crapsGames = new Map();
+client.blackjackTables = new Map();
 client.duelGames = new Map();
 client.immediateFactsDebounce = new Map();
 client.toolCallHistory = new Map();
