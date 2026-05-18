@@ -239,7 +239,7 @@ async function buildSessionSummaryEmbed(user, client, session, reason) {
         : "You left the table.";
 
     const embed = new EmbedBuilder()
-        .setAuthor({ name: `${user.displayName}'s session summary`, iconURL: user.displayAvatarURL?.({ dynamic: true }) || undefined })
+        .setAuthor({ name: `${user.displayName}'s Blackjack summary`, iconURL: user.displayAvatarURL?.({ dynamic: true }) || undefined })
         .setColor(color)
         .setDescription(headline)
         .addFields(
@@ -249,9 +249,8 @@ async function buildSessionSummaryEmbed(user, client, session, reason) {
             { name: "Wagered", value: `**${session.totalWagered.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: true },
             { name: "Returned", value: `**${session.totalReturned.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: true },
             { name: "Net Profit", value: profitLine, inline: true },
-            { name: "Starting Balance", value: `**${startBal.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: true },
-            { name: "Current Balance", value: `**${newBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: true },
-            { name: "Best / Worst Hand", value: `+${session.biggestWin.toLocaleString("en-US")} / -${session.biggestLoss.toLocaleString("en-US")}`, inline: true },
+            { name: " ", value: " ", inline: false},
+            { name: "Current Balance", value: `**${newBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}`, inline: false },
         )
         .setFooter({ text: footerText(client), iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
