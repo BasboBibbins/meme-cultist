@@ -13,6 +13,11 @@ function formatHorse(horse) {
     return `${horse.emoji} ${horse.name} [${horse.displayOdds}x]`;
 }
 
+function discordDate(msTimestamp) {
+    if (!msTimestamp) return "";
+    return `<t:${Math.floor(msTimestamp / 1000)}:d>`;
+}
+
 function totalNumOfCmds(type) {
     if (!type || typeof type !== 'object') return 0;
     return Object.keys(type).reduce((a, b) => a + (type[b] || 0), 0);
@@ -124,7 +129,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
                 .slice(0, 5);
             const mostBetValue = byWagered.length
                 ? byWagered.map((h, i) =>
-                    `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.bets.toLocaleString('en-US')} bet${h.bets === 1 ? '' : 's'} / ${h.wagered.toLocaleString('en-US')} ${CURRENCY_NAME}`
+                    `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.bets.toLocaleString('en-US')} bet${h.bets === 1 ? '' : 's'} / ${h.wagered.toLocaleString('en-US')} ${CURRENCY_NAME}${h.lastSeen ? ` · last seen ${discordDate(h.lastSeen)}` : ''}`
                 ).join('\n')
                 : '*No bets recorded yet*';
             embed.addFields({ name: "Biggest Horse Bet (most wagered)", value: mostBetValue, inline: false });
@@ -136,7 +141,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
                 .slice(0, 5);
             const popularValue = byBettors.length
                 ? byBettors.map((h, i) =>
-                    `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.uniqueBettors.toLocaleString('en-US')} bettor${h.uniqueBettors === 1 ? '' : 's'} / ${h.wagered.toLocaleString('en-US')} ${CURRENCY_NAME}`
+                    `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.uniqueBettors.toLocaleString('en-US')} bettor${h.uniqueBettors === 1 ? '' : 's'} / ${h.wagered.toLocaleString('en-US')} ${CURRENCY_NAME}${h.lastSeen ? ` · last seen ${discordDate(h.lastSeen)}` : ''}`
                 ).join('\n')
                 : '*No bets recorded yet*';
             embed.addFields({ name: "Most Popular Horse (unique bettors)", value: popularValue, inline: false });
@@ -149,7 +154,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
             const profitValue = byProfit.length
                 ? byProfit.map((h, i) => {
                     const sign = h.profit >= 0 ? '+' : '';
-                    return `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.wagered.toLocaleString('en-US')} wagered / ${sign}${h.profit.toLocaleString('en-US')} ${CURRENCY_NAME} profit`;
+                    return `${i + 1}. ${h.lastEmoji} ${h.name} [${h.lastDisplayOdds}x] — ${h.wagered.toLocaleString('en-US')} wagered / ${sign}${h.profit.toLocaleString('en-US')} ${CURRENCY_NAME} profit${h.lastSeen ? ` · last seen ${discordDate(h.lastSeen)}` : ''}`;
                 }).join('\n')
                 : '*No bets recorded yet*';
             embed.addFields({ name: "Most Profitable Horse (bettor POV)", value: profitValue, inline: false });
@@ -158,7 +163,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
             embed.addFields({
                 name: "Biggest Single Bet",
                 value: singleBet
-                    ? `<@${singleBet.userId}> — **${singleBet.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on ${formatHorse(singleBet.horse)} (${(singleBet.betType || 'win').charAt(0).toUpperCase() + (singleBet.betType || 'win').slice(1)})`
+                    ? `<@${singleBet.userId}> — **${singleBet.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on ${formatHorse(singleBet.horse)} (${(singleBet.betType || 'win').charAt(0).toUpperCase() + (singleBet.betType || 'win').slice(1)})${singleBet.timestamp ? ` · ${discordDate(singleBet.timestamp)}` : ''}`
                     : '*No bets recorded yet*',
                 inline: false,
             });
@@ -167,7 +172,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
             embed.addFields({
                 name: "Biggest Single Payout",
                 value: singlePayout
-                    ? `<@${singlePayout.userId}> — won **${singlePayout.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on ${formatHorse(singlePayout.horse)} (${(singlePayout.betType || 'win').charAt(0).toUpperCase() + (singlePayout.betType || 'win').slice(1)})`
+                    ? `<@${singlePayout.userId}> — won **${singlePayout.amount.toLocaleString('en-US')}** ${CURRENCY_NAME} on ${formatHorse(singlePayout.horse)} (${(singlePayout.betType || 'win').charAt(0).toUpperCase() + (singlePayout.betType || 'win').slice(1)})${singlePayout.timestamp ? ` · ${discordDate(singlePayout.timestamp)}` : ''}`
                     : '*No payouts recorded yet*',
                 inline: false,
             });
