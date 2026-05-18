@@ -650,6 +650,13 @@ if (DELETE_SLASH) {
             }
         }
 
+        if (isChatbotChannelResult) {
+            const turnCheck = rateLimiter.beginChatTurn(message.author.id);
+            if (!turnCheck.allowed) {
+                return message.reply({ content: `⏳ ${turnCheck.reason}` }).catch(() => {});
+            }
+        }
+
         let extraContext = null;
         const imageAttachment = message.attachments.find(a => a.contentType?.startsWith("image/"));
         if (imageAttachment) {
@@ -674,10 +681,16 @@ if (DELETE_SLASH) {
             }
         }
 
-        if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
-            await handleBotMessage(client, message, null, null, false, extraContext);
-        } else if (isMentioned) {
-            await handleBotMessage(client, message, null, null, true, extraContext);
+        try {
+            if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
+                await handleBotMessage(client, message, null, null, false, extraContext);
+            } else if (isMentioned) {
+                await handleBotMessage(client, message, null, null, true, extraContext);
+            }
+        } finally {
+            if (isChatbotChannelResult) {
+                rateLimiter.endChatTurn(message.author.id);
+            }
         }
     })
 
