@@ -69,7 +69,7 @@ module.exports = {
                     const rarity = item.rarity || 'common';
                     (grouped[rarity] || (grouped[rarity] = [])).push({ ...item, owned: ownedFlags[idx] });
                 });
-
+                const resetIn = `<t:${nextShopResetEpoch()}:t>`;
                 let desc = '';
                 for (const rarity of RARITY_ORDER) {
                     const items = grouped[rarity];
@@ -82,13 +82,13 @@ module.exports = {
                     }
                     desc += '\n';
                 }
+                desc += `*Inventory resets at ${resetIn} each day.*`
                 if (!desc) desc = 'The shop is empty today. Check back tomorrow!';
 
-                const resetIn = `<t:${nextShopResetEpoch()}:t>`;
                 const embed = new EmbedBuilder()
                     .setAuthor({ name: `Daily Shop — ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
                     .setDescription(desc.trim())
-                    .setFooter({ ...footer, text: `${footer.text} | Resets in ${resetIn}` })
+                    .setFooter({ ...footer, text: `${footer.text}` })
                     .setColor(0x5865F2)
                     .setTimestamp();
                 return interaction.reply({ embeds: [embed], ephemeral: true });
