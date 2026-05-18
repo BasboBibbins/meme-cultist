@@ -72,6 +72,11 @@ function buildComponents(horses, disabled = false) {
             .setStyle(ButtonStyle.Primary)
             .setDisabled(disabled),
         new ButtonBuilder()
+            .setCustomId("race_clear_bets")
+            .setLabel("Clear My Bets")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled),
+        new ButtonBuilder()
             .setCustomId("race_cancel")
             .setLabel("Cancel")
             .setStyle(ButtonStyle.Danger)
@@ -197,6 +202,9 @@ async function handleStartRace(interaction, client, user) {
                 await i.deferUpdate().catch(() => {});
                 game.collector.stop("start");
                 return;
+            }
+            if (i.customId === "race_clear_bets") {
+                return handleClearBets(i, client, game);
             }
             if (i.customId === "race_cancel") {
                 if (i.user.id !== game.creatorId) {
@@ -351,6 +359,93 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
         .setColor(randomHexColor())
         .setTimestamp();
 
+    await submit.reply({ embeds: [confirmEmbed], ephemeral: true });
+}
+
+async function handleClearBets(buttonInt, client, game) {
+    const user = buttonInt.user;
+
+    if (game.phase !== "betting") {
+        return buttonInt.deferUpdate().catch(() => {});
+    }
+
+    const userBets = game.bets.filter(b => b.userId === user.id);
+    if (userBets.length === 0) {
+        // Silent ignore per spec — no ephemeral, just ack so Discord doesn't show "interaction failed".
+        return buttonInt.deferUpdate().catch(() => {});
+    }
+
+    const totalStaked = userBets.reduce((sum, b) => sum + b.amount, 0);
+    const modalId = `race_clear_modal_${buttonInt.id}`;
+    const confirmInput = new TextInputBuilder()
+        .setCustomId("confirm")
+        .setLabel("Type CONFIRM to clear all your bets")
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder("CONFIRM")
+        .setRequired(true)
+        .setMinLength(7)
+        .setMaxLength(7);
+    const modal = new ModalBuilder()
+        .setCustomId(modalId)
+        .setTitle(`Clear ${userBets.length} bet${userBets.length === 1 ? "" : "s"} (${totalStaked.toLocaleString("en-US")} ${CURRENCY_NAME})?`)
+        .addComponents(new ActionRowBuilder().addComponents(confirmInput));
+
+    await buttonInt.showModal(modal);
+
+    let submit;
+    try {
+        submit = await buttonInt.awaitModalSubmit({
+            filter: m => m.customId === modalId && m.user.id === user.id,
+            time: 60000,
+        });
+    } catch {
+        return;
+    }
+
+    const typed = submit.fields.getTextInputValue("confirm").trim().toUpperCase();
+    if (typed !== "CONFIRM") {
+        return submit.reply({ embeds: [errorEmbed(submit.user, "You must type `CONFIRM` exactly to clear your bets. No bets were removed.")], ephemeral: true });
+    }
+
+    const current = client.raceGames.get(game.channelId);
+    if (!current || current.phase !== "betting") {
+        return submit.reply({ embeds: [errorEmbed(submit.user, "Betting is no longer open — your bets are already locked in.")], ephemeral: true });
+    }
+
+    const standingBets = current.bets.filter(b => b.userId === user.id);
+    if (standingBets.length === 0) {
+        return submit.reply({ embeds: [errorEmbed(submit.user, "You no longer have any standing bets to clear.")], ephemeral: true });
+    }
+
+    const refund = standingBets.reduce((sum, b) => sum + b.amount, 0);
+    current.bets = current.bets.filter(b => b.userId !== user.id);
+
+    await withUserLock(user.id, () => db.add(`${user.id}.balance`, refund));
+    await db.sub(`${user.id}.stats.race.totalBet`, refund);
+
+    logger.log(`${user.username} (${user.id}) cleared ${standingBets.length} race bet(s) in ${current.channelId}, refunded ${refund}.`);
+
+    try {
+        const gameMessage = await submit.channel.messages.fetch(current.messageId);
+        const remaining = Math.max(0, Math.ceil((current.endTime - Date.now()) / 1000));
+        const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
+        const refreshed = new EmbedBuilder()
+            .setAuthor({ name: `🏇 Horse Race`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTitle("🏇 Place Your Bets! 🏇")
+            .setDescription(betsDescription)
+            .setColor(randomHexColor())
+            .setFooter({ text: `Betting closes in ${remaining}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+        await gameMessage.edit({ embeds: [refreshed] });
+    } catch (e) {
+        logger.error(`Error updating race message after clear: ${e.message}`);
+    }
+
+    const confirmEmbed = new EmbedBuilder()
+        .setAuthor({ name: "Bets Cleared", iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setDescription(`Cleared **${standingBets.length}** bet${standingBets.length === 1 ? "" : "s"} — refunded **${refund.toLocaleString("en-US")}** ${CURRENCY_NAME} to your wallet.`)
+        .setColor(0xFFAA00)
+        .setTimestamp();
     await submit.reply({ embeds: [confirmEmbed], ephemeral: true });
 }
 
