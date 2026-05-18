@@ -1,7 +1,7 @@
 const { createCanvas } = require("canvas");
 const logger = require("./logger");
 const { AttachmentBuilder } = require("discord.js");
-const { loadCardSheet, getCardSpriteCoords } = require("./cards");
+const { loadCardSheet, loadCardBack, getCardSpriteCoords } = require("./cards");
 const { getHandValue, statusFromValue } = require("./blackjack");
 const {
     withAlpha,
@@ -88,7 +88,7 @@ function drawTotalCircle(ctx, x, y, size, total, colors, badges = []) {
     ctx.font = `bold ${Math.floor(size * 0.45)}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(total, cx, cy);
+    ctx.fillText(total === null || total === undefined ? "—" : total, cx, cy);
 
     if (badges.length > 0) {
         const badgeH = 18;
@@ -128,7 +128,7 @@ function drawCardBack(ctx, x, y, w, h, colors) {
 }
 
 async function canvasBlackjack(dealerCards, playerHands, colors, themeId, revealHole = false, activeHandIndex = 0, opts = {}) {
-    const { user = null, dealerUser = null, outcomes = [], dealerOutcome = null, playerOutcome = null } = opts;
+    const { user = null, dealerUser = null, outcomes = [], dealerOutcome = null, playerOutcome = null, idle = false } = opts;
     try {
         const maxDealerCards = dealerCards.length;
         const maxPlayerCards = playerHands.length > 0
@@ -150,7 +150,7 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
         drawAtmosphere(ctx, CANVAS_W, CANVAS_H, colors);
 
         // Title — once the game resolves, swaps to the player-perspective result.
-        let titleText = "BLACKJACK";
+        let titleText = idle ? "PLACE YOUR BET!" : "BLACKJACK";
         let titleAccent = colors.gold;
         if (playerOutcome === "win") {
             titleText = "YOU WIN";
@@ -172,23 +172,18 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
             loadSprite(colors.fractureSprite),
         ]);
 
-        // Load sheet and back image
+        // Load sheet and back image (both cached in utils/cards.js)
         const { img: sheetImg, cfg: sheetCfg } = await loadCardSheet(themeId);
-        let backImg = null;
-        if (sheetCfg.back) {
-            try {
-                backImg = await loadImage(sheetCfg.back);
-            } catch (err) {
-                logger.warn("Failed to load card back image", { error: err });
-            }
-        }
+        const backImg = await loadCardBack(themeId);
 
         let y = MARGIN + HEADER_H + SECTION_GAP;
 
         // ── Dealer section ───────────────────────────────
-        const dealerTotal = revealHole
-            ? getHandValue(dealerCards)
-            : getHandValue(dealerCards.slice(0, 1));
+        const dealerTotal = dealerCards.length === 0
+            ? null
+            : revealHole
+                ? getHandValue(dealerCards)
+                : getHandValue(dealerCards.slice(0, 1));
 
         // Section background (poker-style tinted box with gold border)
         drawSectionBg(ctx, MARGIN, y, CANVAS_W - MARGIN * 2, sectionHeight, colors);
@@ -233,8 +228,8 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
         // ── Player hands ───────────────────────────────────
         for (let hi = 0; hi < playerHands.length; hi++) {
             const hand = playerHands[hi];
-            const handTotal = getHandValue(hand.cards);
-            const handStatus = statusFromValue(handTotal);
+            const handTotal = hand.cards.length === 0 ? null : getHandValue(hand.cards);
+            const handStatus = handTotal === null ? null : statusFromValue(handTotal);
 
             const multi = playerHands.length > 1;
             const label = multi ? `Hand ${hi + 1}` : "Your hand";
