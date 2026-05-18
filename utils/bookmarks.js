@@ -13,7 +13,26 @@ const {
 } = require("./openai");
 const { isChatbotChannel } = require("./channels");
 const logger = require("./logger");
-const { BOOKMARK_EMOJI, IMMEDIATE_FACTS_ENABLED } = require("../config.js");
+const { PermissionFlagsBits } = require("discord.js");
+const { BOOKMARK_EMOJI, IMMEDIATE_FACTS_ENABLED, OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../config.js");
+
+// "self + admins" pin policy. Author can always pin themselves; the bot owner
+// can always pin; any guild administrator can pin if ADMIN_COMMANDS_OWNER_ONLY
+// is false (matches the admin-command gate in commands/admin/koku.js). Any
+// other reactor is rejected silently so a passerby cannot inject facts into
+// someone else's user memory.
+async function canPin(reactor, authorId, guild) {
+    if (reactor.id === authorId) return true;
+    if (reactor.id === OWNER_ID) return true;
+    if (ADMIN_COMMANDS_OWNER_ONLY) return false;
+    if (!guild) return false;
+    try {
+        const member = await guild.members.fetch(reactor.id);
+        return member?.permissions?.has(PermissionFlagsBits.Administrator) ?? false;
+    } catch (_) {
+        return false;
+    }
+}
 
 async function handleBookmarkReaction(reaction, user) {
     if (user.bot) return;
@@ -46,6 +65,11 @@ async function handleBookmarkReaction(reaction, user) {
     const author = message.author;
     if (!author || author.bot) {
         logger.debug(`[Bookmark] 📌 on bot or unknown author — ignoring.`);
+        return;
+    }
+
+    if (!(await canPin(user, author.id, message.guild))) {
+        logger.debug(`[Bookmark] 📌 from ${user.tag} on ${author.tag}'s message rejected — not author/owner/admin.`);
         return;
     }
 
