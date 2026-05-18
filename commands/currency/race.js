@@ -573,11 +573,13 @@ async function resolveRace(client, channel, message, game) {
                 bets: 0,
                 wagered: 0,
                 payouts: 0,
+                bettorIds: new Set(),
             };
         }
         horseDeltas[horseName].bets += 1;
         horseDeltas[horseName].wagered += bet.amount;
         horseDeltas[horseName].payouts += winnings;
+        horseDeltas[horseName].bettorIds.add(bet.userId);
 
         if (!topSingleBet || bet.amount > topSingleBet.amount) {
             topSingleBet = {
@@ -605,7 +607,11 @@ async function resolveRace(client, channel, message, game) {
 
     if (game.guildId && Object.keys(horseDeltas).length > 0) {
         try {
-            await applyRaceAggregates(game.guildId, horseDeltas, {
+            const serialized = {};
+            for (const [name, d] of Object.entries(horseDeltas)) {
+                serialized[name] = { ...d, bettorIds: Array.from(d.bettorIds) };
+            }
+            await applyRaceAggregates(game.guildId, serialized, {
                 biggestSingleBet: topSingleBet,
                 biggestSinglePayout: topSinglePayout,
             });
