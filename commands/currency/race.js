@@ -644,8 +644,8 @@ async function resolveRace(client, channel, message, game) {
         finalDescription,
         "```",
         "",
-        `**Total wagered:** ${totalWagered} ${CURRENCY_NAME}`,
-        `**Total paid:** ${totalPaid} ${CURRENCY_NAME}`,
+        `**Total wagered:** ${totalWagered.toLocaleString("en-US")} ${CURRENCY_NAME}`,
+        `**Total paid:** ${totalPaid.toLocaleString("en-US")} ${CURRENCY_NAME}`,
     );
 
     if (results.length > 0) {
