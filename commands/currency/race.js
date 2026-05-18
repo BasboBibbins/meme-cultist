@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL } = require("../../config.js");
 const { openBetModal } = require("../../utils/betModal");
+const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
 const { applyRaceAggregates } = require("../../utils/guildStats");
 const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require("../../utils/race");
@@ -25,17 +26,45 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName("start")
-                .setDescription("Start a new horse race.")),
+                .setDescription("Start a new horse race."))
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("bet")
+                .setDescription("Place a bet on the current horse race (power-user fast-path).")
+                .addIntegerOption(option =>
+                    option.setName("horse")
+                        .setDescription("The horse number to bet on (1-8)")
+                        .setRequired(true)
+                        .setMinValue(1)
+                        .setMaxValue(8))
+                .addStringOption(option =>
+                    option.setName("amount")
+                        .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
+                        .setRequired(true))
+                .addStringOption(option =>
+                    option.setName("type")
+                        .setDescription("Bet type: Win (1st), Place (1st-2nd), Show (1st-3rd)")
+                        .setRequired(false)
+                        .addChoices(
+                            { name: "Win (must finish 1st)", value: "win" },
+                            { name: "Place (must finish 1st or 2nd)", value: "place" },
+                            { name: "Show (must finish 1st, 2nd, or 3rd)", value: "show" }
+                        ))),
 
     async execute(interaction) {
         const client = interaction.client;
         const user = interaction.user;
+        const subcommand = interaction.options.getSubcommand();
 
         if (!client.raceGames) {
             client.raceGames = new Map();
         }
 
-        await handleStartRace(interaction, client, user);
+        if (subcommand === "bet") {
+            await handleSlashBet(interaction, client, user);
+        } else {
+            await handleStartRace(interaction, client, user);
+        }
     },
 };
 
@@ -367,6 +396,137 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
         .setTimestamp();
 
     await submit.reply({ embeds: [confirmEmbed], ephemeral: true });
+}
+
+// Power-user fast-path that mirrors the legacy `/race bet` slash subcommand
+// but plugs into the new shared game state: multi-bet allowed, debit goes
+// through withUserLock, panel message is re-rendered, and the user's bet
+// amount + bet type are cached so the next button-driven modal pre-fills.
+async function handleSlashBet(interaction, client, user) {
+    const channelId = interaction.channelId;
+    const horseNumber = interaction.options.getInteger("horse");
+    const betAmountStr = interaction.options.getString("amount");
+    const betTypeRaw = (interaction.options.getString("type") || "win").toLowerCase();
+
+    const game = client.raceGames.get(channelId);
+    if (!game) {
+        return interaction.reply({
+            embeds: [errorEmbed(user, "No active race in this channel. Use `/race start` to begin a new race.")],
+            ephemeral: true,
+        });
+    }
+    if (game.phase !== "betting") {
+        return interaction.reply({
+            embeds: [errorEmbed(user, "Betting is closed for this race. Please wait for it to finish.")],
+            ephemeral: true,
+        });
+    }
+    if (!BET_TYPES.has(betTypeRaw)) {
+        return interaction.reply({
+            embeds: [errorEmbed(user, "Bet type must be `win`, `place`, or `show`.")],
+            ephemeral: true,
+        });
+    }
+
+    let dbUser = await db.get(user.id);
+    if (!dbUser) {
+        logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
+        await addNewDBUser(user);
+    }
+
+    const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
+    if (horseIndex === -1) {
+        return interaction.reply({ embeds: [errorEmbed(user, `Horse number must be between 1 and 8!`)], ephemeral: true });
+    }
+    const horse = game.horses[horseIndex];
+
+    const expression = betAmountStr.trim();
+    const amount = Number(await parseBet(expression, user.id));
+    if (isNaN(amount) || amount % 1 !== 0) {
+        return interaction.reply({ embeds: [errorEmbed(user, `You must bet a valid whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
+    }
+    if (amount <= 0) {
+        return interaction.reply({ embeds: [errorEmbed(user, `Bet must be greater than zero.`)], ephemeral: true });
+    }
+    if (RACE_MIN_BET && amount < RACE_MIN_BET) {
+        return interaction.reply({ embeds: [errorEmbed(user, `Minimum bet is ${RACE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    }
+    if (RACE_MAX_BET && amount > RACE_MAX_BET) {
+        return interaction.reply({ embeds: [errorEmbed(user, `Maximum bet is ${RACE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    }
+
+    const debited = await withUserLock(user.id, async () => {
+        const balance = await db.get(`${user.id}.balance`) ?? 0;
+        if (balance < amount) return false;
+        await db.sub(`${user.id}.balance`, amount);
+        return true;
+    });
+    if (!debited) {
+        const currentBalance = await db.get(`${user.id}.balance`) ?? 0;
+        return interaction.reply({
+            embeds: [errorEmbed(user, `Insufficient funds! You have **${currentBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)],
+            ephemeral: true,
+        });
+    }
+    await db.add(`${user.id}.stats.race.totalBet`, amount);
+    // Cache the raw expression + bet type so future button-driven modals
+    // pre-fill, keeping the slash and button paths in sync.
+    await db.set(`${user.id}.race.lastBet`, expression);
+    await db.set(`${user.id}.race.lastBetType`, betTypeRaw);
+
+    const current = client.raceGames.get(channelId);
+    if (!current || current.phase !== "betting") {
+        // Race ended between validation and debit — refund and bail.
+        await withUserLock(user.id, () => db.add(`${user.id}.balance`, amount));
+        await db.sub(`${user.id}.stats.race.totalBet`, amount);
+        return interaction.reply({
+            embeds: [errorEmbed(user, "Betting closed while your bet was being placed — refunded.")],
+            ephemeral: true,
+        });
+    }
+
+    current.bets.push({
+        userId: user.id,
+        username: user.displayName,
+        horseIndex,
+        amount,
+        odds: horse.displayOdds,
+        betType: betTypeRaw,
+    });
+    current.endTime = Date.now() + BETTING_TIME;
+    if (current.collector) current.collector.resetTimer();
+
+    logger.log(`${user.username} (${user.id}) bet ${amount} ${CURRENCY_NAME} on Horse ${horseNumber} (${horse.name}) - ${betTypeRaw} [slash]`);
+
+    try {
+        const gameMessage = await interaction.channel.messages.fetch(current.messageId);
+        const remaining = Math.max(0, Math.ceil((current.endTime - Date.now()) / 1000));
+        const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
+        const refreshed = new EmbedBuilder()
+            .setAuthor({ name: `🏇 Horse Race`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTitle("🏇 Place Your Bets! 🏇")
+            .setDescription(betsDescription)
+            .setColor(randomHexColor())
+            .setFooter({ text: `Betting closes in ${remaining}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+        await gameMessage.edit({ embeds: [refreshed] });
+    } catch (e) {
+        logger.error(`Error updating race message: ${e.message}`);
+    }
+
+    const confirmEmbed = new EmbedBuilder()
+        .setAuthor({ name: "Bet Placed!", iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setDescription([
+            `You bet **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on:`,
+            `**Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
+            `**Odds:** ${horse.displayOdds}x`,
+            `**Bet Type:** ${formatBetType(betTypeRaw)}`,
+            `**Potential win:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betTypeRaw).toLocaleString("en-US")} ${CURRENCY_NAME}`,
+        ].join("\n"))
+        .setColor(randomHexColor())
+        .setTimestamp();
+
+    await interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
 }
 
 async function handleClearBets(buttonInt, client, game) {
