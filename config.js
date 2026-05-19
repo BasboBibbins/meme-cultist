@@ -120,7 +120,7 @@ const config = {
     SLOTS_DAILY_FREE_SPINS: 5,
     SLOTS_DAILY_BET: 50,
     SLOTS_DAILY_LINES: 3,
-    SLOTS_FULLSCREEN_CHANCE: 1.0, // 1 in 50,000 paid spins, default 0.00002
+    SLOTS_FULLSCREEN_CHANCE: 0.00004, // 1 in 25,000 paid spins, default 0.00004
     SLOTS_FULLSCREEN_MULTIPLIER: 500, // payout = bet * lines * multiplier
 
     // Jackpot settings
