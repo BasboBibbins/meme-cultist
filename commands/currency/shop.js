@@ -248,7 +248,7 @@ module.exports = {
 
                 collector.on('end', (collected, reason) => {
                     logger.debug(`Shop preview collector ended: ${reason}`);
-                    interaction.deleteReply().catch(() => {});
+                    interaction.editReply({ components: [] }).catch(() => {});
                 });
 
                 return;
