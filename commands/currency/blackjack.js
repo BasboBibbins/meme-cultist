@@ -115,18 +115,21 @@ async function openHubPanel(interaction, user, client) {
         idle: true,
     });
 
+    const cachedExpression = (await db.get(`${user.id}.blackjack.lastBet`)) || null;
+
     const embed = buildHubEmbed(user, client, balance, null);
-    embed.setTitle("Blackjack — click Deal to start");
+    embed.setTitle(cachedExpression ? "Blackjack — click Deal Again to continue" : "Blackjack — click Deal to start");
     if (idleAttachment) embed.setImage("attachment://blackjack.png");
 
     await interaction.deferReply();
     const message = await interaction.editReply({
         embeds: [embed],
-        components: buildHubComponents(false),
+        components: buildHubComponents(!!cachedExpression),
         files: idleAttachment ? [idleAttachment] : [],
     });
 
     const session = createSession(user.id, interaction.channelId, key, message.id, null, "waiting", balance);
+    session.lastBetExpression = cachedExpression;
     client.blackjackTables.set(key, session);
     attachSessionCollector(client, message, session, interaction.channel);
 }
@@ -276,6 +279,7 @@ async function handleChangeBet(buttonInt, session, client) {
     }
     current.lastBet = amount;
     current.lastBetExpression = expression;
+    await db.set(`${user.id}.blackjack.lastBet`, expression).catch(() => {});
 
     return submit.reply({
         embeds: [new EmbedBuilder()
@@ -311,6 +315,7 @@ async function handleDeal(buttonInt, session, client, channel) {
     if (!result) return;
     const { amount, expression, submit } = result;
     session.lastBetExpression = expression;
+    await db.set(`${user.id}.blackjack.lastBet`, expression).catch(() => {});
     return dealWithAmount(submit, session, client, channel, user, amount, /* deferUpdate */ true);
 }
 
@@ -803,6 +808,7 @@ async function dealOnExistingTable(interaction, session, client, user, betExpres
     session.lastBet = bet;
     session.lastBetExpression = String(betExpression).trim();
     session.status = "playing";
+    await db.set(`${user.id}.blackjack.lastBet`, session.lastBetExpression).catch(() => {});
 
     await interaction.reply({
         content: `Dealing **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on your existing table…`,
@@ -897,6 +903,7 @@ module.exports = {
         // Seed expression from the slash-option string so follow-on Deal Again
         // re-resolves dynamic bets like `max` against current balance.
         session.lastBetExpression = String(betOption).trim();
+        await db.set(`${user.id}.blackjack.lastBet`, session.lastBetExpression).catch(() => {});
         client.blackjackTables.set(key, session);
 
         await runHand(interaction, user, client, session, originalBet, message, interaction.channel);
