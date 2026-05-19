@@ -88,6 +88,7 @@ client.crapsGames = new Map();
 client.blackjackTables = new Map();
 client.slotsPanels = new Map();
 client.duelGames = new Map();
+client.pokerTables = new Map();
 client.immediateFactsDebounce = new Map();
 client.toolCallHistory = new Map();
 

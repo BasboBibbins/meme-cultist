@@ -184,6 +184,9 @@ async function getDefaultDB(user) {
             "lastBet": "",
             "lastBetType": "win",
         },
+        "poker": {
+            "lastBet": "",
+        },
     }
 }
 module.exports = {

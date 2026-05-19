@@ -2,7 +2,7 @@ const { createCanvas } = require('canvas');
 const logger = require("./logger");
 const { AttachmentBuilder } = require('discord.js');
 const { getThemeColors } = require('../themes/resolver');
-const { loadCardSheet, getCardSpriteCoords } = require('./cards');
+const { loadCardSheet, loadCardBack, getCardSpriteCoords } = require('./cards');
 const {
     roundRect,
     withAlpha,
@@ -121,8 +121,24 @@ async function pokerPreview(themeId) {
     return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors, themeId);
 }
 
+// Inline fallback used when the active theme has no card-back asset.
+function _drawCardBackFallback(ctx, x, y, w, h, colors) {
+    ctx.fillStyle = colors.feltDark || '#1a3a5c';
+    roundRect(ctx, x, y, w, h, 8);
+    ctx.fill();
+    ctx.strokeStyle = colors.gold || '#c8a830';
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, y, w, h, 8);
+    ctx.stroke();
+    ctx.fillStyle = colors.gold || '#c8a830';
+    ctx.font = `bold ${Math.floor(h * 0.35)}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', x + w / 2, y + h / 2);
+}
+
 async function canvasHand(hand, score, colors = DEFAULT_COLORS, themeId = 'classic', opts = {}) {
-    const { user = null, outcome = null } = opts;
+    const { user = null, outcome = null, faceDown = false, idle = false } = opts;
     try {
         const sectionH = LABEL_H + SECTION_PADDING + CARD_H + SECTION_PADDING;
         const CANVAS_H = MARGIN + HEADER_H + SECTION_GAP + sectionH + SECTION_GAP + SCORE_PILL_H + MARGIN;
@@ -133,7 +149,8 @@ async function canvasHand(hand, score, colors = DEFAULT_COLORS, themeId = 'class
         await drawBackground(ctx, CANVAS_W, CANVAS_H, colors);
         drawAtmosphere(ctx, CANVAS_W, CANVAS_H, colors);
 
-        // Title swaps to outcome state once resolved.
+        // Title swaps to outcome state once resolved. Idle preview gets a soft
+        // "Click Deal to start" subtitle in place of the result text.
         let titleText = 'VIDEO POKER';
         let titleAccent = colors.gold;
         if (outcome === 'win') {
@@ -142,6 +159,8 @@ async function canvasHand(hand, score, colors = DEFAULT_COLORS, themeId = 'class
         } else if (outcome === 'loss') {
             titleText = 'YOU LOSE';
             titleAccent = colors.textLoss || '#ff4444';
+        } else if (idle) {
+            titleText = 'CLICK DEAL TO START';
         }
         drawTitle(ctx, CANVAS_W / 2, MARGIN, titleText, titleAccent, colors, { size: 40, baseline: 'top' });
 
@@ -152,6 +171,7 @@ async function canvasHand(hand, score, colors = DEFAULT_COLORS, themeId = 'class
         ]);
 
         const { img: sheetImg, cfg: sheetCfg } = await loadCardSheet(themeId);
+        const backImg = faceDown ? await loadCardBack(themeId) : null;
 
         const sectionX = MARGIN;
         const sectionY = MARGIN + HEADER_H + SECTION_GAP;
@@ -175,13 +195,22 @@ async function canvasHand(hand, score, colors = DEFAULT_COLORS, themeId = 'class
         const cardsStartX = sectionX + SECTION_PADDING + AVATAR_SIZE + CARD_SPACING;
         for (let i = 0; i < 5; i++) {
             const cardX = cardsStartX + i * (CARD_W + CARD_SPACING);
-            const c = getCardSpriteCoords(hand[i].code, sheetCfg);
 
             // Shadow under card
             ctx.fillStyle = 'rgba(0,0,0,0.35)';
             roundRect(ctx, cardX + 3, cardRowY + 3, CARD_W, CARD_H, 8);
             ctx.fill();
 
+            if (faceDown) {
+                if (backImg) {
+                    ctx.drawImage(backImg, cardX, cardRowY, CARD_W, CARD_H);
+                } else {
+                    _drawCardBackFallback(ctx, cardX, cardRowY, CARD_W, CARD_H, colors);
+                }
+                continue;
+            }
+
+            const c = getCardSpriteCoords(hand[i].code, sheetCfg);
             ctx.drawImage(sheetImg, c.sx, c.sy, c.sw, c.sh, cardX, cardRowY, CARD_W, CARD_H);
 
             if (hand[i].hold) {
