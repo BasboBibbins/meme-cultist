@@ -755,13 +755,14 @@ async function spinOnExistingPanel(interaction, session, client, user, betExpres
         });
     }
 
+    if (session.lastEphemeralInteraction) {
+        session.lastEphemeralInteraction.deleteReply().catch(() => {});
+    }
     await interaction.reply({
         content: `Spinning **${resolved.amount.toLocaleString("en-US")}** × **${safeLines}** on your existing panel…`,
         ephemeral: true,
     });
-    // Auto-clear the ephemeral confirmation so it doesn't linger in the
-    // user's UI. The panel itself is the durable feedback.
-    setTimeout(() => interaction.deleteReply().catch(() => {}), 2500);
+    session.lastEphemeralInteraction = interaction;
 
     const proxy = buildPanelProxy(interaction, panelMessage, interaction.channel);
     try {
