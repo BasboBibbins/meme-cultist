@@ -648,9 +648,16 @@ module.exports = {
 async function spinFromSlash(interaction, user, client, betExpression, linesOption) {
     const key = sessionKey(interaction.channelId, user.id);
     const existing = client.slotsPanels.get(key);
+
+    // Power-user reuse: if a panel already exists and is idle, treat
+    // `/slots spin bet:X` as if the user clicked Spin on that panel — the
+    // spin animation renders on the existing panel message.
+    if (existing && existing.status === "waiting") {
+        return spinOnExistingPanel(interaction, existing, client, user, betExpression, linesOption);
+    }
     if (existing && existing.status !== "ended") {
         return interaction.reply({
-            embeds: [errorEmbed(user, client, "You already have a slots panel open in this channel. Use the buttons on your existing message.")],
+            embeds: [errorEmbed(user, client, "Your slots panel is mid-spin. Wait for it to finish.")],
             ephemeral: true,
         });
     }
@@ -690,3 +697,81 @@ async function spinFromSlash(interaction, user, client, betExpression, linesOpti
         resolved.amount, safeLines, /* deferUpdate */ false,
     );
 }
+
+// Wraps the slash interaction so `playSlots` and `spinWithSettings` (which
+// were built around a single-message `interaction.editReply` flow) render on
+// the existing panel message instead. Only the surface they actually touch
+// — `editReply` / `reply` / `followUp` / `client` / `user` — is proxied;
+// `deferUpdate` is a no-op since slash commands can't ack via component-style
+// updates.
+function buildPanelProxy(realInteraction, panelMessage, channel) {
+    return {
+        client: realInteraction.client,
+        user: realInteraction.user,
+        channel,
+        replied: false,
+        deferred: false,
+        deferUpdate: async () => { /* no-op for slash */ },
+        editReply: (opts) => panelMessage.edit(opts),
+        reply: (opts) => realInteraction.followUp({ ...opts, ephemeral: opts.ephemeral !== false }),
+        followUp: (opts) => channel.send(opts),
+    };
+}
+
+// Slash-with-bet against an already-open panel: validate, debit-via-spin,
+// ephemerally confirm the slash, then run the spin on the existing panel
+// message via a proxy interaction. Net effect matches clicking Spin on the
+// panel — animation + result land on the same message as the panel.
+async function spinOnExistingPanel(interaction, session, client, user, betExpression, linesOption) {
+    const dbUser = (await db.get(user.id)) || {};
+    const safeLines = typeof linesOption === "number"
+        ? Math.min(Math.max(linesOption, 1), SLOTS_MAX_LINES)
+        : (session.lastLines || Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES));
+
+    const resolved = await resolveBet(betExpression, user.id);
+    if (!resolved.ok) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, resolved.reason)], ephemeral: true });
+    }
+    const totalCost = resolved.amount * safeLines;
+    const balance = dbUser.balance ?? 0;
+    if (totalCost > balance) {
+        return interaction.reply({
+            embeds: [errorEmbed(user, client, `Need **${totalCost.toLocaleString("en-US")}** ${CURRENCY_NAME} for this spin (${resolved.amount.toLocaleString("en-US")} × ${safeLines}); you have **${balance.toLocaleString("en-US")}**.`)],
+            ephemeral: true,
+        });
+    }
+
+    await persistPreferences(user.id, betExpression.trim(), safeLines);
+    session.lastBetExpression = betExpression.trim();
+    session.lastLines = safeLines;
+
+    let panelMessage;
+    try {
+        panelMessage = await interaction.channel.messages.fetch(session.messageId);
+    } catch (err) {
+        return interaction.reply({
+            embeds: [errorEmbed(user, client, "Couldn't find your panel message — it may have been deleted. Use `/slots spin` to open a fresh one.")],
+            ephemeral: true,
+        });
+    }
+
+    await interaction.reply({
+        content: `Spinning **${resolved.amount.toLocaleString("en-US")}** × **${safeLines}** on your existing panel…`,
+        ephemeral: true,
+    });
+    // Auto-clear the ephemeral confirmation so it doesn't linger in the
+    // user's UI. The panel itself is the durable feedback.
+    setTimeout(() => interaction.deleteReply().catch(() => {}), 2500);
+
+    const proxy = buildPanelProxy(interaction, panelMessage, interaction.channel);
+    try {
+        await spinWithSettings(
+            proxy, session, client, interaction.channel, user,
+            resolved.amount, safeLines, /* deferUpdate */ false,
+        );
+    } catch (err) {
+        logger.error(`[slots] spinOnExistingPanel error: ${err && err.stack || err}`);
+        session.status = "waiting";
+    }
+}
+
