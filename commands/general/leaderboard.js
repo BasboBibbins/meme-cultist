@@ -239,7 +239,7 @@ module.exports = {
 
         collector.on('end', (collect, reason) => {
             logger.debug(`Leaderboard collector ended with reason: ${reason}`);
-            interaction.deleteReply().catch(() => {});
+            interaction.editReply({ components: [] }).catch(() => {});
         });
     }
 };

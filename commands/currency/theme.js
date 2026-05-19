@@ -191,7 +191,7 @@ module.exports = {
                 });
 
                 collector.on('end', () => {
-                    interaction.deleteReply().catch(() => {});
+                    interaction.editReply({ components: [] }).catch(() => {});
                 });
 
                 return;

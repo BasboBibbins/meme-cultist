@@ -363,7 +363,7 @@ module.exports = {
 
         collector.on('end', (collect, reason) => {
             logger.debug(`Collector ended with reason: ${reason}`);
-            interaction.deleteReply();
+            interaction.editReply({ components: [] }).catch(() => {});
         });
 
     },
