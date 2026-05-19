@@ -810,13 +810,16 @@ async function dealOnExistingTable(interaction, session, client, user, betExpres
     session.status = "playing";
     await db.set(`${user.id}.blackjack.lastBet`, session.lastBetExpression).catch(() => {});
 
+    // Clear the previous slash-on-existing-table ephemeral (if any) before
+    // posting a fresh one, so the user only ever sees the latest confirmation.
+    if (session.lastEphemeralInteraction) {
+        session.lastEphemeralInteraction.deleteReply().catch(() => {});
+    }
     await interaction.reply({
         content: `Dealing **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on your existing table…`,
         ephemeral: true,
     });
-    // Auto-clear the ephemeral confirmation so it doesn't linger in the
-    // user's UI. The panel itself is the durable feedback.
-    setTimeout(() => interaction.deleteReply().catch(() => {}), 2500);
+    session.lastEphemeralInteraction = interaction;
 
     try {
         const msg = await interaction.channel.messages.fetch(session.messageId);
