@@ -110,7 +110,7 @@ module.exports = {
             state.cards = shuffle([...STANDARD_DECK]);
             state.index = 0;
         }
-        return state.cards[state.index++];
+        return { ...state.cards[state.index++] };
     },
     dealHand: async (deckId) => {
         const { pokerScore } = require("./poker");
