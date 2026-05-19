@@ -616,6 +616,49 @@ async function runHand(user, client, session, bet, message, channel) {
     });
 }
 
+// Slash-with-bet against an already-open hub: validate, debit, ephemerally
+// confirm the slash, and run the hand on the existing panel message. Lets
+// legacy `/poker play bet:X` keep working as a one-shot deal without needing
+// the user to click the panel button.
+async function dealOnExistingPanel(interaction, session, client, user, betExpression) {
+    const bet = Number(await parseBet(betExpression, user.id));
+    if (!Number.isFinite(bet) || bet < 1) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+    }
+    if (bet % 1 !== 0) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    }
+
+    const debited = await withUserLock(user.id, async () => {
+        const bal = (await db.get(`${user.id}.balance`)) ?? 0;
+        if (bal < bet) return false;
+        await db.sub(`${user.id}.balance`, bet);
+        return true;
+    });
+    if (!debited) {
+        return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    }
+    await contributeToJackpot(bet);
+
+    session.lastBet = bet;
+    session.lastBetExpression = betExpression.trim();
+    session.status = "playing";
+    await db.set(`${user.id}.poker.lastBet`, betExpression.trim()).catch(() => {});
+
+    await interaction.reply({
+        content: `Dealing **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on your existing table…`,
+        ephemeral: true,
+    });
+
+    try {
+        const msg = await interaction.channel.messages.fetch(session.messageId);
+        await runHand(user, client, session, bet, msg, interaction.channel);
+    } catch (err) {
+        logger.error(`[poker] dealOnExistingPanel runHand error: ${err && err.stack || err}`);
+        session.status = "waiting";
+    }
+}
+
 // ─── command entry point ─────────────────────────────────────────────────────
 
 module.exports = {
@@ -655,9 +698,15 @@ module.exports = {
         // Fast path: bet provided → open hub then deal immediately.
         const key = sessionKey(interaction.channelId, user.id);
         const existing = client.pokerTables.get(key);
+
+        // Power-user reuse: if a panel already exists and is idle, treat
+        // `/poker play bet:X` as if the user clicked Deal on that panel.
+        if (existing && existing.status === "waiting") {
+            return dealOnExistingPanel(interaction, existing, client, user, betOption);
+        }
         if (existing && existing.status !== "ended") {
             return interaction.reply({
-                embeds: [errorEmbed(user, client, "You already have a poker table open in this channel. Use the buttons on your existing message.")],
+                embeds: [errorEmbed(user, client, "A hand is already in progress on your panel. Wait for it to finish.")],
                 ephemeral: true,
             });
         }
