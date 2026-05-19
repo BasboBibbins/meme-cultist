@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, CRAPS_MIN_BET, CRAPS_MAX_BET, CRAPS_ROUND_TIMEOUT, CRAPS_ANIMATION_HOLD_MS } = require("../../config.js");
-const { openBetModal } = require("../../utils/betModal");
+const { openBetModal, resolveBet } = require("../../utils/betModal");
 const { BET_DEFINITIONS, validateBetAllowed, resolveBets, rollDice } = require("../../utils/craps");
 const { drawCrapsTable, drawDiceAnimation, drawPaytable } = require("../../utils/crapsCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -275,13 +275,25 @@ async function handleBetButton(buttonInt, state, betKey, client) {
         return handleAddBet(buttonInt, client, buttonInt.user, betKey, cachedAmount, state);
     }
 
+    // No in-session cache — try the user's persisted lastBet expression so dynamic
+    // bets like `half` re-resolve against the current balance on every new session.
+    const persistedExpression = (await db.get(`${buttonInt.user.id}.craps.lastBet`)) || null;
+    if (persistedExpression) {
+        const resolved = await resolveBet(persistedExpression, buttonInt.user.id, { min: CRAPS_MIN_BET, max: CRAPS_MAX_BET });
+        if (resolved.ok) {
+            state.userBetAmounts[buttonInt.user.id] = resolved.amount;
+            return handleAddBet(buttonInt, client, buttonInt.user, betKey, resolved.amount, state);
+        }
+    }
+
     const result = await openBetModal(buttonInt, {
         title: `Place ${def.label} bet`,
         min: CRAPS_MIN_BET,
         max: CRAPS_MAX_BET,
+        defaultAmount: persistedExpression || undefined,
     });
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
 
     // Re-resolve the session — the modal sat open for up to 60s, anything could have happened.
     const current = client.crapsGames.get(state.channelId);
@@ -297,24 +309,28 @@ async function handleBetButton(buttonInt, state, betKey, client) {
     }
 
     current.userBetAmounts[submit.user.id] = amount;
+    await db.set(`${submit.user.id}.craps.lastBet`, expression).catch(() => {});
     return handleAddBet(submit, client, submit.user, betKey, amount, current);
 }
 
 async function handleChangeBet(buttonInt, state) {
     const client = buttonInt.client;
+    const persistedExpression = (await db.get(`${buttonInt.user.id}.craps.lastBet`)) || undefined;
     const result = await openBetModal(buttonInt, {
         title: "Set craps bet amount",
         min: CRAPS_MIN_BET,
         max: CRAPS_MAX_BET,
+        defaultAmount: persistedExpression,
     });
     if (!result) return;
-    const { amount, submit } = result;
+    const { amount, expression, submit } = result;
 
     const current = client.crapsGames.get(state.channelId);
     if (!current || current.status === "ended") {
         return submit.reply({ embeds: [errorEmbed(submit.user, client, "This craps session is no longer active.")], ephemeral: true });
     }
     current.userBetAmounts[submit.user.id] = amount;
+    await db.set(`${submit.user.id}.craps.lastBet`, expression).catch(() => {});
 
     const embed = new EmbedBuilder()
         .setAuthor({ name: "Bet amount updated", iconURL: submit.user.displayAvatarURL({ dynamic: true }) })
