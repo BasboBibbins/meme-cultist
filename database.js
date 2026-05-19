@@ -187,6 +187,12 @@ async function getDefaultDB(user) {
         "poker": {
             "lastBet": "",
         },
+        "blackjack": {
+            "lastBet": "",
+        },
+        "craps": {
+            "lastBet": "",
+        },
     }
 }
 module.exports = {
