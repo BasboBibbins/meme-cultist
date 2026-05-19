@@ -113,13 +113,15 @@ const config = {
 
     // Slots settings
     SLOTS_MAX_LINES: 5,
-    SLOTS_NEAR_MISS_CHANCE: 0.15,
+    SLOTS_NEAR_MISS_CHANCE: 0.10,
     SLOTS_BONUS_FREE_SPINS: 3,
     SLOTS_BONUS_MULTIPLIER: 2,
     SLOTS_DAILY_COOLDOWN: 8.64e7, // default: 24 hours = 8.64e7
     SLOTS_DAILY_FREE_SPINS: 5,
     SLOTS_DAILY_BET: 50,
     SLOTS_DAILY_LINES: 3,
+    SLOTS_FULLSCREEN_CHANCE: 1.0, // 1 in 50,000 paid spins, default 0.00002
+    SLOTS_FULLSCREEN_MULTIPLIER: 500, // payout = bet * lines * multiplier
 
     // Jackpot settings
     JACKPOT_SEED: 1000000,

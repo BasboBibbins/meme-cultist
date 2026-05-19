@@ -1,6 +1,6 @@
 const { EmbedBuilder } = require('discord.js');
 const { db } = require('../database');
-const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET } = require('../config.js');
+const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET, SLOTS_FULLSCREEN_CHANCE, SLOTS_FULLSCREEN_MULTIPLIER } = require('../config.js');
 const { randomHexColor } = require('./randomcolor');
 const wait = require('node:timers/promises').setTimeout;
 const logger = require('../utils/logger');
@@ -11,15 +11,15 @@ const { getEquippedTheme } = require('../themes/manager');
 
 // Symbol definitions: index, weights, multipliers
 const SYMBOLS = [
-    { index: 0, emoji: ':apple:',    weight: 20, multiplier: 2,   partial: 1 },
+    { index: 0, emoji: ':apple:',    weight: 20, multiplier: 2,   partial: 0.75 },
     { index: 1, emoji: ':tangerine:', weight: 18, multiplier: 3,   partial: 1.5 },
     { index: 2, emoji: ':lemon:',     weight: 16, multiplier: 5,   partial: 2 },
     { index: 3, emoji: ':grapes:',    weight: 12, multiplier: 8,   partial: 3 },
-    { index: 4, emoji: ':cherries:',  weight: 10, multiplier: 12,  partial: 5 },
-    { index: 5, emoji: ':bell:',      weight: 8,  multiplier: 20,  partial: 8 },
-    { index: 6, emoji: 'BAR',         weight: 4,  multiplier: 50,  partial: 15 },
-    { index: 7, emoji: '7',           weight: 2,  multiplier: 100, partial: 30 },
-    { index: 8, emoji: 'WILD',        weight: 6,  multiplier: 0,   partial: 0 },
+    { index: 4, emoji: ':cherries:',  weight: 10, multiplier: 10,  partial: 4 },
+    { index: 5, emoji: ':bell:',      weight: 8,  multiplier: 15,  partial: 6 },
+    { index: 6, emoji: 'BAR',         weight: 4,  multiplier: 35,  partial: 10 },
+    { index: 7, emoji: '7',           weight: 2,  multiplier: 75,  partial: 20 },
+    { index: 8, emoji: 'WILD',        weight: 4,  multiplier: 0,   partial: 0 },
     { index: 9, emoji: 'SCATTER',     weight: 4,  multiplier: 0,   partial: 0 },
 ];
 
@@ -99,12 +99,20 @@ function evaluateGrid(grid, activeLines) {
             }
         }
 
+        // 3-WILD line is the new progressive jackpot trigger. Payout (pot vs
+        // flat consolation) is decided in executeSpin once the bet is in scope.
         if (matchSym === null) {
             if (lineSymbols.every(s => s === WILD_INDEX)) {
-                matchSym = 7;
-            } else {
-                continue;
+                results.push({
+                    line: lineIdx,
+                    matchSymbol: WILD_INDEX,
+                    count: 3,
+                    multiplier: 0,
+                    isWild: true,
+                    isJackpotTrigger: true,
+                });
             }
+            continue;
         }
 
         let count = 0;
@@ -200,16 +208,46 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
 
     logger.debug(`Slots spin: ${actualBet} ${CURRENCY_NAME} x ${lines} lines ${spinLabel}for ${user.displayName} [theme: ${theme.id}]`);
 
-    // Generate grid
-    let grid = spinGrid();
-    let winResults = evaluateGrid(grid, lines);
-    const scatterCount = countScatters(grid);
-    const triggersBonus = scatterCount >= 3 && !isBonus;
+    // Full-screen mega-win pre-roll (paid spins only). When triggered, all 9
+    // cells become the same premium-tier symbol and the normal grid/scatter
+    // path is bypassed — payout is bet * lines * SLOTS_FULLSCREEN_MULTIPLIER.
+    let grid;
+    let winResults;
+    let scatterCount = 0;
+    let triggersBonus = false;
+    let isFullScreen = false;
 
-    // Apply near-miss if no wins
-    if (winResults.length === 0 && !triggersBonus) {
-        grid = applyNearMiss(grid, lines);
+    if (!isFreePlay && !isBonus && Math.random() < SLOTS_FULLSCREEN_CHANCE) {
+        // Eligible pool excludes apple/tan (too common to feel premium) and
+        // WILD/SCATTER (would collide with jackpot/bonus mechanics).
+        const fullScreenPool = [2, 3, 4, 5, 6, 7];
+        const symbolIndex = fullScreenPool[Math.floor(Math.random() * fullScreenPool.length)];
+        grid = [
+            [symbolIndex, symbolIndex, symbolIndex],
+            [symbolIndex, symbolIndex, symbolIndex],
+            [symbolIndex, symbolIndex, symbolIndex],
+        ];
+        winResults = [{
+            line: -1,
+            matchSymbol: symbolIndex,
+            count: 9,
+            multiplier: SLOTS_FULLSCREEN_MULTIPLIER * lines,
+            isWild: false,
+            isFullScreen: true,
+        }];
+        isFullScreen = true;
+        logger.debug(`Slots full-screen mega-win triggered for ${user.displayName}: symbol ${symbolIndex}`);
+    } else {
+        grid = spinGrid();
         winResults = evaluateGrid(grid, lines);
+        scatterCount = countScatters(grid);
+        triggersBonus = scatterCount >= 3 && !isBonus;
+
+        // Apply near-miss if no wins
+        if (winResults.length === 0 && !triggersBonus) {
+            grid = applyNearMiss(grid, lines);
+            winResults = evaluateGrid(grid, lines);
+        }
     }
 
     // Calculate total winnings
@@ -220,7 +258,7 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
     for (const win of winResults) {
         let winAmount = Math.floor(actualBet * win.multiplier * bonusMultiplier);
 
-        if (win.matchSymbol === 7 && win.count === 3) {
+        if (win.isJackpotTrigger) {
             const eligible = (!isFreePlay) && isJackpotEligible(actualBet);
             if (eligible) {
                 const jackpotResult = await winJackpot(user.id, user.displayName);
@@ -228,6 +266,9 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
                 winAmount = jackpotAmount;
                 isJackpot = true;
             } else {
+                // Consolation payout for sub-min-bet players who hit 3-WILD —
+                // mirrors the old 7-3-match ineligible fallback so the rare
+                // visual still pays out something memorable.
                 winAmount = Math.floor(actualBet * 100);
             }
         }
@@ -303,6 +344,12 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
         embed.setColor(0xFFD700);
         embed.setTitle(`\u{1F3B0} JACKPOT!!! \u{1F3B0}${isFreePlay ? ' (ON A FREE SPIN?!?!)' : ''}`);
         embed.setDescription(`You won the **Progressive Jackpot** of **${jackpotAmount.toLocaleString()}** ${CURRENCY_NAME}!\nBalance: **${currentBalance.toLocaleString()}** ${CURRENCY_NAME}`);
+    } else if (isFullScreen) {
+        const win = winResults[0];
+        const sym = theme.symbols[win.matchSymbol] || SYMBOLS[win.matchSymbol];
+        embed.setColor(0xAA00FF);
+        embed.setTitle(`\u{1F4AB} MEGA WIN!!! \u{1F4AB}`);
+        embed.setDescription(`Full screen of **${sym.label || sym.name}**! You won **${totalWin.toLocaleString()}** ${CURRENCY_NAME}!\nBalance: **${currentBalance.toLocaleString()}** ${CURRENCY_NAME}`);
     } else if (totalWin > 0) {
         embed.setColor(0x00FF00);
         embed.setTitle(`You won!${isFreePlay ? ' (Free spin)' : ''}${isBonus ? ` (Bonus x${bonusMultiplier})` : ''}`);

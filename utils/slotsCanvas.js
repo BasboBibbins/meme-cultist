@@ -371,7 +371,10 @@ function drawWinningLines(ctx, winResults, activeLines, theme, layout) {
     const plColors = getPaylineColors(theme);
 
     for (const win of winResults) {
-        if (win.line >= activeLines) continue;
+        // line < 0 marks results not tied to a specific payline (e.g.
+        // full-screen mega-win), which has nothing meaningful to draw here —
+        // the all-matching grid is the visual on its own.
+        if (win.line < 0 || win.line >= activeLines) continue;
         const lineIdx = win.line;
         const positions = PAYLINES[lineIdx];
 
@@ -634,12 +637,9 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
         ctx.fillText(themeSym?.label || sym.name || 'Symbol', MARGIN_X + 58, y + 4);
 
         ctx.font = '12px Arial';
-        if (sym.index === 7) {
+        if (sym.index === 8) {
             ctx.fillStyle = c.textWin;
-            ctx.fillText(`3-match: JACKPOT  |  2-match: ${sym.partial}x`, MARGIN_X + 150, y + 4);
-        } else if (sym.index === 8) {
-            ctx.fillStyle = c.textPrimary;
-            ctx.fillText('Substitutes for any symbol (except Scatter)', MARGIN_X + 150, y + 4);
+            ctx.fillText(`3x WILD = JACKPOT  |  Substitutes for any symbol (except Scatter)`, MARGIN_X + 150, y + 4);
         } else if (sym.index === 9) {
             ctx.fillStyle = c.textPrimary;
             ctx.fillText('3+ anywhere = Bonus Free Spins (2x multiplier)', MARGIN_X + 150, y + 4);
