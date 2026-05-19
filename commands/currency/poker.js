@@ -385,7 +385,10 @@ async function dealWithAmount(interaction, session, client, channel, user, amoun
     if (deferUpdate) await interaction.deferUpdate().catch(() => {});
 
     try {
-        const msg = await channel.messages.fetch(current.messageId);
+        // Reuse the message reference on the interaction — saves a fetch
+        // round-trip per deal. Falls back to a fetch only if missing.
+        const msg = interaction.message
+            ?? await channel.messages.fetch(current.messageId);
         await runHand(user, client, current, amount, msg, channel);
     } catch (err) {
         logger.error(`[poker] runHand error: ${err && err.stack || err}`);
@@ -406,9 +409,9 @@ async function runHand(user, client, session, bet, message, channel) {
 
     logger.log(`${user.username} (${user.id}) dealt poker hand #${handId} with bet ${bet} ${CURRENCY_NAME}.`);
 
-    // Disable hub while hand plays
-    await message.edit({ components: buildHubComponents(true, /* disabled */ true) }).catch(() => {});
-
+    // Deal first, then push a single edit with the initial canvas + hand
+    // buttons. Skipping the "disable hub" intermediate edit cuts one API
+    // round-trip off every deal.
     const deck = await newDeck();
     const heldCards = await dealHand(deck);
     logger.debug(heldCards.map(c => c.code).join(" | "));
@@ -436,11 +439,26 @@ async function runHand(user, client, session, bet, message, channel) {
         .setTimestamp()
         .setImage("attachment://hand.png");
 
-    // Compute score on the initial deal so the score pill displays immediately
-    // when the player is dealt a winning combination — they can spot it before
-    // deciding what to hold rather than discovering it post-draw.
-    heldCards.score = await pokerScore(heldCards);
-    let file = await canvasHand(heldCards, heldCards.score, themeColors, themeId, { user });
+    // Per-hand attachment cache keyed by hold-mask. Cards are fixed within
+    // a hand, so a (mask) string uniquely identifies the rendered canvas.
+    // Toggling a hold off and back on becomes a cache hit — no canvas work,
+    // just a re-upload. Cache GC'd with the closure when the hand ends.
+    const renderCache = new Map();
+    const holdMask = () => heldCards.map(c => c.hold ? "1" : "0").join("");
+    const renderForCurrentHolds = async () => {
+        const key = holdMask();
+        let attachment = renderCache.get(key);
+        if (!attachment) {
+            attachment = await canvasHand(heldCards, heldCards.score, themeColors, themeId, { user });
+            if (attachment) renderCache.set(key, attachment);
+        }
+        return attachment;
+    };
+
+    // dealHand already populated heldCards.score via pokerScore — reuse it
+    // instead of recomputing. Initial-deal score pill displays immediately
+    // when the player is dealt a winning combination.
+    let file = await renderForCurrentHolds();
     await message.edit({ embeds: [embed], components: [holdRow, drawRow], files: [file] });
 
     const applyWin = async (winnings, { isRoyal = false, handName = null } = {}) => {
@@ -479,10 +497,12 @@ async function runHand(user, client, session, bet, message, channel) {
 
     handCollector.on("collect", async (i) => {
         try {
-            await i.deferUpdate();
             const tail = i.customId.slice(handPrefix.length);
 
             if (tail === "draw") {
+                // Acknowledge immediately so Discord doesn't show "thinking"
+                // while we replace cards and re-render the canvas.
+                await i.deferUpdate().catch(() => {});
                 for (let j = 0; j < 5; j++) {
                     if (!heldCards[j].hold) heldCards[j] = await drawCard(deck);
                 }
@@ -498,15 +518,17 @@ async function runHand(user, client, session, bet, message, channel) {
                 return handCollector.stop(heldCards.score || "no-score");
             }
 
+            // Hold-toggle: render the gold-ring overlay on held cards. Buffer
+            // is cached per hold-mask so toggling back to a previous state is
+            // a cache hit (no draw ops, no PNG encode — just the upload).
             const idx = Number(tail.slice(4)) - 1;
             const card = heldCards[idx];
             card.hold = !card.hold;
             holdRow.components[idx]
                 .setStyle(card.hold ? ButtonStyle.Secondary : ButtonStyle.Primary)
                 .setLabel(`${card.value} ${card.hold ? "HOLDING" : "HOLD"}`);
-            // Keep the initial-deal score pill visible while the player toggles
-            // holds — the score reflects the un-drawn hand they currently have.
-            file = await canvasHand(heldCards, heldCards.score, themeColors, themeId, { user });
+            await i.deferUpdate().catch(() => {});
+            file = await renderForCurrentHolds();
             await message.edit({ components: [holdRow, drawRow], embeds: [embed], files: [file] }).catch(() => {});
             handCollector.resetTimer();
         } catch (err) {
@@ -516,9 +538,10 @@ async function runHand(user, client, session, bet, message, channel) {
 
     handCollector.on("end", async (_collected, reason) => {
         logger.debug(`Poker hand #${handId}: end reason ${reason}`);
-        // Beat between clean reveal and verdict so the player gets a moment
-        // to read the final hand before the win/lose overlay lands.
-        await wait(1400);
+        // Brief beat between clean reveal and verdict so the player registers
+        // the final hand before the win/lose overlay lands. Kept short so the
+        // loop doesn't feel sluggish.
+        await wait(700);
 
         let finalFile = null;
 
