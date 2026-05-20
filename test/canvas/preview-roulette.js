@@ -23,9 +23,9 @@ const bets = [
     // Even-money outside bets
     { number: "red",    userId: "u1", amount: 20000 },
     { number: "red",    userId: "u4", amount: 8000  },
-    { number: "black",  userId: "u2", amount: 15000 },
-    { number: "even",   userId: "u3", amount: 12000 },
-    { number: "odd",    userId: "u5", amount: 9000  },
+    { number: "red",    userId: "u2", amount: 15000 },
+    { number: "red",    userId: "u3", amount: 12000 },
+    { number: "black",  userId: "u5", amount: 9000  },
     { number: "low",    userId: "u6", amount: 7500  },
     { number: "high",   userId: "u7", amount: 11000 },
     { number: "high",   userId: "u1", amount: 3000  },
