@@ -373,24 +373,23 @@ module.exports = {
             • **Any 7** — one-roll bet, pays 4:1 on a 7.
             • **Any Craps** — one-roll bet, pays 7:1 on 2, 3, or 12.
 
-            Use \`/craps play <type> <amount>\` to join (or start) a session and \`/craps paytable\` to see the payouts.
+            Use \`/craps play\` to start a session and \`/craps paytable\` to see the payouts.
             `,
         rules: `
-            1. Start a session with \`/craps play <type> <amount>\`. The first player becomes the shooter; the message is the channel's table.
-            2. Anyone can place a bet by pressing the bet buttons on the session message — a modal will ask for the amount. Running \`/craps play\` again also works.
-            3. Only the shooter can press **Roll**. The dice pass to the next player when the shooter sevens out.
+            1. Start a session with \`/craps play\`. The first player becomes the shooter; the message is the channel's table.
+            2. Anyone can place a bet by pressing the bet buttons on the session message. A modal will ask for an amount the first time; after that your last amount is reused automatically.
+            3. Only the shooter can press **Roll**. The shooter can also press **Pass Dice** to hand the dice to the next player voluntarily. The dice pass automatically when the shooter sevens out.
             4. Pass / Don't Pass can only be placed during the come-out roll. Field / Any 7 / Any Craps can be placed any time.
             5. One-roll bets (Field, Any 7, Any Craps) resolve every roll. Pass / Don't Pass stay across the come-out → point transition until they win or lose.
             6. Only the player who started the session can press **End Session** — that refunds all standing bets.
             7. Sessions idle out after 5 minutes of no rolls — standing bets are refunded automatically.
             8. One session per channel.`,
         example: `
-            \`/craps play type:pass amount:100\` — Start (or join) a session with 100 koku on the Pass Line.
-            \`/craps play type:field amount:half\` — Place a Field bet of half your balance on the existing session.
+            \`/craps play\` — Start a new craps session in this channel.
             \`/craps paytable\` — Show the payout table as a canvas image.`,
         note: `
             Pass / Don't Pass placements are rejected once a point is set — wait for the come-out roll.
-            The shooter rotates on a seven-out, in join order.
+            The shooter rotates on a seven-out (in join order), or voluntarily via the Pass Dice button.
             Craps contributes to the progressive jackpot at the same rate as other games.`
     },
     reminder: {
