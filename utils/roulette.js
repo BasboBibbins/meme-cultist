@@ -91,6 +91,13 @@ function getNumberPosition(number) {
     };
 }
 
+function formatChipAmount(n) {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+    if (n >= 10_000)    return `${Math.round(n / 1000)}k`;
+    if (n >= 1000)      return `${(n / 1000).toFixed(1)}k`;
+    return n.toLocaleString("en-US");
+}
+
 function computeChipOffsets(count) {
     if (count <= 1) return [0];
 
@@ -172,14 +179,24 @@ async function drawChip(ctx, cx, cy, amount, avatarImg, chipColor) {
     }
     ctx.restore();
  
-    ctx.fillStyle    = '#ffffff';
-    ctx.font         = 'bold 11px Arial';
+    const tag   = formatChipAmount(amount);
+    const bandH = 14;
+    const bandY = cy + RIM_IN - bandH + 1;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, RIM_IN - 1, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(cx - RIM_IN, bandY, RIM_IN * 2, bandH);
+    ctx.restore();
+
+    ctx.save();
+    ctx.font         = 'bold 9px Arial';
     ctx.textAlign    = 'center';
-    ctx.textBaseline = 'top';
-    ctx.shadowColor  = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur   = 3;
-    ctx.fillText(amount.toString(), cx, cy + R + 2);
-    ctx.shadowBlur   = 0;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = '#ffffff';
+    ctx.fillText(tag, cx, bandY + bandH / 2 - 1);
+    ctx.restore();
 }
 
 function drawWheel(ctx, highlightNumber = null, colors = DEFAULT_COLORS) {
