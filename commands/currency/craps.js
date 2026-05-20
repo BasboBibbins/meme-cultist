@@ -42,6 +42,13 @@ function errorEmbed(user, client, description) {
         .setTimestamp();
 }
 
+async function sendEphemeral(state, interaction, embed) {
+    const uid = interaction.user.id;
+    state?.lastEphemeralByUser?.[uid]?.deleteReply().catch(() => {});
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+    if (state) state.lastEphemeralByUser[uid] = interaction;
+}
+
 async function handlePaytable(interaction) {
     const themeId = await getEquippedTheme(interaction.user.id);
     const themeColors = getThemeColors(themeId, "craps");
@@ -115,6 +122,7 @@ async function handleNewGame(interaction, client, user) {
         status: "active",
         collector: null,
         idleTimer: null,
+        lastEphemeralByUser: {},
     };
 
     logger.log(`${user.username} (${user.id}) opened a craps session in #${channel.name}.`);
@@ -136,7 +144,7 @@ async function handleAddBet(interaction, client, user, betKey, amount, state) {
         return true;
     });
     if (!debited) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, `Insufficient funds in wallet!`)], ephemeral: true });
+        return sendEphemeral(state, interaction, errorEmbed(user, client, "Insufficient funds in wallet!"));
     }
     await db.add(`${user.id}.stats.craps.totalBet`, amount);
     await contributeToJackpot(amount);
@@ -202,6 +210,11 @@ function buildComponents(state, opts = {}) {
             .setStyle(ButtonStyle.Success)
             .setDisabled(disableAll || state.bets.length === 0),
         new ButtonBuilder()
+            .setCustomId("craps_passDice")
+            .setLabel("Pass Dice")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disableAll || state.shooterOrder.length < 2),
+        new ButtonBuilder()
             .setCustomId("craps_changeBet")
             .setLabel("Change Bet")
             .setStyle(ButtonStyle.Secondary)
@@ -230,23 +243,26 @@ function attachCollector(client, channel, message, state) {
             }
             if (i.customId === "craps_roll") {
                 if (i.user.id !== state.shooterId) {
-                    return i.reply({ content: `Only the shooter (**${state.shooterUsername}**) can roll. Place a bet to join the table.`, ephemeral: true });
+                    return sendEphemeral(state, i, errorEmbed(i.user, client, `Only the shooter (**${state.shooterUsername}**) can roll. Place a bet to join the table.`));
                 }
                 return handleRoll(i, state, client);
+            }
+            if (i.customId === "craps_passDice") {
+                return handlePassDice(i, state, client);
             }
             if (i.customId === "craps_changeBet") {
                 return handleChangeBet(i, state);
             }
             if (i.customId === "craps_end") {
                 if (i.user.id !== state.creatorId) {
-                    return i.reply({ content: `Only **${state.creatorUsername}** (who started this session) can end it.`, ephemeral: true });
+                    return sendEphemeral(state, i, errorEmbed(i.user, client, `Only **${state.creatorUsername}** (who started this session) can end it.`));
                 }
                 return endSession(client, channel, message, state, "ended", i);
             }
         } catch (err) {
             logger.error(`[craps] handler error: ${err && err.stack || err}`);
             try {
-                if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong handling that action.", ephemeral: true });
+                if (!i.replied && !i.deferred) await i.reply({ embeds: [errorEmbed(i.user, client, "Something went wrong handling that action.")], ephemeral: true });
             } catch (_) { /* ignore */ }
         }
     });
@@ -262,12 +278,12 @@ function attachCollector(client, channel, message, state) {
 async function handleBetButton(buttonInt, state, betKey, client) {
     const def = BET_DEFINITIONS[betKey];
     if (!def) {
-        return buttonInt.reply({ content: "Unknown bet type.", ephemeral: true });
+        return sendEphemeral(state, buttonInt, errorEmbed(buttonInt.user, client, "Unknown bet type."));
     }
 
     const preCheck = validateBetAllowed(betKey, state.phase, state.point, state.bets);
     if (!preCheck.allowed) {
-        return buttonInt.reply({ content: preCheck.reason, ephemeral: true });
+        return sendEphemeral(state, buttonInt, errorEmbed(buttonInt.user, client, preCheck.reason));
     }
 
     const cachedAmount = state.userBetAmounts[buttonInt.user.id];
@@ -298,19 +314,43 @@ async function handleBetButton(buttonInt, state, betKey, client) {
     // Re-resolve the session — the modal sat open for up to 60s, anything could have happened.
     const current = client.crapsGames.get(state.channelId);
     if (!current || current.status === "ended") {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, "This craps session is no longer active.")], ephemeral: true });
+        return sendEphemeral(null, submit, errorEmbed(submit.user, client, "This craps session is no longer active."));
     }
     if (current.status !== "active") {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, "A roll is in progress — try again in a moment.")], ephemeral: true });
+        return sendEphemeral(current, submit, errorEmbed(submit.user, client, "A roll is in progress — try again in a moment."));
     }
     const postCheck = validateBetAllowed(betKey, current.phase, current.point, current.bets);
     if (!postCheck.allowed) {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, postCheck.reason)], ephemeral: true });
+        return sendEphemeral(current, submit, errorEmbed(submit.user, client, postCheck.reason));
     }
 
     current.userBetAmounts[submit.user.id] = amount;
     await db.set(`${submit.user.id}.craps.lastBet`, expression).catch(() => {});
     return handleAddBet(submit, client, submit.user, betKey, amount, current);
+}
+
+async function handlePassDice(i, state, client) {
+    if (i.user.id !== state.shooterId) {
+        return sendEphemeral(state, i, errorEmbed(i.user, client, `Only the shooter (**${state.shooterUsername}**) can pass the dice.`));
+    }
+    if (state.shooterOrder.length < 2) {
+        return sendEphemeral(state, i, errorEmbed(i.user, client, "There are no other players to pass the dice to."));
+    }
+    const next = pickNextShooter(state);
+    state.shooterId = next;
+    state.shooterUsername = displayNameFor(state, next);
+    state.shooterStreak = 0;
+
+    await i.deferUpdate();
+
+    const desc = `🎯 **${i.user.displayName}** passed the dice to **${state.shooterUsername}**.`;
+    try {
+        const gameMessage = await i.channel.messages.fetch(state.messageId);
+        await gameMessage.edit(await renderMessage(state, desc));
+        if (state.collector) state.collector.resetTimer();
+    } catch (err) {
+        logger.error(`[craps] failed to update session after dice pass: ${err}`);
+    }
 }
 
 async function handleChangeBet(buttonInt, state) {
@@ -327,25 +367,26 @@ async function handleChangeBet(buttonInt, state) {
 
     const current = client.crapsGames.get(state.channelId);
     if (!current || current.status === "ended") {
-        return submit.reply({ embeds: [errorEmbed(submit.user, client, "This craps session is no longer active.")], ephemeral: true });
+        return sendEphemeral(null, submit, errorEmbed(submit.user, client, "This craps session is no longer active."));
     }
     current.userBetAmounts[submit.user.id] = amount;
     await db.set(`${submit.user.id}.craps.lastBet`, expression).catch(() => {});
 
     const embed = new EmbedBuilder()
-        .setAuthor({ name: "Bet amount updated", iconURL: submit.user.displayAvatarURL({ dynamic: true }) })
+        .setAuthor({ name: submit.user.displayName, iconURL: submit.user.displayAvatarURL({ dynamic: true }) })
         .setColor(current.themeColors.embedColor || randomHexColor())
         .setDescription(`Your bet amount is now **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click any bet button to place it.`)
+        .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
-    return submit.reply({ embeds: [embed], ephemeral: true });
+    return sendEphemeral(current, submit, embed);
 }
 
 async function handleRoll(i, state, client) {
     if (state.bets.length === 0) {
-        return i.reply({ content: "Place at least one bet before rolling.", ephemeral: true });
+        return sendEphemeral(state, i, errorEmbed(i.user, client, "Place at least one bet before rolling."));
     }
     if (state.rolling) {
-        return i.reply({ content: "A roll is already in progress.", ephemeral: true });
+        return sendEphemeral(state, i, errorEmbed(i.user, client, "A roll is already in progress."));
     }
     state.rolling = true;
     state.status = "rolling";
@@ -454,7 +495,7 @@ async function handleRoll(i, state, client) {
                 if (u.biggestLoss > prev) await db.set(`${uid}.stats.craps.biggestLoss`, u.biggestLoss);
             })());
         }
-        if (state.totals[uid]) state.totals[uid].won += u.won;
+        if (state.totals[uid]) state.totals[uid].won += u.won - u.lost;
     }
     dbWrites.push(db.add(`${state.shooterId}.stats.craps.rolls`, 1));
     if (pointHit) dbWrites.push(db.add(`${state.shooterId}.stats.craps.pointsHit`, 1));
@@ -561,7 +602,7 @@ async function endSession(client, channel, message, state, reason, interaction) 
 
 async function sendSessionDM(client, state, userId, refunded) {
     const totals = state.totals[userId] || { wagered: 0, won: 0 };
-    const net = totals.won - totals.wagered + refunded;
+    const net = totals.won;
     try {
         const dmUser = await client.users.fetch(userId);
         const balance = await db.get(`${userId}.balance`) ?? 0;
@@ -570,7 +611,6 @@ async function sendSessionDM(client, state, userId, refunded) {
             .setColor(net > 0 ? 0x00AA00 : (net < 0 ? 0xFF0000 : 0x888888))
             .setDescription([
                 `**Total wagered:** ${totals.wagered.toLocaleString("en-US")} ${CURRENCY_NAME}`,
-                `**Total won:** ${totals.won.toLocaleString("en-US")} ${CURRENCY_NAME}`,
                 refunded > 0 ? `**Refunded (standing bets):** ${refunded.toLocaleString("en-US")} ${CURRENCY_NAME}` : null,
                 `**Net:** ${net >= 0 ? "+" : ""}${net.toLocaleString("en-US")} ${CURRENCY_NAME}`,
                 "",
