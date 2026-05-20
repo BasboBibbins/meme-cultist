@@ -1,5 +1,6 @@
 /**
- * Renders a busy craps table preview and saves it to temp/canvas/craps-preview.png
+ * Renders a busy craps table for each of the five preview themes and saves
+ * each image to tmp/canvas/craps-<themeId>.png.
  * Usage: node test/canvas/preview-craps.js
  */
 const path = require("path");
@@ -7,11 +8,13 @@ const fs = require("fs");
 const { drawCrapsTable } = require("../../utils/crapsCanvas");
 const { getThemeColors } = require("../../themes/resolver");
 
-const OUT_PATH = path.join(__dirname, "../../tmp/canvas/craps-preview.png");
+const OUT_DIR = path.join(__dirname, "../../tmp/canvas");
 const AVATAR_DIR = path.join(__dirname, "avatars");
 
+const THEMES = ["classic", "memecult", "dessert", "sunset", "noir"];
+
 const PLAYERS = [
-    { id: "u1", name: "CrapsMaster99",   color: "#e74c3c", avatar: 1 },
+    { id: "u1", name: "GrandGambler99",   color: "#e74c3c", avatar: 1 },
     { id: "u2", name: "HotHandHannah",   color: "#3498db", avatar: 2 },
     { id: "u3", name: "BigBettorBruno",  color: "#2ecc71", avatar: 3 },
     { id: "u4", name: "LuckyLarryLong",  color: "#f39c12", avatar: 4 },
@@ -24,20 +27,20 @@ const state = {
     phase: "point",
     point: 8,
     shooterId: "u1",
-    shooterUsername: "CrapsMaster99",
+    shooterUsername: "GrandGambler99",
     shooterStreak: 3,
     shooterOrder: PLAYERS.map((p) => p.id),
     userAvatars: Object.fromEntries(PLAYERS.map((p) => [p.id, path.join(AVATAR_DIR, `${p.avatar}.jpg`)])),
     userColors: Object.fromEntries(PLAYERS.map((p) => [p.id, p.color])),
     userNames: Object.fromEntries(PLAYERS.map((p) => [p.id, p.name])),
     totals: {
-        u1: { wagered: 45000, won: 12500,  username: "CrapsMaster99"   },
-        u2: { wagered: 32000, won: -8200,  username: "HotHandHannah"   },
-        u3: { wagered: 120000, won: 55000, username: "BigBettorBruno"  },
-        u4: { wagered: 7800,  won: 1200,   username: "LuckyLarryLong"  },
-        u5: { wagered: 19500, won: -4400,  username: "NightOwlNorbert" },
-        u6: { wagered: 5000,  won: 0,      username: "SteadyEddie"     },
-        u7: { wagered: 88000, won: -22000, username: "RecklessRachel"  },
+        u1: { wagered: 45000,  won: 12500,  username: "GrandGambler99"   },
+        u2: { wagered: 32000,  won: -8200,  username: "HotHandHannah"   },
+        u3: { wagered: 120000, won: 55000,  username: "BigBettorBruno"  },
+        u4: { wagered: 7800,   won: 1200,   username: "LuckyLarryLong"  },
+        u5: { wagered: 19500,  won: -4400,  username: "NightOwlNorbert" },
+        u6: { wagered: 5000,   won: 0,      username: "SteadyEddie"     },
+        u7: { wagered: 88000,  won: -22000, username: "RecklessRachel"  },
     },
     bets: [
         // Pass line — five players
@@ -64,25 +67,27 @@ const state = {
     ],
     lastRoll: { d1: 5, d2: 3, total: 8 },
     rollHistory: [
-        { d1: 3, d2: 4, total: 7, kind: "natural"  },
-        { d1: 1, d2: 2, total: 3, kind: "crap"     },
-        { d1: 4, d2: 4, total: 8, kind: "pointSet", point: 8 },
-        { d1: 2, d2: 6, total: 8, kind: "pointHit" },
-        { d1: 6, d2: 1, total: 7, kind: "sevenOut" },
-        { d1: 5, d2: 6, total: 11, kind: "natural" },
-        { d1: 3, d2: 5, total: 8, kind: "pointSet", point: 8 },
-        { d1: 2, d2: 3, total: 5, kind: "neutral"  },
-        { d1: 4, d2: 1, total: 5, kind: "neutral"  },
-        { d1: 5, d2: 3, total: 8, kind: "pointHit" },
+        { d1: 3, d2: 4, total: 7,  kind: "natural"              },
+        { d1: 1, d2: 2, total: 3,  kind: "crap"                 },
+        { d1: 4, d2: 4, total: 8,  kind: "pointSet", point: 8   },
+        { d1: 2, d2: 6, total: 8,  kind: "pointHit"             },
+        { d1: 6, d2: 1, total: 7,  kind: "sevenOut"             },
+        { d1: 5, d2: 6, total: 11, kind: "natural"              },
+        { d1: 3, d2: 5, total: 8,  kind: "pointSet", point: 8   },
+        { d1: 2, d2: 3, total: 5,  kind: "neutral"              },
+        { d1: 4, d2: 1, total: 5,  kind: "neutral"              },
+        { d1: 5, d2: 3, total: 8,  kind: "pointHit"             },
     ],
 };
 
 (async () => {
-    const colors = getThemeColors("classic", "craps");
-    const attachment = await drawCrapsTable(state, colors);
+    fs.mkdirSync(OUT_DIR, { recursive: true });
 
-    // attachment.attachment is a Buffer when constructed from a Buffer
-    fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
-    fs.writeFileSync(OUT_PATH, attachment.attachment);
-    console.log(`Saved to ${OUT_PATH}`);
+    for (const themeId of THEMES) {
+        const colors = getThemeColors(themeId, "craps");
+        const attachment = await drawCrapsTable(state, colors);
+        const outPath = path.join(OUT_DIR, `craps-${themeId}.png`);
+        fs.writeFileSync(outPath, attachment.attachment);
+        console.log(`[${themeId}] → ${outPath}`);
+    }
 })();
