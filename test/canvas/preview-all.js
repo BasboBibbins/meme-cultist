@@ -20,8 +20,10 @@ const SCRIPTS = [
 const DIR = __dirname;
 const OUT_DIR = path.join(DIR, "../../tmp/canvas");
 
-fs.rmSync(OUT_DIR, { recursive: true, force: true });
 fs.mkdirSync(OUT_DIR, { recursive: true });
+for (const f of fs.readdirSync(OUT_DIR)) {
+    fs.rmSync(path.join(OUT_DIR, f), { recursive: true, force: true });
+}
 console.log(`Cleared ${OUT_DIR}`);
 
 const totalStart = Date.now();
