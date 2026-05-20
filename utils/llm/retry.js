@@ -5,10 +5,11 @@
 const logger = require("../logger");
 
 function withTimeout(promise, ms, err = "Request timed out") {
-    const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(err), ms)
-    );
-    return Promise.race([promise, timeout]);
+    let handle;
+    const timeout = new Promise((_, reject) => {
+        handle = setTimeout(() => reject(err), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(handle));
 }
 
 function isTransientError(error) {
