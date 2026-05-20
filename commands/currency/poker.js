@@ -4,7 +4,7 @@ const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, PANEL_IDLE_TIMEOUT } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
 const { openBetModal, resolveBet } = require("../../utils/betModal");
-const { newDeck, dealHand, drawCard } = require("../../utils/cards");
+const { newDeck, dealHand, drawCard, deleteDeck } = require("../../utils/cards");
 const logger = require("../../utils/logger");
 const { withUserLock } = require("../../utils/userlock");
 const { canvasHand, pokerScore, drawPokerPaytable } = require("../../utils/poker");
@@ -537,6 +537,7 @@ async function runHand(user, client, session, bet, message, channel) {
     });
 
     handCollector.on("end", async (_collected, reason) => {
+        deleteDeck(deck);
         logger.debug(`Poker hand #${handId}: end reason ${reason}`);
         // Brief beat between clean reveal and verdict so the player registers
         // the final hand before the win/lose overlay lands. Kept short so the

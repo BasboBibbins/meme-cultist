@@ -5,7 +5,7 @@ const { parseBet } = require("../../utils/betparse");
 const { openBetModal, resolveBet } = require("../../utils/betModal");
 const wait = require("node:timers/promises").setTimeout;
 const { getHandValue, statusFromValue, checkHand, canSplit, isAcePair } = require("../../utils/blackjack");
-const { newDeck, drawCard } = require("../../utils/cards");
+const { newDeck, drawCard, deleteDeck } = require("../../utils/cards");
 const { canvasBlackjack } = require("../../utils/blackjackCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getBlackjackColors } = require("../../themes/resolver");
@@ -425,6 +425,7 @@ async function runHand(interaction, user, client, session, originalBet, message,
                 .setFooter({ text: `Bet: ${originalBet.toLocaleString("en-US")} ${CURRENCY_NAME} | ${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) });
         }
         await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
+        deleteDeck(deckId);
         return finishHand(client, message, session, channel, embed.data.description, attachment);
     }
 
@@ -441,6 +442,7 @@ async function runHand(interaction, user, client, session, originalBet, message,
             .setDescription(`Dealer has blackjack! You lose **${originalBet.toLocaleString("en-US")}** ${CURRENCY_NAME}.\nYour balance is **${((await db.get(`${user.id}.balance`))).toLocaleString("en-US")}** ${CURRENCY_NAME}.`)
             .setFooter({ text: `Bet: ${originalBet.toLocaleString("en-US")} ${CURRENCY_NAME} | ${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) });
         await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
+        deleteDeck(deckId);
         return finishHand(client, message, session, channel, embed.data.description, attachment);
     }
 
@@ -749,6 +751,7 @@ async function runHand(interaction, user, client, session, originalBet, message,
     }
 
     await playHands();
+    deleteDeck(deckId);
 }
 
 // Called after any hand completes (dealer phase done, natural BJ, forfeit, dealer BJ)

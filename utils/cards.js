@@ -124,6 +124,9 @@ module.exports = {
         cards.score = await pokerScore(cards);
         return cards;
     },
+    deleteDeck: (deckId) => {
+        decks.delete(deckId);
+    },
     loadCardSheet,
     loadCardBack,
     getCardSpriteCoords,
