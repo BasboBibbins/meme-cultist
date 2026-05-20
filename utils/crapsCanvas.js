@@ -193,7 +193,7 @@ function drawChipStack(ctx, cx, cy, amount, avatarImg, chipColor) {
     // self-contained so the zone label / payout text above stays uncluttered.
     const tag = formatChipAmount(amount);
     ctx.save();
-    const bandH = 11;
+    const bandH = 13;
     const bandY = cy + RIM_IN - bandH + 1;
     ctx.beginPath();
     ctx.arc(cx, cy, RIM_IN - 1, 0, Math.PI * 2);
@@ -203,7 +203,7 @@ function drawChipStack(ctx, cx, cy, amount, avatarImg, chipColor) {
     ctx.restore();
 
     ctx.save();
-    ctx.font = "bold 9px Arial";
+    ctx.font = "bold 10px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#ffffff";
@@ -239,7 +239,7 @@ function drawZone(ctx, zone, colors, opts = {}) {
     // the lower half. Tall zones stack label-over-payout; short zones inline
     // them on a single row to stay clear of chips.
     const cx = zone.x + zone.w / 2;
-    const tall = zone.h >= 92;
+    const tall = zone.h >= 80;
     const labelFont = tall ? 22 : Math.min(20, Math.max(14, zone.h * 0.30));
     const payoutFont = tall ? 13 : Math.max(10, Math.min(12, zone.h * 0.18));
 
@@ -258,14 +258,10 @@ function drawZone(ctx, zone, colors, opts = {}) {
             ctx.fillText(zone.payoutText, cx, zone.y + zone.h * 0.50);
         }
     } else {
+        // Short zones lack vertical space for both label and payout text alongside
+        // chips — label only, centered in the upper half so chips own the bottom.
         ctx.font = `bold ${labelFont}px Arial`;
         ctx.fillText(zone.label, cx, zone.y + zone.h * 0.30);
-        if (zone.payoutText) {
-            ctx.shadowBlur = 0;
-            ctx.font = `${payoutFont}px Arial`;
-            ctx.fillStyle = colors.gold || "#ffd700";
-            ctx.fillText(zone.payoutText, cx, zone.y + zone.h * 0.55);
-        }
     }
     ctx.shadowBlur = 0;
 }
@@ -687,13 +683,14 @@ function drawRollChip(ctx, x, y, w, h, entry, colors, isLatest) {
     drawDieFace(ctx, diceX1, diceY, dieSize, entry.d1, colors);
     drawDieFace(ctx, diceX2, diceY, dieSize, entry.d2, colors);
 
-    // Total.
+    // Total. Centered in the gap between the dice bottom and the outcome badge.
+    // 14px keeps it clear of both (dice end at y+26, badge starts at y+44).
     ctx.save();
-    ctx.font = "bold 16px Arial";
+    ctx.font = "bold 14px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = colors.textWhite || "#ffffff";
-    ctx.fillText(String(entry.total), x + w / 2, y + 6 + dieSize + 12);
+    ctx.fillText(String(entry.total), x + w / 2, y + 6 + dieSize + 9);
     ctx.restore();
 
     // Outcome badge.
@@ -709,14 +706,14 @@ function drawRollChip(ctx, x, y, w, h, entry, colors, isLatest) {
 
         if (label) {
             ctx.save();
-            ctx.font = "bold 8.5px Arial";
+            ctx.font = "bold 10px Arial";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             const padX = 5;
             const tw = Math.min(w - 6, ctx.measureText(label).width + padX * 2);
             const bx = x + w / 2 - tw / 2;
             const by = y + h - 16;
-            const bh = 13;
+            const bh = 14;
             roundRect(ctx, bx, by, tw, bh, bh / 2);
             ctx.fillStyle = badgeColor;
             ctx.fill();
@@ -797,7 +794,7 @@ async function drawCrapsTable(state, themeColors) {
         const spacing = Math.min(48, Math.max(40, (zone.w - 30) / Math.max(N, 1)));
         const totalW = (N - 1) * spacing;
         const startX = zone.x + zone.w / 2 - totalW / 2;
-        const cy = zone.y + zone.h - 22;
+        const cy = zone.y + zone.h - 18;
         for (let i = 0; i < N; i++) {
             const [uid, info] = users[i];
             const cx = startX + i * spacing;
