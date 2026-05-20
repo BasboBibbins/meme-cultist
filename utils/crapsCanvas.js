@@ -235,34 +235,29 @@ function drawZone(ctx, zone, colors, opts = {}) {
         ctx.restore();
     }
 
-    // Label and payout share the upper third of the zone so chip stacks own
-    // the lower half. Tall zones stack label-over-payout; short zones inline
-    // them on a single row to stay clear of chips.
+    // Fixed top-margin layout: label 22px from zone top, payout 18px below
+    // that. Positions are absolute rather than percentage-of-height so all
+    // zones share the same visual top-padding regardless of how tall they are.
     const cx = zone.x + zone.w / 2;
     const tall = zone.h >= 80;
-    const labelFont = tall ? 22 : Math.min(20, Math.max(14, zone.h * 0.30));
-    const payoutFont = tall ? 13 : Math.max(10, Math.min(12, zone.h * 0.18));
+    const LABEL_Y  = zone.y + 22;
+    const PAYOUT_Y = zone.y + 40;
 
-    ctx.fillStyle = labelColor;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,0,0,0.6)";
-    ctx.shadowBlur = 4;
+    ctx.shadowColor = "rgba(0,0,0,0.65)";
+    ctx.shadowBlur = 5;
 
-    if (tall) {
-        ctx.font = `bold ${labelFont}px Arial`;
-        ctx.fillText(zone.label, cx, zone.y + zone.h * 0.28);
-        if (zone.payoutText) {
-            ctx.font = `${payoutFont}px Arial`;
-            ctx.fillStyle = colors.gold || "#ffd700";
-            ctx.fillText(zone.payoutText, cx, zone.y + zone.h * 0.50);
-        }
-    } else {
-        // Short zones lack vertical space for both label and payout text alongside
-        // chips — label only, centered in the upper half so chips own the bottom.
-        ctx.font = `bold ${labelFont}px Arial`;
-        ctx.fillText(zone.label, cx, zone.y + zone.h * 0.30);
+    ctx.font = "bold 18px Arial";
+    ctx.fillStyle = labelColor;
+    ctx.fillText(zone.label, cx, LABEL_Y);
+
+    if (tall && zone.payoutText) {
+        ctx.font = "12px Arial";
+        ctx.fillStyle = colors.gold || "#ffd700";
+        ctx.fillText(zone.payoutText, cx, PAYOUT_Y);
     }
+
     ctx.shadowBlur = 0;
 }
 
@@ -308,7 +303,7 @@ function drawHeader(ctx, state, colors) {
     const gold = colors.gold || "#ffd700";
     const felt = colors.feltColor || colors.feltDark || "#0f4c25";
 
-    drawTitle(ctx, CANVAS_W / 2, MARGIN + 32, "CRAPS", gold, colors);
+    drawTitle(ctx, CANVAS_W / 2, MARGIN + 32, "CRAPS", gold, colors, { shadowBlur: 12 });
 
     // Phase ribbon directly under the title.
     const ribbonText = state.phase === "point"
@@ -387,27 +382,21 @@ function drawShooterSpotlight(ctx, state, avatars, colors) {
     const avatarCY = y + 78;
     const radius = 44;
 
-    // Radial glow behind the avatar — matches duelCanvas winner backdrop.
+    // Subtle radial glow — tighter radius and lower opacity than before.
     ctx.save();
-    const glow = ctx.createRadialGradient(avatarCX, avatarCY, 6, avatarCX, avatarCY, 110);
-    glow.addColorStop(0, withAlpha(ringColor, 0.5));
-    glow.addColorStop(0.55, withAlpha(ringColor, 0.18));
+    const glow = ctx.createRadialGradient(avatarCX, avatarCY, 4, avatarCX, avatarCY, 72);
+    glow.addColorStop(0, withAlpha(ringColor, 0.28));
     glow.addColorStop(1, withAlpha(ringColor, 0));
     ctx.fillStyle = glow;
-    ctx.fillRect(avatarCX - 120, avatarCY - 120, 240, 240);
+    ctx.fillRect(avatarCX - 80, avatarCY - 80, 160, 160);
     ctx.restore();
 
-    // Concentric rings: solid then faded.
+    // Single ring only — the outer faded ring added noise without clarity.
     ctx.save();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = withAlpha(ringColor, 0.9);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = withAlpha(ringColor, 0.72);
     ctx.beginPath();
-    ctx.arc(avatarCX, avatarCY, radius + 10, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = withAlpha(ringColor, 0.4);
-    ctx.beginPath();
-    ctx.arc(avatarCX, avatarCY, radius + 18, 0, Math.PI * 2);
+    ctx.arc(avatarCX, avatarCY, radius + 8, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
@@ -540,32 +529,39 @@ function drawPlayerRoster(ctx, state, avatars, colors) {
 
         const textX = avCX + avRadius + (isShooter ? 22 : 12);
         const textRightLimit = x + w - 14;
-        const nameMaxW = textRightLimit - textX - 4;
-
-        ctx.save();
-        ctx.font = "bold 13px Arial";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "alphabetic";
-        ctx.fillStyle = colors.textWhite || "#ffffff";
-        ctx.fillText(truncateToWidth(ctx, username, nameMaxW), textX, ry + 16);
 
         const wager = pendingByUser[uid] || 0;
         const won = totals.won || 0;
-        ctx.font = "11px Arial";
         const winColor = colors.textWin || "#44ff44";
         const lossColor = colors.textLoss || "#ff4444";
-        const wagerLabel = wager > 0
-            ? `${wager.toLocaleString("en-US")} on table`
-            : "no bets up";
-        ctx.fillStyle = wager > 0 ? withAlpha(gold, 0.95) : withAlpha(colors.textWhite || "#fff", 0.45);
-        ctx.fillText(wagerLabel, textX, ry + 32);
-
-        // Won/lost session total, right-aligned.
-        ctx.textAlign = "right";
-        ctx.font = "bold 12px Arial";
-        ctx.fillStyle = won > 0 ? winColor : (won < 0 ? lossColor : withAlpha(colors.textWhite || "#fff", 0.55));
         const wonText = won > 0 ? `+${won.toLocaleString("en-US")}` : won.toLocaleString("en-US");
-        ctx.fillText(wonText, textRightLimit, ry + 28);
+        const wonColor = won > 0 ? winColor : (won < 0 ? lossColor : withAlpha(colors.textWhite || "#fff", 0.4));
+
+        ctx.save();
+        ctx.textBaseline = "alphabetic";
+
+        // Measure won-amount first so name truncation avoids a collision.
+        ctx.font = "bold 12px Arial";
+        const wonW = ctx.measureText(wonText).width;
+        const nameMaxW = textRightLimit - textX - wonW - 10;
+
+        // Row 1: name (left) · session net (right) — shared alphabetic baseline.
+        ctx.font = "bold 13px Arial";
+        ctx.textAlign = "left";
+        ctx.fillStyle = colors.textWhite || "#ffffff";
+        ctx.fillText(truncateToWidth(ctx, username, nameMaxW), textX, ry + 17);
+
+        ctx.font = "bold 12px Arial";
+        ctx.textAlign = "right";
+        ctx.fillStyle = wonColor;
+        ctx.fillText(wonText, textRightLimit, ry + 17);
+
+        // Row 2: current wager exposure.
+        const wagerLabel = wager > 0 ? `${wager.toLocaleString("en-US")} on table` : "no bets up";
+        ctx.font = "11px Arial";
+        ctx.textAlign = "left";
+        ctx.fillStyle = wager > 0 ? withAlpha(gold, 0.9) : withAlpha(colors.textWhite || "#fff", 0.5);
+        ctx.fillText(wagerLabel, textX, ry + 32);
         ctx.restore();
     }
 
@@ -661,16 +657,16 @@ function drawRollChip(ctx, x, y, w, h, entry, colors, isLatest) {
     const felt = colors.feltDark || "#0a3a1a";
 
     ctx.save();
-    ctx.shadowColor = isLatest ? withAlpha(gold, 0.85) : "rgba(0,0,0,0.4)";
-    ctx.shadowBlur = isLatest ? 14 : 5;
+    ctx.shadowColor = isLatest ? withAlpha(gold, 0.55) : "rgba(0,0,0,0.3)";
+    ctx.shadowBlur = isLatest ? 8 : 3;
     ctx.shadowOffsetY = isLatest ? 0 : 2;
     ctx.fillStyle = withAlpha(felt, 0.92);
     roundRect(ctx, x, y, w, h, 8);
     ctx.fill();
     ctx.restore();
 
-    ctx.strokeStyle = isLatest ? gold : withAlpha(gold, 0.55);
-    ctx.lineWidth = isLatest ? 2 : 1.25;
+    ctx.strokeStyle = isLatest ? gold : withAlpha(gold, 0.38);
+    ctx.lineWidth = isLatest ? 1.75 : 1;
     roundRect(ctx, x, y, w, h, 8);
     ctx.stroke();
 
@@ -794,7 +790,7 @@ async function drawCrapsTable(state, themeColors) {
         const spacing = Math.min(48, Math.max(40, (zone.w - 30) / Math.max(N, 1)));
         const totalW = (N - 1) * spacing;
         const startX = zone.x + zone.w / 2 - totalW / 2;
-        const cy = zone.y + zone.h - 18;
+        const cy = zone.y + zone.h - 22;
         for (let i = 0; i < N; i++) {
             const [uid, info] = users[i];
             const cx = startX + i * spacing;
