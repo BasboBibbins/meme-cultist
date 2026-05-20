@@ -116,9 +116,9 @@ const ROYAL_FLUSH_HAND = [
     { code: 'AS', hold: true },
 ];
 
-async function pokerPreview(themeId) {
+async function pokerPreview(themeId, user = null) {
     const colors = getThemeColors(themeId, 'poker');
-    return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors, themeId);
+    return module.exports.canvasHand(ROYAL_FLUSH_HAND, 'Royal Flush', colors, themeId, { user });
 }
 
 // Inline fallback used when the active theme has no card-back asset.
