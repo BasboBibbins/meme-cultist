@@ -18,8 +18,8 @@ function estimateCost(apiResponse) {
     // 1M INPUT TOKENS (CACHE MISS): $0.28
     // 1M OUTPUT TOKENS:             $0.42
     const usage = apiResponse.usage || {};
-    const promptTokensHit = usage.prompt_tokens_hit_tokens || 0;
-    const promptTokensMissed = usage.prompt_tokens_missed_tokens || 0;
+    const promptTokensHit = usage.prompt_cache_hit_tokens || 0;
+    const promptTokensMissed = usage.prompt_cache_miss_tokens || 0;
     const completionTokens = usage.completion_tokens || 0;
     const cost = (promptTokensHit * 0.028 + promptTokensMissed * 0.28 + completionTokens * 0.42) / 1_000_000;
     return cost.toFixed(6);
