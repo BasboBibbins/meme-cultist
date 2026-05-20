@@ -203,11 +203,11 @@ function drawChipStack(ctx, cx, cy, amount, avatarImg, chipColor) {
     ctx.restore();
 
     ctx.save();
-    ctx.font = "bold 10px Arial";
+    ctx.font = "bold 8px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(tag, cx, bandY + bandH / 2 + 0.5);
+    ctx.fillText(tag, cx, bandY + bandH / 2 - 2.5);
     ctx.restore();
 }
 
@@ -523,11 +523,11 @@ function drawPlayerRoster(ctx, state, avatars, colors) {
             ctx.fillStyle = gold;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText("🎲", avCX + avRadius + 8, avCY);
+            ctx.fillText("🎲", avCX + avRadius + 18, avCY);
             ctx.restore();
         }
 
-        const textX = avCX + avRadius + (isShooter ? 22 : 12);
+        const textX = avCX + avRadius + (isShooter ? 30 : 12);
         const textRightLimit = x + w - 14;
 
         const wager = pendingByUser[uid] || 0;
