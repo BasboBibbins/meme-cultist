@@ -102,9 +102,10 @@ function loadAvatarByUrl(url) {
 }
 
 // Canonical background pass: cover-fit themed image, then tint the entire
-// canvas with `feltColor`. Themed feltColor strings carry baked-in alpha so
-// the image still shows through. Falls back to a tableGreen->feltColor radial
-// gradient when no image is set.
+// canvas with a semi-transparent `feltColor` wash so the image shows through.
+// `backgroundOverlayAlpha` (0–1) lets individual themes tune prominence;
+// defaults to 0.4 so ~60% of the image is visible. Falls back to a
+// tableGreen->feltColor radial gradient when no image is set.
 async function drawBackground(ctx, width, height, colors) {
     const felt = colors.feltColor || "#0f4c25";
     const bg = await loadBackgroundImage(colors.background);
@@ -114,7 +115,7 @@ async function drawBackground(ctx, width, height, colors) {
         const dw = bg.width * scale;
         const dh = bg.height * scale;
         ctx.drawImage(bg, (width - dw) / 2, (height - dh) / 2, dw, dh);
-        ctx.fillStyle = felt;
+        ctx.fillStyle = withAlpha(felt, colors.backgroundOverlayAlpha ?? 0.4);
         ctx.fillRect(0, 0, width, height);
         return;
     }
@@ -136,8 +137,11 @@ function drawAtmosphere(ctx, width, height, colors, opts = {}) {
         width / 2, height / 2, Math.min(width, height) * 0.3,
         width / 2, height / 2, Math.max(width, height) * 0.65,
     );
+    // Reduce edge vignette when a background image is present so the art
+    // isn't buried twice. `vignetteAlpha` lets themes tune further.
+    const vignetteOuter = colors.vignetteAlpha ?? (colors.background ? 0.35 : 0.55);
     vg.addColorStop(0, withAlpha(colors.feltColor || "#0f4c25", 0));
-    vg.addColorStop(1, withAlpha(colors.feltColor || "#0f4c25", 0.55));
+    vg.addColorStop(1, withAlpha(colors.feltColor || "#0f4c25", vignetteOuter));
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, width, height);
     ctx.restore();

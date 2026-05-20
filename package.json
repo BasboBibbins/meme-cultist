@@ -5,7 +5,8 @@
   "main": "bot.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:llm": "node test/llm/runner.js"
+    "test:llm": "node test/llm/runner.js",
+    "preview:canvas": "node test/canvas/preview-all.js"
   },
   "keywords": [],
   "author": "",
