@@ -134,8 +134,8 @@ const walk = function(dir) {
   const list = fs.readdirSync(dir);
   list.forEach(function(file) {
     file = dir + "/" + file;
-    file_type = file.split(".").pop();
-    file_name = file.split(/(\\|\/)/g).pop();
+    const file_type = file.split(".").pop();
+    const file_name = file.split(/(\\|\/)/g).pop();
     const stat = fs.statSync(file);
     if (stat && stat.isDirectory()) { 
       results = results.concat(walk(file));
