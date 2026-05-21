@@ -1,13 +1,17 @@
 /**
  * Batch runner for all canvas preview scripts.
- * Clears tmp/canvas/, then executes each game renderer sequentially.
  * Usage: node test/canvas/preview-all.js
  *        npm run preview:canvas
  *        npm run preview:canvas -- --theme neon
+ *
+ * Without --theme: clears tmp/canvas/ and renders the default theme batch.
+ * With --theme <id>: renders only that theme into tmp/canvas/<id>/, preserving
+ * other theme directories. Exits 1 if the theme ID is not registered.
  */
 const { spawnSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { themes } = require("../../themes/configs/index");
 
 const SCRIPTS = [
   "preview-blackjack.js",
@@ -19,15 +23,30 @@ const SCRIPTS = [
 ];
 
 const DIR = __dirname;
-const OUT_DIR = path.join(DIR, "../../tmp/canvas");
-
-fs.mkdirSync(OUT_DIR, { recursive: true });
-for (const f of fs.readdirSync(OUT_DIR)) {
-  fs.rmSync(path.join(OUT_DIR, f), { recursive: true, force: true });
-}
-console.log(`Cleared ${OUT_DIR}`);
+const CANVAS_ROOT = path.join(DIR, "../../tmp/canvas");
 
 const extraArgs = process.argv.slice(2);
+const themeArgIdx = extraArgs.indexOf("--theme");
+const themeArg = themeArgIdx !== -1 ? extraArgs[themeArgIdx + 1] || null : null;
+
+if (themeArg) {
+  if (!themes[themeArg]) {
+    console.error(`Error: unknown theme "${themeArg}"`);
+    process.exit(1);
+  }
+  const themeDir = path.join(CANVAS_ROOT, themeArg);
+  fs.mkdirSync(themeDir, { recursive: true });
+  for (const f of fs.readdirSync(themeDir)) {
+    fs.rmSync(path.join(themeDir, f), { recursive: true, force: true });
+  }
+  console.log(`Theme: ${themeArg} → ${themeDir}`);
+} else {
+  fs.mkdirSync(CANVAS_ROOT, { recursive: true });
+  for (const f of fs.readdirSync(CANVAS_ROOT)) {
+    fs.rmSync(path.join(CANVAS_ROOT, f), { recursive: true, force: true });
+  }
+  console.log(`Cleared ${CANVAS_ROOT}`);
+}
 
 const totalStart = Date.now();
 let passed = 0;
