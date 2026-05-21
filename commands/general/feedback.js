@@ -50,11 +50,18 @@ Feedback Type: ${typeLabels[type]}
 From User: ${username}
 Content: "${description}"
 
-Legitimate: genuine bug reports, feature suggestions, or constructive feedback.
-Spam: repetitive, advertisements, gibberish.
-Abusive: harassment, threats, hate speech.
-Nonsense: random characters, meaningless.
-Empty: < 5 characters of content.`;
+Classify validity:
+- legitimate: genuine bug reports, feature suggestions, or constructive feedback.
+- spam: repetitive, advertisements, gibberish.
+- abusive: harassment, threats, hate speech.
+- nonsense: random characters, meaningless.
+- empty: < 5 characters of content.
+
+Classify component (what part of the bot this relates to):
+- chatbot: AI chatbot, memory, personas, knowledge base, reminders, chat behaviour.
+- games: casino games (craps, duel, slots, blackjack, poker, roulette, race, shop).
+- themes: visual appearance, cosmetics, card art, table colours.
+- general: bot-wide issues, currency/economy, commands not covered above, or unclear.`;
 
   try {
     const response = await chatWithSchema({
@@ -106,6 +113,7 @@ async function notifyOwner(client, feedback) {
       .addFields(
         { name: "User", value: `${feedback.username} (${feedback.userId})`, inline: true },
         { name: "Category", value: feedback.category, inline: true },
+        { name: "Component", value: feedback.component || "general", inline: true },
         { name: "Guild", value: feedback.guildName || "Unknown", inline: true }
       )
       .setTimestamp();
@@ -161,7 +169,10 @@ async function createGitHubIssue(feedback) {
   if (!token) return { success: false, error: "GITHUB_TOKEN not configured" };
   if (!GITHUB_REPO_OWNER || !GITHUB_REPO_NAME) return { success: false, error: "GitHub repo not configured" };
 
-  const labels = feedback.type === "bug" ? ["bug"] : ["enhancement"];
+  const labels = [
+    feedback.type === "bug" ? "bug" : "enhancement",
+    ...(feedback.component && feedback.component !== "general" ? [feedback.component] : []),
+  ];
   const titlePrefix = feedback.type === "bug" ? "[Bug] " : "[Suggestion] ";
   let issueTitle;
   try {
@@ -277,6 +288,7 @@ module.exports = {
     if (type === "bug" || type === "suggestion") {
       githubResult = await createGitHubIssue({
         type,
+        component: validation.component,
         description,
         username: interaction.user.displayName,
         userId: interaction.user.id,
@@ -287,6 +299,7 @@ module.exports = {
     await notifyOwner(interaction.client, {
       type,
       category: validation.category,
+      component: validation.component,
       description,
       username: interaction.user.displayName,
       userId: interaction.user.id,
@@ -299,6 +312,7 @@ module.exports = {
     await storeFeedback({
       type,
       category: validation.category,
+      component: validation.component,
       description,
       username: interaction.user.displayName,
       userId: interaction.user.id,
