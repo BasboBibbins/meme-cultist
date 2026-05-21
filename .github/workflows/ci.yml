@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # canvas@3 compiles against system Cairo/Pango — must install before npm ci
       # so the native module builds successfully on the runner.
