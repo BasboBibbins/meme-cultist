@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, CRAPS_MIN_BET, CRAPS_MAX_BET, CRAPS_ROUND_TIMEOUT, CRAPS_ANIMATION_HOLD_MS } = require("../../config.js");
 const { openBetModal, resolveBet } = require("../../utils/betModal");
+const { buildErrorEmbed } = require("../../utils/embeds");
 const { BET_DEFINITIONS, validateBetAllowed, resolveBets, rollDice } = require("../../utils/craps");
 const { drawCrapsTable, drawDiceAnimation, drawPaytable } = require("../../utils/crapsCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -18,7 +19,7 @@ const PACKAGE_VERSION = require("../../package.json").version;
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("craps")
-    .setDescription(`Play a game of craps for ${CURRENCY_NAME}.`)
+    .setDescription(`Play simplified street craps for ${CURRENCY_NAME}.`)
     .addSubcommand(s => s
       .setName("play")
       .setDescription("Open a craps table in this channel. Place bets via the buttons below the table."))
@@ -32,15 +33,6 @@ module.exports = {
     return handlePlay(interaction);
   },
 };
-
-function errorEmbed(user, client, description) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(description)
-    .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
-}
 
 async function sendEphemeral(state, interaction, embed) {
   const uid = interaction.user.id;
@@ -76,7 +68,7 @@ async function handlePlay(interaction) {
 
   const existing = client.crapsGames.get(channelId);
   if (existing) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "A craps session is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A craps session is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
   }
 
   const dbUser = await db.get(user.id);
@@ -144,7 +136,7 @@ async function handleAddBet(interaction, client, user, betKey, amount, state) {
     return true;
   });
   if (!debited) {
-    return sendEphemeral(state, interaction, errorEmbed(user, client, "Insufficient funds in wallet!"));
+    return sendEphemeral(state, interaction, buildErrorEmbed(user, client, "Insufficient funds in wallet!"));
   }
   await db.add(`${user.id}.stats.craps.totalBet`, amount);
   await contributeToJackpot(amount);
@@ -243,7 +235,7 @@ function attachCollector(client, channel, message, state) {
       }
       if (i.customId === "craps_roll") {
         if (i.user.id !== state.shooterId) {
-          return sendEphemeral(state, i, errorEmbed(i.user, client, `Only the shooter (**${state.shooterUsername}**) can roll. Place a bet to join the table.`));
+          return sendEphemeral(state, i, buildErrorEmbed(i.user, client, `Only the shooter (**${state.shooterUsername}**) can roll. Place a bet to join the table.`));
         }
         return handleRoll(i, state, client);
       }
@@ -255,14 +247,14 @@ function attachCollector(client, channel, message, state) {
       }
       if (i.customId === "craps_end") {
         if (i.user.id !== state.creatorId) {
-          return sendEphemeral(state, i, errorEmbed(i.user, client, `Only **${state.creatorUsername}** (who started this session) can end it.`));
+          return sendEphemeral(state, i, buildErrorEmbed(i.user, client, `Only **${state.creatorUsername}** (who started this session) can end it.`));
         }
         return endSession(client, channel, message, state, "ended", i);
       }
     } catch (err) {
       logger.error(`[craps] handler error: ${err && err.stack || err}`);
       try {
-        if (!i.replied && !i.deferred) await i.reply({ embeds: [errorEmbed(i.user, client, "Something went wrong handling that action.")], ephemeral: true });
+        if (!i.replied && !i.deferred) await i.reply({ embeds: [buildErrorEmbed(i.user, client, "Something went wrong handling that action.")], ephemeral: true });
       } catch (_) { /* ignore */ }
     }
   });
@@ -278,12 +270,12 @@ function attachCollector(client, channel, message, state) {
 async function handleBetButton(buttonInt, state, betKey, client) {
   const def = BET_DEFINITIONS[betKey];
   if (!def) {
-    return sendEphemeral(state, buttonInt, errorEmbed(buttonInt.user, client, "Unknown bet type."));
+    return sendEphemeral(state, buttonInt, buildErrorEmbed(buttonInt.user, client, "Unknown bet type."));
   }
 
   const preCheck = validateBetAllowed(betKey, state.phase, state.point, state.bets);
   if (!preCheck.allowed) {
-    return sendEphemeral(state, buttonInt, errorEmbed(buttonInt.user, client, preCheck.reason));
+    return sendEphemeral(state, buttonInt, buildErrorEmbed(buttonInt.user, client, preCheck.reason));
   }
 
   const cachedAmount = state.userBetAmounts[buttonInt.user.id];
@@ -314,14 +306,14 @@ async function handleBetButton(buttonInt, state, betKey, client) {
   // Re-resolve the session — the modal sat open for up to 60s, anything could have happened.
   const current = client.crapsGames.get(state.channelId);
   if (!current || current.status === "ended") {
-    return sendEphemeral(null, submit, errorEmbed(submit.user, client, "This craps session is no longer active."));
+    return sendEphemeral(null, submit, buildErrorEmbed(submit.user, client, "This craps session is no longer active."));
   }
   if (current.status !== "active") {
-    return sendEphemeral(current, submit, errorEmbed(submit.user, client, "A roll is in progress — try again in a moment."));
+    return sendEphemeral(current, submit, buildErrorEmbed(submit.user, client, "A roll is in progress — try again in a moment."));
   }
   const postCheck = validateBetAllowed(betKey, current.phase, current.point, current.bets);
   if (!postCheck.allowed) {
-    return sendEphemeral(current, submit, errorEmbed(submit.user, client, postCheck.reason));
+    return sendEphemeral(current, submit, buildErrorEmbed(submit.user, client, postCheck.reason));
   }
 
   current.userBetAmounts[submit.user.id] = amount;
@@ -331,10 +323,10 @@ async function handleBetButton(buttonInt, state, betKey, client) {
 
 async function handlePassDice(i, state, client) {
   if (i.user.id !== state.shooterId) {
-    return sendEphemeral(state, i, errorEmbed(i.user, client, `Only the shooter (**${state.shooterUsername}**) can pass the dice.`));
+    return sendEphemeral(state, i, buildErrorEmbed(i.user, client, `Only the shooter (**${state.shooterUsername}**) can pass the dice.`));
   }
   if (state.shooterOrder.length < 2) {
-    return sendEphemeral(state, i, errorEmbed(i.user, client, "There are no other players to pass the dice to."));
+    return sendEphemeral(state, i, buildErrorEmbed(i.user, client, "There are no other players to pass the dice to."));
   }
   const next = pickNextShooter(state);
   state.shooterId = next;
@@ -367,7 +359,7 @@ async function handleChangeBet(buttonInt, state) {
 
   const current = client.crapsGames.get(state.channelId);
   if (!current || current.status === "ended") {
-    return sendEphemeral(null, submit, errorEmbed(submit.user, client, "This craps session is no longer active."));
+    return sendEphemeral(null, submit, buildErrorEmbed(submit.user, client, "This craps session is no longer active."));
   }
   current.userBetAmounts[submit.user.id] = amount;
   await db.set(`${submit.user.id}.craps.lastBet`, expression).catch(() => {});
@@ -383,10 +375,10 @@ async function handleChangeBet(buttonInt, state) {
 
 async function handleRoll(i, state, client) {
   if (state.bets.length === 0) {
-    return sendEphemeral(state, i, errorEmbed(i.user, client, "Place at least one bet before rolling."));
+    return sendEphemeral(state, i, buildErrorEmbed(i.user, client, "Place at least one bet before rolling."));
   }
   if (state.rolling) {
-    return sendEphemeral(state, i, errorEmbed(i.user, client, "A roll is already in progress."));
+    return sendEphemeral(state, i, buildErrorEmbed(i.user, client, "A roll is already in progress."));
   }
   state.rolling = true;
   state.status = "rolling";

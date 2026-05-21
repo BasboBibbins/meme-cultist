@@ -1,12 +1,6 @@
 const logger = require("./logger");
 const { getSettingValue } = require("./settings");
 
-/**
- * Send a DM to a user if they have DMs enabled.
- * @param {import("discord.js").User} user - A discord.js User instance.
- * @param {import("discord.js").MessageCreateOptions|string|object} payload - Message payload.
- * @returns {Promise<import("discord.js").Message|null>} The sent message, or null if disabled/failed.
- */
 async function sendDM(user, payload) {
   if (!user || !user.id) return null;
   const userId = user.id;

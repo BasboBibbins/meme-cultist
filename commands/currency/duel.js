@@ -8,6 +8,7 @@ const { getDuelColors } = require("../../themes/resolver");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { withUserLock } = require("../../utils/userlock");
+const { buildErrorEmbed } = require("../../utils/embeds");
 
 const ACCEPT_TIMEOUT = 60000;
 const CHOICE_TIMEOUT = 30000;
@@ -29,14 +30,6 @@ function resolveWinner(a, b) {
     return "challenger";
   }
   return "opponent";
-}
-
-function buildErrorEmbed(user, client) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
 }
 
 // One ephemeral warning per user across the entire duel session — prevents
