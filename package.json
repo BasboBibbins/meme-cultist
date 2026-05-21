@@ -4,9 +4,13 @@
   "description": "",
   "main": "bot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
+    "test:unit": "jest test/unit",
+    "test:canvas": "jest test/canvas",
     "test:llm": "node test/llm/runner.js",
-    "preview:canvas": "node test/canvas/preview-all.js"
+    "preview:canvas": "node test/canvas/preview-all.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "keywords": [],
   "author": "",
@@ -54,5 +58,9 @@
     "ytdl-core": "^4.11.5",
     "ytpl": "^2.3.0",
     "ytsr": "^3.8.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "jest": "^30.4.2"
   }
 }
