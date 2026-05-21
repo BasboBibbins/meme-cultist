@@ -1,13 +1,21 @@
 /**
  * Shared constants and helpers for canvas preview scripts.
  * Usage: const { THEMES, OUT_DIR, AVATAR_DIR, PLAYERS, avatarPath, mockUser, saveRender } = require("./preview-common");
+ *
+ * Pass --theme <id> to render a single theme instead of the default batch:
+ *   node preview-slots.js --theme neon
+ *   npm run preview:canvas -- --theme neon
  */
 const path = require("path");
 const fs = require("fs");
 
-const THEMES = ["classic", "memecult", "dessert", "sunset", "noir"];
+const DEFAULT_THEMES = ["classic", "memecult", "dessert", "sunset", "noir"];
+const _themeArgIdx = process.argv.indexOf("--theme");
+const _themeArg = _themeArgIdx !== -1 ? process.argv[_themeArgIdx + 1] || null : null;
+const THEMES = _themeArg ? [_themeArg] : DEFAULT_THEMES;
 
-const OUT_DIR = path.join(__dirname, "../../tmp/canvas");
+const CANVAS_ROOT = path.join(__dirname, "../../tmp/canvas");
+const OUT_DIR = _themeArg ? path.join(CANVAS_ROOT, _themeArg) : CANVAS_ROOT;
 const AVATAR_DIR = path.join(__dirname, "avatars");
 
 const PLAYERS = [
@@ -38,4 +46,4 @@ function saveRender(attachment, filename) {
   console.log(`→ ${outPath}`);
 }
 
-module.exports = { THEMES, OUT_DIR, AVATAR_DIR, PLAYERS, avatarPath, mockUser, saveRender };
+module.exports = { THEMES, OUT_DIR, CANVAS_ROOT, AVATAR_DIR, PLAYERS, avatarPath, mockUser, saveRender };

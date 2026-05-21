@@ -291,10 +291,11 @@ if (DELETE_SLASH) {
     const messageArchive = require("./utils/messageArchive");
     jobs.register("message_embed", async (payload) => {
       const { channelId, chunkIds } = payload;
-      if (!chunkIds || chunkIds.length === 0) return;
       try {
-        const unembedded = messageArchive.getUnembeddedForChannel(channelId, 100)
-          .filter(r => chunkIds.includes(r.id));
+        const all = messageArchive.getUnembeddedForChannel(channelId, 100);
+        const unembedded = chunkIds && chunkIds.length > 0
+          ? all.filter(r => chunkIds.includes(r.id))
+          : all;
         if (unembedded.length === 0) return;
 
         const llm = require("./utils/llm");

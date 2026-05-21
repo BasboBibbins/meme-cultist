@@ -3,25 +3,9 @@
  * each image to tmp/canvas/craps-<themeId>.png.
  * Usage: node test/canvas/preview-craps.js
  */
-const path = require("path");
-const fs = require("fs");
 const { drawCrapsTable } = require("../../utils/crapsCanvas");
 const { getThemeColors } = require("../../themes/resolver");
-
-const OUT_DIR = path.join(__dirname, "../../tmp/canvas");
-const AVATAR_DIR = path.join(__dirname, "avatars");
-
-const THEMES = ["classic", "memecult", "dessert", "sunset", "noir"];
-
-const PLAYERS = [
-  { id: "u1", name: "GrandGambler99",   color: "#e74c3c", avatar: 1 },
-  { id: "u2", name: "HotHandHannah",   color: "#3498db", avatar: 2 },
-  { id: "u3", name: "BigBettorBruno",  color: "#2ecc71", avatar: 3 },
-  { id: "u4", name: "LuckyLarryLong",  color: "#f39c12", avatar: 4 },
-  { id: "u5", name: "NightOwlNorbert", color: "#9b59b6", avatar: 5 },
-  { id: "u6", name: "SteadyEddie",     color: "#1abc9c", avatar: 6 },
-  { id: "u7", name: "RecklessRachel",  color: "#e67e22", avatar: 7 },
-];
+const { THEMES, OUT_DIR, PLAYERS, avatarPath, saveRender } = require("./preview-common");
 
 const state = {
   phase: "point",
@@ -30,7 +14,7 @@ const state = {
   shooterUsername: "GrandGambler99",
   shooterStreak: 3,
   shooterOrder: PLAYERS.map((p) => p.id),
-  userAvatars: Object.fromEntries(PLAYERS.map((p) => [p.id, path.join(AVATAR_DIR, `${p.avatar}.jpg`)])),
+  userAvatars: Object.fromEntries(PLAYERS.map((p) => [p.id, avatarPath(p.avatar)])),
   userColors: Object.fromEntries(PLAYERS.map((p) => [p.id, p.color])),
   userNames: Object.fromEntries(PLAYERS.map((p) => [p.id, p.name])),
   totals: {
@@ -81,13 +65,9 @@ const state = {
 };
 
 (async () => {
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-
   for (const themeId of THEMES) {
     const colors = getThemeColors(themeId, "craps");
     const attachment = await drawCrapsTable(state, colors);
-    const outPath = path.join(OUT_DIR, `craps-${themeId}.png`);
-    fs.writeFileSync(outPath, attachment.attachment);
-    console.log(`[${themeId}] → ${outPath}`);
+    saveRender(attachment, `craps-${themeId}.png`);
   }
 })();

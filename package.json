@@ -6,7 +6,7 @@
   "scripts": {
     "test": "jest",
     "test:unit": "jest test/unit",
-    "test:canvas": "jest test/canvas",
+    "test:canvas": "jest test/canvas --",
     "test:llm": "node test/llm/runner.js",
     "preview:canvas": "node test/canvas/preview-all.js",
     "lint": "eslint .",

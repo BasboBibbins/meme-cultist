@@ -69,6 +69,39 @@ function sanitizeMentions(text) {
   return text.replace(/@everyone/g, "@​everyone").replace(/@here/g, "@​here");
 }
 
+// DeepSeek occasionally emits tool calls as DSML tokens inside message.content
+// instead of using the structured tool_calls field. Parse them out so the
+// execution loop can handle them normally.
+function parseDSMLToolCalls(content) {
+  if (!content || !content.includes("DSML")) return [];
+  const toolCalls = [];
+  // Matches <｜｜DSML｜｜invoke name="..."> or any variation of the DSML prefix
+  const invokeRe = /<[^<>\s]*DSML[^<>\s]*invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/[^<>\s]*DSML[^<>\s]*invoke>/g;
+  const paramRe = /<[^<>\s]*DSML[^<>\s]*parameter\s+name="([^"]+)"\s+string="(true|false)"[^>]*>([\s\S]*?)<\/[^<>\s]*DSML[^<>\s]*parameter>/g;
+  let invokeMatch;
+  while ((invokeMatch = invokeRe.exec(content)) !== null) {
+    const name = invokeMatch[1];
+    const body = invokeMatch[2];
+    const args = {};
+    let paramMatch;
+    paramRe.lastIndex = 0;
+    while ((paramMatch = paramRe.exec(body)) !== null) {
+      const [, paramName, isString, value] = paramMatch;
+      try {
+        args[paramName] = isString === "true" ? value : JSON.parse(value);
+      } catch (_) {
+        args[paramName] = value;
+      }
+    }
+    toolCalls.push({
+      id: `dsml_${Date.now()}_${toolCalls.length}`,
+      type: "function",
+      function: { name, arguments: JSON.stringify(args) },
+    });
+  }
+  return toolCalls;
+}
+
 function cleanupExpiredFacts(facts) {
   if (!FACT_TTL_DAYS || !Array.isArray(facts)) return facts;
 
@@ -1720,6 +1753,29 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
 
       response = choice.message?.content;
+
+      // DeepSeek sometimes embeds tool calls as DSML tokens in content rather
+      // than setting finish_reason=tool_calls. Detect and re-route them.
+      const dsmlToolCalls = parseDSMLToolCalls(response);
+      if (dsmlToolCalls.length > 0) {
+        logger.warn(`[DSML] ${dsmlToolCalls.length} tool call(s) found in content — re-routing through tool loop`);
+        messages.push({ role: "assistant", content: null, tool_calls: dsmlToolCalls });
+        for (const toolCall of dsmlToolCalls) {
+          const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+          messages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
+          if (SIDE_EFFECT_TOOLS.has(toolCall.function.name)) {
+            toolCtx.pendingToolCalls.push({
+              id: toolCall.id,
+              type: "function",
+              function: { name: toolCall.function.name, arguments: toolCall.function.arguments },
+              result: toolResult,
+            });
+          }
+        }
+        toolCallDepth++;
+        continue;
+      }
+
       if (!response) {
         logger.warn("No content in API response");
         break;
@@ -1750,6 +1806,17 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
       if (!response && !toolCtx.pendingToolCalls?.length) {
         response = "I wasn't able to generate that image. Please try again.";
+      }
+    }
+
+    // Sanity guard: DSML tokens must never reach Discord. If any survived
+    // (e.g. tool depth exhausted before processing), strip and log an error.
+    if (response && response.includes("DSML")) {
+      logger.error("[Guard] DSML tokens detected in final response — stripping before send.");
+      response = response.replace(/<[^<>]*DSML[\s\S]*?<\/[^<>]*DSML[^<>]*>/g, "").trim();
+      if (!response) {
+        logger.error("[Guard] Response was entirely DSML markup — suppressing send.");
+        response = null;
       }
     }
 

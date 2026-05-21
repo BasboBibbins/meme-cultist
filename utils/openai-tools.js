@@ -557,14 +557,52 @@ async function handleLookupKb(args, message, client) {
   }
 }
 
+function buildFTSQuery(rawQuery) {
+  const stopwords = new Set([
+    "the","a","an","is","was","were","are","be","been","i","you","he","she",
+    "they","we","it","that","this","what","did","do","does","how","when",
+    "where","why","who","not","no","but","and","or","if","then","so","my",
+    "your","his","her","their","our","its","at","in","on","for","of","to",
+    "with","by","from","about","said","say","says","have","has","had",
+    "would","could","should","will","can","may","might","let","get","got",
+    "make","made","know","think","want","just","like","went","come","came",
+    "go","see","saw","tell","told","ask","asked","very","really","thing",
+  ]);
+  const cleaned = rawQuery.replace(/["'()*^]/g, " ");
+  const tokens = cleaned
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(t => t.length > 2 && !stopwords.has(t));
+  if (tokens.length === 0) return cleaned.trim() || rawQuery;
+  return tokens.join(" OR ");
+}
+
 async function handleSearchHistory(args, message, client) {
   if (!args?.query) return { error: "Missing required 'query' argument." };
   const limit = Math.min(Math.max(args.limit || 5, 1), 10);
   const channelId = message.channelId;
 
   try {
-    const ftsResults = messageArchive.searchFTS(channelId, args.query, 30);
+    const ftsQuery = buildFTSQuery(args.query);
+    const ftsResults = messageArchive.searchFTS(channelId, ftsQuery, 30);
     if (ftsResults.length === 0) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const semanticResults = messageArchive.searchSemanticFull(channelId, embedding, limit);
+        if (semanticResults.length > 0) {
+          return {
+            results: semanticResults.map(r => ({
+              author_id: r.author_id,
+              content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
+              created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
+            })),
+            total_matches: semanticResults.length,
+            note: "Results via semantic search (no FTS matches).",
+          };
+        }
+      } catch (err) {
+        logger.warn(`[search_history] Semantic fallback failed: ${err.message}`);
+      }
       return {
         results: [],
         total_matches: 0,

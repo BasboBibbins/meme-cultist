@@ -141,6 +141,22 @@ const deepSeaColors = {
   embedColor:  0x080e2a,
 };
 
+const y2kColors = {
+  background:  path.join(BACKGROUND_BASE, "y2k.png"),
+  feltColor:   "rgba(100, 185, 235, 0.80)",
+  feltDark:    "#2a78b8",
+  tableGreen:  "#5ab2e0",
+  gold:        "#ff6600",
+  goldDark:    "#cc4400",
+  goldBronze:  "#884400",
+  textWhite:   "#001a44",
+  textBlack:   "#000a22",
+  textWin:     "#00aa44",
+  textLoss:    "#cc1133",
+  textPrimary: "#ff6600",
+  embedColor:  0x5ab2e0,
+};
+
 // ─────────────────────────────────────────────────────────────────────
 const themes = {
   classic,
@@ -220,19 +236,182 @@ const themes = {
       poker: poker(memecultColors, { feltColor: "rgba(42, 40, 38, 0.85)" }),
     },
   ),
-  /*
-        * TODO: List of limited themes I want to create post-launch:
-        - Fwen Cult (June 11-June 18): Celebrating this iteration of the Discord, featuring new-gen memecult culture and the fwen mascot (miku plushie).
-        - Halloween (Oct 1-Oct 31): A spooky theme with Halloween symbols and a dark color palette.
-        - Christmas (Dec 1-Dec 31): A festive theme with Christmas symbols and a red/green color palette.
-        - New Year (Jan 1-Jan 7): A celebratory theme with fireworks and a vibrant color palette.
-        - Valentine's Day (Feb 1-Feb 14): A romantic theme with hearts and a pink/red color palette.
-        - St. Patrick's Day (Mar 1-Mar 17): A lucky theme with shamrocks and a green/gold color palette.
-        - July 4th (June 28-July 7): An American Independence Day theme with patriotic symbols and a red/white/blue color palette.
-        - Easter (April 1-April 15): A springtime theme with Easter eggs and a pastel color palette.
-        - Miku Day (Aug 31-Sept 7): A theme celebrating Hatsune Miku's birthday, featuring Miku-themed symbols and a teal color palette.
-        - Precision (June 23-June 30): A theme inspired by the Precision Roleplay DarkRP server. Dark color with yellow-green accents.
-    */
+
+  fwenCult: limited("fwenCult", "Fwen Cult",
+    "A colorful theme celebrating the new-gen TMC community and the Fwen Cult-era!",
+    300000, "<:miku:1250275823710113824>",
+    { start: { month: 6, day: 9 }, end: { month: 6, day: 20 } },
+    {
+      background:  path.join(BACKGROUND_BASE, "fwenCult.png"),
+      feltColor:   "rgba(48, 36, 54, 0.75)",
+      feltDark:    "#1e1626",
+      tableGreen:  "#2e2038",
+      gold:        "#b094d4",
+      goldDark:    "#8060a8",
+      goldBronze:  "#503878",
+      textWhite:   "#f0e8f8",
+      textBlack:   "#140c1c",
+      textWin:     "#88ddc0",
+      textLoss:    "#e08870",
+      textPrimary: "#b094d4",
+      embedColor:  0x302436,
+    },
+    {
+      slots: {
+        reelBackground:      "rgba(30, 22, 38, 0.8)",
+        frameColor:          "#b094d4",
+        frameDarkColor:      "#8060a8",
+        frameBronze:         "#503878",
+        dividerColor:        "#2e2038",
+        highlightWin:        "rgba(176, 148, 212, 0.55)",
+        bannerBackground:    "#1e1626",
+        bannerBackgroundEnd: "#120e18",
+        motionBlurOverlay:   "rgba(48, 36, 54, 0.5)",
+        paylineColors:       ["#b094d4", "#88ddc0", "#f0e8f8", "#e08870", "#f5c0e0"],
+        symbols: sprites("fwenCult", ["Miku Plushie", "Fwen", "Server Icon", "Boba", "Cat", "MLG Doge", "BAR", "Seven", "Wild", "Bonus"]),
+      },
+      roulette: {
+        woodInner:       "#2e2038",
+        woodMid:         "#1e1626",
+        woodOuter:       "#120e18",
+        goldRim:         "#b094d4",
+        pocketRed:       "#e06080",
+        pocketBlack:     "#1e1626",
+        pocketGreen:     "#60c8a0",
+        winnerHighlight: "#b094d4",
+        textBlack:       "#140c1c",
+        textWhite:       "#f0e8f8",
+        feltInner:       "#2e2038",
+        feltMid:         "#241a30",
+        feltOuter:       "#1a1226",
+        spokeColor:      "#b094d4",
+        hubLight:        "#d8c8f0",
+        hubMid:          "#b094d4",
+        hubDark:         "#8060a8",
+        hubStroke:       "#f0e8f8",
+        tableGreen:      "#2e2038",
+        zeroGreen:       "#60c8a0",
+        numberRed:       "#e06080",
+        numberBlack:     "#1e1626",
+        betArea:         "#241a30",
+        betBorder:       "#b094d4",
+        resultOverlay:   "rgba(48, 36, 54, 0.85)",
+        resultBorder:    "#b094d4",
+      },
+      craps: {
+        feltInner:        "#2e2038",
+        feltMid:          "#241a30",
+        feltOuter:        "#1a1226",
+        layoutLine:       "#b094d4",
+        layoutLabel:      "#f0e8f8",
+        passLineColor:    "#60c8a0",
+        dontPassColor:    "#e06080",
+        fieldColor:       "#382848",
+        comeColor:        "#2e2038",
+        placeColor:       "#241a30",
+        hardWaysColor:    "#e06080",
+        propsColor:       "#1e1626",
+        bigSixEightColor: "#2e2038",
+        puckOff:          "#1e1626",
+        puckOn:           "#b094d4",
+        puckText:         "#140c1c",
+        diceFace:         "#f0e8f8",
+        diceDots:         "#140c1c",
+        winnerHighlight:  "#b094d4",
+        resultOverlay:    "rgba(48, 36, 54, 0.85)",
+        resultBorder:     "#b094d4",
+      },
+      poker: poker({ feltColor: "rgba(48, 36, 54, 0.85)", tableGreen: "#2e2038", gold: "#b094d4", goldDark: "#8060a8" }),
+    },
+  ),
+
+  july4: limited("july4", "July 4th",
+    "Stars, stripes, and fireworks. A patriotic celebration in red, white, and blue.",
+    741776, "🎆",
+    { start: { month: 6, day: 28 }, end: { month: 7, day: 7 } },
+    {
+      background:  path.join(BACKGROUND_BASE, "july4.png"),
+      feltColor:   "rgba(10, 20, 60, 0.75)",
+      feltDark:    "#060c28",
+      tableGreen:  "#0e1840",
+      gold:        "#e8e8e8",
+      goldDark:    "#b0b0b0",
+      goldBronze:  "#787878",
+      textWhite:   "#ffffff",
+      textBlack:   "#060c28",
+      textWin:     "#f5c842",
+      textLoss:    "#cc2222",
+      textPrimary: "#e8e8e8",
+      embedColor:  0x0a143c,
+    },
+    {
+      slots: {
+        reelBackground:      "rgba(6, 12, 40, 0.8)",
+        frameColor:          "#e8e8e8",
+        frameDarkColor:      "#b0b0b0",
+        frameBronze:         "#787878",
+        dividerColor:        "#0e1840",
+        highlightWin:        "rgba(245, 200, 66, 0.55)",
+        bannerBackground:    "#060c28",
+        bannerBackgroundEnd: "#030618",
+        motionBlurOverlay:   "rgba(10, 20, 60, 0.5)",
+        paylineColors:       ["#b22234", "#ffffff", "#002868", "#f5c842", "#e8e8e8"],
+        symbols: sprites("july4", ["Bald Eagle", "Liberty Bell", "Flag", "Firework", "Uncle Sam Hat", "Star", "Hot Dog", "Beer", "Wild", "Bonus"]),
+      },
+      roulette: {
+        woodInner:       "#1a2a5a",
+        woodMid:         "#0e1a40",
+        woodOuter:       "#080e28",
+        goldRim:         "#e8e8e8",
+        pocketRed:       "#b22234",
+        pocketBlack:     "#002868",
+        pocketGreen:     "#ffffff",
+        winnerHighlight: "#f5c842",
+        textBlack:       "#060c28",
+        textWhite:       "#ffffff",
+        feltInner:       "#0e1840",
+        feltMid:         "#0a1230",
+        feltOuter:       "#060c20",
+        spokeColor:      "#e8e8e8",
+        hubLight:        "#ffffff",
+        hubMid:          "#e8e8e8",
+        hubDark:         "#b0b0b0",
+        hubStroke:       "#ffffff",
+        tableGreen:      "#0e1840",
+        zeroGreen:       "#ffffff",
+        numberRed:       "#b22234",
+        numberBlack:     "#002868",
+        betArea:         "#142050",
+        betBorder:       "#e8e8e8",
+        resultOverlay:   "rgba(10, 20, 60, 0.85)",
+        resultBorder:    "#f5c842",
+      },
+      craps: {
+        feltInner:        "#0e1840",
+        feltMid:          "#0a1230",
+        feltOuter:        "#060c20",
+        layoutLine:       "#e8e8e8",
+        layoutLabel:      "#ffffff",
+        passLineColor:    "#142050",
+        dontPassColor:    "#b22234",
+        fieldColor:       "#1a2a5a",
+        comeColor:        "#0e1840",
+        placeColor:       "#142050",
+        hardWaysColor:    "#b22234",
+        propsColor:       "#0a1230",
+        bigSixEightColor: "#142050",
+        puckOff:          "#002868",
+        puckOn:           "#ffffff",
+        puckText:         "#060c28",
+        diceFace:         "#ffffff",
+        diceDots:         "#060c28",
+        winnerHighlight:  "#f5c842",
+        resultOverlay:    "rgba(10, 20, 60, 0.85)",
+        resultBorder:     "#f5c842",
+      },
+      poker: poker({ feltColor: "rgba(10, 20, 60, 0.85)", tableGreen: "#0e1840", gold: "#e8e8e8", goldDark: "#b0b0b0" }),
+    },
+  ),
 
   // ── Full themes (custom sprites + colors for all games) ─────────────────────────
 
@@ -598,18 +777,77 @@ const themes = {
     },
   ),
 
-  /*
-        * TODO: List of full themes I want to create post-launch (with custom slot symbols, roulette textures, and poker cards):
-        - Cabaret: Wood and velvet textures with deep reds, golds, and purples. Slot symbols could be cabaret-themed (top hat, cane, showgirl, etc). Roulette could have a luxurious wood grain and gold accents.
-        - Sparkle: PICMIX/BLINGEE-inspired theme with gaudy sparkles, rhinestones, and glitter textures. Bright colors like hot pink, electric blue, and lime green. Slot symbols could be sparkly objects (diamond, star, heart, etc). Roulette could have a glittery background and sparkling highlights.
-        - Bling: Similar to Sparkle but gold/white/light blue color palette and more focused on a luxurious, ostentatious aesthetic. Slot symbols could be blinged-out versions of classic symbols (diamond cherry, gold bell, etc). Roulette could have a shiny metallic finish and diamond accents.
-        - Bloons: A fun, colorful theme inspired by the Bloons Tower Defense game series. Slot symbols could be different colored bloons and monkey towers. Roulette could have a bright, playful design with balloon motifs and vibrant colors.
-        - Airshow: Think Top Gun on NES: a retro 80s aviation theme with pixel art slot symbols (fighter jet, pilot helmet, missile, etc) and a runway-inspired roulette design. Colors could be navy, gray, and red with neon accents.
-        - Y2K: A blobject-inspired theme with glossy, futuristic textures and a color palette of silver, black, and electric blue. Slot symbols could be Y2K-themed objects (floppy disk, old cell phone, CD, etc). Roulette could have a sleek, metallic design with digital-style numbers and accents.
-        - Touhou: A theme based on the Touhou Project bullet hell games, featuring slot symbols of popular characters and a roulette design inspired by the games' aesthetic. Colors could be a mix of dark and vibrant tones to capture the series' unique style.
-        - Glass: A Liquid Glass-inspired theme similar to iOS 26s new design language, with frosted glass textures, soft shadows, and a color palette of cool blues, grays, and whites. Slot symbols could be glassy versions of classic symbols (glass cherry, frosted bell, etc). Roulette could have a sleek, transparent design with subtle reflections and highlights.
-        - Term: A terminal/command-line-inspired theme with a dark background, green text, and pixelated slot symbols (like ASCII art). Roulette could have a retro computer design with a monochrome color scheme and pixelated numbers.
-    */
+  y2k: full("y2k", "Y2K",
+    "Blobject-era glossy futurism. Translucent aqua plastic panels, chrome orange frames, and lime/red accents.",
+    350000, 5, "💾", y2kColors,
+    {
+      slots: {
+        reelBackground:      "rgba(220, 242, 255, 0.88)",
+        frameColor:          "#ff6600",
+        frameDarkColor:      "#cc4400",
+        frameBronze:         "#884400",
+        dividerColor:        "#8ac8e8",
+        highlightWin:        "rgba(0, 180, 80, 0.45)",
+        bannerBackground:    "#1a5a98",
+        bannerBackgroundEnd: "#0a3a78",
+        motionBlurOverlay:   "rgba(140, 200, 240, 0.4)",
+        paylineColors:       ["#ff6600", "#00cc55", "#ee1155", "#0099ff", "#cc00cc"],
+        symbols: sprites("y2k", ["Floppy Disk", "CD-ROM", "Cell Phone", "iMac", "Beeper", "Y2K Bug", "VHS Tape", "BAR", "Wild", "Bonus"]),
+      },
+      roulette: {
+        woodInner:       "#3a8ac0",
+        woodMid:         "#2a6898",
+        woodOuter:       "#1a4870",
+        goldRim:         "#ff6600",
+        pocketRed:       "#cc1122",
+        pocketBlack:     "#001133",
+        pocketGreen:     "#007733",
+        winnerHighlight: "#ff6600",
+        textBlack:       "#001133",
+        textWhite:       "#ffffff",
+        feltInner:       "#5ab2e0",
+        feltMid:         "#4a9ed0",
+        feltOuter:       "#3a8ac0",
+        spokeColor:      "#ff6600",
+        hubLight:        "#ffffff",
+        hubMid:          "#ff9944",
+        hubDark:         "#cc4400",
+        hubStroke:       "#ffffff",
+        tableGreen:      "#5ab2e0",
+        zeroGreen:       "#007733",
+        numberRed:       "#cc1122",
+        numberBlack:     "#ddf0ff",
+        betArea:         "#3a8ac0",
+        betBorder:       "#ff6600",
+        resultOverlay:   "rgba(10, 50, 100, 0.88)",
+        resultBorder:    "#ff6600",
+      },
+      craps: {
+        feltInner:        "#5ab2e0",
+        feltMid:          "#4a9ed0",
+        feltOuter:        "#3a8ac0",
+        layoutLine:       "#ff6600",
+        layoutLabel:      "#001a44",
+        passLineColor:    "#4a9ed0",
+        dontPassColor:    "#7a2030",
+        fieldColor:       "#6ac2ee",
+        comeColor:        "#5ab2e0",
+        placeColor:       "#4a9ed0",
+        hardWaysColor:    "#3a8ac0",
+        propsColor:       "#5ab2e0",
+        bigSixEightColor: "#4a9ed0",
+        puckOff:          "#3a8ac0",
+        puckOn:           "#ff6600",
+        puckText:         "#ffffff",
+        diceFace:         "#ffffff",
+        diceDots:         "#001133",
+        winnerHighlight:  "#ff6600",
+        resultOverlay:    "rgba(10, 50, 100, 0.88)",
+        resultBorder:     "#ff6600",
+      },
+      poker: poker(y2kColors),
+    },
+  ),
 
   // ── Styled themes (palette swap + background image, default sprites) ────────────
 
@@ -642,6 +880,40 @@ const themes = {
         bannerBackgroundEnd: "#0d0517",
         motionBlurOverlay:   "rgba(26, 10, 46, 0.5)",
         paylineColors:       ["#88cc88", "#ff6677", "#c0c0c0", "#ffcc00", "#66dd88"],
+      },
+    },
+  ),
+
+  autumn: styled("autumn", "Autumn",
+    "Warm harvest palette of burnt orange, chestnut brown, and amber. A cozy seasonal look.",
+    50000, 20, "🍂",
+    {
+      background:  path.join(BACKGROUND_BASE, "autumn.png"),
+      feltColor:   "rgba(58, 30, 10, 0.72)",
+      feltDark:    "#221208",
+      tableGreen:  "#4e2a10",
+      gold:        "#d4822a",
+      goldDark:    "#a05e1a",
+      goldBronze:  "#6e3e10",
+      textWhite:   "#fff0e0",
+      textBlack:   "#1a0e04",
+      textWin:     "#88dd66",
+      textLoss:    "#dd5533",
+      textPrimary: "#d4822a",
+      embedColor:  0x3a1e0a,
+    },
+    {
+      slots: {
+        reelBackground:      "rgba(34, 18, 8, 0.75)",
+        frameColor:          "#d4822a",
+        frameDarkColor:      "#a05e1a",
+        frameBronze:         "#6e3e10",
+        dividerColor:        "#4e2a10",
+        highlightWin:        "rgba(212, 130, 42, 0.55)",
+        bannerBackground:    "#221208",
+        bannerBackgroundEnd: "#140a04",
+        motionBlurOverlay:   "rgba(58, 30, 10, 0.5)",
+        paylineColors:       ["#d4822a", "#88dd66", "#fff0e0", "#dd5533", "#f5c842"],
       },
     },
   ),
@@ -970,6 +1242,156 @@ const themes = {
     },
   ),
 
+  arctic: colorway("arctic", "Arctic",
+    "Bright white felt with icy cyan accents. A high-contrast, crisp alternative to Frost.",
+    15000, 40, "🧊",
+    {
+      feltColor:   "#ddeef8",
+      feltDark:    "#b0cce0",
+      tableGreen:  "#c8e4f4",
+      gold:        "#2288cc",
+      goldDark:    "#1a6699",
+      goldBronze:  "#104466",
+      textWhite:   "#0a1e2e",
+      textBlack:   "#0a1e2e",
+      textWin:     "#0055aa",
+      textLoss:    "#cc2233",
+      textPrimary: "#2288cc",
+      embedColor:  0xddeef8,
+    },
+    {
+      slots: {
+        bannerBackground:    "#eef8ff",
+        bannerBackgroundEnd: "#c8e4f4",
+      },
+      roulette: {
+        textWhite: "#ffffff",
+      },
+    },
+  ),
+
+  retro: colorway("retro", "Retro",
+    "Near-black felt lit by amber phosphor glow. Looks like a dark room with an old CRT running.",
+    15000, 40, "📺",
+    {
+      feltColor:   "#0c0b08",
+      feltDark:    "#070605",
+      tableGreen:  "#181508",
+      gold:        "#e8a000",
+      goldDark:    "#aa7200",
+      goldBronze:  "#6a4800",
+      textWhite:   "#f5dfa0",
+      textBlack:   "#070605",
+      textWin:     "#88cc22",
+      textLoss:    "#cc2200",
+      textPrimary: "#e8a000",
+      embedColor:  0x0c0b08,
+    },
+  ),
+
+  wine: colorway("wine", "Wine",
+    "Deep Bordeaux burgundy felt with antique gold frames. Darker and more purple-red than Crimson.",
+    15000, 40, "🍷",
+    {
+      feltColor:   "#3a0a18",
+      feltDark:    "#280610",
+      tableGreen:  "#52101e",
+      gold:        "#c8a040",
+      goldDark:    "#9a7828",
+      goldBronze:  "#6a5018",
+      textWhite:   "#f8e8ee",
+      textBlack:   "#180308",
+      textWin:     "#88cc66",
+      textLoss:    "#ff4466",
+      textPrimary: "#c8a040",
+      embedColor:  0x3a0a18,
+    },
+  ),
+
+  sage: colorway("sage", "Sage",
+    "Dusty muted sage green with warm straw-gold frames. Earthy and organic — between Mint and Olive Drab.",
+    15000, 40, "🌿",
+    {
+      feltColor:   "#3e5240",
+      feltDark:    "#2c3a2e",
+      tableGreen:  "#4e6450",
+      gold:        "#c8b870",
+      goldDark:    "#9a8c50",
+      goldBronze:  "#7a6c38",
+      textWhite:   "#e8eedc",
+      textBlack:   "#161e16",
+      textWin:     "#88dd88",
+      textLoss:    "#dd6644",
+      textPrimary: "#c8b870",
+      embedColor:  0x3e5240,
+    },
+  ),
+
+  bubblegum: colorway("bubblegum", "Bubblegum",
+    "Vivid hot-pink felt with bright yellow frames. Playful and saturated — nothing else on the pink axis comes close.",
+    15000, 40, "🩷",
+    {
+      feltColor:   "#d9277e",
+      feltDark:    "#a81860",
+      tableGreen:  "#e0509a",
+      gold:        "#ffee44",
+      goldDark:    "#ddcc22",
+      goldBronze:  "#bbaa00",
+      textWhite:   "#ffffff",
+      textBlack:   "#280014",
+      textWin:     "#44ff88",
+      textLoss:    "#ff2255",
+      textPrimary: "#ffee44",
+      embedColor:  0xd9277e,
+    },
+  ),
+
+  latte: colorway("latte", "Latte",
+    "Creamy warm tan felt with espresso-brown frames. Mocha's light counterpart.",
+    15000, 40, "🥛",
+    {
+      feltColor:   "#d4b890",
+      feltDark:    "#b89470",
+      tableGreen:  "#c8a880",
+      gold:        "#7a4a1a",
+      goldDark:    "#5a3410",
+      goldBronze:  "#3c2208",
+      textWhite:   "#2a1808",
+      textBlack:   "#180e04",
+      textWin:     "#2a7722",
+      textLoss:    "#aa2222",
+      textPrimary: "#7a4a1a",
+      embedColor:  0xd4b890,
+    },
+    {
+      slots: {
+        bannerBackground:    "#c8a880",
+        bannerBackgroundEnd: "#b89470",
+      },
+      roulette: {
+        textWhite: "#ffffff",
+      },
+    },
+  ),
+
+  jade: colorway("jade", "Jade",
+    "Deep jewel-tone teal-green felt with warm gold frames. Richer and more saturated than Emerald or Ocean.",
+    15000, 40, "💚",
+    {
+      feltColor:   "#0e4a3a",
+      feltDark:    "#083028",
+      tableGreen:  "#165e4a",
+      gold:        "#e8c840",
+      goldDark:    "#c0a028",
+      goldBronze:  "#8a7018",
+      textWhite:   "#d8f4ee",
+      textBlack:   "#041814",
+      textWin:     "#88eecc",
+      textLoss:    "#ee6644",
+      textPrimary: "#e8c840",
+      embedColor:  0x0e4a3a,
+    },
+  ),
 
   // ── Test theme ──────────────────────────────────────────────────
 
@@ -983,6 +1405,11 @@ const themes = {
 };
 
 // ─────────────────────────────────────────────────────────────────────
+
+// Disabled themes. These do not show up on the list, or in the shop.
+
+themes.minimal.disabled = true;
+themes.y2k.disabled = true;
 
 /**
  * Get a theme definition by ID. Returns classic if not found.
@@ -1003,7 +1430,7 @@ function getAllThemes() {
  */
 function getThemeList() {
   return Object.values(themes)
-    .filter(t => t.id !== "minimal")
+    .filter(t => !t.disabled)
     .map(t => ({
       id:          t.id,
       name:        t.name,
