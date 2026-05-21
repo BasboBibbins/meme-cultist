@@ -117,12 +117,12 @@ module.exports = {
     switch (subcommand) {
       case "get":
         list = [
-          characteristics != "" && `**Characteristics:** ${characteristics}`,
-          personality != "" && `**Personality:** ${personality}`,
-          preferences != "" && `**Preference:** ${preferences}`,
-          dialog != "" && `**Dialog:** ${dialog}`,
-          boundaries != "" && `**Boundaries:** ${boundaries}`,
-          topic != "" && `**Topic:** ${topic}`,
+          characteristics !== "" && `**Characteristics:** ${characteristics}`,
+          personality !== "" && `**Personality:** ${personality}`,
+          preferences !== "" && `**Preference:** ${preferences}`,
+          dialog !== "" && `**Dialog:** ${dialog}`,
+          boundaries !== "" && `**Boundaries:** ${boundaries}`,
+          topic !== "" && `**Topic:** ${topic}`,
           summaries.length > 0 && `**Summaries:** ${summaries.length}`,
           facts && `**Facts:** ${facts.length}`,
           summaries.length > 0 && `**Last Summary At:** <t:${Math.floor(summaries[summaries.length - 1].timestamp / 1000)}:S>`,
@@ -170,7 +170,7 @@ module.exports = {
         };
         await updateThreadContext(channel, updatedContext);
         list = [
-          characteristicValue != "" && `Characteristics: ${characteristicValue}`,
+          characteristicValue !== "" && `Characteristics: ${characteristicValue}`,
           personalityValue !== "" && `Personality: ${personalityValue}`,
           preferenceValue !== "" && `Preferences: ${preferenceValue}`,
           dialogValue !== "" && `Dialog: ${dialogValue}`,

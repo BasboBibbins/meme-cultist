@@ -1162,7 +1162,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
 async function handleBotMessage(client, message, customPrompt = null, channelId = null, isMention = false, extraContext = null) {
   // sys message ignore
   logger.debug(`Received message: ${message.content} | Type: ${message.type} | Channel ID: ${channelId || message.channel.id}`);
-  if (message.type != 0 && message.type != 19) {
+  if (message.type !== 0 && message.type !== 19) {
     logger.debug("System message detected, ignoring.");
     return;
   }

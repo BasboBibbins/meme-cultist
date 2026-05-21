@@ -15,18 +15,18 @@ module.exports = {
   },
   parseAmount: async function (amount, id, subcommand) {
     const dbUser = await db.get(id);
-    const balance = subcommand == "withdraw" ? dbUser.bank : dbUser.balance;
+    const balance = subcommand === "withdraw" ? dbUser.bank : dbUser.balance;
 
-    if (amount == "all" || amount == "max" || amount == "maxamount") {
+    if (amount === "all" || amount === "max" || amount === "maxamount") {
       return balance;
     }
-    if (amount == "half") {
+    if (amount === "half") {
       return Math.round(balance / 2);
     }
-    if (amount == "quarter") {
+    if (amount === "quarter") {
       return Math.round(balance / 4);
     }
-    if (amount == "eighth") {
+    if (amount === "eighth") {
       return Math.round(balance / 8);
     }
     if (amount.includes("/")) {
@@ -67,7 +67,7 @@ module.exports = {
     const users = await db.all();
     logger.debug("Getting current top users...");
     for (const user of users) {
-      if (user.value.name == undefined) {
+      if (user.value.name === undefined) {
         await db.delete(user.id);
         logger.warn(`User ${user.id} has corrupted data, deleting...`);
         continue;
@@ -83,7 +83,7 @@ module.exports = {
     const users = await db.all();
     logger.debug("Getting all-time top users...");
     for (const user of users) {
-      if (user.value.name == undefined) {
+      if (user.value.name === undefined) {
         await db.delete(user.id);
         logger.warn(`User ${user.id} has corrupted data, deleting...`);
         continue;

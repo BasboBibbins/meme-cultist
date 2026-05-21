@@ -126,7 +126,7 @@ module.exports = {
         logger.log(`Reset database entry for user ${user.username} (${user.id}) to the default.`, "info");
         break;
       case "cleanup":
-        var deleted = await cleanDB(interaction.client) || []; // returns array or empty array
+        const deleted = await cleanDB(interaction.client) || []; // returns array or empty array
         if (deleted.length === 0) {
           await interaction.editReply({content: "No entries to delete!", ephemeral: true});
           return;

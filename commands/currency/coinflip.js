@@ -31,7 +31,7 @@ module.exports = {
       error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
       return await interaction.reply({embeds: [error_embed], ephemeral: true});
     }
-    if (bet % 1 != 0) {
+    if (bet % 1 !== 0) {
       error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
       return await interaction.reply({embeds: [error_embed], ephemeral: true});
     }
