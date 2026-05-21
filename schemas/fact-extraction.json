@@ -1,0 +1,21 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": { "type": "string", "minLength": 1 },
+                    "value": { "type": "string", "minLength": 1 },
+                    "confidence": { "type": "string", "enum": ["high", "low"] }
+                },
+                "required": ["key", "value"],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": ["facts"],
+    "additionalProperties": false
+}

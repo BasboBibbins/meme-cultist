@@ -1,10 +1,16 @@
 {
   "name": "meme-cultist-2023",
-  "version": "5.5.1",
+  "version": "5.6.1",
   "description": "",
   "main": "bot.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest",
+    "test:unit": "jest test/unit",
+    "test:canvas": "jest test/canvas",
+    "test:llm": "node test/llm/runner.js",
+    "preview:canvas": "node test/canvas/preview-all.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +23,7 @@
     "@discordjs/rest": "^1.7.1",
     "@discordjs/voice": "^0.14.0",
     "@google/genai": "^1.50.1",
+    "ajv": "^8.20.0",
     "axios": "^1.8.3",
     "better-sqlite3": "^11.9.1",
     "bgutils-js": "^3.2.0",
@@ -25,6 +32,7 @@
     "canvas": "^3.1.0",
     "cat-loggr": "^1.2.2",
     "cheerio": "^1.2.0",
+    "chrono-node": "^2.9.1",
     "crypto": "^1.0.1",
     "dayjs": "^1.11.7",
     "discord-player": "^7.1.0",
@@ -50,5 +58,9 @@
     "ytdl-core": "^4.11.5",
     "ytpl": "^2.3.0",
     "ytsr": "^3.8.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "jest": "^30.4.2"
   }
 }

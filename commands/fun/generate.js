@@ -1,18 +1,19 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
-const { generateImage } = require("../../utils/gemini");
+const { generateImage } = require("../../utils/llm");
 const { canGenerateImage } = require("../../utils/ratelimiter");
+const { isChatbotChannel, formatChatbotChannelMentions } = require("../../utils/channels");
 
 function parseCloudflareError(err) {
   try {
     const json = JSON.parse(err.message);
     const raw = json?.errors?.[0]?.message ?? err.message;
-    return raw.replace(/AiError:\s*/gi, '').replace(/\s*\([a-f0-9-]{36}\).*/, '').trim();
+    return raw.replace(/AiError:\s*/gi, "").replace(/\s*\([a-f0-9-]{36}\).*/, "").trim();
   } catch {
     const match = err.message.match(/AiError: (?!AiError)(.+)/);
     return match
-      ? match[1].replace(/\s*\([a-f0-9-]{36}\).*/, '').trim()
+      ? match[1].replace(/\s*\([a-f0-9-]{36}\).*/, "").trim()
       : "Image generation failed. Please try again later.";
   }
 }
@@ -29,21 +30,32 @@ module.exports = {
     ),
   async execute(interaction) {
     const prompt = interaction.options.getString("prompt");
+
+    if (!isChatbotChannel(interaction.channelId, interaction.channel?.parentId)) {
+      const embed = new EmbedBuilder()
+        .setTitle("Not Available")
+        .setDescription(`Image generation is only available in chatbot channels: ${formatChatbotChannelMentions(interaction.client)}`)
+        .setColor(0xffaa00)
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     await interaction.deferReply();
 
     const rateCheck = canGenerateImage(interaction.user.id);
     if (!rateCheck.allowed) {
       const embed = new EmbedBuilder()
-        .setTitle('Rate Limited')
+        .setTitle("Rate Limited")
         .setDescription(rateCheck.reason)
         .setColor(0xffaa00)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
       return interaction.editReply({ embeds: [embed] });
     } 
 
     try {
-      const { buffer, mimeType } = await generateImage(prompt);
+      const { buffer, mimeType } = await generateImage({ prompt });
       const ext = mimeType?.includes("png") ? "png" : "jpg";
       const fileName = `generated.${ext}`;
       const attachment = new AttachmentBuilder(buffer).setName(fileName);
@@ -53,7 +65,7 @@ module.exports = {
         .setColor(randomHexColor())
         .setDescription(prompt)
         .setImage(`attachment://${fileName}`)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed], files: [attachment] });
@@ -61,10 +73,10 @@ module.exports = {
       logger.error(`[/generate] ${err.message}`);
       const desc = parseCloudflareError(err);
       const embed = new EmbedBuilder()
-        .setTitle('Error')
+        .setTitle("Error")
         .setDescription(desc)
         .setColor(0xff0000)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .setTimestamp();
       await interaction.editReply({ embeds: [embed] });
     }

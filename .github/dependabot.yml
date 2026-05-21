@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # Group all minor/patch bumps into a single weekly PR to reduce noise.
+    # Major bumps are excluded and open individually so they get explicit review
+    # (discord.js v13→v14 was a full rewrite; better-sqlite3 majors often
+    # require Node ABI rebuilds; canvas majors can break the native build).
+    groups:
+      dependencies:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3

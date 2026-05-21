@@ -1,11 +1,11 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS } = require('../config.js');
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN } = require("../config.js");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
-const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(', ');
+const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
 
 module.exports = {
-    currency: {
-        name: CURRENCY_NAME_CAPITALIZED,
-        description: `
+  currency: {
+    name: CURRENCY_NAME_CAPITALIZED,
+    description: `
             ${CURRENCY_NAME_CAPITALIZED} is the currency used by the bot. You can earn ${CURRENCY_NAME} in a variety of ways, such as gambling, claiming dailies, and even stealing from other users.
             Spend it on gambling games or on cosmetic items in the daily \`/shop\`.
 
@@ -19,10 +19,10 @@ module.exports = {
 
             You can also beg for ${CURRENCY_NAME} using \`/beg\` when you're broke. There's a 25% chance of receiving a small amount.
             `
-    },
-    dailyweekly: {
-        name: "Dailies and Weeklies",
-        description: `
+  },
+  dailyweekly: {
+    name: "Dailies and Weeklies",
+    description: `
             Dailies and weeklies are a way to earn ${CURRENCY_NAME} every day and week. You can claim your daily and weekly rewards using \`/daily\` and \`/weekly\`, respectively.
             You can only claim these rewards once per day and one per week. You can view your cooldowns by using \`/daily\` and \`/weekly\`.
 
@@ -33,12 +33,12 @@ module.exports = {
 
             Weeklies are worth a random amount of ${CURRENCY_NAME} between 500 and 1000. There are no streak bonuses for weeklies.
             `,
-        note: `
+    note: `
             Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`
-    },
-    blackjack: {
-        name: "Blackjack",
-        description: `
+  },
+  blackjack: {
+    name: "Blackjack",
+    description: `
             Blackjack is a card game where the goal is to get as close to 21 as possible without going over.
             The dealer will give you two cards and you can choose to either hit or stand.
             If you hit, you will be given another card and you can choose to hit or stand again.
@@ -53,7 +53,7 @@ module.exports = {
 
             **Late Surrender:** After the dealer checks for blackjack, you can choose to surrender and forfeit half your bet, keeping the other half. Useful when you have a weak hand against a strong dealer upcard.
             `,
-        rules: `
+    rules: `
             1. The goal of blackjack is to beat the dealer's hand without going over 21.
             2. Face cards are worth 10. Aces are worth 1 or 11, whichever makes a better hand.
             3. Each player starts with two cards, one of the dealer's cards is hidden until the end.
@@ -65,10 +65,10 @@ module.exports = {
             9. Doubling is like a hit, only the bet is doubled and you only get one more card.
             10. Splitting is available when your first two cards have the same value. Each split hand gets a new card and plays independently.
             11. Late surrender lets you forfeit half your bet after the dealer checks for blackjack, keeping the other half.`
-    },
-    slots: {
-        name: "Slots",
-        description: `
+  },
+  slots: {
+    name: "Slots",
+    description: `
             Slots is a game where you spin a slot machine and try to line up matching symbols across paylines. The game uses canvas-based rendering with visual themes — equip a theme with \`/theme set\` to change how it looks.
 
             **Wild Icons:** Wild symbols count as any symbol when on an active payline, making it easier to form winning combinations.
@@ -79,17 +79,17 @@ module.exports = {
 
             **Progressive Jackpot:** Triple 7s wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 ${CURRENCY_NAME} to qualify for the jackpot.
             `,
-        rules: `
+    rules: `
             1. The goal of slots is to line up matching symbols across paylines.
             2. There are 8 symbols, each with a different multiplier — check the paytable for details.
             3. Wild icons count as any symbol on an active payline.
             4. Landing 3+ scatter icons triggers the Free Spin Bonus.
             5. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
             6. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
-    },
-    poker: {
-        name: "Poker",
-        description: `
+  },
+  poker: {
+    name: "Poker",
+    description: `
             Poker is a card game where the goal is to get the best hand possible. This bot uses video poker rules.
             You will be dealt 5 cards and you can choose to keep or discard any number of cards.
             You can then choose to keep or discard any number of cards again. You can keep all 5 cards if you want as well.
@@ -98,7 +98,7 @@ module.exports = {
 
             **Progressive Jackpot:** A royal flush wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 koku to qualify.
             `,
-        note: `
+    note: `
             1. Aces can be high (above King) or low (in A-2-3-4-5 straight). Straights do not wrap around — only A-high and A-low straights are valid.
             2. Jacks or Better is the minimum hand to win. Pair of Jacks or Better pays 1:1.
             3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.
@@ -106,10 +106,10 @@ module.exports = {
             5. Since the probability of getting a good hand is low, the payouts are high. Try small bets at first to get a feel for the game.
             6. The chance of getting a royal flush is 1 in 649,740. It wins the progressive jackpot! Minimum bet of 10 koku required. Bets below minimum receive a reduced 50x payout.
             7. Every bet contributes 2% to the progressive jackpot pool.`
-    },
-    roulette: {
-        name: "Roulette",
-        description: `
+  },
+  roulette: {
+    name: "Roulette",
+    description: `
             Roulette is a casino game where players bet on where a ball will land on a spinning wheel. This is European roulette with 37 pockets numbered 0-36.
 
             Use \`/roulette [type] [amount]\` to place a bet. Multiple players can bet on the same game within the betting period.
@@ -126,26 +126,26 @@ module.exports = {
 
             **Red Numbers:** 1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36
             **Black Numbers:** 2, 4, 6, 8, 10, 11, 13, 15, 17, 20, 22, 24, 26, 28, 29, 31, 33, 35`,
-        rules: `
+    rules: `
             1. Place your bet using \`/roulette [type] [amount]\`. For straight bets, add the number: \`/roulette straight 100 number:17\`
             2. Other players can join by using the same command before the timer expires
             3. The creator can spin early by clicking "Spin Now" or wait for the timer
             4. Winnings are automatically added to your wallet and you'll receive a DM with results
             5. If 0 lands, all outside bets (red/black, even/odd, etc.) lose
             6. The house edge is 2.7% (from the 0 pocket)`,
-        example: `
+    example: `
             \`/roulette straight 500 number:17\` - Bet 500 on number 17 (35:1 payout)
             \`/roulette red 1000\` - Bet 1000 on red (2:1 payout)
             \`/roulette dozen1 200\` - Bet 200 on 1st dozen 1-12 (3:1 payout)
             \`/roulette column3 150\` - Bet 150 on column 3 (3:1 payout)`,
-        note: `
+    note: `
             Multiple players can bet on the same game. All bets are pooled and resolved when the wheel spins.
             The betting timer is configured by the server admin. The game creator can spin early using the "Spin Now" button.
             Winnings are sent via DM to keep the channel clean. Check your DMs after the game ends!`
-    },
-    race: {
-        name: "Horse Racing",
-        description: `
+  },
+  race: {
+    name: "Horse Racing",
+    description: `
             Horse racing is a multi-player betting game where you bet on which horse will win the race!
             Each race features 8 horses with randomly generated names, form ratings, and odds.
 
@@ -164,7 +164,7 @@ module.exports = {
             • **Show** — Horse must finish 1st, 2nd, or 3rd. Further reduced payout (28% of win odds).
 
             Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is 5%.`,
-        rules: `
+    rules: `
             1. Use \`/race start\` to create a new race. Anyone in the channel can then place bets.
             2. Use \`/race bet [horse] [amount]\` to bet on a horse (1-8). You can only place one bet per race.
             3. Use the \`type\` option to choose Win, Place, or Show (default: Win).
@@ -172,20 +172,48 @@ module.exports = {
             5. The race creator can start early with "Start Now" or wait for the betting timer to expire.
             6. Winners receive their payout via DM. The house takes a 5% cut of winnings.
             7. You can only bet from your wallet, not your bank.`,
-        example: `
+    example: `
             \`/race start\` - Start a new race (becomes the game host)
             \`/race bet 3 500\` - Bet 500 on horse 3 to win
             \`/race bet 5 300 type:place\` - Bet 300 on horse 5 to place (1st or 2nd)
             \`/race bet 7 all type:show\` - Bet all your wallet on horse 7 to show (1st, 2nd, or 3rd)`,
-        note: `
+    note: `
             Only one race per channel at a time. Each player can only bet once per race.
             The winner is pre-determined when the race starts, but the animation shows all horses racing.
             Higher form ratings mean higher probability of winning but lower odds.
             Min/max bet amounts are configured by the server admin.`
-    },
-    music: {
-        name: "Music",
-        description: `
+  },
+  duel: {
+    name: "Duel",
+    description: `
+            Duel is a head-to-head Rock-Paper-Scissors wager between two players. Use \`/duel @user [bet]\` to challenge someone. The challenger's wager is escrowed immediately — the opponent has ${Math.floor(60)} seconds to **Accept** or **Decline** via buttons (and gets a DM with a jump link).
+
+            On accept, the opponent's wallet is checked and their matching wager is escrowed. Both players then pick **🪨 Rock**, **📄 Paper**, or **✂️ Scissors** — choices are hidden until both lock in. Standard RPS rules apply: rock beats scissors, scissors beats paper, paper beats rock.
+
+            **Winner takes the full pot** (both wagers). A **draw** refunds both wagers. If a player doesn't pick in time, the other wins by **forfeit**. If neither picks, both are refunded.
+
+            After the result, either player can click **🔁 Rematch** within 60 seconds — when **both** click, balances are re-checked and the duel restarts on the same message (the cooldown is bypassed by mutual agreement).
+            `,
+    rules: `
+            1. Use \`/duel @user [bet]\` to challenge another player. Minimum bet is ${DUEL_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}.
+            2. The challenger's wager is locked up front. The opponent is gated on **bank** balance for the challenge and **wallet** balance at accept time — withdraw via \`/bank\` if your wallet is short.
+            3. The opponent must click **Accept Duel** within 60 seconds; otherwise the challenger is refunded.
+            4. Both players have 30 seconds to choose Rock, Paper, or Scissors. Choices are hidden until both pick.
+            5. Winner takes the full pot. Draw refunds both. Forfeit by timeout awards the pot to whoever did choose.
+            6. A standard cooldown of ${Math.floor(DUEL_COOLDOWN / 60000)} minutes is applied to both players after a resolved duel.
+            7. The rematch button skips the cooldown when both players click within 60 seconds.`,
+    example: `
+            \`/duel @rival 500\` — Challenge @rival to a duel for 500 ${CURRENCY_NAME}.
+            \`/duel @rival half\` — Wager half your wallet.
+            \`/duel @rival all\` — Go all-in.`,
+    note: `
+            You can't duel yourself or a bot. Only one active duel per challenger/opponent pair per channel at a time.
+            The opponent's bank is checked at challenge time so the challenger sees up front whether the opponent could ever cover the wager.
+            DM notifications go to the opponent on challenge and to the loser on resolution.`
+  },
+  music: {
+    name: "Music",
+    description: `
             This bot has a music player! You can play music by using \`/play [url|search query]\`. It will join your voice channel and play the music you requested.
             If there is already music playing, it will be added to the queue. You can see the queue by using \`/queue view\`.
 
@@ -199,20 +227,20 @@ module.exports = {
 
             Filters can also be applied to the music. You can see the list of filters by using \`/filter\`.
             You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.`,
-        example: `
+    example: `
             \`/play https://www.youtube.com/watch?v=dQw4w9WgXcQ\`
             \`/play never gonna give you up\`
             \`/play https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT\`
             \`/play https://soundcloud.com/rick-astley-official/never-gonna-give-you-up\``,
-        note: `
+    note: `
             The bot will leave your voice channel after the queue is empty. You can also make it leave by pressing the stop button.
             Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.
             Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.
             For age-restricted YouTube videos, the bot owner can configure cookies in a \`.cookies\` file.`,
-    },
-    shop: {
-        name: "Shop",
-        description: `
+  },
+  shop: {
+    name: "Shop",
+    description: `
             The shop sells cosmetic items (themes today, more later) in exchange for ${CURRENCY_NAME}.
 
             Each server has its own stock of items that **rotates every day at midnight UTC**. Use \`/shop browse\` to see what's available today, \`/shop preview <item>\` to see an item's details before buying, and \`/shop buy <item>\` to purchase it.
@@ -227,22 +255,22 @@ module.exports = {
 
             **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots or a royal flush on poker wins it (minimum bet of 10 ${CURRENCY_NAME} required).
             `,
-        note: `
+    note: `
             The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
-    },
-    inventory: {
-        name: "Inventory",
-        description: `
+  },
+  inventory: {
+    name: "Inventory",
+    description: `
             Your inventory holds every item you own across every category (themes today, more later). Use \`/inventory view\` to see everything you own, grouped by category and rarity.
 
             Use \`/inventory equip <item>\` to equip an item. For themes specifically, \`/theme set <theme>\` does the same thing \u2014 they share code, pick whichever feels natural.
 
             You can only own each item once; the shop will tell you if an item is already yours.
             `,
-    },
-    theme: {
-        name: "Themes",
-        description: `
+  },
+  theme: {
+    name: "Themes",
+    description: `
             Themes change the visual style of casino games (slots, roulette, poker, etc.). Use \`/theme list\` to see all available themes, \`/theme info <theme>\` to preview one, and \`/theme set <theme>\` to equip a theme you own.
 
             Themes come in four tiers:
@@ -253,14 +281,14 @@ module.exports = {
 
             Themes are purchased in the daily \`/shop\`. Once you own a theme, it's yours forever \u2014 equip and swap as often as you like.
             `,
-        note: `
+    note: `
             The "Classic" theme is always available and free. New themes rotate through the shop, so check back daily.
             Higher-tier themes (Styled, Full) include more custom artwork and game-specific overrides.
             Limited themes only appear in the shop during their availability window — once it ends, they can't be purchased.`
-    },
-    jackpot: {
-        name: "Progressive Jackpot",
-        description: `
+  },
+  jackpot: {
+    name: "Progressive Jackpot",
+    description: `
             The progressive jackpot is a shared prize pool that grows with every qualifying bet on slots and poker.
 
             • Every bet contributes 2% to the jackpot pool
@@ -271,12 +299,12 @@ module.exports = {
 
             Use \`/jackpot\` to check the current jackpot amount and last winner.
             `,
-        note: `
+    note: `
             The jackpot starts at 1,000,000 koku if it ever resets. A minimum bet of 10 koku on slots or poker is required for full jackpot eligibility.`
-    },
-    chatbot: {
-        name: "Chatbot",
-        description: `
+  },
+  chatbot: {
+    name: "Chatbot",
+    description: `
             Sending a message in a chatbot channel will start a conversation with the bot. The bot operates across multiple channels, each with their own context.
             The bot is designed to have open-ended conversations that are engaging and interactive. You can use it to ask questions, share information, or just chat with the bot.
 
@@ -286,7 +314,7 @@ module.exports = {
             The \`/context\` command lets you view and manage chatbot context — channel context can only be modified by admins, while thread owners can customize their own thread context. Summaries and facts are paginated when viewing.
             For more information, type \`/help context\`.
         `,
-        note: `
+    note: `
             As this is a ChatGPT-like model, it's important to keep in mind that the bot ***may not always respond as expected or accurately***.
 
             The bot reacts to any message within ${chatbotChannelList}, meaning there is no need to mention the bot.
@@ -301,7 +329,7 @@ module.exports = {
             The bot may reject or defer your request if it's in violation of **[Deepseek Terms of Use](https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html)**.
             There are no explicit rules to using the bot; just keep in mind your request can be rejected if it isn't kosher ;)
            `,
-        example: `
+    example: `
             **[Example 1 - Basic Conversation]**
             Basbo: Hey, how's it going?
             Chatbot: Hey Basbo! Doing great, thanks for asking. What's up with you?
@@ -324,10 +352,95 @@ module.exports = {
             Basbo: "Do you think there is something more between us?"
             Chatbot: "I've been thinking about that too. I like being around you—more than just a friend would. Maybe we've both been waiting for the right moment?"
         `
-    },
-    aifeatures: {
-        name: "AI Features",
-        description: `
+  },
+  craps: {
+    name: "Craps",
+    description: `
+            Street-style craps: one shooter throws two dice, everyone else bets on the outcome. Each round starts with a "come-out" roll.
+
+            **Come-out roll:**
+            • Roll **7** or **11** → Pass Line wins immediately.
+            • Roll **2**, **3**, or **12** → Pass Line loses ("craps").
+            • Any other roll (**4, 5, 6, 8, 9, 10**) sets the **point**.
+
+            **Point phase:**
+            The shooter keeps rolling until the point repeats (Pass wins) or a **7** comes first (Pass loses — "seven-out" — and the dice pass to the next player).
+
+            **Bets:**
+            • **Pass Line** — bet with the shooter. Pays 1:1. Come-out only.
+            • **Don't Pass** — bet against the shooter. Pays 1:1, but 12 on come-out is a push. Come-out only.
+            • **Field** — one-roll bet that wins on 3/4/9/10/11 (1:1), 2 (2:1), or 12 (3:1).
+            • **Any 7** — one-roll bet, pays 4:1 on a 7.
+            • **Any Craps** — one-roll bet, pays 7:1 on 2, 3, or 12.
+
+            Use \`/craps play\` to start a session and \`/craps paytable\` to see the payouts.
+            `,
+    rules: `
+            1. Start a session with \`/craps play\`. The first player becomes the shooter; the message is the channel's table.
+            2. Anyone can place a bet by pressing the bet buttons on the session message. A modal will ask for an amount the first time; after that your last amount is reused automatically.
+            3. Only the shooter can press **Roll**. The shooter can also press **Pass Dice** to hand the dice to the next player voluntarily. The dice pass automatically when the shooter sevens out.
+            4. Pass / Don't Pass can only be placed during the come-out roll. Field / Any 7 / Any Craps can be placed any time.
+            5. One-roll bets (Field, Any 7, Any Craps) resolve every roll. Pass / Don't Pass stay across the come-out → point transition until they win or lose.
+            6. Only the player who started the session can press **End Session** — that refunds all standing bets.
+            7. Sessions idle out after 5 minutes of no rolls — standing bets are refunded automatically.
+            8. One session per channel.`,
+    example: `
+            \`/craps play\` — Start a new craps session in this channel.
+            \`/craps paytable\` — Show the payout table as a canvas image.`,
+    note: `
+            Pass / Don't Pass placements are rejected once a point is set — wait for the come-out roll.
+            The shooter rotates on a seven-out (in join order), or voluntarily via the Pass Dice button.
+            Craps contributes to the progressive jackpot at the same rate as other games.`
+  },
+  reminder: {
+    name: "Reminders",
+    description: `
+            Set reminders so the bot pings you later. You can use the slash command \`/remind\` or just ask the chatbot directly ("remind me in 2 hours to check the oven").
+
+            **Slash command:**
+            • \`/remind add when:\"in 30 minutes\" message:\"stretch\"\` — set a new reminder
+            • \`/remind add when:\"tomorrow at 8pm\" message:\"walk the dog\" frequency:daily end_date:\"in 2 weeks\"\` — recurring reminder
+            • \`/remind add when:\"in 10 minutes\" message:\"meeting\" target:@User\` — group reminder
+            • \`/remind list\` — show your pending reminders
+            • \`/remind cancel id:<ID>\` — cancel a reminder by its ID
+
+            The bot tries to DM each recipient first. If DMs are closed, it falls back to the channel where the reminder was set.
+        `,
+    rules: `
+            1. Natural-language time works: "in 2 hours", "tomorrow at 3pm", "next tuesday", "5 minutes from now".
+            2. You can have up to 10 active reminders at once.
+            3. Reminders persist across bot restarts.
+            4. If the bot can't reach you (DMs closed and channel gone), the reminder is dropped and logged.
+            5. Group reminders can target a user or a role. Role targets are resolved to individual DMs for each member.
+            6. Recurring reminders repeat daily or weekly. Cancelling the pending job breaks the chain — no future instances fire.`
+  },
+  kb: {
+    name: "Knowledge Base",
+    description: `
+            A per-server knowledge base the chatbot can search and cite. Admins curate the entries; anyone can read or search them.
+
+            **Slash command:**
+            • \`/kb add slug:<id> title:"…" content:"…" tags:"a,b"\` — add an entry (admin only)
+            • \`/kb edit slug:<id> [title|content|tags]\` — edit an entry (admin only)
+            • \`/kb delete slug:<id>\` — remove an entry (admin only)
+            • \`/kb list\` — list all entries in this server
+            • \`/kb search query:"…"\` — semantic search across entries
+
+            **From chat:** the bot can call the \`lookup_kb\` tool automatically when you ask "what did we decide about X" or "is there a doc on Y" — it returns the highest-scoring entry.
+        `,
+    rules: `
+            1. Slugs are short identifiers: 1-64 lowercase letters, digits, or hyphens.
+            2. Titles cap at 100 characters; entry content caps at 4000 characters.
+            3. Add/edit/delete are admin-gated using the same rule as \`/koku\`: the bot owner can always use them, and guild administrators can if \`ADMIN_COMMANDS_OWNER_ONLY\` is false.
+            4. New and edited entries are embedded asynchronously by a background job, so semantic search may take a few seconds to reflect changes.
+            5. List and search are public — every member can read entries.
+            6. Entries are scoped to the server they were created in.`,
+    note: `
+            Use the KB for stable, shared facts (rules, role guides, server lore, recurring how-tos). For personal preferences, use the chatbot's user memory (\`/whatdoyouknow\`, \`/forget\`) instead.`
+  },
+  aifeatures: {
+    name: "AI Features",
+    description: `
             The chatbot has additional AI capabilities powered by Google Gemini:
 
             **Image Vision** — Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself — it won't say "based on the description."
@@ -336,12 +449,44 @@ module.exports = {
 
             **Image Generation** — Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
         `,
-        note: `
+    note: `
             Vision and image generation require a Gemini API key. If it's not configured, the bot will let you know rather than pretending.
 
             For URL context: only the first URL per message is fetched. Non-HTML content is skipped. Pages larger than 2MB or with text exceeding 4000 characters are truncated. Fetch requests time out after 8 seconds.
 
             For image generation: the chatbot only triggers on direct, explicit requests to create an image, not casual mentions or metaphorical uses of "imagine."
         `
-    }
-}
+  },
+  persona: {
+    name: "Personas",
+    description: `
+            Personas let you create reusable custom voices for the chatbot. Instead of changing the bot's behavior one message at a time, you can define a persistent identity and pin it to any channel or thread.
+
+            **Creating a persona:**
+            Use \`/persona create name:my-persona prompt:"You are a sarcastic pirate." public:true\`
+            • **name** — lowercase letters, numbers, and hyphens only; 1–32 characters.
+            • **prompt** — the system prompt that tells the bot how to behave (up to 2000 characters). Be specific: personality, tone, knowledge boundaries, and how it should refer to itself.
+            • **public** — \`true\` lets anyone in the server use it; \`false\` restricts it to you.
+
+            **Using a persona:**
+            \`/persona use name:my-persona\` pins it to the current channel or thread. The bot will adopt that voice for all messages in that context until you clear it.
+
+            **Managing personas:**
+            • \`/persona list\` — see all personas in the server and which one is pinned here.
+            • \`/persona clear\` — remove the pinned persona and return to the default voice.
+            • \`/persona edit\` — update the prompt or visibility of a persona you own.
+            • \`/persona delete\` — permanently remove a persona you own.
+        `,
+    rules: `
+            1. Personas are scoped to the server they were created in.
+            2. You can only edit or delete personas you created. Server admins and the bot owner can also modify any persona.
+            3. Private personas can only be pinned by their creator (or the bot owner).
+            4. A persona pinned to a channel stays active until \`/persona clear\` is used or the persona is deleted.
+            5. If a pinned persona is deleted, channels that had it will fall back to the default bot voice automatically.
+            6. Personas override thread-level roleplay settings from \`/context set\` — the persona prompt takes priority.`,
+    note: `
+            Personas work in both regular chatbot channels and threads. Each channel/thread can have its own pinned persona.
+            For best results, write prompts that describe the persona's personality, speech patterns, and boundaries rather than scripting specific responses.
+            The prompt becomes part of the system message sent to the LLM on every turn, so keep it concise and focused.`
+  }
+};

@@ -1,78 +1,78 @@
-const {SlashCommandBuilder, EmbedBuilder} = require('discord.js');
+const {SlashCommandBuilder, EmbedBuilder} = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
-const { parseBet } = require('../../utils/betparse');
+const { parseBet } = require("../../utils/betparse");
 const logger = require("../../utils/logger");
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName("flip")
-        .setDescription(`Flip a coin and win or lose ${CURRENCY_NAME}.`)
-        .addStringOption(option =>
-            option.setName('bet')
-                .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
-                .setRequired(true)),
-    async execute(interaction) {
-        const option = interaction.options.getString('bet');
-        const bet = await parseBet(option, interaction.user.id);
-        const dbUser = await db.get(interaction.user.id);
-        if (!dbUser) {
-            logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`)
-            await addNewDBUser(interaction.user.id);
-        }
+  data: new SlashCommandBuilder()
+    .setName("flip")
+    .setDescription(`Flip a coin and win or lose ${CURRENCY_NAME}.`)
+    .addStringOption(option =>
+      option.setName("bet")
+        .setDescription(`The amount of ${CURRENCY_NAME} to bet.`)
+        .setRequired(true)),
+  async execute(interaction) {
+    const option = interaction.options.getString("bet");
+    const bet = await parseBet(option, interaction.user.id);
+    const dbUser = await db.get(interaction.user.id);
+    if (!dbUser) {
+      logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`);
+      await addNewDBUser(interaction.user.id);
+    }
 
-        const error_embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-            .setColor(0xFF0000)
-            .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-            .setTimestamp();
+    const error_embed = new EmbedBuilder()
+      .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+      .setColor(0xFF0000)
+      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+      .setTimestamp();
 
-        if (isNaN(bet)) {
-            error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
-        if (bet % 1 != 0) {
-            error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
-        if (bet < 1) {
-            error_embed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
-        if (bet > await db.get(`${interaction.user.id}.balance`)) {
-            error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-            return await interaction.reply({embeds: [error_embed], ephemeral: true});
-        }
+    if (isNaN(bet)) {
+      error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
+      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+    }
+    if (bet % 1 !== 0) {
+      error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
+      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+    }
+    if (bet < 1) {
+      error_embed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`);
+      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+    }
+    if (bet > await db.get(`${interaction.user.id}.balance`)) {
+      error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+    }
 
-        const chance = Math.floor(Math.random() * 100) + 1;
+    const chance = Math.floor(Math.random() * 100) + 1;
 
-        const embed = new EmbedBuilder()
-            .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-            .setFooter({text: `${interaction.client.user.username} | Version ${require('../../package.json').version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-            .setTimestamp();
+    const embed = new EmbedBuilder()
+      .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
+      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
+      .setTimestamp();
 
-        if (chance > 50) {
-            embed.setColor(0x00FF00);
-            embed.setTitle('Congratulations!')
-            embed.setDescription(`You won **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet).toLocaleString('en-US')}** ${CURRENCY_NAME}.`);
-            await db.add(`${interaction.user.id}.balance`, bet);
-            await db.add(`${interaction.user.id}.stats.flip.wins`, 1);
-            await db.add(`${interaction.user.id}.stats.flip.profit`, bet);
-            if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestWin`)) {
-                await db.set(`${interaction.user.id}.stats.flip.biggestWin`, bet);
-            }
-            await interaction.reply({embeds: [embed]});
-        } else {
-            embed.setColor(0xFF0000);
-            embed.setTitle('You lose!')
-            embed.setDescription(`I'll be taking **${bet.toLocaleString('en-US')}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet).toLocaleString('en-US')}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? `You're now broke!` : ''}`);
-            await db.sub(`${interaction.user.id}.balance`, bet);
-            await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
-            await db.sub(`${interaction.user.id}.stats.flip.profit`, bet);
-            if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
-                await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);
-            }
-            await interaction.reply({embeds: [embed]});
-        }
-    }, 
+    if (chance > 50) {
+      embed.setColor(0x00FF00);
+      embed.setTitle("Congratulations!");
+      embed.setDescription(`You won **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet).toLocaleString("en-US")}** ${CURRENCY_NAME}.`);
+      await db.add(`${interaction.user.id}.balance`, bet);
+      await db.add(`${interaction.user.id}.stats.flip.wins`, 1);
+      await db.add(`${interaction.user.id}.stats.flip.profit`, bet);
+      if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestWin`)) {
+        await db.set(`${interaction.user.id}.stats.flip.biggestWin`, bet);
+      }
+      await interaction.reply({embeds: [embed]});
+    } else {
+      embed.setColor(0xFF0000);
+      embed.setTitle("You lose!");
+      embed.setDescription(`I'll be taking **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet).toLocaleString("en-US")}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? "You're now broke!" : ""}`);
+      await db.sub(`${interaction.user.id}.balance`, bet);
+      await db.add(`${interaction.user.id}.stats.flip.losses`, 1);
+      await db.sub(`${interaction.user.id}.stats.flip.profit`, bet);
+      if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
+        await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);
+      }
+      await interaction.reply({embeds: [embed]});
+    }
+  }, 
 };

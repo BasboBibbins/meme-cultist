@@ -1,408 +1,260 @@
 # Meme Cultist
 
-A Discord bot for the Meme Cult server, built with discord.js v14. Features include a chatbot powered by DeepSeek API, a currency/gambling system, music playback, and various fun commands.
+A Discord bot for the Meme Cult server. Has a full casino economy, an AI chatbot with persistent memory, music playback, and a bunch of fun/image commands.
 
-## Features
+Built with discord.js v14, powered by [DeepSeek](https://api-docs.deepseek.com/) for the chatbot and [Google Gemini](https://ai.google.dev/) for image understanding and generation.
 
-### Chatbot
-- AI-powered conversations using DeepSeek API (OpenAI SDK v3 compatible)
-- **Gemini Vision** — the bot can see and understand images you share (via Google Gemini)
-- **URL Context** — the bot reads web pages when you share links
-- **Image Generation** — the bot can generate images via `/generate` or by asking in conversation
-- Thread-based and channel-based context management
-- **Multi-channel support** — chatbot operates across multiple configured channels with per-channel context
-- Rolling summaries and fact extraction for persistent memory
-- Immediate/real-time fact extraction with debouncing
-- User-level memory and statistics tracking
-- Roleplay mode with customizable character attributes (`/context set`)
-- Admin-only channel context modification, thread owners can customize their own threads
-- Paginated viewing of summaries and facts (`/context summary`, `/context facts`)
-- Incognito mode for privacy
-- Rate limiting per-user and global
+---
 
-### Economy / Gambling
-- **Currency**: "koku" - wallet and bank system with daily interest
-- **Daily/Weekly Claims**: Random rewards with streak bonuses
-- **Bank**: Deposit/withdraw with daily interest at midnight
-- **Games**:
-  - Blackjack (with double down, splitting up to 4 hands, and late surrender)
-  - Slots (canvas-rendered, themed, free daily spins, wild icons, free spin bonus, progressive jackpot)
-  - Coin flip (50/50)
-  - Roulette (multi-player with betting timer)
-  - Horse racing (multi-player with win/place/show bets)
-  - Poker (video poker style, progressive jackpot)
-  - Craps (experimental)
-- **Progressive Jackpot**: Cross-game jackpot fed by slots and poker bets (use `/jackpot` to check)
-- **Rob**: Steal from other users (25% success rate, 5min cooldown)
-- **Give**: Transfer koku to other users
-- **Leaderboard**: Top 10 by bank balance (current and all-time)
-- **Net profit tracking**: See your overall profit/loss per game in `/stats`
+## What's in the box
 
-### Themes & Shop
-- **Shop** (`/shop browse/buy/preview`): Rotating daily stock of cosmetic items, seeded per guild per day
-- **Inventory** (`/inventory view/equip`): View and equip owned items
-- **Themes** (`/theme set/list/info/owned`): Casino visual themes with four tiers:
-  - **Colorway** — palette swap
-  - **Styled** — one game with custom sprites
-  - **Full** — all games with custom sprites
-  - **Limited** — seasonal/special themes with availability windows
-- Item rarities: Common, Uncommon, Rare, Legendary
+### 🤖 Chatbot
+- AI conversations powered by DeepSeek, with per-channel and per-user persistent memory (rolling summaries + fact extraction)
+- Can see images you share (Gemini vision) and read web pages when you drop a link
+- Generate images via `/generate` or just ask in chat
+- Streaming responses, bookmarks (📌 a message to pin a fact), and a self-critique pass to catch hallucinations
+- **Personas** — give the bot a custom character with `/persona`
+- **Knowledge base** — store and query channel-specific info with `/kb`
+- **Reminders** — set natural-language reminders with `/remind` (backed by a durable job queue, survives restarts)
+- Incognito mode, rate limiting, and reply-gated burst protection so it doesn't get spammed to death
 
-### Music
-- YouTube playback via discord-player with YoutubeiExtractor
-- Queue management (view, clear, shuffle)
-- Audio filters (bassboost, nightcore, vaporwave, etc.)
-- Lyrics fetching via Genius API
-- Volume control and progress bar
+### 🎰 Economy & Gambling
+The currency is **koku**. You've got a wallet and a bank (earns daily interest at midnight).
 
-### Fun Commands
-- Image manipulation: `caption`, `memegen`, `speechbubble`, `rip`
-- Image generation: `generate` (AI-generated images via Gemini)
-- Random utilities: `8ball`, `choose`, `roll`, `avatar`
-- Booru image search (NSFW and safe boorus)
+**Games:**
+- **Blackjack** — hit, stand, double down, split up to 4 hands, late surrender. Persistent hub panel with a Deal button.
+- **Video Poker** — five-card draw with a paytable and progressive jackpot. Hub panel with hold buttons.
+- **Slots** — canvas-rendered with animated GIFs, themed symbols, free daily spins, near-misses, a full-screen mega win (~1 in 25,000), and a progressive jackpot on 3× WILD.
+- **Craps** — multi-player street craps, canvas-rendered felt table, animated dice, pass/come/field/place/hardways/prop bets.
+- **Roulette** — multi-player, full table of bet types, button-driven with an idle timeout.
+- **Horse Racing** — win/place/show bets, button-driven betting panel, guild-wide horse stats and a hall of fame on the leaderboard.
+- **Duel** — Rock-Paper-Scissors wagers against another user, with escrow, rematch flow, and DM notifications.
+- **Coin Flip** — exactly what it sounds like.
 
-### Admin Tools
-- Database management (`/db`)
-- Currency management (`/koku`)
-- Bot restart (`/restart`)
-- User feedback submission with GitHub issue creation
+All games feed into `/stats` (per-game profit, biggest win/loss, etc.) and `/leaderboard`.
 
-## Prerequisites
+### 🎨 Themes & Shop
+- Daily rotating shop with cosmetic items (seeded per-day, so everyone sees the same stock)
+- Themes in four tiers: **Colorway** (palette swap), **Styled** (one game reskinned), **Full** (everything), **Limited** (seasonal)
+- Themes affect canvas renders for every game — felt, cards, dice, chips, the works
 
-- Node.js 18+
-- SQLite3 (better-sqlite3)
-- FFmpeg (for audio playback)
-- Discord bot token
-- DeepSeek API key (for chatbot)
-- Google Gemini API key (for image understanding and image generation)
-- YouTube cookies (optional, for age-restricted videos)
-- Genius API key (optional, for lyrics)
-- GitHub token (optional, for feedback command)
+### 🎵 Music
+- YouTube playback via discord-player + YoutubeiExtractor
+- Queue management, audio filters (bassboost, nightcore, vaporwave, etc.), lyrics via Genius
+
+### 🎲 Fun
+- Image commands: `caption`, `memegen`, `speechbubble`, `rip`
+- AI image generation, magic 8-ball, dice roller, avatar fetcher, booru search
+
+---
 
 ## Setup
 
-### 1. Install Dependencies
+### Prerequisites
+- Node.js 18+
+- FFmpeg (for music)
+- A Discord bot token
+
+### 1. Install
 
 ```bash
 npm install
 ```
 
-### 2. Environment Variables
+### 2. Environment variables
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and fill in what you need:
 
 ```env
-TOKEN=your_discord_bot_token
-OPENAI_API_KEY=your_deepseek_api_key
-GEMINI_API_KEY=your_gemini_api_key
-COOKIE=your_youtube_cookies_optional
-GENIUS_API_KEY=your_genius_api_key_optional
-GITHUB_TOKEN=your_github_token_optional
+TOKEN=                    # Discord bot token (required)
+OPENAI_API_KEY=           # DeepSeek API key (required for chatbot)
+GEMINI_API_KEY=           # Google Gemini key (image vision + generation)
+COOKIE=                   # YouTube cookies for age-restricted videos (optional)
+GENIUS_API_KEY=           # Genius API for /lyrics (optional)
+GITHUB_TOKEN=             # GitHub token for /feedback issue creation (optional)
+CF_ACCOUNT_ID=            # Cloudflare Workers AI for image generation (optional)
+CF_API_KEY=               # Cloudflare API key (optional)
 ```
 
-### 3. Configuration
+There are a bunch of optional tunables too (`STREAMING_ENABLED`, `LOW_BUDGET_MODE`, game timeouts, etc.) — see `.env.example` and `config.js` for all of them.
 
-Edit `config.json`:
+### 3. Configure
 
-| Field | Description |
-|-------|-------------|
-| `CLIENT_ID` | Discord application client ID |
-| `GUILD_ID` | Server ID for command registration |
-| `DEFAULT_ROLE` | Role assigned to new members |
-| `BANNED_ROLE` | Role that blocks bot usage |
-| `OWNER_ID` | Bot owner's Discord ID |
-| `RULES_CHANNEL_ID` | Channel referenced in welcome message |
-| `WELCOME_CHANNEL_ID` / `WELCOME_CHANNEL_NAME` | Channel for join messages |
-| `RIP_CHANNEL_ID` / `RIP_CHANNEL_NAME` | Channel for leave messages |
-| `GITHUB_REPO_OWNER` / `GITHUB_REPO_NAME` | For feedback GitHub issues |
-| `APRIL_FOOLS_MODE` | Enable April Fools special behavior |
-| `TESTING_MODE` | Restrict bot to testers with TESTING_ROLE |
-| `CHATBOT_ENABLED` | Enable/disable AI chatbot |
-| `CHATBOT_LOCAL` | Route API to localhost:3000/v1/ |
-| `CHATBOT_CHANNELS` | Comma-separated list of chatbot channel IDs |
-| `PAST_MESSAGES` | Context window size (default: 15) |
-| `SUMMARY_INTERVAL` | Messages before summarizing (default: 25) |
-| `FACTS_INTERVAL` | Messages before fact extraction (default: 15) |
-| `MAX_FACTS` | Max stored facts per channel/user (default: 25) |
-| `MAX_SUMMARIES` | Max summaries kept (default: 3) |
-| `OOC_PREFIX` | Prefix to skip chatbot (default: ">") |
-| `CHAT_MAX_PROMPT_TOKENS` | Token limit for prompts (default: 6000) |
-| `USER_COOLDOWN` | Seconds between chatbot messages (default: 5) |
-| `GLOBAL_LIMIT` / `WINDOW_SIZE` | Rate limiting config |
-| `CURRENCY_NAME` | Currency display name (default: "koku") |
-| `INTEREST_RATE` | Daily bank interest percentage (default: 1) |
-| `ROULETTE_*`, `DUEL_*`, `RACE_*` | Game configuration |
+Edit `config.js` with your server's IDs and any feature flags you want to change. Key ones:
 
-### 4. Initialize Database
+| Setting | What it does |
+|---------|-------------|
+| `CLIENT_ID` / `GUILD_ID` | Your Discord app and server IDs |
+| `CHATBOT_ENABLED` | Turn the AI chatbot on/off |
+| `CHATBOT_CHANNELS` | Comma-separated channel IDs where the chatbot listens |
+| `TESTING_MODE` | Restrict the bot to users with the tester role |
+| `CURRENCY_NAME` | Change "koku" to whatever you want |
+| `STREAMING_ENABLED` | Stream chatbot responses token-by-token |
+| `LOW_BUDGET_MODE` | Caps tool depth and skips self-critique to save API spend |
+
+### 4. Initialize the database
 
 ```bash
 node bot.js dbinit
 ```
 
-### 5. Register Slash Commands
+Run this after pulling any update — it safely backfills new schema fields onto existing users without touching current data.
+
+### 5. Register slash commands
 
 ```bash
 node bot.js load
 ```
 
-### 6. Start the Bot
+### 6. Start
 
 ```bash
-node bot.js
-# or with debug logging:
-node bot.js debug
+node bot.js          # normal
+node bot.js debug    # verbose logging
 ```
 
-## Commands Reference
+---
 
-### Admin Commands
+## Commands
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/db add` | Add database entry for user | `user`, `key?`, `value?` |
-| `/db delete` | Delete database entry | `user`, `key?` |
-| `/db set` | Set database value | `user`, `key`, `value` |
-| `/db reset` | Reset user to defaults | `user` |
-| `/db cleanup` | Remove entries for left users | — |
-| `/koku add` | Add currency to user's bank | `user`, `amount` |
-| `/koku remove` | Remove currency from user | `user`, `amount` |
-| `/koku set` | Set user's bank balance | `user`, `amount` |
-| `/restart` | Restart the bot (admin only) | — |
-| `/unlockall` | Unlock all items for a user (admin only) | `target` |
-| `/embed` | Embed an image with title | `image`, `title?` |
+### Economy
 
-### Economy Commands
+| Command | Description |
+|---------|-------------|
+| `/balance` | Check your wallet and bank |
+| `/daily` / `/weekly` | Claim periodic koku rewards (streak bonus on daily) |
+| `/bank deposit/withdraw` | Move koku between wallet and bank |
+| `/give` | Send koku to someone |
+| `/rob` | 25% chance to steal from a user (5m cooldown) |
+| `/beg` | Last resort when you're broke |
+| `/leaderboard` | Top 10 by balance, per-game leaderboards, race hall of fame |
+| `/stats` | Your full stats dashboard (5 pages) |
+| `/jackpot` | Check the current progressive jackpot |
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/balance` | Check wallet and bank balance | `user?` |
-| `/bank deposit` | Deposit koku to bank | `amount` (supports: `all`, `half`, `quarter`, `eighth`, math) |
-| `/bank withdraw` | Withdraw koku from bank | `amount` |
-| `/daily` | Claim daily koku (24h cooldown, streak bonus) | — |
-| `/weekly` | Claim weekly koku (7d cooldown) | — |
-| `/give` | Transfer koku to another user | `user`, `amount` |
-| `/rob` | Attempt to rob a user (25% success, 5m cooldown) | `user` |
-| `/beg` | Beg for koku (only when broke, 25% success) | — |
-| `/leaderboard` | View top 10 by balance (current and all-time), per-game profit leaderboards | — |
-| `/stats` | View user statistics (5 pages: general, commands, currency, games, chatbot) — includes net profit per game and shop purchase stats | `user?`, `details?` |
+Bet amounts support expressions everywhere: `all`, `half`, `quarter`, `50*2`, `max/3`, etc.
 
-### Gambling Commands
+### Gambling
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/blackjack` | Play blackjack (supports splitting and late surrender) | `bet` |
-| `/slots bet` | Play slot machine | `amount` |
-| `/slots daily` | Free daily spin | — |
-| `/slots paytable` | View slot payouts | — |
-| `/flip` | Coin flip (50/50) | `bet` |
-| `/roulette` | Multi-player roulette | `type`, `amount`, `number?` |
-| `/race start` | Start a horse race | — |
-| `/race bet` | Bet on current race | `horse` (1-8), `amount`, `type?` (`win`/`place`/`show`) |
-| `/poker` | Video poker (progressive jackpot) | `bet` (use `paytable` for payouts) |
-| `/craps` | Roll dice (experimental) | `bet` |
-| `/jackpot` | Check progressive jackpot amount | — |
+| Command | Description |
+|---------|-------------|
+| `/blackjack` | Open your blackjack table (or `/blackjack bet:X` to deal immediately) |
+| `/poker play` | Open your poker machine (or `/poker play bet:X` to deal immediately) |
+| `/slots spin` | Spin the slots (opens a persistent machine panel) |
+| `/slots daily` | Free daily spin |
+| `/slots paytable` | View payouts |
+| `/craps` | Join or start a craps table |
+| `/roulette` | Start a roulette session |
+| `/race start` | Open a race betting panel |
+| `/race bet` | Place a bet directly (power-user fast path) |
+| `/duel` | Challenge someone to an RPS wager |
+| `/flip` | Coin flip |
 
-### Shop & Theme Commands
+### Chatbot
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/shop browse` | View today's rotating shop stock | — |
-| `/shop buy` | Purchase an item from today's shop | `item` (autocomplete) |
-| `/shop preview` | Preview an item before buying | `item` (autocomplete) |
-| `/inventory view` | View all owned items | — |
-| `/inventory equip` | Equip an owned item | `item` (autocomplete) |
-| `/theme set` | Equip an owned theme | `theme_name` (autocomplete) |
-| `/theme list` | View all available themes | — |
-| `/theme info` | Preview a theme's details | `theme_name` (autocomplete) |
-| `/theme owned` | View your owned themes | — |
+| Command | Description |
+|---------|-------------|
+| `/context set/get/reset` | Configure roleplay options or topic for a channel/thread |
+| `/context summary/facts` | Browse what the bot has stored |
+| `/refresh` | Reset the bot's context window in this channel |
+| `/incognito` | Toggle incognito mode (skips memory) |
+| `/persona` | Create, equip, or delete a bot persona |
+| `/kb` | Manage the channel knowledge base |
+| `/remind set/list/cancel` | Set natural-language reminders |
+| `/forget` | Delete a specific fact the bot has stored about you |
+| `/whatdoyouknow` | See everything the bot knows about you |
+| `/exportmymemory` | Get a JSON export of your facts and summaries via DM |
+| `/settings` | Manage your personal bot settings (e.g. DM preferences) |
 
-### Chatbot Commands
+### Shop & Themes
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/context set` | Set roleplay options / topic (admins for channels, thread owners for threads) | `characteristics?`, `personality?`, `preferences?`, `dialog?`, `boundaries?`, `topic?` |
-| `/context get` | View current context data | — |
-| `/context summary` | View conversation summaries (paginated) | `scope?` (`channel`/`user`), `page?` |
-| `/context facts` | View stored facts (paginated) | `scope?` (`channel`/`user`), `page?` |
-| `/context reset` | Reset context to default (same permissions as set) | — |
-| `/refresh` | Reset chatbot context point | — |
-| `/incognito` | Toggle incognito mode | `scope?` (`channel`/`global`) |
+| Command | Description |
+|---------|-------------|
+| `/shop browse/buy/preview` | Daily rotating cosmetic shop |
+| `/inventory view/equip` | Manage owned items |
+| `/theme set/list/info/owned` | Manage casino themes |
 
-### Music Commands
+### Fun
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/play` | Play a song or playlist | `song` (URL or search query) |
-| `/queue view` | View current queue | — |
-| `/queue clear` | Clear the queue | — |
-| `/queue shuffle` | Shuffle the queue | — |
-| `/filter` | Toggle audio filter | `filter` (autocomplete) |
-| `/lyrics` | Get lyrics for current/searched song | `song?` |
+| Command | Description |
+|---------|-------------|
+| `/caption` | Add an Impact caption to an image |
+| `/memegen` | Classic meme format |
+| `/speechbubble` | Slap a speech bubble on anything |
+| `/rip` | RIP someone |
+| `/generate` | AI image generation |
+| `/8ball` | Ask the oracle |
+| `/roll` | Roll dice |
+| `/avatar` | Get a user's avatar |
+| `/booru` | Image booru search |
 
-### Fun Commands
+### Admin
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/8ball` | Magic 8-ball response | `question` |
-| `/avatar` | Get user's avatar | `user?` |
-| `/caption` | Add Impact caption to image | `text`, `image?`, `user?` |
-| `/choose` | Random choice from options | `options` (comma or space separated) |
-| `/memegen` | Create meme with top/bottom text | `top?`, `bottom?`, `image?`, `user?` |
-| `/rip` | Generate RIP message (admin only) | `user`, `prompt?` |
-| `/roll` | Roll dice | `dice?` (sides), `number?` (count) |
-| `/speechbubble` | Add speech bubble to image | `image?`, `user?`, `x?`, `y?` |
-| `/generate` | Generate an AI image via Gemini | `prompt` (required, max 1000 chars) |
-| `/booru` | Search image booru sites | Various subcommands (e6, r34, gelbooru, etc.) |
+| Command | Description |
+|---------|-------------|
+| `/db add/delete/set/reset/cleanup` | Manage user DB entries |
+| `/koku add/remove/set` | Adjust user balances |
+| `/restart` | Restart the bot |
+| `/unlockall` | Unlock all items for a user |
+| `/feedback` | Submit a bug report or suggestion |
 
-### General Commands
+---
 
-| Command | Description | Options |
-|---------|-------------|---------|
-| `/help` | Bot help and command info | `command?` |
-| `/ping` | Check bot latency | — |
-| `/uptime` | Check bot uptime | — |
-| `/stats` | User statistics dashboard | `user?`, `details?` |
-| `/feedback` | Submit bug/suggestion/feedback | `type`, `description` |
-
-## Architecture Overview
-
-### File Structure
+## File structure
 
 ```
 meme-cultist/
-├── bot.js                 # Entry point, client setup, event handlers
-├── config.js              # Server IDs, feature flags, tuning params
-├── database.js            # User DB schema and CRUD helpers
-├── package.json           # Dependencies
-├── .env                   # Secrets (TOKEN, API keys, etc.)
+├── bot.js                    # Entry point, event handlers, command loader
+├── config.js                 # Server config and feature flags
+├── database.js               # User schema and DB helpers
 ├── db/
-│   ├── users.sqlite       # User data (balance, stats, cooldowns)
-│   ├── thread_contexts.sqlite  # Chatbot context/memory
-│   ├── jackpot.sqlite     # Progressive jackpot state
-│   └── feedback.sqlite    # User feedback storage
+│   ├── users.sqlite          # Balances, stats, cooldowns, chatbot memory
+│   ├── thread_contexts.sqlite # Chatbot context per channel/thread
+│   ├── jackpot.sqlite        # Progressive jackpot state
+│   ├── jobs.sqlite           # Durable job queue (reminders, async tasks)
+│   ├── personas.sqlite       # Persistent bot personas
+│   └── feedback.sqlite       # Submitted feedback
 ├── commands/
-│   ├── admin/             # db, koku, unlockall
-│   ├── chatbot/           # context, refresh, incognito
-│   ├── currency/          # balance, bank, daily, weekly, games, shop, inventory, theme
-│   ├── fun/               # 8ball, avatar, caption, memegen...
-│   ├── general/           # help, ping, uptime, stats, feedback
-│   ├── music/             # play, queue, filter, lyrics
-│   └── nsfw/              # booru (image search)
-├── themes/
-│   ├── configs/           # Theme definitions (index.js, base.js)
-│   ├── manager.js          # Theme ownership and equipping logic
-│   └── resolver.js         # Theme color/style resolution
+│   ├── admin/
+│   ├── chatbot/              # context, refresh, incognito, persona, kb, remind, forget...
+│   ├── currency/             # balance, bank, games, shop, inventory, theme...
+│   ├── fun/
+│   ├── general/
+│   ├── music/
+│   └── nsfw/
 ├── utils/
-│   ├── openai.js           # DeepSeek chatbot logic, memory management
-│   ├── openai-tools.js     # Tool functions for AI function calling
-│   ├── gemini.js           # Gemini vision (image description) and image generation
-│   ├── urlContext.js       # URL extraction and web page text fetching
-│   ├── bank.js             # Interest, deposits, withdrawals
-│   ├── betparse.js         # Bet string parsing (all, half, math)
-│   ├── blackjack.js        # Blackjack game logic (with splitting)
-│   ├── poker.js            # Video poker logic
-│   ├── roulette.js         # Roulette wheel, table rendering
-│   ├── race.js             # Horse racing logic (win/place/show)
-│   ├── slots.js            # Slot machine logic
-│   ├── slotsCanvas.js      # Canvas rendering for slots
-│   ├── slotsThemes.js      # Slot theme color/style mapping
-│   ├── inventory.js         # Item ownership, daily shop, equipping
-│   ├── jackpot.js           # Progressive jackpot state and interest
-│   ├── channels.js         # Chatbot channel helpers
-│   ├── Canvas.js           # Image manipulation helpers
-│   ├── musicPlayer.js      # discord-player event handlers
-│   ├── welcome.js          # Member join/leave messages
-│   ├── ratelimiter.js      # Per-user and global rate limiting
-│   ├── ssrf.js             # URL validation to prevent SSRF attacks
-│   ├── logger.js           # Console + file logging
-│   └── ...
-└── logs/                   # Daily log files (YYYY/MM/DD.txt)
+│   ├── llm/                  # Provider-agnostic LLM router + adapters (DeepSeek, Gemini, Cloudflare)
+│   ├── jobs/                 # Durable job queue
+│   ├── kb/                   # Knowledge base store + embeddings
+│   ├── messageArchive/       # Chatbot message archive + search
+│   ├── personas/             # Persona management
+│   ├── reminders/            # Natural-language time parsing
+│   ├── openai.js             # Chatbot pipeline (context, memory, facts, summaries)
+│   ├── openai-tools.js       # AI function-calling tools
+│   ├── schemas.js            # Structured output validation (ajv)
+│   ├── cards.js              # Local sprite-based card deck (replaces external API)
+│   ├── betModal.js           # Shared bet modal + expression resolver
+│   ├── canvasCommon.js       # Shared canvas drawing primitives
+│   ├── blackjackCanvas.js    # Blackjack renderer
+│   ├── crapsCanvas.js        # Craps felt table renderer
+│   ├── duelCanvas.js         # Duel clash screen renderer
+│   ├── slotsCanvas.js        # Slots renderer
+│   ├── lock.js / userlock.js # Per-key / per-user async mutexes
+│   ├── bank.js               # Interest, deposit, withdraw
+│   ├── betparse.js           # Bet expression parser
+│   ├── ratelimiter.js        # Chatbot turn management + image gen limits
+│   ├── ssrf.js               # URL validation
+│   └── logger.js             # Console + file logging (logs/YYYY/MM/DD.txt)
+├── themes/
+│   ├── configs/              # Theme definitions
+│   ├── manager.js            # Theme ownership and equipping
+│   └── resolver.js           # Four-layer color/sprite resolution
+├── schemas/                  # JSON schemas for structured LLM outputs
+└── assets/imgs/              # Card spritesheets, game sprites, shared overlays
 ```
 
-### Key Data Flows
-
-1. **Command Execution**:
-   - `bot.js` loads commands from `./commands/` recursively
-   - `interactionCreate` handler validates permissions and executes
-   - Stats tracked in QuickDB after each command
-
-2. **Chatbot Flow**:
-   - Message received → rate limit check → context fetch
-   - If image attached: Gemini describes it and passes as vision context (SSRF-protected URL validation)
-   - If URL found: page text is fetched and passed as link context (SSRF-protected)
-   - Build system prompt (roleplay, topic, facts, summaries)
-   - Call DeepSeek API with conversation history + extra context
-   - Handle tool calls if model requests them (including `generate_image`)
-   - Send response (with any generated image attachments), update message counts
-   - Periodically summarize and extract facts
-   - Immediate fact extraction with debouncing for real-time learning
-
-3. **Music Playback**:
-   - `/play` → search query → discord-player queue
-   - Events (trackStart, trackEnd) in `utils/musicPlayer.js`
-   - Buttons for pause/skip/stop on "Now Playing" embed
-
-4. **Database Schema** (`users.sqlite`):
-   ```js
-   {
-     id, name, balance, bank, inventory,
-     cooldowns: { daily, weekly, rob, freespins },
-     stats: {
-       commands: { daily, monthly, yearly, total, dailyReset, monthlyReset, yearlyReset },
-       dailies: { claimed, currentStreak, longestStreak },
-       weeklies: { claimed },
-       blackjack: { wins, losses, ties, blackjacks, biggestWin, biggestLoss, profit },
-       slots: { wins, losses, jackpots, biggestWin, biggestLoss, profit },
-       flip: { wins, losses, biggestWin, biggestLoss, profit },
-       roulette: { wins, losses, totalBet, biggestWin, biggestLoss, profit },
-       race: { wins, losses, totalBet, biggestWin, biggestLoss, profit },
-       poker: { wins, losses, royals, biggestWin, biggestLoss, profit },
-       begs: { wins, losses, profit },
-       shop: { purchases, spent, biggestPurchase },
-       largestBalance, largestBank
-     },
-     profile: { theme: { equipped, owned } },
-     chatbot: { messageCount, summaries, facts, messagesSinceLastSummary, messagesSinceLastFacts, incognitoMode, incognitoChannels }
-   }
-   ```
-
-### Global Client State
-
-```js
-client.slashcommands        // Collection of loaded commands
-client.contextResetPoints   // Map<channelId, messageId> for /refresh
-client.rouletteGames        // Map<channelId, game> for active roulette
-client.raceGames            // Map<channelId, game> for active races
-client.immediateFactsDebounce // Map for debouncing immediate fact extraction
-client.player              // discord-player instance
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -am 'Add your feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
-
-### Code Style
-
-- Use consistent indentation (2 spaces)
-- Follow existing naming conventions
-- Add JSDoc comments for complex functions
-- Handle errors gracefully with logger
-
-### Testing
-
-Before submitting:
-```bash
-node bot.js dbinit    # Ensure DB migrations work
-node bot.js load      # Test command registration
-node bot.js           # Start and verify functionality
-```
+---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-Copyright © 2025 BasboBibbins. Licensed under MIT and CC BY-NC-SA 4.0.
+MIT — see [LICENSE](LICENSE) for details.
+Copyright © 2025 BasboBibbins.
