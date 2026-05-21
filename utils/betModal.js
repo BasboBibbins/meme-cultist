@@ -54,8 +54,13 @@ function buildErrorEmbed(user, client, description) {
 // and reply. Extras are passed through verbatim — caller reads them via
 // submit.fields.getTextInputValue(customId) and validates them itself.
 //
-// Returns { amount, submit } on success; null on either validation failure
-// (helper already replied with a themed error embed) or modal abandon
+// Balance is NOT checked here — there is always a gap between this return and
+// the caller's debit, so a check here can never be authoritative. Callers MUST
+// re-validate balance (and debit) atomically inside withUserLock. Use
+// resolveBet(expression, userId) inside the lock for a consistent check.
+//
+// Returns { amount, expression, submit } on success; null on either validation
+// failure (helper already replied with a themed error embed) or modal abandon
 // (no reply made — user just closed the modal).
 async function openBetModal(buttonInt, opts) {
     const {
@@ -134,15 +139,7 @@ async function openBetModal(buttonInt, opts) {
         return null;
     }
 
-    let dbUser = await db.get(user.id);
-    if (!dbUser) {
-        await addNewDBUser(user);
-        dbUser = await db.get(user.id);
-    }
-    if ((dbUser?.balance || 0) < amount) {
-        await submit.reply({ embeds: [buildErrorEmbed(user, client, `Insufficient funds in wallet!`)], ephemeral: true });
-        return null;
-    }
+    await addNewDBUser(user);
 
     return { amount, expression, submit };
 }
