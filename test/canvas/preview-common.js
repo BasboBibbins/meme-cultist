@@ -1,11 +1,19 @@
 /**
  * Shared constants and helpers for canvas preview scripts.
  * Usage: const { THEMES, OUT_DIR, AVATAR_DIR, PLAYERS, avatarPath, mockUser, saveRender } = require("./preview-common");
+ *
+ * Pass --theme <id> to render a single theme instead of the default batch:
+ *   node preview-slots.js --theme neon
+ *   npm run preview:canvas -- --theme neon
  */
 const path = require("path");
 const fs = require("fs");
 
-const THEMES = ["classic", "memecult", "dessert", "sunset", "noir"];
+const DEFAULT_THEMES = ["classic", "memecult", "dessert", "sunset", "noir"];
+const _themeArgIdx = process.argv.indexOf("--theme");
+const THEMES = _themeArgIdx !== -1 && process.argv[_themeArgIdx + 1]
+  ? [process.argv[_themeArgIdx + 1]]
+  : DEFAULT_THEMES;
 
 const OUT_DIR = path.join(__dirname, "../../tmp/canvas");
 const AVATAR_DIR = path.join(__dirname, "avatars");

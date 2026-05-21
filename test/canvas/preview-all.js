@@ -3,6 +3,7 @@
  * Clears tmp/canvas/, then executes each game renderer sequentially.
  * Usage: node test/canvas/preview-all.js
  *        npm run preview:canvas
+ *        npm run preview:canvas -- --theme neon
  */
 const { spawnSync } = require("child_process");
 const path = require("path");
@@ -26,6 +27,8 @@ for (const f of fs.readdirSync(OUT_DIR)) {
 }
 console.log(`Cleared ${OUT_DIR}`);
 
+const extraArgs = process.argv.slice(2);
+
 const totalStart = Date.now();
 let passed = 0;
 let failed = 0;
@@ -35,7 +38,7 @@ for (const script of SCRIPTS) {
   process.stdout.write(`\n[${label}]\n`);
 
   const start = Date.now();
-  const result = spawnSync(process.execPath, [path.join(DIR, script)], {
+  const result = spawnSync(process.execPath, [path.join(DIR, script), ...extraArgs], {
     stdio: "inherit",
     cwd: path.join(DIR, "../.."),
   });

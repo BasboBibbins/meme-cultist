@@ -1,7 +1,9 @@
 /**
  * Smoke tests: verify canvas renderers complete without throwing and return
- * something with a buffer attached.  Uses the "classic" theme and synthetic
- * game state to avoid asset-loading failures on other themes.
+ * something with a buffer attached.  Defaults to "classic"; pass
+ * `--theme <id>` after a `--` separator to test a specific theme:
+ *
+ *   npm run test:canvas -- --theme neon
  */
 
 const path = require("path");
@@ -17,7 +19,16 @@ function mockUser(name, n = 1) {
   return { displayName: name, displayAvatarURL: () => avatarPath(n) };
 }
 
-const CLASSIC = "classic";
+const themeArgIdx = process.argv.indexOf("--theme");
+const THEME_ID = themeArgIdx !== -1 && process.argv[themeArgIdx + 1]
+  ? process.argv[themeArgIdx + 1]
+  : "classic";
+
+if (THEME_ID !== "classic") {
+  console.log(`[canvas smoke] using theme: ${THEME_ID}`);
+}
+
+const CLASSIC = THEME_ID;
 
 describe("blackjackCanvas smoke", () => {
   test("renders a resolved hand without throwing", async () => {
