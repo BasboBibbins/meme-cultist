@@ -9,171 +9,171 @@
  *   classic.colors -> classic.overrides[game] -> theme.colors -> theme.overrides[game]
  */
 
-const path = require('path');
+const path = require("path");
 
-const ASSETS_BASE        = path.join(__dirname, '..', '..', 'assets', 'imgs', 'slots');
-const ASSETS_BASE_CARDS  = path.join(__dirname, '..', '..', 'assets', 'imgs', 'cards');
-const ASSETS_BASE_DUEL   = path.join(__dirname, '..', '..', 'assets', 'imgs', 'duel');
-const ASSETS_BASE_SHARED = path.join(__dirname, '..', '..', 'assets', 'imgs', 'shared');
+const ASSETS_BASE        = path.join(__dirname, "..", "..", "assets", "imgs", "slots");
+const ASSETS_BASE_CARDS  = path.join(__dirname, "..", "..", "assets", "imgs", "cards");
+const ASSETS_BASE_DUEL   = path.join(__dirname, "..", "..", "assets", "imgs", "duel");
+const ASSETS_BASE_SHARED = path.join(__dirname, "..", "..", "assets", "imgs", "shared");
 
 module.exports = {
-    id: 'classic',
-    name: 'Classic Casino',
-    description: 'The default green felt casino look.',
-    tier: 'full',
-    price: 0,
-    weight: 0,
-    emoji: '🎰',
-    game: null,
+  id: "classic",
+  name: "Classic Casino",
+  description: "The default green felt casino look.",
+  tier: "full",
+  price: 0,
+  weight: 0,
+  emoji: "🎰",
+  game: null,
 
-    // ── Shared palette (colorway themes override these) ─────────────
-    colors: {
-        // Background image URL (or local path) for full themes. Set to null for solid color.
-        // Recommended resolution: 1100x420 — this covers all three game canvases
-        // (slots: 600x420, poker: 600x320, roulette: 1100x400) without cropping.
-        background: null,
-        feltColor:   '#0f4c25',
-        feltDark:    '#0a3a1a',
-        tableGreen:  '#1a6b35',
-        gold:        '#ffd700',
-        goldDark:    '#c8a830',
-        goldBronze:  '#8b6914',
-        textWhite:   '#ffffff',
-        textBlack:   '#000000',
-        textWin:     '#44ff44',
-        textLoss:    '#ff4444',
-        textPrimary: '#ffd700',
-        embedColor:  0x0f4c25,
-        // Shared win/loss outcome sprites — used by any game that marks
-        // individual hands/players as winners or losers (duel, blackjack, …).
-        crownSprite:    path.join(ASSETS_BASE_SHARED, 'crown.png'),
-        fractureSprite: path.join(ASSETS_BASE_SHARED, 'fracture.png'),
+  // ── Shared palette (colorway themes override these) ─────────────
+  colors: {
+    // Background image URL (or local path) for full themes. Set to null for solid color.
+    // Recommended resolution: 1100x420 — this covers all three game canvases
+    // (slots: 600x420, poker: 600x320, roulette: 1100x400) without cropping.
+    background: null,
+    feltColor:   "#0f4c25",
+    feltDark:    "#0a3a1a",
+    tableGreen:  "#1a6b35",
+    gold:        "#ffd700",
+    goldDark:    "#c8a830",
+    goldBronze:  "#8b6914",
+    textWhite:   "#ffffff",
+    textBlack:   "#000000",
+    textWin:     "#44ff44",
+    textLoss:    "#ff4444",
+    textPrimary: "#ffd700",
+    embedColor:  0x0f4c25,
+    // Shared win/loss outcome sprites — used by any game that marks
+    // individual hands/players as winners or losers (duel, blackjack, …).
+    crownSprite:    path.join(ASSETS_BASE_SHARED, "crown.png"),
+    fractureSprite: path.join(ASSETS_BASE_SHARED, "fracture.png"),
+  },
+
+  overrides: {
+    // ── Slots ───────────────────────────────────────────────────
+    slots: {
+      frameColor:         "#ffd700",
+      frameDarkColor:     "#c8a830",
+      frameBronze:        "#8b6914",
+      dividerColor:       "#1a6b35",
+      highlightWin:       "rgba(255, 215, 0, 0.6)",
+      bannerBackground:   "#2a0a00",
+      bannerBackgroundEnd:"#1a0600",
+      motionBlurOverlay:  "rgba(10, 42, 20, 0.45)",
+      paylineColors:      ["#ff4444", "#44ff44", "#4488ff", "#ffaa00", "#ff44ff"],
+
+      symbols: [
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 0, label: "Apple" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 1, label: "Orange" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 2, label: "Lemon" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 3, label: "Grapes" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 4, label: "Cherry" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 5, label: "Bell" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 6, label: "BAR" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 7, label: "Seven" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 8, label: "Wild" },
+        { type: "sprite", path: path.join(ASSETS_BASE, "default.png"), index: 9, label: "Free Spin" },
+      ],
     },
 
-    overrides: {
-        // ── Slots ───────────────────────────────────────────────────
-        slots: {
-            frameColor:         '#ffd700',
-            frameDarkColor:     '#c8a830',
-            frameBronze:        '#8b6914',
-            dividerColor:       '#1a6b35',
-            highlightWin:       'rgba(255, 215, 0, 0.6)',
-            bannerBackground:   '#2a0a00',
-            bannerBackgroundEnd:'#1a0600',
-            motionBlurOverlay:  'rgba(10, 42, 20, 0.45)',
-            paylineColors:      ['#ff4444', '#44ff44', '#4488ff', '#ffaa00', '#ff44ff'],
+    // ── Roulette ────────────────────────────────────────────────
+    roulette: {
+      // Wheel wood ring (radial gradient stops)
+      woodInner:    "#6b3a0f",
+      woodMid:      "#4a2808",
+      woodOuter:    "#2e1a05",
+      goldRim:      "#c8a830",
 
-            symbols: [
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 0, label: 'Apple' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 1, label: 'Orange' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 2, label: 'Lemon' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 3, label: 'Grapes' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 4, label: 'Cherry' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 5, label: 'Bell' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 6, label: 'BAR' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 7, label: 'Seven' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 8, label: 'Wild' },
-                { type: 'sprite', path: path.join(ASSETS_BASE, 'default.png'), index: 9, label: 'Free Spin' },
-            ],
-        },
+      // Pocket colors
+      pocketRed:    "#c0392b",
+      pocketBlack:  "#1a1a1a",
+      pocketGreen:  "#1a8a3f",
 
-        // ── Roulette ────────────────────────────────────────────────
-        roulette: {
-            // Wheel wood ring (radial gradient stops)
-            woodInner:    '#6b3a0f',
-            woodMid:      '#4a2808',
-            woodOuter:    '#2e1a05',
-            goldRim:      '#c8a830',
+      // Center felt bowl (radial gradient stops)
+      feltInner:    "#237a3d",
+      feltMid:      "#1a6b35",
+      feltOuter:    "#145228",
 
-            // Pocket colors
-            pocketRed:    '#c0392b',
-            pocketBlack:  '#1a1a1a',
-            pocketGreen:  '#1a8a3f',
+      // Spokes & hub
+      spokeColor:   "#c8a830",
+      hubLight:     "#f5e070",
+      hubMid:       "#c8a830",
+      hubDark:      "#8a6020",
+      hubStroke:    "#f0d060",
 
-            // Center felt bowl (radial gradient stops)
-            feltInner:    '#237a3d',
-            feltMid:      '#1a6b35',
-            feltOuter:    '#145228',
+      // Betting table
+      zeroGreen:    "#27ae60",
+      betArea:      "#1e7a3d",
+      betBorder:    "#88aa88",
+      numberRed:    "#c0392b",
+      numberBlack:  "#1a1a1a",
 
-            // Spokes & hub
-            spokeColor:   '#c8a830',
-            hubLight:     '#f5e070',
-            hubMid:       '#c8a830',
-            hubDark:      '#8a6020',
-            hubStroke:    '#f0d060',
-
-            // Betting table
-            zeroGreen:    '#27ae60',
-            betArea:      '#1e7a3d',
-            betBorder:    '#88aa88',
-            numberRed:    '#c0392b',
-            numberBlack:  '#1a1a1a',
-
-            // Result overlay
-            winnerHighlight: '#ffd700',
-            resultOverlay:   'rgba(0,0,0,0.6)',
-            resultBorder:    '#ffd700',
-        },
-
-        // ── Poker ───────────────────────────────────────────────────
-        // Poker uses shared keys (feltColor, tableGreen, gold, goldDark).
-        // No additional overrides needed for the classic look.
-        poker: {},
-
-        // ── Blackjack ───────────────────────────────────────────────
-        // Blackjack uses the same shared palette as poker by default.
-        // Themes can override independently if desired.
-        blackjack: {},
-
-        // ── Craps ───────────────────────────────────────────────────
-        craps: {
-            feltInner:        '#237a3d',
-            feltMid:          '#1a6b35',
-            feltOuter:        '#145228',
-            layoutLine:       '#ffd700',
-            layoutLabel:      '#ffffff',
-            passLineColor:    '#1a8a3f',
-            dontPassColor:    '#5a1a1a',
-            fieldColor:       '#3a5a8a',
-            comeColor:        '#2a7a4a',
-            placeColor:       '#1e6a35',
-            hardWaysColor:    '#aa3a3a',
-            propsColor:       '#8a4a2a',
-            bigSixEightColor: '#1e6a35',
-            puckOff:          '#1a1a1a',
-            puckOn:           '#ffffff',
-            puckText:         '#000000',
-            diceFace:         '#ffffff',
-            diceDots:         '#000000',
-            diceShadow:       'rgba(0,0,0,0.4)',
-            winnerHighlight:  '#ffd700',
-            resultOverlay:    'rgba(0,0,0,0.6)',
-            resultBorder:     '#ffd700',
-        },
-
-        // ── Duel ────────────────────────────────────────────────────
-        duel: {
-            feltColor: '#0f4c25',
-            tableGreen: '#1a6b35',
-            gold: '#ffd700',
-            textWhite: '#ffffff',
-            textWin: '#44ff44',
-            textLoss: '#ff4444',
-            embedColor: 0x0f4c25,
-            coinSprite:     path.join(ASSETS_BASE_DUEL, 'coin.png'),
-            rockSprite:     path.join(ASSETS_BASE_DUEL, 'rock.png'),
-            paperSprite:    path.join(ASSETS_BASE_DUEL, 'paper.png'),
-            scissorsSprite: path.join(ASSETS_BASE_DUEL, 'scissors.png'),
-        },
-
-        // ── Cards ───────────────────────────────────────────────────
-        cards: {
-            sheet:      path.join(ASSETS_BASE_CARDS, 'classic.png'),
-            back:       path.join(ASSETS_BASE_CARDS, 'classic-back.png'),
-            cardWidth:  90,
-            cardHeight: 135,
-            suitsOrder: ['CLUBS', 'DIAMONDS', 'HEARTS', 'SPADES'],
-            ranksOrder: ['A', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'J', 'Q', 'K'],
-        },
+      // Result overlay
+      winnerHighlight: "#ffd700",
+      resultOverlay:   "rgba(0,0,0,0.6)",
+      resultBorder:    "#ffd700",
     },
+
+    // ── Poker ───────────────────────────────────────────────────
+    // Poker uses shared keys (feltColor, tableGreen, gold, goldDark).
+    // No additional overrides needed for the classic look.
+    poker: {},
+
+    // ── Blackjack ───────────────────────────────────────────────
+    // Blackjack uses the same shared palette as poker by default.
+    // Themes can override independently if desired.
+    blackjack: {},
+
+    // ── Craps ───────────────────────────────────────────────────
+    craps: {
+      feltInner:        "#237a3d",
+      feltMid:          "#1a6b35",
+      feltOuter:        "#145228",
+      layoutLine:       "#ffd700",
+      layoutLabel:      "#ffffff",
+      passLineColor:    "#1a8a3f",
+      dontPassColor:    "#5a1a1a",
+      fieldColor:       "#3a5a8a",
+      comeColor:        "#2a7a4a",
+      placeColor:       "#1e6a35",
+      hardWaysColor:    "#aa3a3a",
+      propsColor:       "#8a4a2a",
+      bigSixEightColor: "#1e6a35",
+      puckOff:          "#1a1a1a",
+      puckOn:           "#ffffff",
+      puckText:         "#000000",
+      diceFace:         "#ffffff",
+      diceDots:         "#000000",
+      diceShadow:       "rgba(0,0,0,0.4)",
+      winnerHighlight:  "#ffd700",
+      resultOverlay:    "rgba(0,0,0,0.6)",
+      resultBorder:     "#ffd700",
+    },
+
+    // ── Duel ────────────────────────────────────────────────────
+    duel: {
+      feltColor: "#0f4c25",
+      tableGreen: "#1a6b35",
+      gold: "#ffd700",
+      textWhite: "#ffffff",
+      textWin: "#44ff44",
+      textLoss: "#ff4444",
+      embedColor: 0x0f4c25,
+      coinSprite:     path.join(ASSETS_BASE_DUEL, "coin.png"),
+      rockSprite:     path.join(ASSETS_BASE_DUEL, "rock.png"),
+      paperSprite:    path.join(ASSETS_BASE_DUEL, "paper.png"),
+      scissorsSprite: path.join(ASSETS_BASE_DUEL, "scissors.png"),
+    },
+
+    // ── Cards ───────────────────────────────────────────────────
+    cards: {
+      sheet:      path.join(ASSETS_BASE_CARDS, "classic.png"),
+      back:       path.join(ASSETS_BASE_CARDS, "classic-back.png"),
+      cardWidth:  90,
+      cardHeight: 135,
+      suitsOrder: ["CLUBS", "DIAMONDS", "HEARTS", "SPADES"],
+      ranksOrder: ["A", "2", "3", "4", "5", "6", "7", "8", "9", "0", "J", "Q", "K"],
+    },
+  },
 };

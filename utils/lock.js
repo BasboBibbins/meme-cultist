@@ -9,21 +9,21 @@
 const _locks = new Map();
 
 async function withLock(key, fn) {
-    const prev = _locks.get(key) ?? Promise.resolve();
-    let resolve;
-    const next = new Promise(r => { resolve = r; });
-    _locks.set(key, next);
-    await prev;
-    try {
-        return await fn();
-    } finally {
-        resolve();
-        // Only evict our entry — a later caller may have already queued behind
-        // us and replaced the tail with their own promise.
-        if (_locks.get(key) === next) {
-            _locks.delete(key);
-        }
+  const prev = _locks.get(key) ?? Promise.resolve();
+  let resolve;
+  const next = new Promise(r => { resolve = r; });
+  _locks.set(key, next);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    resolve();
+    // Only evict our entry — a later caller may have already queued behind
+    // us and replaced the tail with their own promise.
+    if (_locks.get(key) === next) {
+      _locks.delete(key);
     }
+  }
 }
 
 module.exports = { withLock };

@@ -8,8 +8,8 @@ const { THEMES, mockUser, saveRender } = require("./preview-common");
 const user = mockUser("GrandGambler99", 1);
 
 (async () => {
-    for (const themeId of THEMES) {
-        const attachment = await pokerPreview(themeId, user);
-        saveRender(attachment, `poker-${themeId}.png`);
-    }
+  for (const themeId of THEMES) {
+    const attachment = await pokerPreview(themeId, user);
+    saveRender(attachment, `poker-${themeId}.png`);
+  }
 })();

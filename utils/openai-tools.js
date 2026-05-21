@@ -244,7 +244,7 @@ async function resolveMember(input, guild) {
   }
 
   // Otherwise, search by display name, username, or nickname
-  const searchName = input.toLowerCase().replace(/^@/, '');
+  const searchName = input.toLowerCase().replace(/^@/, "");
   const members = await guild.members.fetch();
 
   return members.find(m =>
@@ -311,10 +311,10 @@ async function handleGetUserStats(args, message) {
 
   const stats = userData.stats || {};
 
-  const totalCommands = Object.values(stats.commands?.total || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+  const totalCommands = Object.values(stats.commands?.total || {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
 
   const gameStats = {};
-  const gameKeys = ['blackjack', 'slots', 'flip', 'roulette', 'race', 'begs'];
+  const gameKeys = ["blackjack", "slots", "flip", "roulette", "race", "begs"];
   for (const key of gameKeys) {
     if (stats[key]) {
       gameStats[key] = { ...stats[key] };
@@ -390,7 +390,7 @@ async function handleGetUserInfo(args, message) {
     nickname: member.nickname,
     avatar_url: member.displayAvatarURL({ dynamic: true }),
     roles: member.roles.cache
-      .filter(r => r.name !== '@everyone')
+      .filter(r => r.name !== "@everyone")
       .map(r => r.name)
       .slice(0, 10),
     joined_at: member.joinedAt?.toISOString(),
