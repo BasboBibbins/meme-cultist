@@ -1,8 +1,8 @@
 const fs = require("fs");
-const DEBUG_LOGGING = process.argv[2] == "debug";
+const DEBUG_LOGGING = process.argv[2] === "debug";
 
 async function logToTxt(message, type) {
-  if (type == "error") {
+  if (type === "error") {
     message = message.stack || message;
   } else if (typeof message !== "string") {
     message = JSON.stringify(message);

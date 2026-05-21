@@ -36,12 +36,12 @@ if (process.env.COOKIE) {
   });
 }
 
-const LOAD_SLASH = process.argv[2] == "load";
-const LOAD_DB = process.argv[2] == "dbinit";
-const DEBUG_MODE = process.argv[2] == "debug";
-const DELETE_SLASH = process.argv[2] == "delete";
+const LOAD_SLASH = process.argv[2] === "load";
+const LOAD_DB = process.argv[2] === "dbinit";
+const DEBUG_MODE = process.argv[2] === "debug";
+const DELETE_SLASH = process.argv[2] === "delete";
 const DELETE_SLASH_ID = process.argv[3];
-const UNDO_APRILFOOLS = process.argv[2] == "afundo";
+const UNDO_APRILFOOLS = process.argv[2] === "afundo";
 
 const banned = BANNED_ROLE;
 
@@ -140,7 +140,7 @@ const walk = function(dir) {
     if (stat && stat.isDirectory()) { 
       results = results.concat(walk(file));
     } else { 
-      if (file_type == "js") results.push(file);
+      if (file_type === "js") results.push(file);
     }
   });
   return results;
@@ -463,13 +463,13 @@ if (DELETE_SLASH) {
   client.on(Events.Error, (info) => logger.error(info));
 
   client.on(Events.GuildMemberAdd, async member => {
-    if (member.guild.id == GUILD_ID) {
+    if (member.guild.id === GUILD_ID) {
       await welcome(client, member);
     }
   });
 
   client.on(Events.GuildMemberRemove, async member => {
-    if (member.guild.id == GUILD_ID) {
+    if (member.guild.id === GUILD_ID) {
       await goodbye(client, member);
     }
   });
@@ -630,7 +630,7 @@ if (DELETE_SLASH) {
       logger.warn(`User ${message.author.username} is banned from using the bot. Ignoring request...`);
       const dmChannel = await message.author.createDM().catch(() => null);
       if (dmChannel) {
-        const isLastMsgBot = dmChannel.lastMessage && dmChannel.lastMessage.author.id == client.user.id;
+        const isLastMsgBot = dmChannel.lastMessage && dmChannel.lastMessage.author.id === client.user.id;
         if (isLastMsgBot) {
           await sendDM(message.author, {
             content: `You are banned from using ${client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${message.guild.name}.`,

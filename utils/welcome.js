@@ -11,29 +11,29 @@ async function ripGen(guildMember, prompt) {
   const buffer = 23;
   let rip = "```\n-=-=-=-=-=-=-=-=-=- R I P -=-=-=-=-=-=-=-=-=-\n";
   let ripLines = buffer - (((victim.displayName .length + 5)-3)/2);
-  rip += `\n${"-".repeat(ripLines)} ${victim.displayName } ${"-".repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
+  rip += `\n${"-".repeat(ripLines)} ${victim.displayName } ${"-".repeat(ripLines %1===0? ripLines-1 : ripLines)}\n`;
   const joinedAt = guildMember.joinedAt || "??/??/20XX";
   const joinDate = new Date(joinedAt);
   const leaveDate = new Date();
   const joinStr = joinDate.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
   const leaveStr = leaveDate.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
   ripLines = buffer - (((joinStr.length + leaveStr.length)+5)/2);
-  rip += `\n${"-".repeat(ripLines)} ${joinStr} - ${leaveStr} ${"-".repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
+  rip += `\n${"-".repeat(ripLines)} ${joinStr} - ${leaveStr} ${"-".repeat(ripLines %1===0? ripLines-1 : ripLines)}\n`;
 
   let promptLines = prompt.match(/.{1,40}(\s|$)|\S+?(\s|$)/g);
   if (!promptLines.includes("\n") && !promptLines.includes(" ")) promptLines = prompt.match(/.{1,40}/g);
   for (let i = 0; i < promptLines.length; i++) {
     if (promptLines[i].endsWith(" ")) promptLines[i] = promptLines[i].slice(0, -1);
     ripLines = buffer - ((promptLines[i].length+2)/2);
-    rip += `\n${"-".repeat(ripLines)} ${promptLines[i]} ${"-".repeat(ripLines %1==0? ripLines-1 : ripLines)}\n`;
+    rip += `\n${"-".repeat(ripLines)} ${promptLines[i]} ${"-".repeat(ripLines %1===0? ripLines-1 : ripLines)}\n`;
   }
 
   const sincerely = "Sincerely,";
   const sincerelyLines = buffer - ((sincerely.length+2)/2);
-  rip += `\n${"-".repeat(sincerelyLines)} ${sincerely} ${"-".repeat(sincerelyLines %1==0? sincerelyLines-1 : sincerelyLines)}\n`;
+  rip += `\n${"-".repeat(sincerelyLines)} ${sincerely} ${"-".repeat(sincerelyLines %1===0? sincerelyLines-1 : sincerelyLines)}\n`;
   const serverName = guildMember.guild.name;
   const serverNameLines = buffer - ((serverName.length+2)/2);
-  rip += `\n${"-".repeat(serverNameLines)} ${serverName} ${"-".repeat(serverNameLines %1==0? serverNameLines-1 : serverNameLines)}\n`;
+  rip += `\n${"-".repeat(serverNameLines)} ${serverName} ${"-".repeat(serverNameLines %1===0? serverNameLines-1 : serverNameLines)}\n`;
   rip += "\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n```";
   return rip;
 }
@@ -71,20 +71,20 @@ module.exports = {
     const auditLog = await member.guild.fetchAuditLogs({limit: 1});
     const log = auditLog.entries.first();
     let prompt = "";
-    if (log.target.id == member.id) {
-      if (log.action == 20) { // KICK
+    if (log.target.id === member.id) {
+      if (log.action === 20) { // KICK
         const executor = log.executor;
-        if (executor.id == client.user.id) return;
+        if (executor.id === client.user.id) return;
         prompt = `kicked by ${executor.tag} ${log.reason ? `for reason: ${log.reason}` : ""}`;
         logger.info(`${member.user.username} (${member.user.id}) was kicked by ${executor.tag} (${executor.id}) ${log.reason ? `for reason: ${log.reason}` : ""}.`);
-      } else if (log.action == 22) { // BAN
+      } else if (log.action === 22) { // BAN
         const executor = log.executor;
-        if (executor.id == client.user.id) return;
+        if (executor.id === client.user.id) return;
         prompt = `banned by ${executor.tag} ${log.reason ? `for reason: ${log.reason}` : ""}`;
         logger.info(`${member.user.username} (${member.user.id}) was banned by ${executor.tag} (${executor.id}) ${log.reason ? `for reason: ${log.reason}` : ""}.`);
-      } else if (log.action == 21) { // PRUNE
+      } else if (log.action === 21) { // PRUNE
         const executor = log.executor;
-        if (executor.id == client.user.id) return;
+        if (executor.id === client.user.id) return;
         prompt = "who the fuck are you?";
         logger.info(`${member.user.username} (${member.user.id}) was pruned by ${executor.tag} (${executor.id}).`);
       } else {
