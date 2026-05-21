@@ -133,6 +133,16 @@ async function notifyOwner(client, feedback) {
   }
 }
 
+// Extract the first complete sentence from a description and cap it at maxLen
+// characters on a word boundary. Used as a fallback when the LLM returns empty.
+function descriptionFallbackTitle(description, maxLen = 100) {
+  const first = description.split(/[.!?\n]/)[0].trim();
+  if (first.length <= maxLen) return first;
+  const cut = first.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
+}
+
 async function generateIssueTitle(type, description) {
   if (!llmAvailable()) {
     logger.debug("[Feedback] generateIssueTitle: No OpenAI client available, cannot generate title");
@@ -142,13 +152,19 @@ async function generateIssueTitle(type, description) {
   const typeLabel = type === "bug" ? "Bug Report" : "Feature Suggestion";
   logger.debug(`[Feedback] generateIssueTitle: Requesting title for ${typeLabel}, description length: ${description.length}`);
 
+  // Keep the description snippet short so the model isn't overwhelmed and
+  // returns a content-less response — 300 chars captures the key context.
+  const snippet = description.length > 300 ? description.slice(0, 300) + "…" : description;
+
   const response = await llm.chat({
     model: CONVO_MODEL,
     messages: [
-      { role: "system", content: "You generate concise GitHub issue titles. Respond with ONLY the title text, no quotes or extra formatting." },
-      { role: "user", content: `Generate a short, descriptive GitHub issue title for this ${typeLabel}:\n\n"${description}"` },
+      {
+        role: "user",
+        content: `Write a short GitHub issue title (under 80 characters) for this ${typeLabel}. Reply with the title only, no punctuation at the end, no quotes.\n\n${snippet}`,
+      },
     ],
-    max_tokens: 60,
+    max_tokens: 500,
     temperature: 0.3,
     label: "generateIssueTitle",
     variant: "issue_title",
@@ -179,7 +195,7 @@ async function createGitHubIssue(feedback) {
     issueTitle = await generateIssueTitle(feedback.type, feedback.description);
   } catch (error) {
     logger.error(`[Feedback] Title generation failed, falling back to description: ${error.message}`);
-    issueTitle = feedback.description.slice(0, 200);
+    issueTitle = descriptionFallbackTitle(feedback.description);
   }
   const title = (titlePrefix + issueTitle).trim();
 
