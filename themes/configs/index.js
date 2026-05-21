@@ -944,6 +944,72 @@ const themes = {
   ),
 
 
+  autumn: colorway("autumn", "Autumn",
+    "Warm harvest palette of burnt orange, chestnut brown, and amber. A cozy seasonal look.",
+    15000, 40, "🍂",
+    {
+      feltColor:   "#3a1e0a",
+      feltDark:    "#221208",
+      tableGreen:  "#4e2a10",
+      gold:        "#d4822a",
+      goldDark:    "#a05e1a",
+      goldBronze:  "#6e3e10",
+      textWhite:   "#fff0e0",
+      textBlack:   "#1a0e04",
+      textWin:     "#88dd66",
+      textLoss:    "#dd5533",
+      textPrimary: "#d4822a",
+      embedColor:  0x3a1e0a,
+    },
+  ),
+
+  arctic: colorway("arctic", "Arctic",
+    "Bright white felt with icy cyan accents. A high-contrast, crisp alternative to Frost.",
+    15000, 40, "🧊",
+    {
+      feltColor:   "#ddeef8",
+      feltDark:    "#b0cce0",
+      tableGreen:  "#c8e4f4",
+      gold:        "#2288cc",
+      goldDark:    "#1a6699",
+      goldBronze:  "#104466",
+      textWhite:   "#0a1e2e",
+      textBlack:   "#0a1e2e",
+      textWin:     "#0055aa",
+      textLoss:    "#cc2233",
+      textPrimary: "#2288cc",
+      embedColor:  0xddeef8,
+    },
+    {
+      slots: {
+        bannerBackground:    "#eef8ff",
+        bannerBackgroundEnd: "#c8e4f4",
+      },
+      roulette: {
+        textWhite: "#ffffff",
+      },
+    },
+  ),
+
+  retro: colorway("retro", "Retro",
+    "Brown, orange, and tan CRT-inspired palette. Warm phosphor glow on aged hardware.",
+    15000, 40, "📺",
+    {
+      feltColor:   "#2a1f0e",
+      feltDark:    "#1a1208",
+      tableGreen:  "#3a2c14",
+      gold:        "#c88c2a",
+      goldDark:    "#8c6018",
+      goldBronze:  "#5a3e10",
+      textWhite:   "#f0e0c0",
+      textBlack:   "#100c04",
+      textWin:     "#88cc44",
+      textLoss:    "#cc5522",
+      textPrimary: "#c88c2a",
+      embedColor:  0x2a1f0e,
+    },
+  ),
+
   // ── Test theme ──────────────────────────────────────────────────
 
   minimal: colorway("minimal", "Minimal Test",
