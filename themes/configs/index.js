@@ -777,7 +777,7 @@ const themes = {
     },
   ),
 
-y2k: full("y2k", "Y2K",
+  y2k: full("y2k", "Y2K",
     "Blobject-era glossy futurism. Translucent aqua plastic panels, chrome orange frames, and lime/red accents.",
     350000, 5, "💾", y2kColors,
     {
@@ -1406,6 +1406,11 @@ y2k: full("y2k", "Y2K",
 
 // ─────────────────────────────────────────────────────────────────────
 
+// Disabled themes. These do not show up on the list, or in the shop.
+
+themes.minimal.disabled = true;
+themes.y2k.disabled = true;
+
 /**
  * Get a theme definition by ID. Returns classic if not found.
  */
@@ -1425,7 +1430,7 @@ function getAllThemes() {
  */
 function getThemeList() {
   return Object.values(themes)
-    .filter(t => t.id !== "minimal")
+    .filter(t => !t.disabled)
     .map(t => ({
       id:          t.id,
       name:        t.name,
