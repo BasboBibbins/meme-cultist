@@ -121,6 +121,22 @@ function searchSemantic(channelId, queryEmbedding, candidateIds, limit = 5) {
   return scored.slice(0, limit);
 }
 
+function searchSemanticFull(channelId, queryEmbedding, limit = 5) {
+  const db = openDb();
+  const queryVec = queryEmbedding instanceof Float32Array
+    ? queryEmbedding : new Float32Array(queryEmbedding);
+  const rows = db.prepare(
+    "SELECT * FROM message_chunks WHERE channel_id = ? AND embedding IS NOT NULL ORDER BY created_at DESC LIMIT 500"
+  ).all(channelId);
+  const scored = rows.map(r => {
+    const vec = bufferToFloatArray(r.embedding);
+    if (!vec || vec.length !== queryVec.length) return null;
+    return { ...r, score: cosineSimilarity(queryVec, vec) };
+  }).filter(Boolean);
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit);
+}
+
 function getUnembeddedForChannel(channelId, limit = 100) {
   const db = openDb();
   return db.prepare(`
@@ -224,6 +240,7 @@ module.exports = {
   insertChunk,
   searchFTS,
   searchSemantic,
+  searchSemanticFull,
   getUnembeddedForChannel,
   setEmbedding,
   getMaxMessageIdForChannel,
