@@ -220,20 +220,6 @@ const themes = {
       poker: poker(memecultColors, { feltColor: "rgba(42, 40, 38, 0.85)" }),
     },
   ),
-  /*
-        * TODO: List of limited themes I want to create post-launch:
-        - Fwen Cult (June 11-June 18): Celebrating this iteration of the Discord, featuring new-gen memecult culture and the fwen mascot (miku plushie).
-        - Halloween (Oct 1-Oct 31): A spooky theme with Halloween symbols and a dark color palette.
-        - Christmas (Dec 1-Dec 31): A festive theme with Christmas symbols and a red/green color palette.
-        - New Year (Jan 1-Jan 7): A celebratory theme with fireworks and a vibrant color palette.
-        - Valentine's Day (Feb 1-Feb 14): A romantic theme with hearts and a pink/red color palette.
-        - St. Patrick's Day (Mar 1-Mar 17): A lucky theme with shamrocks and a green/gold color palette.
-        - July 4th (June 28-July 7): An American Independence Day theme with patriotic symbols and a red/white/blue color palette.
-        - Easter (April 1-April 15): A springtime theme with Easter eggs and a pastel color palette.
-        - Miku Day (Aug 31-Sept 7): A theme celebrating Hatsune Miku's birthday, featuring Miku-themed symbols and a teal color palette.
-        - Precision (June 23-June 30): A theme inspired by the Precision Roleplay DarkRP server. Dark color with yellow-green accents.
-    */
-
   // ── Full themes (custom sprites + colors for all games) ─────────────────────────
 
   neon: full("neon", "Neon Arcade",
@@ -597,19 +583,6 @@ const themes = {
       poker: poker(deepSeaColors),
     },
   ),
-
-  /*
-        * TODO: List of full themes I want to create post-launch (with custom slot symbols, roulette textures, and poker cards):
-        - Cabaret: Wood and velvet textures with deep reds, golds, and purples. Slot symbols could be cabaret-themed (top hat, cane, showgirl, etc). Roulette could have a luxurious wood grain and gold accents.
-        - Sparkle: PICMIX/BLINGEE-inspired theme with gaudy sparkles, rhinestones, and glitter textures. Bright colors like hot pink, electric blue, and lime green. Slot symbols could be sparkly objects (diamond, star, heart, etc). Roulette could have a glittery background and sparkling highlights.
-        - Bling: Similar to Sparkle but gold/white/light blue color palette and more focused on a luxurious, ostentatious aesthetic. Slot symbols could be blinged-out versions of classic symbols (diamond cherry, gold bell, etc). Roulette could have a shiny metallic finish and diamond accents.
-        - Bloons: A fun, colorful theme inspired by the Bloons Tower Defense game series. Slot symbols could be different colored bloons and monkey towers. Roulette could have a bright, playful design with balloon motifs and vibrant colors.
-        - Airshow: Think Top Gun on NES: a retro 80s aviation theme with pixel art slot symbols (fighter jet, pilot helmet, missile, etc) and a runway-inspired roulette design. Colors could be navy, gray, and red with neon accents.
-        - Y2K: A blobject-inspired theme with glossy, futuristic textures and a color palette of silver, black, and electric blue. Slot symbols could be Y2K-themed objects (floppy disk, old cell phone, CD, etc). Roulette could have a sleek, metallic design with digital-style numbers and accents.
-        - Touhou: A theme based on the Touhou Project bullet hell games, featuring slot symbols of popular characters and a roulette design inspired by the games' aesthetic. Colors could be a mix of dark and vibrant tones to capture the series' unique style.
-        - Glass: A Liquid Glass-inspired theme similar to iOS 26s new design language, with frosted glass textures, soft shadows, and a color palette of cool blues, grays, and whites. Slot symbols could be glassy versions of classic symbols (glass cherry, frosted bell, etc). Roulette could have a sleek, transparent design with subtle reflections and highlights.
-        - Term: A terminal/command-line-inspired theme with a dark background, green text, and pixelated slot symbols (like ASCII art). Roulette could have a retro computer design with a monochrome color scheme and pixelated numbers.
-    */
 
   // ── Styled themes (palette swap + background image, default sprites) ────────────
 
