@@ -9,7 +9,7 @@ module.exports = {
     rules: {
         // Style — matches documented conventions
         "quotes": ["error", "double", { "avoidEscape": true }],
-        "indent": ["error", 4, { "SwitchCase": 1 }],
+        "indent": ["error", 2, { "SwitchCase": 1 }],
         "semi": ["error", "always"],
 
         // Code quality
