@@ -897,7 +897,7 @@ async function drawPaytable(themeColors) {
   const rowsTop = explTop + explH + 18;
   const totalRowsH = PAYTABLE_ENTRIES.length * (rowH + rowGap);
   const rulesTop = rowsTop + totalRowsH + 8;
-  const rulesH = 74;
+  const rulesH = 92;
   const PT_H = rulesTop + rulesH + MARGIN_X;
 
   const canvas = createCanvas(PT_W, PT_H);
@@ -959,6 +959,8 @@ async function drawPaytable(themeColors) {
   ctx.fillText("Multiple players can join the same session. Only the shooter can roll.", PT_W / 2, rulesTop + 20);
   ctx.fillText("Pass / Don't Pass: come-out only. Side bets: any time. Shooter rotates on a seven-out.", PT_W / 2, rulesTop + 38);
   ctx.fillText("The shooter can press Pass Dice to hand off the dice voluntarily at any time.", PT_W / 2, rulesTop + 56);
+  ctx.fillStyle = withAlpha(c.textWhite || "#ffffff", 0.45);
+  ctx.fillText("Simplified street craps — Come bets, Place bets, and Odds are not offered.", PT_W / 2, rulesTop + 74);
   ctx.restore();
 
   const buffer = canvas.toBuffer("image/png");

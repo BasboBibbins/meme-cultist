@@ -1,9 +1,9 @@
-const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, EmbedBuilder } = require("discord.js");
+const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const { addNewDBUser, db } = require("../database");
 const { CURRENCY_NAME } = require("../config.js");
 const { parseBet } = require("./betparse");
+const { buildErrorEmbed } = require("./embeds");
 
-const PACKAGE_VERSION = require("../package.json").version;
 const DEFAULT_TIMEOUT_MS = 60000;
 
 // Re-resolve a cached bet expression against the user's *current* balance and
@@ -38,15 +38,6 @@ async function resolveBet(expression, userId, opts = {}) {
     }
   }
   return { ok: true, amount };
-}
-
-function buildErrorEmbed(user, client, description) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(description)
-    .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
 }
 
 // Show a one-amount bet modal, parse + validate the response, and (on success)
