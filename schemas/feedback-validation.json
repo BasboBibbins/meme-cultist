@@ -1,0 +1,12 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "valid": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "category": { "type": "string", "enum": ["legitimate", "spam", "abusive", "nonsense", "empty"] },
+        "component": { "type": "string", "enum": ["chatbot", "games", "themes", "general"] }
+    },
+    "required": ["valid", "reason", "category", "component"],
+    "additionalProperties": false
+}

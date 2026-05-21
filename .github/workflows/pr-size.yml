@@ -1,0 +1,39 @@
+name: PR Size
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  size:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Warn on large diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          INSERTIONS=$(git diff --stat "$BASE"..."$HEAD" \
+            | tail -1 \
+            | grep -oP '\d+(?= insertion)' \
+            || echo 0)
+
+          echo "Insertions: ${INSERTIONS}"
+
+          if [ "${INSERTIONS}" -gt 3000 ]; then
+            gh pr comment "$PR_NUMBER" \
+              --body "⚠️ **Large PR** — this diff adds **${INSERTIONS} lines**. Consider splitting into smaller PRs to make review easier." \
+              --edit-last \
+              2>/dev/null \
+              || gh pr comment "$PR_NUMBER" \
+                --body "⚠️ **Large PR** — this diff adds **${INSERTIONS} lines**. Consider splitting into smaller PRs to make review easier."
+          fi

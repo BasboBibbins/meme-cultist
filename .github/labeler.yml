@@ -1,0 +1,62 @@
+chatbot:
+  - changed-files:
+    - any-glob-to-any-file:
+      - utils/openai*.js
+      - utils/llm/**
+      - utils/schemas.js
+      - utils/ratelimiter.js
+      - utils/bookmarks.js
+      - utils/personas/**
+      - utils/kb/**
+      - utils/messageArchive/**
+      - utils/jobs/**
+      - schemas/**
+      - commands/chatbot/**
+
+games:
+  - changed-files:
+    - any-glob-to-any-file:
+      - commands/currency/**
+      - utils/craps*.js
+      - utils/duelCanvas.js
+      - utils/slots*.js
+      - utils/poker*.js
+      - utils/blackjack*.js
+      - utils/race*.js
+      - utils/roulette*.js
+      - utils/betModal.js
+      - utils/betparse.js
+      - utils/cards.js
+      - utils/jackpot.js
+      - utils/inventory.js
+
+canvas:
+  - changed-files:
+    - any-glob-to-any-file:
+      - utils/*Canvas.js
+      - utils/canvasCommon.js
+      - utils/Canvas.js
+      - assets/**
+      - test/canvas/**
+
+themes:
+  - changed-files:
+    - any-glob-to-any-file:
+      - themes/**
+
+database:
+  - changed-files:
+    - any-glob-to-any-file:
+      - database.js
+      - db/**
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - package.json
+      - package-lock.json
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - .github/**

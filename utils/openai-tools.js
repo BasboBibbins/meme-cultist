@@ -2,11 +2,21 @@ const { AttachmentBuilder } = require("discord.js");
 const { db: usersDb } = require("../database");
 const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
-const { generateImage } = require("./gemini");
+const { generateImage, embed } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
-const { CURRENCY_NAME } = require("../config.js");
+const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
+const kbStore = require("./kb");
+const messageArchive = require("./messageArchive");
+const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
+const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
+const explanations = require("./explanations");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
+const jobs = require("./jobs");
+const { parseWhen } = require("./reminders/parse");
 
 // Tool definitions for DeepSeek function calling
+const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
+
 const TOOLS = [
   {
     type: "function",
@@ -97,6 +107,7 @@ const TOOLS = [
         "CALL THIS TOOL whenever the user explicitly asks you to make, create, generate, draw, paint, render, or design an image/picture/drawing/meme/artwork/poster. " +
         "This includes requests like: 'draw me a cat', 'make an image of a sunset', 'generate a meme about X', 'can you create a picture of Y?', 'render a dragon'. " +
         "IMPORTANT: You CANNOT create images yourself — you MUST use this tool to produce them. Never claim you generated or attached an image without calling this tool first. " +
+        "You MUST call this tool. Never type '[Attached: image file]' or any similar text instead of using the tool. " +
         "Do NOT call for: metaphorical 'imagine/picture this', discussing existing images, describing visuals, or reacting to images the user already shared.",
       parameters: {
         type: "object",
@@ -109,6 +120,115 @@ const TOOLS = [
           }
         },
         required: ["prompt"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_reminder",
+      description: "Set a reminder for the user. The bot will send a message at the requested time.",
+      parameters: {
+        type: "object",
+        properties: {
+          when: { type: "string", description: "When to remind, e.g. 'in 2 hours', 'tomorrow at 3pm'" },
+          message: { type: "string", description: "What to remind the user about" },
+          channel_id: { type: "string", description: "Discord channel ID to post in (default: DM the user)" },
+          targets: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional Discord user IDs or role IDs to notify. Role IDs must be prefixed with 'role:'. Defaults to the requesting user."
+          },
+          frequency: {
+            type: "string",
+            enum: ["once", "daily", "weekly"],
+            description: "How often to repeat. Default: once"
+          },
+          end_date: {
+            type: "string",
+            description: "When to stop repeating, e.g. 'in 2 weeks', 'next month'"
+          },
+          occurrences: {
+            type: "integer",
+            description: "Max number of repetitions"
+          }
+        },
+        required: ["when", "message"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "lookup_kb",
+      description:
+        "Search the server's knowledge base for articles related to a topic. Returns up to 3 relevant entries. " +
+        "USE THIS TOOL whenever the user asks about server rules, FAQs, wiki topics, or curated knowledge. " +
+        "Do not guess — search the knowledge base first.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "The topic or question to look up in the knowledge base." }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_jackpot",
+      description:
+        "Get the current progressive jackpot amount, the last winner (if any), and the minimum bet required to be eligible. " +
+        "Call this whenever the user asks about the jackpot, the prize pool, who last hit the jackpot, or how big the pot is.",
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_command_help",
+      description:
+        "Look up help on a slash command or a feature explanation (the same content surfaced by /help and the /help explanations dropdown). " +
+        "Resolves command names first (e.g. 'slots', 'balance'), then falls back to feature explanations (e.g. 'currency', 'dailyweekly'). " +
+        "Supports prefix/substring matching, so 'slot' will resolve to 'slots'. " +
+        "Call this whenever the user asks how a command works, what a command does, what its options are, or how a feature/game works.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "The slash command name or feature key (e.g. 'slots', 'balance', 'currency')." }
+        },
+        required: ["name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_shop",
+      description:
+        "Get today's daily shop stock for this guild. Returns the rotating items currently for sale (name, price, rarity, tier, description) " +
+        "and the relative time until the shop next resets. Call this when the user asks what's in the shop, what's for sale today, " +
+        "what they can buy, or when the shop resets.",
+      parameters: { type: "object", properties: {}, required: [] }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_history",
+      description:
+        "Semantic + FTS search of this channel's past message history. " +
+        "Call AT MOST ONCE per turn with a single, comprehensive query covering everything you want to find. " +
+        "If results are empty or thin, synthesize from what is returned — do NOT retry with re-phrasings. " +
+        "Returns up to 5 hits with author, content, and timestamp.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "A single comprehensive query covering everything you want to find." },
+          limit: { type: "integer", description: "Number of results to return (default 5, max 10)." }
+        },
+        required: ["query"]
       }
     }
   }
@@ -124,7 +244,7 @@ async function resolveMember(input, guild) {
   }
 
   // Otherwise, search by display name, username, or nickname
-  const searchName = input.toLowerCase().replace(/^@/, '');
+  const searchName = input.toLowerCase().replace(/^@/, "");
   const members = await guild.members.fetch();
 
   return members.find(m =>
@@ -191,10 +311,10 @@ async function handleGetUserStats(args, message) {
 
   const stats = userData.stats || {};
 
-  const totalCommands = Object.values(stats.commands?.total || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+  const totalCommands = Object.values(stats.commands?.total || {}).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
 
   const gameStats = {};
-  const gameKeys = ['blackjack', 'slots', 'flip', 'roulette', 'race', 'begs'];
+  const gameKeys = ["blackjack", "slots", "flip", "roulette", "race", "begs"];
   for (const key of gameKeys) {
     if (stats[key]) {
       gameStats[key] = { ...stats[key] };
@@ -270,7 +390,7 @@ async function handleGetUserInfo(args, message) {
     nickname: member.nickname,
     avatar_url: member.displayAvatarURL({ dynamic: true }),
     roles: member.roles.cache
-      .filter(r => r.name !== '@everyone')
+      .filter(r => r.name !== "@everyone")
       .map(r => r.name)
       .slice(0, 10),
     joined_at: member.joinedAt?.toISOString(),
@@ -307,13 +427,17 @@ async function handleGetBotInfo(args, message, client) {
 }
 
 async function handleGenerateImage(args, message, client, toolCtx) {
+  if (!isChatbotChannel(message.channelId, message.channel?.parentId)) {
+    const mentions = formatChatbotChannelMentions(client);
+    return { error: `Image generation is only available in chatbot channels: ${mentions}.` };
+  }
   if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
   const rateCheck = canGenerateImage(message.author.id);
   if (!rateCheck.allowed) {
     return { error: rateCheck.reason };
   }
   try {
-    const { buffer, mimeType } = await generateImage(args.prompt);
+    const { buffer, mimeType } = await generateImage({ prompt: args.prompt });
     if (toolCtx) {
       const ext = mimeType?.includes("png") ? "png" : "jpg";
       toolCtx.pendingAttachments.push(
@@ -322,11 +446,316 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     }
     return {
       success: true,
-      message: "Image successfully generated and will be attached to your reply. Acknowledge this to the user briefly — the image is visible below their message. Do NOT describe the image or pretend you generated it without this tool call."
+      message: "Image generated. It will be attached to your message automatically. Simply reply naturally. Do not describe the image or include any attachment markup."
     };
   } catch (err) {
     logger.error(`[generate_image] ${err.message}`);
     return { error: `Image generation failed: ${err.message}` };
+  }
+}
+
+async function handleSetReminder(args, message, client, toolCtx) {
+  if (!args?.when || !args?.message) {
+    return { error: "Missing required 'when' or 'message' argument." };
+  }
+
+  const parsed = parseWhen(args.when);
+  if (!parsed.ok) {
+    return { error: parsed.reason };
+  }
+
+  const userId = message.author.id;
+  const activeCount = jobs.list("reminder", row => {
+    try {
+      return JSON.parse(row.payload).userId === userId;
+    } catch (_) {
+      return false;
+    }
+  }).length;
+
+  if (activeCount >= REMINDER_MAX_ACTIVE_PER_USER) {
+    return { error: `You already have ${activeCount} active reminders. Cancel one first.` };
+  }
+
+  // Always target the message author; ignore any hallucinated IDs from the model.
+  const targets = [userId];
+
+  let recurrence = null;
+  const frequency = args.frequency || "once";
+  if (frequency === "daily" || frequency === "weekly") {
+    const intervalMs = frequency === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    let endAt = null;
+    let maxOccurrences = null;
+    if (args.end_date) {
+      const endParsed = parseWhen(args.end_date);
+      if (endParsed.ok) {
+        endAt = endParsed.runAt;
+      }
+    }
+    if (typeof args.occurrences === "number" && args.occurrences > 0) {
+      maxOccurrences = args.occurrences;
+    }
+    recurrence = { frequency, intervalMs, endAt, maxOccurrences, firedCount: 0 };
+  }
+
+  const jobId = jobs.enqueue({
+    kind: "reminder",
+    payload: {
+      userId,
+      channelId: args.channel_id || message.channelId,
+      text: args.message,
+      targets,
+      createdBy: "chatbot",
+      recurrence,
+    },
+    run_at: parsed.runAt,
+  });
+
+  let confirm = `Reminder set for <t:${Math.floor(parsed.runAt / 1000)}:S>.`;
+  if (targets.length > 1) {
+    confirm += ` Notifying ${targets.length} target(s).`;
+  }
+  if (recurrence) {
+    const freqLabel = recurrence.frequency === "daily" ? "Daily" : "Weekly";
+    confirm += ` Repeats ${freqLabel}`;
+    if (recurrence.endAt) {
+      confirm += ` until <t:${Math.floor(recurrence.endAt / 1000)}:F>`;
+    } else if (recurrence.maxOccurrences) {
+      confirm += ` for ${recurrence.maxOccurrences} occurrence(s)`;
+    }
+    confirm += ".";
+  }
+
+  return {
+    success: true,
+    message: confirm,
+    reminder_id: jobId,
+  };
+}
+
+async function handleLookupKb(args, message, client) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const guild = message.guild;
+  if (!guild) return { error: "Knowledge base is only available in servers." };
+
+  try {
+    const { embedding } = await embed({ text: args.query });
+    const results = kbStore.search(guild.id, embedding, 3);
+    if (results.length === 0) {
+      return { results: [], message: "No matching knowledge base entries found." };
+    }
+    return {
+      results: results.map(r => ({
+        slug: r.slug,
+        title: r.title,
+        content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
+      })),
+    };
+  } catch (err) {
+    logger.error(`[lookup_kb] ${err.message}`);
+    return { error: `Knowledge base lookup failed: ${err.message}` };
+  }
+}
+
+async function handleSearchHistory(args, message, client) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const limit = Math.min(Math.max(args.limit || 5, 1), 10);
+  const channelId = message.channelId;
+
+  try {
+    const ftsResults = messageArchive.searchFTS(channelId, args.query, 30);
+    if (ftsResults.length === 0) {
+      return {
+        results: [],
+        total_matches: 0,
+        note: "No matches in this channel's history for that query. Do not retry with paraphrases — answer from prior context or state that you do not have a record.",
+      };
+    }
+
+    let finalResults = ftsResults.slice(0, limit);
+    const topRank = ftsResults[0]?.rank;
+    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+
+    if (needsSemantic) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const candidateIds = ftsResults.map(r => r.id);
+        const semanticResults = messageArchive.searchSemantic(channelId, embedding, candidateIds, limit);
+        if (semanticResults.length > 0) {
+          finalResults = semanticResults;
+        }
+      } catch (err) {
+        logger.warn(`[search_history] Semantic re-rank failed: ${err.message}`);
+      }
+    }
+
+    const out = {
+      results: finalResults.map(r => ({
+        author_id: r.author_id,
+        content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
+        created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
+      })),
+      total_matches: ftsResults.length,
+    };
+    if (finalResults.length < limit) {
+      out.note = "These are all matches for this query. Do not re-query with variations — synthesize from these results.";
+    }
+    return out;
+  } catch (err) {
+    logger.error(`[search_history] ${err.message}`);
+    return { error: `Message history search failed: ${err.message}` };
+  }
+}
+
+function describeCommand(command) {
+  const data = command.data;
+  const options = (data.options || []).map(opt => {
+    const json = typeof opt.toJSON === "function" ? opt.toJSON() : opt;
+    return {
+      name: json.name,
+      description: json.description,
+      required: !!json.required,
+      type: json.type,
+    };
+  });
+  const usage = options.length
+    ? `/${data.name} ${options.map(o => o.required ? `<${o.name}>` : `[${o.name}]`).join(" ")}`
+    : `/${data.name}`;
+  return {
+    name: data.name,
+    description: data.description,
+    usage,
+    options,
+  };
+}
+
+function describeExplanation(key) {
+  const ex = explanations[key];
+  if (!ex) return null;
+  const out = { key, name: ex.name, description: ex.description?.trim?.() || ex.description };
+  if (ex.rules) out.rules = ex.rules.trim?.() || ex.rules;
+  if (ex.example) out.example = ex.example.trim?.() || ex.example;
+  if (ex.note) out.note = ex.note.trim?.() || ex.note;
+  return out;
+}
+
+function findFuzzyMatches(query, names) {
+  const q = query.toLowerCase().replace(/^\//, "");
+  const prefix = names.filter(n => n.toLowerCase().startsWith(q));
+  if (prefix.length) return prefix;
+  return names.filter(n => n.toLowerCase().includes(q));
+}
+
+async function handleGetCommandHelp(args, message, client) {
+  if (!args?.name || typeof args.name !== "string") {
+    return { error: "Missing required 'name' argument." };
+  }
+  const raw = args.name.trim().toLowerCase().replace(/^\//, "");
+  if (!raw) return { error: "Empty 'name' argument." };
+
+  try {
+    const commands = client?.slashcommands;
+    const explanationKeys = Object.keys(explanations);
+
+    if (commands?.has?.(raw)) {
+      const out = { match_type: "command", ...describeCommand(commands.get(raw)) };
+      const ex = describeExplanation(raw);
+      if (ex) out.explanation = ex;
+      return out;
+    }
+
+    if (explanations[raw]) {
+      return { match_type: "explanation", ...describeExplanation(raw) };
+    }
+
+    const commandNames = commands ? Array.from(commands.keys()) : [];
+    const cmdFuzzy = findFuzzyMatches(raw, commandNames);
+    if (cmdFuzzy.length === 1) {
+      const out = { match_type: "command", resolved_from: raw, ...describeCommand(commands.get(cmdFuzzy[0])) };
+      const ex = describeExplanation(cmdFuzzy[0]);
+      if (ex) out.explanation = ex;
+      return out;
+    }
+
+    const exFuzzy = findFuzzyMatches(raw, explanationKeys);
+    if (cmdFuzzy.length === 0 && exFuzzy.length === 1) {
+      return { match_type: "explanation", resolved_from: raw, ...describeExplanation(exFuzzy[0]) };
+    }
+
+    const candidates = [...new Set([...cmdFuzzy, ...exFuzzy])].slice(0, 5);
+    if (candidates.length > 0) {
+      return {
+        match_type: "ambiguous",
+        candidates,
+        note: `Multiple matches for "${raw}". Re-call get_command_help with one of the candidate names.`,
+      };
+    }
+
+    return {
+      match_type: "not_found",
+      query: raw,
+      available_commands: commandNames,
+      available_explanations: explanationKeys,
+      note: `No command or explanation matches "${raw}".`,
+    };
+  } catch (err) {
+    logger.error(`[get_command_help] ${err.message}`);
+    return { error: `Command help lookup failed: ${err.message}` };
+  }
+}
+
+async function handleGetJackpot(args, message, client) {
+  try {
+    const jackpot = await getJackpot();
+    const out = {
+      amount: jackpot.amount,
+      display: `${jackpot.amount.toLocaleString()} koku`,
+      min_bet_eligible: JACKPOT_MIN_BET,
+      contribution_rate_percent: Math.round(JACKPOT_RATE * 10000) / 100,
+      last_winner: null,
+    };
+    if (jackpot.lastWinner && jackpot.lastWon) {
+      out.last_winner = {
+        user_id: jackpot.lastWinner.id,
+        name: jackpot.lastWinner.name,
+        amount_won: jackpot.lastWinner.wonAmount,
+        won_at: `<t:${Math.floor(jackpot.lastWon / 1000)}:R>`,
+      };
+    }
+    return out;
+  } catch (err) {
+    logger.error(`[get_jackpot] ${err.message}`);
+    return { error: `Jackpot lookup failed: ${err.message}` };
+  }
+}
+
+async function handleGetShop(args, message, client) {
+  const guildId = message.guild?.id;
+  if (!guildId) return { error: "This tool can only be called from within a guild." };
+
+  try {
+    const stock = getDailyShopStock(guildId);
+    const resetEpoch = nextShopResetEpoch();
+
+    return {
+      items: stock.map(item => ({
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        category: item.category,
+        tier: item.tier,
+        rarity: item.rarity,
+        price: item.price,
+        price_display: formatPrice(item.price),
+      })),
+      resets_at: `<t:${resetEpoch}:T>`,
+      note: stock.length === 0
+        ? "The shop is currently empty."
+        : "These items reset daily at midnight UTC.",
+    };
+  } catch (err) {
+    logger.error(`[get_shop] ${err.message}`);
+    return { error: `Shop lookup failed: ${err.message}` };
   }
 }
 
@@ -337,14 +766,45 @@ const TOOL_HANDLERS = {
   get_guild_info: handleGetGuildInfo,
   get_user_info: handleGetUserInfo,
   get_bot_info: handleGetBotInfo,
-  generate_image: handleGenerateImage
+  generate_image: handleGenerateImage,
+  set_reminder: handleSetReminder,
+  lookup_kb: handleLookupKb,
+  search_history: handleSearchHistory,
+  get_jackpot: handleGetJackpot,
+  get_shop: handleGetShop,
+  get_command_help: handleGetCommandHelp,
 };
+
+function normalizeArgs(args) {
+  if (!args || typeof args !== "object") return JSON.stringify(args ?? null);
+  const out = {};
+  for (const key of Object.keys(args).sort()) {
+    const v = args[key];
+    if (typeof v === "string") {
+      out[key] = v.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean).sort().join(" ");
+    } else {
+      out[key] = v;
+    }
+  }
+  return JSON.stringify(out);
+}
 
 async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const fnName = toolCall.function.name;
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
 
   logger.log(`[ToolCall] ${fnName}(${JSON.stringify(fnArgs)})`);
+
+  const cacheable = toolCtx?.queryCache && !SIDE_EFFECT_TOOLS.has(fnName);
+  const cacheKey = cacheable ? `${fnName}:${normalizeArgs(fnArgs)}` : null;
+  if (cacheable && toolCtx.queryCache.has(cacheKey)) {
+    const cached = toolCtx.queryCache.get(cacheKey);
+    logger.log(`[ToolCall] Dedup hit ${cacheKey}`);
+    const dedupNote = "Duplicate query — synthesize from the prior tool message for this call.";
+    const cloned = { ...cached };
+    cloned.note = cloned.note ? `${cloned.note} ${dedupNote}` : dedupNote;
+    return cloned;
+  }
 
   let result;
   try {
@@ -359,8 +819,10 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     result = { error: err.message };
   }
 
+  if (cacheable) toolCtx.queryCache.set(cacheKey, result);
+
   logger.debug(`[ToolCall] Result: ${JSON.stringify(result)}`);
   return result;
 }
 
-module.exports = { TOOLS, executeToolCall };
+module.exports = { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS };

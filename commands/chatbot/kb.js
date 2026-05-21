@@ -1,0 +1,212 @@
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const kbStore = require("../../utils/kb");
+const llm = require("../../utils/llm");
+const jobs = require("../../utils/jobs");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
+const logger = require("../../utils/logger");
+const { randomHexColor } = require("../../utils/randomcolor");
+
+const SLUG_RE = /^[a-z0-9-]{1,64}$/;
+const MAX_TITLE_LEN = 100;
+const MAX_CONTENT_LEN = 4000;
+
+function isAdmin(interaction) {
+  const isOwner = interaction.user.id === OWNER_ID;
+  const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+  return isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
+}
+
+function denyEmbed(interaction) {
+  return new EmbedBuilder()
+    .setTitle("Permission Denied")
+    .setDescription("You do not have permission to manage the knowledge base.")
+    .setColor(0xff0000)
+    .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+    .setTimestamp();
+}
+
+function enqueueEmbed(guildId, slug) {
+  try {
+    jobs.enqueue({
+      kind: "kb_embed",
+      payload: { guildId, slug },
+      run_at: Date.now(),
+    });
+  } catch (err) {
+    logger.error(`[KB] Failed to enqueue embed job: ${err.message}`);
+  }
+}
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName("kb")
+    .setDescription("Manage the server's knowledge base.")
+    .addSubcommand(sub =>
+      sub.setName("add")
+        .setDescription("Add a new knowledge base entry (admin only).")
+        .addStringOption(o => o.setName("slug").setDescription("Short lowercase identifier (a-z, 0-9, hyphens).").setRequired(true))
+        .addStringOption(o => o.setName("title").setDescription("Display title (max 100 chars).").setRequired(true))
+        .addStringOption(o => o.setName("content").setDescription("Article body (max 4000 chars).").setRequired(true))
+        .addStringOption(o => o.setName("tags").setDescription("Comma-separated tags (optional).").setRequired(false)))
+    .addSubcommand(sub =>
+      sub.setName("edit")
+        .setDescription("Edit an existing entry (admin only).")
+        .addStringOption(o => o.setName("slug").setDescription("The entry to edit.").setRequired(true).setAutocomplete(true))
+        .addStringOption(o => o.setName("title").setDescription("New title.").setRequired(false))
+        .addStringOption(o => o.setName("content").setDescription("New content.").setRequired(false))
+        .addStringOption(o => o.setName("tags").setDescription("New comma-separated tags.").setRequired(false)))
+    .addSubcommand(sub =>
+      sub.setName("delete")
+        .setDescription("Delete an entry (admin only).")
+        .addStringOption(o => o.setName("slug").setDescription("The entry to delete.").setRequired(true).setAutocomplete(true)))
+    .addSubcommand(sub =>
+      sub.setName("list")
+        .setDescription("List all knowledge base entries."))
+    .addSubcommand(sub =>
+      sub.setName("search")
+        .setDescription("Search the knowledge base.")
+        .addStringOption(o => o.setName("query").setDescription("What to search for.").setRequired(true))),
+
+  async autocomplete(interaction) {
+    if (!interaction.guildId) return interaction.respond([]);
+    const focused = (interaction.options.getFocused() || "").toLowerCase();
+    const all = kbStore.listForGuild(interaction.guildId);
+    const filtered = all
+      .filter(e => e.slug.toLowerCase().startsWith(focused))
+      .slice(0, 25)
+      .map(e => ({ name: `${e.slug} — ${e.title}`, value: e.slug }));
+    await interaction.respond(filtered);
+  },
+
+  async execute(interaction) {
+    if (!interaction.guildId) {
+      return interaction.reply({ content: "Knowledge base is only available in servers.", ephemeral: true });
+    }
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guildId;
+
+    if (sub === "add") {
+      if (!isAdmin(interaction)) {
+        return interaction.reply({ embeds: [denyEmbed(interaction)], ephemeral: true });
+      }
+      const slug = interaction.options.getString("slug").trim().toLowerCase();
+      const title = interaction.options.getString("title").trim();
+      const content = interaction.options.getString("content").trim();
+      const tags = interaction.options.getString("tags")?.trim() || null;
+
+      if (!SLUG_RE.test(slug)) {
+        return interaction.reply({ content: "Slug must be 1-64 lowercase characters: a-z, 0-9, hyphens.", ephemeral: true });
+      }
+      if (title.length === 0 || title.length > MAX_TITLE_LEN) {
+        return interaction.reply({ content: `Title must be 1-${MAX_TITLE_LEN} characters.`, ephemeral: true });
+      }
+      if (content.length === 0 || content.length > MAX_CONTENT_LEN) {
+        return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, ephemeral: true });
+      }
+      if (kbStore.getBySlug(guildId, slug)) {
+        return interaction.reply({ content: `Entry **${slug}** already exists. Use \`\/kb edit\` to modify it.`, ephemeral: true });
+      }
+
+      const entry = await kbStore.create({ guildId, slug, title, content, tags, creatorId: interaction.user.id });
+      enqueueEmbed(guildId, slug);
+      logger.log(`[KB] ${interaction.user.tag} created "${slug}" in guild ${guildId}`);
+
+      const embed = new EmbedBuilder()
+        .setTitle("Knowledge Base Entry Added")
+        .setDescription(`**${entry.title}** (${entry.slug})`)
+        .setColor(0x00aa00)
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (sub === "edit") {
+      if (!isAdmin(interaction)) {
+        return interaction.reply({ embeds: [denyEmbed(interaction)], ephemeral: true });
+      }
+      const slug = interaction.options.getString("slug").trim().toLowerCase();
+      const entry = kbStore.getBySlug(guildId, slug);
+      if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, ephemeral: true });
+
+      const title = interaction.options.getString("title")?.trim();
+      const content = interaction.options.getString("content")?.trim();
+      const tags = interaction.options.getString("tags")?.trim();
+      if (title === undefined && content === undefined && tags === undefined) {
+        return interaction.reply({ content: "Pass at least one field to change.", ephemeral: true });
+      }
+      if (title !== undefined && (title.length === 0 || title.length > MAX_TITLE_LEN)) {
+        return interaction.reply({ content: `Title must be 1-${MAX_TITLE_LEN} characters.`, ephemeral: true });
+      }
+      if (content !== undefined && (content.length === 0 || content.length > MAX_CONTENT_LEN)) {
+        return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, ephemeral: true });
+      }
+
+      await kbStore.update({ guildId, slug, title, content, tags });
+      enqueueEmbed(guildId, slug);
+      logger.log(`[KB] ${interaction.user.tag} edited "${slug}"`);
+
+      const embed = new EmbedBuilder()
+        .setTitle("Knowledge Base Entry Updated")
+        .setDescription(`**${entry.title}** (${slug})`)
+        .setColor(0x00aa00)
+        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (sub === "delete") {
+      if (!isAdmin(interaction)) {
+        return interaction.reply({ embeds: [denyEmbed(interaction)], ephemeral: true });
+      }
+      const slug = interaction.options.getString("slug").trim().toLowerCase();
+      const entry = kbStore.getBySlug(guildId, slug);
+      if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, ephemeral: true });
+
+      kbStore.deleteBySlug(guildId, slug);
+      logger.log(`[KB] ${interaction.user.tag} deleted "${slug}"`);
+      return interaction.reply({ content: `Deleted **${slug}**.`, ephemeral: true });
+    }
+
+    if (sub === "list") {
+      const all = kbStore.listForGuild(guildId);
+      if (all.length === 0) {
+        return interaction.reply({ content: "No knowledge base entries yet. Admins can add them with `\/kb add`.", ephemeral: true });
+      }
+      const lines = all.map(e => `**${e.slug}** — ${e.title}`);
+      const embed = new EmbedBuilder()
+        .setTitle(`Knowledge Base — ${interaction.guild.name}`)
+        .setDescription(lines.join("\n").slice(0, 4000))
+        .setColor(randomHexColor())
+        .setFooter({ text: `${all.length} entr${all.length === 1 ? "y" : "ies"}` });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (sub === "search") {
+      const query = interaction.options.getString("query").trim();
+      if (!query) return interaction.reply({ content: "Query cannot be empty.", ephemeral: true });
+
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        const { embedding } = await llm.embed({ text: query });
+        const results = kbStore.search(guildId, embedding, 5);
+        if (results.length === 0) {
+          return interaction.editReply({ content: "No matching knowledge base entries found.", ephemeral: true });
+        }
+        const lines = results.map((r, i) => {
+          const snippet = r.content.length > 200 ? r.content.slice(0, 200) + "..." : r.content;
+          return `${i + 1}. **${r.title}** (${r.slug})\n${snippet}`;
+        });
+        const embed = new EmbedBuilder()
+          .setTitle(`Search Results — "${query}"`)
+          .setDescription(lines.join("\n\n").slice(0, 4000))
+          .setColor(randomHexColor())
+          .setFooter({ text: `${results.length} result${results.length === 1 ? "" : "s"}` });
+        return interaction.editReply({ embeds: [embed], ephemeral: true });
+      } catch (err) {
+        logger.error(`[KB search] ${err.message}`);
+        return interaction.editReply({ content: "Search failed. Please try again later.", ephemeral: true });
+      }
+    }
+  },
+};
