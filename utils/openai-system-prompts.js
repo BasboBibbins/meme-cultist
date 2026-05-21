@@ -13,18 +13,18 @@
 //   9. Dynamic tail (time, users, speaker, reply context)
 
 function assembleSystemPrompt(parts) {
-    const sections = [
-        parts.variantPrefix,
-        parts.topic,
-        parts.channelFactsBlock,
-        parts.channelSummaryBlock,
-        parts.userSummaryBlock,
-        parts.userFactsBlock,
-        parts.toolBlock,
-        parts.perceptionBlock,
-        parts.dynamicTail,
-    ].filter(Boolean);
-    return sections.join("\n\n");
+  const sections = [
+    parts.variantPrefix,
+    parts.topic,
+    parts.channelFactsBlock,
+    parts.channelSummaryBlock,
+    parts.userSummaryBlock,
+    parts.userFactsBlock,
+    parts.toolBlock,
+    parts.perceptionBlock,
+    parts.dynamicTail,
+  ].filter(Boolean);
+  return sections.join("\n\n");
 }
 
 module.exports = { assembleSystemPrompt };

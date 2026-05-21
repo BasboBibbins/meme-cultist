@@ -6,12 +6,12 @@ const router = require("./router");
 const { estimateCost, estimateTokenCount } = require("./cost");
 
 module.exports = {
-    chat: router.chat,
-    chatStream: router.chatStream,
-    describeImage: router.describeImage,
-    generateImage: router.generateImage,
-    embed: router.embed,
-    getCacheStats: router.getCacheStats,
-    estimateCost,
-    estimateTokenCount,
+  chat: router.chat,
+  chatStream: router.chatStream,
+  describeImage: router.describeImage,
+  generateImage: router.generateImage,
+  embed: router.embed,
+  getCacheStats: router.getCacheStats,
+  estimateCost,
+  estimateTokenCount,
 };

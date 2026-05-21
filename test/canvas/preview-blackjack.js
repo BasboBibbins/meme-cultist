@@ -7,34 +7,34 @@ const { getThemeColors } = require("../../themes/resolver");
 const { THEMES, avatarPath, saveRender } = require("./preview-common");
 
 const dealerCards = [
-    { code: "AS" },
-    { code: "KH" },
+  { code: "AS" },
+  { code: "KH" },
 ];
 
 const playerHands = [
-    {
-        cards: [
-            { code: "0D" },
-            { code: "8C" },
-        ],
-        value: 18,
-        bust: false,
-        isBlackjack: false,
-    },
+  {
+    cards: [
+      { code: "0D" },
+      { code: "8C" },
+    ],
+    value: 18,
+    bust: false,
+    isBlackjack: false,
+  },
 ];
 
 const opts = {
-    user:          { displayName: "GrandGambler99",   displayAvatarURL: () => avatarPath(1) },
-    dealerUser:    { displayName: "Dealer",           displayAvatarURL: () => avatarPath(2) },
-    outcomes:      ["win"],
-    dealerOutcome: "loss",
-    playerOutcome: "win",
+  user:          { displayName: "GrandGambler99",   displayAvatarURL: () => avatarPath(1) },
+  dealerUser:    { displayName: "Dealer",           displayAvatarURL: () => avatarPath(2) },
+  outcomes:      ["win"],
+  dealerOutcome: "loss",
+  playerOutcome: "win",
 };
 
 (async () => {
-    for (const themeId of THEMES) {
-        const colors = getThemeColors(themeId, "blackjack");
-        const attachment = await canvasBlackjack(dealerCards, playerHands, colors, themeId, true, 0, opts);
-        saveRender(attachment, `blackjack-${themeId}.png`);
-    }
+  for (const themeId of THEMES) {
+    const colors = getThemeColors(themeId, "blackjack");
+    const attachment = await canvasBlackjack(dealerCards, playerHands, colors, themeId, true, 0, opts);
+    saveRender(attachment, `blackjack-${themeId}.png`);
+  }
 })();

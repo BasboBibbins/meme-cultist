@@ -1,5 +1,5 @@
-const { GIFEncoder, quantize, applyPalette } = require('gifenc');
-const { AttachmentBuilder } = require('discord.js');
+const { GIFEncoder, quantize, applyPalette } = require("gifenc");
+const { AttachmentBuilder } = require("discord.js");
 
 /**
  * Encode an array of RGBA frames into a GIF.
@@ -18,44 +18,44 @@ const { AttachmentBuilder } = require('discord.js');
  * @returns {AttachmentBuilder}
  */
 function encodeGIF(frames, options = {}) {
-    const {
-        width,
-        height,
-        repeat = 0,
-        maxColors = 256,
-        filename = 'animation.gif',
-        paletteSource = null,
-        maxBytes = 0,
-    } = options;
+  const {
+    width,
+    height,
+    repeat = 0,
+    maxColors = 256,
+    filename = "animation.gif",
+    paletteSource = null,
+    maxBytes = 0,
+  } = options;
 
-    if (frames.length === 0) throw new Error('encodeGIF: no frames provided');
+  if (frames.length === 0) throw new Error("encodeGIF: no frames provided");
 
-    const sourceData = paletteSource || frames[0].data;
-    const palette = quantize(sourceData, maxColors, { format: 'rgba4444' });
+  const sourceData = paletteSource || frames[0].data;
+  const palette = quantize(sourceData, maxColors, { format: "rgba4444" });
 
-    const gif = GIFEncoder();
+  const gif = GIFEncoder();
 
-    for (let i = 0; i < frames.length; i++) {
-        const frame = frames[i];
-        const index = applyPalette(frame.data, palette, 'rgba4444');
-        gif.writeFrame(index, width, height, {
-            palette,
-            delay: frame.delay,
-            repeat: i === 0 ? repeat : undefined,
-        });
-    }
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i];
+    const index = applyPalette(frame.data, palette, "rgba4444");
+    gif.writeFrame(index, width, height, {
+      palette,
+      delay: frame.delay,
+      repeat: i === 0 ? repeat : undefined,
+    });
+  }
 
-    gif.finish();
-    const output = Buffer.from(gif.bytes());
+  gif.finish();
+  const output = Buffer.from(gif.bytes());
 
-    if (maxBytes > 0 && output.length > maxBytes) {
-        const err = new Error(`GIF size ${output.length} exceeds maxBytes ${maxBytes}`);
-        err.code = 'GIF_TOO_LARGE';
-        err.size = output.length;
-        throw err;
-    }
+  if (maxBytes > 0 && output.length > maxBytes) {
+    const err = new Error(`GIF size ${output.length} exceeds maxBytes ${maxBytes}`);
+    err.code = "GIF_TOO_LARGE";
+    err.size = output.length;
+    throw err;
+  }
 
-    return new AttachmentBuilder(output, { name: filename });
+  return new AttachmentBuilder(output, { name: filename });
 }
 
 module.exports = { encodeGIF };

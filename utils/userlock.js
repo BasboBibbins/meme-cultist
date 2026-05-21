@@ -6,7 +6,7 @@
 const { withLock } = require("./lock");
 
 async function withUserLock(userId, fn) {
-    return withLock(`user:${userId}`, fn);
+  return withLock(`user:${userId}`, fn);
 }
 
 module.exports = { withUserLock };
