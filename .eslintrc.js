@@ -21,4 +21,10 @@ module.exports = {
     "no-global-assign": "error",
     "no-duplicate-case": "error",
   },
+  overrides: [
+    {
+      files: ["test/unit/**/*.test.js", "test/canvas/**/*.test.js"],
+      env: { jest: true },
+    },
+  ],
 };
