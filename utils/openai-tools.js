@@ -13,6 +13,7 @@ const explanations = require("./explanations");
 const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
+const { validateToolArgs } = require("./schemas");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
@@ -832,6 +833,12 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const fnArgs = JSON.parse(toolCall.function.arguments || "{}");
 
   logger.log(`[ToolCall] ${fnName}(${JSON.stringify(fnArgs)})`);
+
+  const argCheck = validateToolArgs(fnName, fnArgs);
+  if (!argCheck.valid) {
+    logger.warn(`[ToolCall] ${fnName} invalid_arguments: ${argCheck.errors}`);
+    return { error: "invalid_arguments", details: argCheck.errors };
+  }
 
   const cacheable = toolCtx?.queryCache && !SIDE_EFFECT_TOOLS.has(fnName);
   const cacheKey = cacheable ? `${fnName}:${normalizeArgs(fnArgs)}` : null;
