@@ -15,7 +15,7 @@ const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
 const { validateToolArgs } = require("./schemas");
-const { getLatestGameResult, getRecentGameResults } = require("./gameResults");
+const gameResults = require("./gameResults");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
@@ -1022,7 +1022,7 @@ async function handleGetGameResult(args, message) {
     }
     if (!userId) return { error: "Could not resolve user." };
 
-    const row = getLatestGameResult({ channelId, userId, game: args.game || null });
+    const row = gameResults.getLatestGameResult({ channelId, userId, game: args.game || null });
     if (!row) return { note: "No recent game results found for this user in this channel." };
 
     return formatGameResultForLlm(row);
@@ -1044,7 +1044,7 @@ async function handleGetRecentGameResults(args, message) {
     }
 
     const limit = Math.min(Math.max(args.limit || 5, 1), 10);
-    const rows = getRecentGameResults({ channelId, userId, game: args.game || null, limit });
+    const rows = gameResults.getRecentGameResults({ channelId, userId, game: args.game || null, limit });
     if (rows.length === 0) return { note: "No recent game results found.", results: [] };
 
     return { results: rows.map(formatGameResultForLlm) };
