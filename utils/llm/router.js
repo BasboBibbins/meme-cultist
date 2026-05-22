@@ -11,6 +11,7 @@ const { estimateCost } = require("./cost");
 const deepseek = require("./adapters/deepseek");
 const gemini = require("./adapters/gemini");
 const cloudflare = require("./adapters/cloudflare");
+const embedCache = require("./embedCache");
 
 // In-memory per-variant cache stats. Populated by chat() when callers pass
 // args.variant. Exposed via getCacheStats() for a future /admin command.
@@ -78,10 +79,13 @@ async function generateImage(args) {
 }
 
 async function embed(args) {
+  const cached = embedCache.get(args.text);
+  if (cached) return { embedding: cached, latency_ms: 0 };
   const { out, latency_ms } = await _run("embed", () => cloudflare.embedText(args), {
     timeoutMs: args.timeoutMs ?? 30000,
     retries: args.retries ?? 2,
   });
+  embedCache.set(args.text, out.embedding);
   return { ...out, latency_ms };
 }
 

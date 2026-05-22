@@ -3,6 +3,7 @@
 // the adapters directly — so retry/timeout/cost/cache-stats are uniform.
 
 const router = require("./router");
+const embedCache = require("./embedCache");
 const { estimateCost, estimateTokenCount } = require("./cost");
 
 module.exports = {
@@ -12,6 +13,7 @@ module.exports = {
   generateImage: router.generateImage,
   embed: router.embed,
   getCacheStats: router.getCacheStats,
+  closeEmbedCache: embedCache.close,
   estimateCost,
   estimateTokenCount,
 };
