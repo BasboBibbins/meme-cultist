@@ -11,6 +11,7 @@ const { canvasHand, pokerScore, drawPokerPaytable } = require("../../utils/poker
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, MIN_BET } = require("../../utils/jackpot");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getThemeColors } = require("../../themes/resolver");
+const { recordGameResult } = require("../../utils/gameResults");
 
 const PACKAGE_VERSION = require("../../package.json").version;
 const HAND_TIMEOUT_MS = 30000;
@@ -605,6 +606,32 @@ async function runHand(user, client, session, bet, message, channel) {
         await message.edit({ components: buildHubComponents(true), embeds: [embed], files: [finalFile] }).catch(err => logger.error(`[poker] verdict edit failed: ${err && err.stack || err}`));
       }
     }
+
+    try {
+      const isLoss = reason === "time" || !PAYOUTS[reason];
+      const isWin = !isLoss;
+      let payout = 0;
+      if (reason === "Royal Flush") {
+        payout = isJackpotEligible(bet) ? 0 : Math.ceil(bet * 50);
+      } else if (PAYOUTS[reason]) {
+        payout = Math.ceil(bet * PAYOUTS[reason].mult);
+      }
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "poker",
+        result: {
+          final_hand: heldCards.map(c => c.code),
+          hand_name: reason === "time" ? "Forfeit (timed out)" : (reason || "No win"),
+          bet,
+          payout,
+          net: isWin ? payout - bet : -bet,
+          outcome: isWin ? "win" : "loss",
+          is_jackpot: reason === "Royal Flush" && isJackpotEligible(bet),
+        },
+      });
+    } catch (_) {}
 
     // Hub buttons (Deal Again / Change Bet / Paytable / Leave) are already
     // attached to the verdict embed above. Just re-arm the outer collector

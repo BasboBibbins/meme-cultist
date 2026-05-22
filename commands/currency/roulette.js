@@ -18,6 +18,7 @@ const { randomHexColor } = require("../../utils/randomcolor");
 const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
 const wait = require("node:timers/promises").setTimeout;
+const { recordGameResult } = require("../../utils/gameResults");
 
 const PACKAGE_VERSION = require("../../package.json").version;
 
@@ -518,6 +519,40 @@ async function handleSpin(i, state, client) {
     if (state.totals[uid]) state.totals[uid].won += u.payout;
   }
   await Promise.all(dbWrites);
+
+  try {
+    for (const [uid, u] of Object.entries(perUser)) {
+      const userBets = [];
+      let wagered = 0;
+      for (let idx = 0; idx < results.length; idx++) {
+        if (lockedBets[idx].userId !== uid) continue;
+        const r = results[idx];
+        userBets.push({
+          type: lockedBets[idx].type || lockedBets[idx].betType || "unknown",
+          number: lockedBets[idx].numberValue ?? null,
+          amount: r.originalAmount,
+          outcome: r.status,
+          payout: r.payoutAmount || 0,
+          net: (r.payoutAmount || 0) - r.originalAmount,
+        });
+        wagered += r.originalAmount;
+      }
+      recordGameResult({
+        guildId: i.guildId,
+        channelId: state.channelId,
+        userId: uid,
+        game: "roulette",
+        result: {
+          winning_number: winningNumber,
+          color,
+          bets: userBets,
+          total_wagered: wagered,
+          total_payout: u.payout,
+          net: u.payout - wagered,
+        },
+      });
+    }
+  } catch (_) {}
 
   const finalFile = await drawResult(winningNumber, totalWinnings, true, lockedBets, state.userAvatars, state.userColors, state.themeColors);
   const totalPool = lockedBets.reduce((sum, b) => sum + b.amount, 0);

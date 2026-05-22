@@ -15,6 +15,7 @@ const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
 const { validateToolArgs } = require("./schemas");
+const { getLatestGameResult, getRecentGameResults } = require("./gameResults");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
@@ -231,6 +232,49 @@ const TOOLS = [
           limit: { type: "integer", description: "Number of results to return (default 5, max 10)." }
         },
         required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_game_result",
+      description:
+        "Get the most recent game result for a user in this channel. Returns structured data about their last play — grid, cards, dice, payout, bet — that is not visible in the embed or canvas image. " +
+        "Call this when a user says things like 'did you see my win?', 'look what I just hit', 'check out my hand', 'how'd I do?', or makes any reference to a game they just played.",
+      parameters: {
+        type: "object",
+        properties: {
+          user_id: { type: "string", description: "Discord user ID or username to look up (optional — defaults to the user who sent this message)" },
+          game: {
+            type: "string",
+            enum: ["slots", "blackjack", "roulette", "craps", "race", "poker"],
+            description: "Filter to a specific game (optional — omit to return the most recent result regardless of game type)"
+          }
+        },
+        required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_recent_game_results",
+      description:
+        "Get recent game results for a user (or the whole channel). " +
+        "Use for 'what have I been hitting lately', 'how have I been doing in slots', 'show me my last few hands', or similar multi-result queries.",
+      parameters: {
+        type: "object",
+        properties: {
+          user_id: { type: "string", description: "Discord user ID or username to filter to (optional — omit for channel-wide results)" },
+          game: {
+            type: "string",
+            enum: ["slots", "blackjack", "roulette", "craps", "race", "poker"],
+            description: "Filter to a specific game (optional)"
+          },
+          limit: { type: "integer", description: "Number of results to return (default 5, max 10)" }
+        },
+        required: []
       }
     }
   },
@@ -878,6 +922,138 @@ async function handleFetchPage(args) {
   return { title: result.title, text: result.text, url: result.url };
 }
 
+function formatGameResultForLlm(row) {
+  const ts = `<t:${Math.floor(row.played_at / 1000)}:R>`;
+  const r = row.result;
+  const base = { game: row.game, played_at: ts };
+
+  if (row.game === "slots") {
+    return {
+      ...base,
+      grid: Array.isArray(r.grid) ? r.grid : null,
+      active_lines: r.active_lines,
+      winning_lines: r.winning_lines || [],
+      bet_per_line: r.bet_per_line,
+      total_cost: r.total_cost,
+      total_payout: r.total_payout,
+      net: r.net,
+      outcome: r.outcome,
+      is_jackpot: r.is_jackpot,
+      jackpot_amount: r.jackpot_amount,
+      is_fullscreen: r.is_fullscreen,
+      is_bonus: r.is_bonus,
+      is_free: r.is_free,
+      bonus_triggered: r.bonus_triggered,
+    };
+  }
+
+  if (row.game === "blackjack") {
+    return {
+      ...base,
+      player_hands: r.player_hands ?? (r.player_hand ? [{ ...r.player_hand, bet: r.total_bet, outcome: r.outcome, doubled: false }] : null),
+      dealer_hand: r.dealer_hand,
+      total_bet: r.total_bet,
+      payout: r.payout,
+      net: r.net,
+      outcome: r.outcome,
+      dealer_blackjack: r.dealer_blackjack || false,
+    };
+  }
+
+  if (row.game === "roulette") {
+    return {
+      ...base,
+      winning_number: r.winning_number,
+      color: r.color,
+      bets: r.bets,
+      total_wagered: r.total_wagered,
+      total_payout: r.total_payout,
+      net: r.net,
+    };
+  }
+
+  if (row.game === "craps") {
+    return {
+      ...base,
+      dice: r.dice,
+      roll_type: r.roll_type,
+      phase: r.phase_before,
+      point: r.point,
+      bets: r.bets,
+      total_wagered: r.total_wagered,
+      net: r.net,
+    };
+  }
+
+  if (row.game === "race") {
+    return {
+      ...base,
+      finish_order: r.finish_order,
+      bets: r.bets,
+      net: r.net,
+    };
+  }
+
+  if (row.game === "poker") {
+    return {
+      ...base,
+      final_hand: r.final_hand,
+      hand_name: r.hand_name,
+      bet: r.bet,
+      payout: r.payout,
+      net: r.net,
+      outcome: r.outcome,
+      is_jackpot: r.is_jackpot,
+    };
+  }
+
+  return { ...base, raw: r };
+}
+
+async function handleGetGameResult(args, message) {
+  try {
+    const channelId = message.channelId;
+    if (!channelId) return { error: "Could not determine channel." };
+
+    let userId = message.author?.id;
+    if (args.user_id) {
+      const member = await resolveMember(args.user_id, message.guild);
+      if (member) userId = member.user.id;
+    }
+    if (!userId) return { error: "Could not resolve user." };
+
+    const row = getLatestGameResult({ channelId, userId, game: args.game || null });
+    if (!row) return { note: "No recent game results found for this user in this channel." };
+
+    return formatGameResultForLlm(row);
+  } catch (err) {
+    logger.error(`[get_game_result] ${err.message}`);
+    return { error: `Game result lookup failed: ${err.message}` };
+  }
+}
+
+async function handleGetRecentGameResults(args, message) {
+  try {
+    const channelId = message.channelId;
+    if (!channelId) return { error: "Could not determine channel." };
+
+    let userId = null;
+    if (args.user_id) {
+      const member = await resolveMember(args.user_id, message.guild);
+      userId = member ? member.user.id : args.user_id;
+    }
+
+    const limit = Math.min(Math.max(args.limit || 5, 1), 10);
+    const rows = getRecentGameResults({ channelId, userId, game: args.game || null, limit });
+    if (rows.length === 0) return { note: "No recent game results found.", results: [] };
+
+    return { results: rows.map(formatGameResultForLlm) };
+  } catch (err) {
+    logger.error(`[get_recent_game_results] ${err.message}`);
+    return { error: `Game results lookup failed: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -894,6 +1070,8 @@ const TOOL_HANDLERS = {
   get_command_help: handleGetCommandHelp,
   web_search: handleWebSearch,
   fetch_page: handleFetchPage,
+  get_game_result: handleGetGameResult,
+  get_recent_game_results: handleGetRecentGameResults,
 };
 
 function normalizeArgs(args) {

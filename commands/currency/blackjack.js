@@ -12,6 +12,7 @@ const { getBlackjackColors } = require("../../themes/resolver");
 const { withUserLock } = require("../../utils/userlock");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { recordGameResult } = require("../../utils/gameResults");
 
 const PACKAGE_VERSION = require("../../package.json").version;
 const MAX_HANDS = BLACKJACK_MAX_HANDS || 4;
@@ -426,6 +427,23 @@ async function runHand(interaction, user, client, session, originalBet, message,
     }
     await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
     deleteDeck(deckId);
+    try {
+      const bjPush = dealerTotal === 21;
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "blackjack",
+        result: {
+          player_hand: { cards: initialCards.map(c => c.code), value: 21 },
+          dealer_hand: { cards: dealerCards.map(c => c.code), value: dealerTotal },
+          total_bet: originalBet,
+          payout: bjPush ? originalBet : originalBet + Math.ceil(originalBet * 1.5),
+          net: bjPush ? 0 : Math.ceil(originalBet * 1.5),
+          outcome: bjPush ? "push" : "blackjack",
+        },
+      });
+    } catch (_) {}
     return finishHand(client, message, session, channel, embed.data.description, attachment);
   }
 
@@ -443,6 +461,23 @@ async function runHand(interaction, user, client, session, originalBet, message,
       .setFooter({ text: `Bet: ${originalBet.toLocaleString("en-US")} ${CURRENCY_NAME} | ${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) });
     await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
     deleteDeck(deckId);
+    try {
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "blackjack",
+        result: {
+          player_hand: { cards: initialCards.map(c => c.code), value: getHandValue(initialCards) },
+          dealer_hand: { cards: dealerCards.map(c => c.code), value: 21 },
+          total_bet: originalBet,
+          payout: 0,
+          net: -originalBet,
+          outcome: "loss",
+          dealer_blackjack: true,
+        },
+      });
+    } catch (_) {}
     return finishHand(client, message, session, channel, embed.data.description, attachment);
   }
 
@@ -461,6 +496,23 @@ async function runHand(interaction, user, client, session, originalBet, message,
       const result = await playHand(currentHand, currentHandIndex, canSplitThisHand, canDouble, canForfeit);
       if (result === "forfeit") {
         const forfeitAttachment = currentHand._forfeitAttachment || null;
+        try {
+          const refund = Math.floor(currentHand.bet / 2);
+          recordGameResult({
+            guildId: channel.guildId,
+            channelId: channel.id,
+            userId: user.id,
+            game: "blackjack",
+            result: {
+              player_hand: { cards: currentHand.cards.map(c => c.code), value: getHandValue(currentHand.cards) },
+              dealer_hand: { cards: dealerCards.map(c => c.code), value: getHandValue(dealerCards) },
+              total_bet: currentHand.bet,
+              payout: refund,
+              net: refund - currentHand.bet,
+              outcome: "forfeit",
+            },
+          });
+        } catch (_) {}
         await finishHand(client, message, session, channel, "You forfeited the hand.", forfeitAttachment);
         return;
       }
@@ -746,6 +798,28 @@ async function runHand(interaction, user, client, session, originalBet, message,
     attachment = await renderState(true, 0, dTitle, desc, outcomes, dealerOutcome, playerOutcome);
     embed.setColor(totalWinnings > totalBets ? 0x00AE86 : (totalWinnings > 0 ? 0xFFFF00 : 0xFF0000));
     await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
+
+    try {
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "blackjack",
+        result: {
+          player_hands: hands.map((hand, i) => ({
+            cards: hand.cards.map(c => c.code),
+            value: getHandValue(hand.cards),
+            bet: hand.bet,
+            outcome: outcomes[i] || "loss",
+            doubled: hand.isDoubled || false,
+          })),
+          dealer_hand: { cards: dealerCards.map(c => c.code), value: dealerTotal },
+          total_bet: totalBets,
+          payout: totalWinnings,
+          net: totalWinnings - totalBets,
+        },
+      });
+    } catch (_) {}
 
     await finishHand(client, message, session, channel, desc, attachment);
   }

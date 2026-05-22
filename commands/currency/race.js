@@ -10,6 +10,7 @@ const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
 const wait = require("node:timers/promises").setTimeout;
+const { recordGameResult } = require("../../utils/gameResults");
 
 const HOUSE_EDGE = RACE_HOUSE_EDGE ?? 0.10;
 const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
@@ -764,6 +765,42 @@ async function resolveRace(client, channel, message, game) {
 
     results.push({ ...bet, won, winnings, horsePosition });
   }
+
+  try {
+    const finishOrder = game.topThree.finishOrder || [];
+    const podium = [0, 1, 2].map(place => {
+      const idx = finishOrder[place];
+      return idx !== undefined ? { place: place + 1, number: horses[idx].number, name: horses[idx].name, emoji: horses[idx].emoji } : null;
+    }).filter(Boolean);
+
+    const byUser = {};
+    for (const r of results) {
+      if (!byUser[r.userId]) byUser[r.userId] = [];
+      byUser[r.userId].push({
+        horse: horses[r.horseIndex].name,
+        horse_number: horses[r.horseIndex].number,
+        bet_type: r.betType || "win",
+        amount: r.amount,
+        outcome: r.won ? "win" : "loss",
+        payout: r.winnings,
+        net: r.won ? r.winnings - r.amount : -r.amount,
+      });
+    }
+    for (const [uid, userBets] of Object.entries(byUser)) {
+      const net = userBets.reduce((sum, b) => sum + b.net, 0);
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: uid,
+        game: "race",
+        result: {
+          finish_order: podium,
+          bets: userBets,
+          net,
+        },
+      });
+    }
+  } catch (_) {}
 
   if (game.guildId && Object.keys(horseDeltas).length > 0) {
     try {

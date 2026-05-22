@@ -8,6 +8,9 @@ const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackp
 const { drawSlotMachine, drawSpinAnimation, drawPaytable, PAYLINES } = require("./slotsCanvas");
 const { getTheme } = require("./slotsThemes");
 const { getEquippedTheme } = require("../themes/manager");
+const { recordGameResult } = require("./gameResults");
+
+const SYMBOL_NAMES = ["Apple", "Tangerine", "Lemon", "Grapes", "Cherry", "Bell", "BAR", "7", "Wild", "Scatter"];
 
 // Symbol definitions: index, weights, multipliers
 const SYMBOLS = [
@@ -394,6 +397,40 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
       "jackpot announcement"
     );
   }
+
+  try {
+    recordGameResult({
+      guildId: interaction.guildId || interaction.channel?.guildId || null,
+      channelId: interaction.channelId || interaction.channel?.id,
+      userId: user.id,
+      game: "slots",
+      result: {
+        grid: grid.map(row => row.map(idx => SYMBOL_NAMES[idx] ?? idx)),
+        winning_lines: winResults.map(w => ({
+          line: w.line,
+          symbol: SYMBOL_NAMES[w.matchSymbol] ?? w.matchSymbol,
+          count: w.count,
+          payout: Math.floor(actualBet * w.multiplier * bonusMultiplier),
+          is_wild: w.isWild || false,
+          is_jackpot: w.isJackpotTrigger || false,
+          is_fullscreen: w.isFullScreen || false,
+        })),
+        bet_per_line: actualBet,
+        active_lines: lines,
+        total_cost: isFreePlay || isBonus ? 0 : actualBet * lines,
+        total_payout: totalWin,
+        net: totalWin - (isFreePlay || isBonus ? 0 : actualBet * lines),
+        outcome: totalWin > 0 ? "win" : "loss",
+        is_jackpot: isJackpot,
+        jackpot_amount: jackpotAmount || null,
+        is_fullscreen: isFullScreen,
+        is_bonus: isBonus,
+        is_free: isFreePlay,
+        bonus_triggered: triggersBonus,
+        scatter_count: scatterCount,
+      },
+    });
+  } catch (_) {}
 
   return { totalWin, winResults, isJackpot, jackpotAmount, triggersBonus, scatterCount, failed: false };
 }
