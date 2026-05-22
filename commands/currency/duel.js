@@ -9,6 +9,7 @@ const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { withUserLock } = require("../../utils/userlock");
 const { buildErrorEmbed } = require("../../utils/embeds");
+const { recordGameResult } = require("../../utils/gameResults");
 
 const ACCEPT_TIMEOUT = 60000;
 const CHOICE_TIMEOUT = 30000;
@@ -467,6 +468,9 @@ async function runRpsPhase({ session, challenger, opponent, bet, colors, msg, cl
 
     logger.info(`Duel ${sessionKey} forfeited — ${winner.username} wins ${bet * 2} ${CURRENCY_NAME}.`);
     client.duelGames.delete(sessionKey);
+    const forfeitBase = { challenger_id: challenger.id, opponent_id: opponent.id, challenger_choice: choices.get(challenger.id) || null, opponent_choice: choices.get(opponent.id) || null, bet };
+    try { recordGameResult({ guildId: msg.guildId, channelId: msg.channelId, userId: winner.id, game: "duel", result: { ...forfeitBase, outcome: "forfeit_win", payout: bet * 2, net: bet } }); } catch (_) {}
+    try { recordGameResult({ guildId: msg.guildId, channelId: msg.channelId, userId: loser.id, game: "duel", result: { ...forfeitBase, outcome: "forfeit_loss", payout: 0, net: -bet } }); } catch (_) {}
   });
 }
 
@@ -514,6 +518,9 @@ async function resolveDuel(session, choices, challenger, opponent, bet, colors, 
 
     client.duelGames.delete(sessionKey);
     logger.info(`Duel ${sessionKey} ended in a draw.`);
+    const drawResult = { challenger_id: challenger.id, opponent_id: opponent.id, challenger_choice: challengerChoice, opponent_choice: opponentChoice, bet, outcome: "draw", payout: bet, net: 0 };
+    try { recordGameResult({ guildId: msg.guildId, channelId: msg.channelId, userId: challenger.id, game: "duel", result: drawResult }); } catch (_) {}
+    try { recordGameResult({ guildId: msg.guildId, channelId: msg.channelId, userId: opponent.id, game: "duel", result: drawResult }); } catch (_) {}
 
     await offerRematch({ challenger, opponent, bet, colors, msg, client, sessionKey, warn });
     return;
@@ -561,6 +568,9 @@ async function resolveDuel(session, choices, challenger, opponent, bet, colors, 
 
   client.duelGames.delete(sessionKey);
   logger.info(`Duel ${sessionKey} resolved — ${winner.username} wins ${bet * 2} ${CURRENCY_NAME}.`);
+  const winBase = { challenger_id: challenger.id, opponent_id: opponent.id, challenger_choice: challengerChoice, opponent_choice: opponentChoice, bet };
+  try { recordGameResult({ guildId: msg.guildId, channelId: msg.channelId, userId: winner.id, game: "duel", result: { ...winBase, outcome: "win", payout: bet * 2, net: bet } }); } catch (_) {}
+  try { recordGameResult({ guildId: msg.guildId, channelId: msg.channelId, userId: loser.id, game: "duel", result: { ...winBase, outcome: "loss", payout: 0, net: -bet } }); } catch (_) {}
 
   await offerRematch({ challenger, opponent, bet, colors, msg, client, sessionKey, warn });
 }

@@ -1007,6 +1007,41 @@ function formatGameResultForLlm(row) {
     };
   }
 
+  if (row.game === "flip") {
+    return {
+      ...base,
+      bet: r.bet,
+      roll: r.roll,
+      outcome: r.outcome,
+      payout: r.payout,
+      net: r.net,
+    };
+  }
+
+  if (row.game === "rob") {
+    return {
+      ...base,
+      victim_id: r.victim_id,
+      amount: r.amount,
+      outcome: r.outcome,
+      net: r.net,
+    };
+  }
+
+  if (row.game === "duel") {
+    return {
+      ...base,
+      challenger_id: r.challenger_id,
+      opponent_id: r.opponent_id,
+      challenger_choice: r.challenger_choice,
+      opponent_choice: r.opponent_choice,
+      bet: r.bet,
+      outcome: r.outcome,
+      payout: r.payout,
+      net: r.net,
+    };
+  }
+
   return { ...base, raw: r };
 }
 

@@ -495,6 +495,253 @@ async function run() {
     assert.strictEqual(result.error, "invalid_arguments");
   });
 
+  // --- get_game_result: flip ---
+  await testAsync("get_game_result: returns formatted flip win result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "flip",
+        played_at: 1700000000000,
+        result: { bet: 500, roll: 73, outcome: "win", payout: 500, net: 500 },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"flip"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.game, "flip");
+      assert.strictEqual(result.outcome, "win");
+      assert.strictEqual(result.bet, 500);
+      assert.strictEqual(result.roll, 73);
+      assert.strictEqual(result.net, 500);
+      assert.ok(result.played_at.startsWith("<t:"));
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  await testAsync("get_game_result: returns formatted flip loss result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "flip",
+        played_at: 1700000000000,
+        result: { bet: 200, roll: 32, outcome: "loss", payout: 0, net: -200 },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"flip"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.outcome, "loss");
+      assert.strictEqual(result.net, -200);
+      assert.strictEqual(result.payout, 0);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  // --- get_game_result: rob ---
+  await testAsync("get_game_result: returns formatted rob success result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "rob",
+        played_at: 1700000000000,
+        result: { victim_id: "u2", amount: 1200, outcome: "success", net: 1200 },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"rob"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.game, "rob");
+      assert.strictEqual(result.outcome, "success");
+      assert.strictEqual(result.victim_id, "u2");
+      assert.strictEqual(result.amount, 1200);
+      assert.strictEqual(result.net, 1200);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  await testAsync("get_game_result: returns formatted rob fail result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "rob",
+        played_at: 1700000000000,
+        result: { victim_id: "u2", amount: 800, outcome: "fail", net: 0 },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"rob"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.outcome, "fail");
+      assert.strictEqual(result.net, 0);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  // --- get_game_result: duel ---
+  await testAsync("get_game_result: returns formatted duel win result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "duel",
+        played_at: 1700000000000,
+        result: {
+          challenger_id: "u1",
+          opponent_id: "u2",
+          challenger_choice: "rock",
+          opponent_choice: "scissors",
+          bet: 1000,
+          outcome: "win",
+          payout: 2000,
+          net: 1000,
+        },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"duel"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.game, "duel");
+      assert.strictEqual(result.outcome, "win");
+      assert.strictEqual(result.challenger_choice, "rock");
+      assert.strictEqual(result.opponent_choice, "scissors");
+      assert.strictEqual(result.bet, 1000);
+      assert.strictEqual(result.net, 1000);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  await testAsync("get_game_result: returns formatted duel draw result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "duel",
+        played_at: 1700000000000,
+        result: {
+          challenger_id: "u1",
+          opponent_id: "u2",
+          challenger_choice: "paper",
+          opponent_choice: "paper",
+          bet: 500,
+          outcome: "draw",
+          payout: 500,
+          net: 0,
+        },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"duel"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.outcome, "draw");
+      assert.strictEqual(result.net, 0);
+      assert.strictEqual(result.challenger_choice, result.opponent_choice);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  await testAsync("get_game_result: returns formatted duel forfeit result", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => ({
+        game: "duel",
+        played_at: 1700000000000,
+        result: {
+          challenger_id: "u1",
+          opponent_id: "u2",
+          challenger_choice: "scissors",
+          opponent_choice: null,
+          bet: 750,
+          outcome: "forfeit_win",
+          payout: 1500,
+          net: 750,
+        },
+      });
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"duel"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(result.outcome, "forfeit_win");
+      assert.strictEqual(result.opponent_choice, null);
+      assert.strictEqual(result.net, 750);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  // --- get_recent_game_results: new game types ---
+  await testAsync("get_recent_game_results: flip and rob appear in mixed results", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getRecentGameResults;
+    try {
+      gr.getRecentGameResults = () => [
+        { game: "flip", played_at: 1700000000000, result: { bet: 100, roll: 88, outcome: "win", payout: 100, net: 100 } },
+        { game: "rob", played_at: 1700000001000, result: { victim_id: "u2", amount: 300, outcome: "fail", net: 0 } },
+      ];
+      const result = await tools.executeToolCall(
+        { function: { name: "get_recent_game_results", arguments: "{}" } },
+        { channelId: "c1" },
+        {}
+      );
+      assert.strictEqual(result.results.length, 2);
+      assert.strictEqual(result.results[0].game, "flip");
+      assert.strictEqual(result.results[0].roll, 88);
+      assert.strictEqual(result.results[1].game, "rob");
+      assert.strictEqual(result.results[1].outcome, "fail");
+    } finally {
+      gr.getRecentGameResults = original;
+    }
+  });
+
+  await testAsync("get_game_result: flip enum accepted by schema", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => null;
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"flip"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.ok(!result.error || result.error !== "invalid_arguments");
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
+  await testAsync("get_game_result: duel enum accepted by schema", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    try {
+      gr.getLatestGameResult = () => null;
+      const result = await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: '{"game":"duel"}' } },
+        { channelId: "c1", author: { id: "u1" } },
+        {}
+      );
+      assert.ok(!result.error || result.error !== "invalid_arguments");
+    } finally {
+      gr.getLatestGameResult = original;
+    }
+  });
+
   return { passed, failed };
 }
 

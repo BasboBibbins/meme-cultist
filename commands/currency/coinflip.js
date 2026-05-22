@@ -3,6 +3,7 @@ const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
 const logger = require("../../utils/logger");
+const { recordGameResult } = require("../../utils/gameResults");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -61,6 +62,7 @@ module.exports = {
       if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestWin`)) {
         await db.set(`${interaction.user.id}.stats.flip.biggestWin`, bet);
       }
+      try { recordGameResult({ guildId: interaction.guildId, channelId: interaction.channelId, userId: interaction.user.id, game: "flip", result: { bet, roll: chance, outcome: "win", payout: bet, net: bet } }); } catch (_) {}
       await interaction.reply({embeds: [embed]});
     } else {
       embed.setColor(0xFF0000);
@@ -72,6 +74,7 @@ module.exports = {
       if (bet > await db.get(`${interaction.user.id}.stats.flip.biggestLoss`)) {
         await db.set(`${interaction.user.id}.stats.flip.biggestLoss`, bet);
       }
+      try { recordGameResult({ guildId: interaction.guildId, channelId: interaction.channelId, userId: interaction.user.id, game: "flip", result: { bet, roll: chance, outcome: "loss", payout: 0, net: -bet } }); } catch (_) {}
       await interaction.reply({embeds: [embed]});
     }
   }, 

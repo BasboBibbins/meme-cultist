@@ -3,6 +3,7 @@ const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
+const { recordGameResult } = require("../../utils/gameResults");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -67,12 +68,13 @@ module.exports = {
 
     logger.debug(`chance > 75: ${chance > 75} | chance: ${chance} | amount: ${amount} | victim: ${victim.displayName } (${victim.id}) | user: ${user.displayName } (${user.id})`);
 
-    if (chance > 75) { 
+    if (chance > 75) {
       await db.add(`${user.id}.balance`, amount);
       await db.sub(`${victim.id}.balance`, amount);
       embed.setColor("#00ff00");
       embed.setDescription(`${user.displayName } has successfully robbed **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} from ${victim.displayName }!`);
       await interaction.editReply({ embeds: [embed] });
+      try { recordGameResult({ guildId: interaction.guildId, channelId: interaction.channelId, userId: user.id, game: "rob", result: { victim_id: victim.id, amount, outcome: "success", net: amount } }); } catch (_) {}
       await sendDM(victim, { embeds: [new EmbedBuilder()
         .setTitle("Oh no!")
         .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 1024 }))
@@ -84,6 +86,7 @@ module.exports = {
       embed.setColor("#ff0000");
       embed.setDescription(`${user.displayName } failed to rob ${victim.displayName }!`);
       await interaction.editReply({ embeds: [embed] });
+      try { recordGameResult({ guildId: interaction.guildId, channelId: interaction.channelId, userId: user.id, game: "rob", result: { victim_id: victim.id, amount, outcome: "fail", net: 0 } }); } catch (_) {}
     }
     return await db.set(`${user.id}.cooldowns.rob`, Date.now() + cooldown);
   },
