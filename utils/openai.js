@@ -1599,6 +1599,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- Past conversations, references to earlier messages, \"do you remember\" → search_history. Call at most once per turn with a single comprehensive query. Synthesize from results — do NOT retry with re-phrasings.\n" +
         "- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. Use this when the user asks about stored server information.\n" +
         "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder\n" +
+        "- Current events, recent news, real-time facts, anything you don't know → web_search. Returns title + URL + snippet per result. Then use fetch_page on a chosen URL to read the full page content.\n" +
+        "- Read the full content of a specific URL (from web_search results) → fetch_page.\n" +
         "Citations: when your reply uses a search_history result, embed [[cite:msg:N]] (N = that result's result_index) immediately after the relevant claim. When using a lookup_kb result, embed [[cite:kb:slug]] (slug from the result). Each citation token may appear at most once — duplicates are stripped.";
 
       const tailParts = [`You are currently speaking to ${currentSpeaker}.`];

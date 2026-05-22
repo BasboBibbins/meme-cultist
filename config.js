@@ -175,6 +175,9 @@ const config = {
   CF_ACCOUNT_ID: process.env.CF_ACCOUNT_ID || "",
   CF_API_KEY: process.env.CF_API_KEY || "",
 
+  // Brave Search API (used by the web_search tool in utils/openai-tools.js)
+  BRAVE_API_KEY: process.env.BRAVE_API_KEY || "",
+
   // LLM provider layer (utils/llm/)
   LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
   LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),

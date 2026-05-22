@@ -10,7 +10,8 @@ const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY } = require("../config.js");
+const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
 const { validateToolArgs } = require("./schemas");
@@ -232,7 +233,43 @@ const TOOLS = [
         required: ["query"]
       }
     }
-  }
+  },
+  ...(BRAVE_API_KEY ? [
+    {
+      type: "function",
+      function: {
+        name: "web_search",
+        description:
+          "Search the web for current information, recent events, or facts you don't know. " +
+          "Returns top results with title, URL, and snippet. " +
+          "Use fetch_page after this to read the full content of a specific result URL.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "The search query." },
+            count: { type: "integer", description: "Number of results to return (1–10, default 5)." }
+          },
+          required: ["query"]
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "fetch_page",
+        description:
+          "Fetch and extract the readable text content of a web page URL. " +
+          "Use this after web_search to get the full content of a specific result.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "The URL to fetch." }
+          },
+          required: ["url"]
+        }
+      }
+    },
+  ] : []),
 ];
 
 // Helper to resolve a user ID or username to a guild member
@@ -803,6 +840,44 @@ async function handleGetShop(args, message, client) {
   }
 }
 
+async function handleWebSearch(args) {
+  const count = Math.min(Math.max(args.count || 5, 1), 10);
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(args.query)}&count=${count}&result_filter=web`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_API_KEY,
+      },
+      signal: controller.signal,
+    });
+    if (!res.ok) return { error: `Brave Search API returned HTTP ${res.status}.` };
+    const data = await res.json();
+    const results = (data.web?.results || []).map(r => ({
+      title: r.title,
+      url: r.url,
+      description: r.description || "",
+    }));
+    if (results.length === 0) return { results: [], message: "No web results found." };
+    return { results, query: args.query };
+  } catch (err) {
+    const reason = err.name === "AbortError" ? "Search timed out after 10s." : err.message;
+    logger.error(`[web_search] ${reason}`);
+    return { error: `Web search failed: ${reason}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function handleFetchPage(args) {
+  const result = await fetchPageText(args.url, 4000);
+  if (result.error) return { error: result.error };
+  return { title: result.title, text: result.text, url: result.url };
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -817,6 +892,8 @@ const TOOL_HANDLERS = {
   get_jackpot: handleGetJackpot,
   get_shop: handleGetShop,
   get_command_help: handleGetCommandHelp,
+  web_search: handleWebSearch,
+  fetch_page: handleFetchPage,
 };
 
 function normalizeArgs(args) {
