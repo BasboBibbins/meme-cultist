@@ -429,7 +429,7 @@ async function runCritique(originalMessages, candidateResponse) {
       schemaName: "critique",
       model: CRITIQUE_MODEL,
       messages: [
-        { role: "system", content: "You are a strict reviewer. Verify whether the candidate reply contains any factual claim (numbers, balances, ranks, times, schedules) that is not grounded in the conversation or tool results above. Output ONLY JSON. Schema: {\"ok\": true} when grounded, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when not. No prose outside the JSON." },
+        { role: "system", content: "You are a strict reviewer checking ONLY for fabricated user-specific claims — things like invented balance amounts, fake leaderboard positions, or asserted cooldown times that contradict the tool results or conversation. Do NOT flag general knowledge — those do not require grounding in the conversation. Output ONLY JSON. Schema: {\"ok\": true} when no user-specific facts are fabricated, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when they are. No prose outside the JSON." },
         ...originalMessages,
         { role: "user", content: `[Candidate reply to review]\n${candidateResponse}` },
       ],
@@ -1891,7 +1891,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
               messages: [
                 ...messages,
                 { role: "assistant", content: response },
-                { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply with the correction. Keep the original tone and length.` },
+                { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply, correcting only what the reviewer flagged. Preserve all other specific details, names, numbers, and helpful information from your original reply. Do not make the response more generic — only remove or qualify the specific fabricated claim. Keep the original tone and length.` },
               ],
               temperature: 0.5,
               timeoutMs: 60_000,
