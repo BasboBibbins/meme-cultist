@@ -697,7 +697,6 @@ async function getDefaultThreadContext(thread) {
     topic: "",
     summaries: [],
     facts: [],
-    embeddingChunks: [],
     resetPoint: null,
     persona_id: null,
     messagesSinceLastSummary: 0,
