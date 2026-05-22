@@ -1234,6 +1234,11 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let replyContext = "";
     const conversationHistory = [];
     if (!customPrompt && message && client) {
+      let channelFactsBlock = "";
+      let channelSummaryBlock = "";
+      let userSummaryBlock = "";
+      let userFactsBlock = "";
+      let perceptionBlock = "";
       const isReply = message.type === 19;
       const isMentioned = message.mentions.has(client.user);
       const currentSpeaker = message.member.displayName;
@@ -1339,17 +1344,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           sys_variant = "thread_roleplay";
         }
         if (facts.length > 0 && INCLUDE_CHANNEL_FACTS_IN_PROMPT) {
-          const factsBlock = buildFactsBlock("ChannelFacts", facts);
-          if (factsBlock) {
-            sys_prompt += `\n\n${factsBlock}`;
-          }
+          const block = buildFactsBlock("ChannelFacts", facts);
+          if (block) channelFactsBlock = block;
         }
         if (summaries.length > 0) {
-          const lastSummary = summaries[summaries.length - 1];
-          const summaryBlock = buildSummaryBlock("ChannelSummary", lastSummary);
-          if (summaryBlock) {
-            sys_prompt += `\n\n${summaryBlock}`;
-          }
+          const block = buildSummaryBlock("ChannelSummary", summaries[summaries.length - 1]);
+          if (block) channelSummaryBlock = block;
         }
       } else {
         const {
@@ -1478,11 +1478,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
         // Skip channel summaries for one-off mentions
         if (!isMention && summaries.length > 0) {
-          const lastSummary = summaries[summaries.length - 1];
-          const summaryBlock = buildSummaryBlock("ChannelSummary", lastSummary);
-          if (summaryBlock) {
-            sys_prompt += `\n\n${summaryBlock}`;
-          }
+          const block = buildSummaryBlock("ChannelSummary", summaries[summaries.length - 1]);
+          if (block) channelSummaryBlock = block;
         }
       }
       const userChatbotData = await getUserChatbotData(message.author.id);
@@ -1494,16 +1491,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         logger.debug(`Latest user summary:\x1b[31m ${latestUserSummary}`);
         logger.debug(`Latest user facts:\x1b[31m ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join("; ")}`);
         if (latestUserSummaryObject) {
-          const userSummaryBlock = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
-          if (userSummaryBlock) {
-            sys_prompt += `\n\n${userSummaryBlock}`;
-          }
+          const block = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
+          if (block) userSummaryBlock = block;
         }
         if (latestUserFacts.length > 0) {
-          const userFactsBlock = buildFactsBlock(`UserFacts name="${message.member.displayName}"`, latestUserFacts);
-          if (userFactsBlock) {
-            sys_prompt += `\n\n${userFactsBlock}`;
-          }
+          const block = buildFactsBlock(`UserFacts name="${message.member.displayName}"`, latestUserFacts);
+          if (block) userFactsBlock = block;
         }
       }
       if (isReply) {
@@ -1545,7 +1538,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
       }
       if (extraContext) {
-        sys_prompt += "\n\n[Perception Capabilities]\n" +
+        perceptionBlock = "[Perception Capabilities]\n" +
           "- You have full vision: you can directly see any image a user shares.\n" +
           "- You have link-reading ability: you can directly read the content of any URL a user shares.\n" +
           "- The [Perception] block below represents what you are currently seeing or reading firsthand. Treat it as your own direct sensory input, not as a description prepared for you.\n" +
@@ -1563,7 +1556,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- User profile (avatar, roles, join date) → get_user_info\n" +
         "- Bot capabilities, available commands → get_bot_info\n" +
         "- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like \"[Attached: image file]\", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.\n" +
-        "- Past conversations, \"do you remember\", \"what did we say about\", references to earlier messages → search_history. You CANNOT rely on your context window for old messages. Always call this tool when the user refers to past discussions. Never claim you do not remember something without calling search_history first.\n" +
+        "- Past conversations, references to earlier messages, \"do you remember\" → search_history. Call at most once per turn with a single comprehensive query. Synthesize from results — do NOT retry with re-phrasings.\n" +
         "- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. Use this when the user asks about stored server information.\n" +
         "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder";
 
@@ -1573,7 +1566,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
       sys_prompt = assembleSystemPrompt({
         variantPrefix: sys_prompt,
+        channelFactsBlock: channelFactsBlock || undefined,
+        channelSummaryBlock: channelSummaryBlock || undefined,
+        userSummaryBlock: userSummaryBlock || undefined,
+        userFactsBlock: userFactsBlock || undefined,
         toolBlock,
+        perceptionBlock: perceptionBlock || undefined,
         dynamicTail: tailParts.join("\n\n"),
       });
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
