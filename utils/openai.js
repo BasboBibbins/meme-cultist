@@ -69,6 +69,46 @@ function sanitizeMentions(text) {
   return text.replace(/@everyone/g, "@​everyone").replace(/@here/g, "@​here");
 }
 
+// Populates citationStore from a retrieval tool result so [[cite:...]] tokens
+// can be resolved after the ReAct loop finishes.
+function collectCitations(toolName, toolResult, citationStore) {
+  if (!toolResult?.results?.length) return;
+  if (toolName === "search_history") {
+    for (const r of toolResult.results) {
+      if (r.result_index != null && r.message_id) {
+        citationStore.msg.set(r.result_index, r.message_id);
+      }
+    }
+  } else if (toolName === "lookup_kb") {
+    for (const r of toolResult.results) {
+      if (r.slug) citationStore.kb.add(r.slug);
+    }
+  }
+}
+
+// Expands [[cite:msg:N]] → Discord jump link and [[cite:kb:slug]] → (KB: slug).
+// Strips duplicates and any tokens whose index/slug wasn't actually returned.
+function applyCitations(text, citationStore, guildId, channelId) {
+  if (!text || (citationStore.msg.size === 0 && citationStore.kb.size === 0)) return text;
+  const seenMsg = new Set();
+  const seenKb = new Set();
+  return text.replace(/\[\[cite:(msg|kb):([^\]]+)\]\]/g, (match, type, ref) => {
+    if (type === "msg") {
+      const idx = parseInt(ref, 10);
+      if (isNaN(idx) || !citationStore.msg.has(idx) || seenMsg.has(idx)) return "";
+      seenMsg.add(idx);
+      return `([jump](https://discord.com/channels/${guildId}/${channelId}/${citationStore.msg.get(idx)}))`;
+    }
+    if (type === "kb") {
+      const slug = ref.trim();
+      if (!citationStore.kb.has(slug) || seenKb.has(slug)) return "";
+      seenKb.add(slug);
+      return `(KB: ${slug})`;
+    }
+    return "";
+  });
+}
+
 // DeepSeek occasionally emits tool calls as DSML tokens inside message.content
 // instead of using the structured tool_calls field. Parse them out so the
 // execution loop can handle them normally.
@@ -1558,7 +1598,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like \"[Attached: image file]\", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.\n" +
         "- Past conversations, references to earlier messages, \"do you remember\" → search_history. Call at most once per turn with a single comprehensive query. Synthesize from results — do NOT retry with re-phrasings.\n" +
         "- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. Use this when the user asks about stored server information.\n" +
-        "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder";
+        "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder\n" +
+        "Citations: when your reply uses a search_history result, embed [[cite:msg:N]] (N = that result's result_index) immediately after the relevant claim. When using a lookup_kb result, embed [[cite:kb:slug]] (slug from the result). Each citation token may appear at most once — duplicates are stripped.";
 
       const tailParts = [`You are currently speaking to ${currentSpeaker}.`];
       if (dynamicTail) tailParts.unshift(dynamicTail);
@@ -1641,6 +1682,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let toolCallDepth = 0;
     const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
     const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
+    const citationStore = { msg: new Map(), kb: new Set() };
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
       const finalSlot = toolCallDepth === MAX_TOOL_DEPTH - 1;
@@ -1666,6 +1708,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           messages.push({ role: "assistant", content: null, tool_calls: streamRes.toolCalls });
           for (const toolCall of streamRes.toolCalls) {
             const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+            collectCitations(toolCall.function.name, toolResult, citationStore);
             messages.push({
               role: "tool",
               tool_call_id: toolCall.id,
@@ -1725,6 +1768,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
         for (const toolCall of choice.message.tool_calls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+          collectCitations(toolCall.function.name, toolResult, citationStore);
 
           messages.push({
             role: "tool",
@@ -1759,6 +1803,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         messages.push({ role: "assistant", content: null, tool_calls: dsmlToolCalls });
         for (const toolCall of dsmlToolCalls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+          collectCitations(toolCall.function.name, toolResult, citationStore);
           messages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
           if (SIDE_EFFECT_TOOLS.has(toolCall.function.name)) {
             toolCtx.pendingToolCalls.push({
@@ -1815,6 +1860,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         logger.error("[Guard] Response was entirely DSML markup — suppressing send.");
         response = null;
       }
+    }
+
+    // Expand [[cite:msg:N]] / [[cite:kb:slug]] tokens emitted by the model into
+    // Discord jump links / KB slugs. Unknown or duplicate tokens are stripped.
+    if (response && message?.guild) {
+      response = applyCitations(response, citationStore, message.guild.id, message.channelId);
     }
 
     const pendingFiles = toolCtx.pendingAttachments;

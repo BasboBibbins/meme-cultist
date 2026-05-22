@@ -546,7 +546,8 @@ async function handleLookupKb(args, message, client) {
       return { results: [], message: "No matching knowledge base entries found." };
     }
     return {
-      results: results.map(r => ({
+      results: results.map((r, i) => ({
+        result_index: i + 1,
         slug: r.slug,
         title: r.title,
         content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
@@ -592,7 +593,9 @@ async function handleSearchHistory(args, message, client) {
         const semanticResults = messageArchive.searchSemanticFull(channelId, embedding, limit);
         if (semanticResults.length > 0) {
           return {
-            results: semanticResults.map(r => ({
+            results: semanticResults.map((r, i) => ({
+              result_index: i + 1,
+              message_id: r.message_id,
               author_id: r.author_id,
               content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
               created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
@@ -629,7 +632,9 @@ async function handleSearchHistory(args, message, client) {
     }
 
     const out = {
-      results: finalResults.map(r => ({
+      results: finalResults.map((r, i) => ({
+        result_index: i + 1,
+        message_id: r.message_id,
         author_id: r.author_id,
         content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
         created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
