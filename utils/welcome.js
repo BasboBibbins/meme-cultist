@@ -1,10 +1,8 @@
-const { EmbedBuilder } = require("discord.js");
-const { version } = require("../package.json");
 const { DEFAULT_ROLE, RULES_CHANNEL_ID } = require("../config.js");
 const { addNewDBUser, db } = require("../database");
 const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID, WELCOME_CHANNEL_NAME, RIP_CHANNEL_NAME } = require("../config.js");
 const logger = require("../utils/logger");
-const { randomHexColor } = require("./randomcolor");
+const { buildBaseEmbed, buildInfoEmbed } = require("./embeds");
 
 async function ripGen(guildMember, prompt) {
   const victim = guildMember.user;
@@ -52,13 +50,11 @@ module.exports = {
     member.roles.add(member.guild.roles.cache.find(role => role.name === DEFAULT_ROLE));
     const fetchedUser = await member.user.fetch();
     const accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : "#FFFFFF";
-    const embed = new EmbedBuilder()
-      .setColor(`${accentColor}`)
-      .setTitle(`Welcome${dbUser ? " back":""} to ${member.guild.name}, ${member.user.displayName }!`)
+    const embed = buildBaseEmbed(member.user, client)
+      .setColor(accentColor)
+      .setTitle(`Welcome${dbUser ? " back":""} to ${member.guild.name}, ${member.user.displayName}!`)
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-      .setDescription(`Welcome ${dbUser ? "back":""} to ${member.guild.name} <@${member.id}>! Now **GET THE FUCK OUT OF MY DISCORD NORMIE!!!!**\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, as they are heavily enforced! *Our janitors do it for free!*`)
-      .setFooter({ text: `${client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+      .setDescription(`Welcome ${dbUser ? "back":""} to ${member.guild.name} <@${member.id}>! Now **GET THE FUCK OUT OF MY DISCORD NORMIE!!!!**\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, as they are heavily enforced! *Our janitors do it for free!*`);
     await channel.send({ embeds: [embed] });
 
     if (!dbUser) {
@@ -147,14 +143,9 @@ module.exports = {
       `${member.user.displayName }? literally who?`,
     ];
     const ripText = await ripGen(member, prompt);
-    const joinDate = new Date(member.joinedAt || 0);
-    const embed = new EmbedBuilder()
-      .setColor(randomHexColor())
+    const embed = buildInfoEmbed(member.user, client, ripText)
       .setTitle(titles[Math.floor(Math.random() * titles.length)])
-      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-      .setDescription(ripText)
-      .setFooter({ text: `${client.user.username} | Version ${version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }));
     const message = await channel.send({ embeds: [embed] });
     return message;
   }

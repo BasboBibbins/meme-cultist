@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder, Role } = require("discord.js");
+const { SlashCommandBuilder, Role } = require("discord.js");
 const jobs = require("../../utils/jobs");
 const { parseWhen } = require("../../utils/reminders/parse");
 const { REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../../config.js");
 const logger = require("../../utils/logger");
+const { buildErrorEmbed, buildSuccessEmbed, buildInfoEmbed, COLORS } = require("../../utils/embeds");
 
 function countUserReminders(userId) {
   return jobs.list("reminder", row => {
@@ -75,23 +76,13 @@ module.exports = {
 
       const parsed = parseWhen(when);
       if (!parsed.ok) {
-        const embed = new EmbedBuilder()
-          .setTitle("❌ Invalid Time")
-          .setDescription(parsed.reason)
-          .setColor("#FF0000")
-          .setTimestamp();
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, parsed.reason).setTitle("❌ Invalid Time")] });
         return;
       }
 
       const activeCount = countUserReminders(userId);
       if (activeCount >= REMINDER_MAX_ACTIVE_PER_USER) {
-        const embed = new EmbedBuilder()
-          .setTitle("❌ Too Many Reminders")
-          .setDescription(`You already have ${activeCount} active reminders. Cancel one with \`/remind cancel\` before adding another.`)
-          .setColor("#FF0000")
-          .setTimestamp();
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, `You already have ${activeCount} active reminders. Cancel one with \`/remind cancel\` before adding another.`).setTitle("❌ Too Many Reminders")] });
         return;
       }
 
@@ -118,12 +109,7 @@ module.exports = {
           if (endParsed.ok) {
             endAt = endParsed.runAt;
           } else {
-            const embed = new EmbedBuilder()
-              .setTitle("❌ Invalid End Date")
-              .setDescription(endParsed.reason)
-              .setColor("#FF0000")
-              .setTimestamp();
-            await interaction.editReply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, endParsed.reason).setTitle("❌ Invalid End Date")] });
             return;
           }
         }
@@ -157,12 +143,9 @@ module.exports = {
         description += recurText;
       }
 
-      const embed = new EmbedBuilder()
+      const embed = buildSuccessEmbed(interaction.user, interaction.client, description)
         .setTitle("✅ Reminder Set")
-        .setDescription(description)
-        .setColor("#44FF44")
-        .setFooter({ text: `Reminder ID: ${jobId} | Targets: ${targetCount}` })
-        .setTimestamp();
+        .setFooter({ text: `Reminder ID: ${jobId} | Targets: ${targetCount}` });
       await interaction.editReply({ embeds: [embed] });
       logger.log(`[Remind] User ${interaction.user.tag} set reminder ${jobId} for ${new Date(parsed.runAt).toISOString()}`);
       return;
@@ -178,19 +161,12 @@ module.exports = {
       });
 
       if (rows.length === 0) {
-        const embed = new EmbedBuilder()
-          .setTitle("📋 Reminders")
-          .setDescription("You have no pending reminders.")
-          .setColor("#888888")
-          .setTimestamp();
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "You have no pending reminders.", COLORS.neutral).setTitle("📋 Reminders")] });
         return;
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle("📋 Your Reminders")
-        .setColor("#FFD700")
-        .setTimestamp();
+      const embed = buildInfoEmbed(interaction.user, interaction.client, undefined, "#FFD700")
+        .setTitle("📋 Your Reminders");
 
       const fields = rows.map(row => {
         const payload = JSON.parse(row.payload);
@@ -222,21 +198,11 @@ module.exports = {
       const ok = jobs.cancel(id, (payload, row) => row.kind === "reminder" && payload.userId === userId);
 
       if (!ok) {
-        const embed = new EmbedBuilder()
-          .setTitle("❌ Not Found")
-          .setDescription("You don't have a pending reminder with that ID. Use \`/remind list\` to see your reminders.")
-          .setColor("#FF0000")
-          .setTimestamp();
-        await interaction.editReply({ embeds: [embed] });
+        await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You don't have a pending reminder with that ID. Use `/remind list` to see your reminders.").setTitle("❌ Not Found")] });
         return;
       }
 
-      const embed = new EmbedBuilder()
-        .setTitle("✅ Cancelled")
-        .setDescription("That reminder has been cancelled.")
-        .setColor("#44FF44")
-        .setTimestamp();
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [buildSuccessEmbed(interaction.user, interaction.client, "That reminder has been cancelled.").setTitle("✅ Cancelled")] });
       logger.log(`[Remind] User ${interaction.user.tag} cancelled reminder ${id}`);
       return;
     }

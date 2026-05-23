@@ -1,10 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
-const crypto = require("crypto");
 const playdl = require("play-dl");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -19,13 +18,7 @@ module.exports = {
   async execute(interaction) {
     const player = useMainPlayer();
 
-    const embed = new EmbedBuilder()
-      .setColor(randomHexColor())
-      .setFooter({
-        text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`,
-        iconURL: interaction.client.user.displayAvatarURL({ dynamic: true })
-      })
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client);
 
     const userChannel = interaction.member.voice.channel;
     const botChannel = interaction.guild.members.me.voice.channel;

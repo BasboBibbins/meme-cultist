@@ -12,6 +12,7 @@ const { getBlackjackColors } = require("../../themes/resolver");
 const { withUserLock } = require("../../utils/userlock");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { buildErrorEmbed } = require("../../utils/embeds");
 const { recordGameResult } = require("../../utils/gameResults");
 
 const PACKAGE_VERSION = require("../../package.json").version;
@@ -19,14 +20,6 @@ const MAX_HANDS = BLACKJACK_MAX_HANDS || 4;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function errorEmbed(user, client, description) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(description)
-    .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
-}
 
 function footerText(client) {
   return `${client.user.username} | Version ${PACKAGE_VERSION}`;
@@ -96,7 +89,7 @@ async function openHubPanel(interaction, user, client) {
   const existing = client.blackjackTables.get(key);
   if (existing && existing.status !== "ended") {
     return interaction.reply({
-      embeds: [errorEmbed(user, client, "You already have a blackjack table open in this channel. Use the buttons on your existing table.")],
+      embeds: [buildErrorEmbed(user, client, "You already have a blackjack table open in this channel. Use the buttons on your existing table.")],
       ephemeral: true,
     });
   }
@@ -276,7 +269,7 @@ async function handleChangeBet(buttonInt, session, client) {
 
   const current = client.blackjackTables.get(session.key);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [errorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
   }
   current.lastBet = amount;
   current.lastBetExpression = expression;
@@ -302,7 +295,7 @@ async function handleDeal(buttonInt, session, client, channel) {
     if (!resolved.ok) {
       session.lastBetExpression = null;
       return buttonInt.reply({
-        embeds: [errorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
+        embeds: [buildErrorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
         ephemeral: true,
       });
     }
@@ -323,11 +316,11 @@ async function handleDeal(buttonInt, session, client, channel) {
 async function dealWithAmount(interaction, session, client, channel, user, amount, deferUpdate) {
   const current = client.blackjackTables.get(session.key);
   if (!current || current.status !== "waiting") {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
   }
 
   if (amount % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -337,7 +330,7 @@ async function dealWithAmount(interaction, session, client, channel, user, amoun
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   current.lastBet = amount;
@@ -863,13 +856,13 @@ async function dealOnExistingTable(interaction, session, client, user, betExpres
   const dbUser = (await db.get(user.id)) || {};
   const bet = Number(await parseBet(betExpression, user.id));
   if (isNaN(bet) || bet < 1) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   if (bet % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
   }
   if (bet > (dbUser.balance ?? 0)) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -879,7 +872,7 @@ async function dealOnExistingTable(interaction, session, client, user, betExpres
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   session.lastBet = bet;
@@ -933,7 +926,7 @@ module.exports = {
         return dealOnExistingTable(interaction, existing, client, user, betOption);
       }
       return interaction.reply({
-        embeds: [errorEmbed(user, client, existing.status === "playing"
+        embeds: [buildErrorEmbed(user, client, existing.status === "playing"
           ? "A hand is already in progress on your table. Wait for it to finish."
           : "You already have a blackjack table open in this channel. Use the buttons on your existing message.")],
         ephemeral: true,
@@ -953,13 +946,13 @@ module.exports = {
 
     const originalBet = Number(await parseBet(betOption, user.id));
     if (isNaN(originalBet) || originalBet < 1) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (originalBet % 1 !== 0) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
     }
     if (originalBet > (dbUser.balance ?? 0)) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
     }
 
     await interaction.deferReply();
@@ -972,7 +965,7 @@ module.exports = {
       return true;
     });
     if (!debited) {
-      return interaction.editReply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)] });
+      return interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)] });
     }
 
     logger.info(`${user.username}(${user.id}) started blackjack (fast path) with bet ${originalBet} ${CURRENCY_NAME}.`);

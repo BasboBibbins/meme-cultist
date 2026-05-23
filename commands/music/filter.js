@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { SlashCommandBuilder } = require("discord.js");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -53,11 +53,7 @@ module.exports = {
     const filter = interaction.options.getString("filter");
     const queue = interaction.client.player.nodes.get(interaction.guild.id);
 
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-      .setColor(randomHexColor())
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client);
 
     if (!queue) {
       embed.setDescription("There is no music playing!");

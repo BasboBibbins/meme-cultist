@@ -8,7 +8,6 @@
 
 const path = require("path");
 const Database = require("better-sqlite3");
-const config = require("../../config.js");
 const logger = require("../logger");
 const { withLock } = require("../lock");
 

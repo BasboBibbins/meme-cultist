@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { getAllTimeTopUsers, getCurrentTopUsers } = require("../../utils/bank");
 const { getRaceStats } = require("../../utils/guildStats");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 const TOTAL_PAGES = 6;
 
@@ -38,11 +38,9 @@ function formatTopList(top, unit = "") {
 }
 
 async function generateLeaderboardEmbed(page, interaction, allUsers) {
-  const embed = new EmbedBuilder()
+  const embed = buildInfoEmbed(interaction.user, interaction.client)
     .setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-    .setColor(randomHexColor())
     .setFooter({ text: `Leaderboard | Page ${page}/${TOTAL_PAGES}`, iconURL: interaction.guild.iconURL({ dynamic: true }) || interaction.client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp()
     .setTitle(`Leaderboard for ${interaction.guild.name}`);
 
   switch (page) {

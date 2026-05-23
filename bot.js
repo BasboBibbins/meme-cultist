@@ -7,7 +7,7 @@ const { Routes } = require("discord-api-types/v9");
 const fs = require("fs");
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
-const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, EmbedBuilder } = require("discord.js");
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
@@ -25,6 +25,7 @@ const rateLimiter = require("./utils/ratelimiter");
 const { DefaultExtractors } = require("@discord-player/extractor");
 const playdl = require("play-dl");
 const { sendDM } = require("./utils/dm");
+const { buildInfoEmbed, COLORS } = require("./utils/embeds");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -393,11 +394,8 @@ if (DELETE_SLASH) {
         for (const uid of trimmed) resolvedUserIds.add(uid);
       }
 
-      const reminderEmbed = new EmbedBuilder()
-        .setTitle("⏰ Reminder")
-        .setDescription(text)
-        .setColor(0xFFD700)
-        .setTimestamp();
+      const reminderEmbed = buildInfoEmbed(client.user, client, text, COLORS.gold)
+        .setTitle("⏰ Reminder");
 
       for (const uid of resolvedUserIds) {
         let sent = false;

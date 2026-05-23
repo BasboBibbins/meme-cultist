@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { rip } = require("../../utils/welcome");
-const { RIP_CHANNEL_ID } = require("../../config.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -26,7 +25,6 @@ module.exports = {
       await interaction.reply({ content: "The prompt cannot be longer than 250 characters!", ephemeral: true });
       return;
     }
-    const channel = RIP_CHANNEL_ID || interaction.member.guild.channels.cache.find(ch => ch.name === "rip");
     const message = await rip(interaction.client, guildMember, prompt);
     if (message) {
       await interaction.reply({ content: `Done! [Check out the RIP message here.](${message.url})`, ephemeral: true });

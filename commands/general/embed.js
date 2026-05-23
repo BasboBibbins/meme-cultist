@@ -1,5 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 
 module.exports = {
@@ -20,12 +21,9 @@ module.exports = {
     const title = interaction.options.getString("title") || interaction.user.displayName ;
     const accentColor = user.hexAccentColor ? user.hexAccentColor : randomHexColor();
 
-    const embed = new EmbedBuilder()
+    const embed = buildInfoEmbed(user, interaction.client, undefined, accentColor)
       .setAuthor({ name: title, iconURL: user.displayAvatarURL({ dynamic: true }) })
-      .setColor(accentColor)
-      .setImage(image.url)
-      .setTimestamp()
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+      .setImage(image.url);
     await interaction.reply({ embeds: [embed] });
   }   
 };

@@ -1,7 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
+const { buildBaseEmbed, COLORS } = require("../../utils/embeds");
 
 module.exports = { 
   data: new SlashCommandBuilder()
@@ -57,30 +58,24 @@ module.exports = {
       `${user.displayName } does it for free folks`,
     ];
 
-    const embed = new EmbedBuilder()
-      .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-      .setTimestamp();
+    const embed = buildBaseEmbed(interaction.user, interaction.client);
 
     if (dbUser.balance > 0 || dbUser.bank > 0) {
-      embed.setColor("#ff0000");
-      embed.setDescription(`You already have ${CURRENCY_NAME}${dbUser.balance < 0 && dbUser.bank > 0 ? " in your bank":""}!`);
-      return await interaction.reply({embeds: [embed], ephemeral: true});
+      embed.setColor(COLORS.error).setDescription(`You already have ${CURRENCY_NAME}${dbUser.balance < 0 && dbUser.bank > 0 ? " in your bank" : ""}!`);
+      return await interaction.reply({ embeds: [embed], ephemeral: true });
     }
-            
+
     if (chance > 75) {
-      embed.setColor("#00ff00");
-      embed.setDescription(`Fine, here's **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Now stop annoying me.`);
+      embed.setColor(COLORS.success).setDescription(`Fine, here's **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Now stop annoying me.`);
       await db.add(`${user.id}.balance`, amount);
       await logger.info(`Added ${amount} ${CURRENCY_NAME} to ${interaction.user.username} (${interaction.user.id})'s wallet.`);
       await db.add(`${stats}.wins`, 1);
       await db.add(`${stats}.profit`, amount);
-      await interaction.reply({embeds: [embed]});
+      await interaction.reply({ embeds: [embed] });
     } else {
-      embed.setColor("#ff0000");
-      embed.setDescription(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
+      embed.setColor(COLORS.error).setDescription(fail_prompt[Math.floor(Math.random() * fail_prompt.length)]);
       await db.add(`${stats}.losses`, 1);
-      await interaction.reply({embeds: [embed]});
+      await interaction.reply({ embeds: [embed] });
     }
         
   }

@@ -19,8 +19,8 @@ const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
 const wait = require("node:timers/promises").setTimeout;
 const { recordGameResult } = require("../../utils/gameResults");
+const { buildErrorEmbed } = require("../../utils/embeds");
 
-const PACKAGE_VERSION = require("../../package.json").version;
 
 // Theme tokens like textWin/pocketRed are stored as `#rrggbb` strings;
 // Discord embeds need integers. embedColor is already an int.
@@ -61,7 +61,7 @@ module.exports = {
     const channelId = interaction.channelId;
 
     if (client.rouletteGames.has(channelId)) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, "A roulette game is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A roulette game is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
     }
 
     const dbUser = await db.get(user.id);
@@ -76,7 +76,7 @@ module.exports = {
     if (amountStr) {
       const check = await resolveBet(amountStr, user.id, { min: ROULETTE_MIN_BET, max: ROULETTE_MAX_BET, requireBalance: false });
       if (!check.ok) {
-        return interaction.reply({ embeds: [errorEmbed(user, client, check.reason)], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(user, client, check.reason)], ephemeral: true });
       }
       initialExpression = amountStr.trim();
     }
@@ -85,14 +85,6 @@ module.exports = {
   },
 };
 
-function errorEmbed(user, client, description) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(description)
-    .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
-}
 
 async function resolveChipColor(interaction, user) {
   if (user.accentColor) return `#${user.accentColor.toString(16).padStart(6, "0")}`;
@@ -286,7 +278,7 @@ async function handleBetButton(buttonInt, state, betKey, client) {
     if (!resolved.ok) {
       delete state.userBetAmounts[buttonInt.user.id];
       return buttonInt.reply({
-        embeds: [errorEmbed(buttonInt.user, client, `${resolved.reason} Click the bet button again to enter a new amount.`)],
+        embeds: [buildErrorEmbed(buttonInt.user, client, `${resolved.reason} Click the bet button again to enter a new amount.`)],
         ephemeral: true,
       });
     }
@@ -318,16 +310,16 @@ async function handleBetButton(buttonInt, state, betKey, client) {
     numberValue = parseInt(raw, 10);
     const check = validateBet("straight", numberValue);
     if (!check.allowed) {
-      return submit.reply({ embeds: [errorEmbed(submit.user, client, check.reason)], ephemeral: true });
+      return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, check.reason)], ephemeral: true });
     }
   }
 
   const current = client.rouletteGames.get(state.channelId);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [errorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
   }
   if (current.status !== "betting") {
-    return submit.reply({ embeds: [errorEmbed(submit.user, client, "The wheel is spinning — try again next round.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "The wheel is spinning — try again next round.")], ephemeral: true });
   }
 
   current.userBetAmounts[submit.user.id] = expression;
@@ -348,7 +340,7 @@ async function handleChangeBet(buttonInt, state) {
 
   const current = client.rouletteGames.get(state.channelId);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [errorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
   }
   current.userBetAmounts[submit.user.id] = expression;
 
@@ -395,7 +387,7 @@ async function handleAddBet(interaction, client, user, betKey, numberValue, amou
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "Insufficient funds in wallet!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Insufficient funds in wallet!")], ephemeral: true });
   }
   await db.add(`${user.id}.stats.roulette.totalBet`, amount);
   await contributeToJackpot(amount);

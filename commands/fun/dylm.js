@@ -1,6 +1,5 @@
-const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
-const Canvas = require("canvas");
-const { registerFont, ImageData, loadImage, createCanvas } = require("canvas");
+const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
+const { loadImage, createCanvas } = require("canvas");
 const logger = require("../../utils/logger");
 const path = require("path");
 
@@ -108,11 +107,8 @@ module.exports = {
     } else {
       bowY = (bowY / 100) * background.height - bowHeight / 2;
     }
-    const bowBuffer = path.join(__dirname, "../../assets/imgs/dylm/bow.png"); 
+    const bowBuffer = path.join(__dirname, "../../assets/imgs/dylm/bow.png");
     const textBuffer = path.join(__dirname, "../../assets/imgs/dylm/text.png");
-    const bowImage = await loadImage(bowBuffer);
-    const textImage = await loadImage(textBuffer);
-    
     const dylmBuffer = await createDYLM(imageBuffer, bowBuffer, textBuffer, bowX, bowY);
     const attachment = new AttachmentBuilder(dylmBuffer, { name: `${imageName}-dylm.png` });
 

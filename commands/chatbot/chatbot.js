@@ -1,7 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { updateThreadContext, getThreadContext, getUserChatbotData } = require("../../utils/openai.js");
-const { EmbedBuilder } = require("@discordjs/builders");
-const logger = require("../../utils/logger.js");
+const { buildErrorEmbed, buildInfoEmbed, COLORS } = require("../../utils/embeds");
 
 const SCOPE_CHOICES = [
   { name: "Channel", value: "channel" },
@@ -106,11 +105,6 @@ module.exports = {
     const channel = interaction.client.channels.cache.get(interaction.channelId);
 
     let list; let desc;
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: "Chatbot Context", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp()
-      .setColor(0xFF0000)
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
     const threadContext = await getThreadContext(channel);
     const { characteristics, personality, preferences, dialog, boundaries } = threadContext.roleplay_options;
     const { topic, summaries, facts } = threadContext;
@@ -129,28 +123,28 @@ module.exports = {
           facts && facts.length > 0 && facts[0].updatedAt && `**Last Facts Update:** <t:${Math.floor(facts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0].updatedAt / 1000)}:S>`
         ];
         desc = list.filter(Boolean).join("\n");
-        embed 
-          .setAuthor({ name: "Current Chatbot Context", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(desc)
-          .setColor(0x007bff);
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, desc, COLORS.primary)
+            .setAuthor({ name: "Current Chatbot Context", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+          ephemeral: true,
+        });
         break;
       case "set":
         // Permission check: only admins can modify channel context
         // Users in threads can modify their own thread's context
         if (!interaction.channel.isThread() && !interaction.member.permissions.has("ManageChannels")) {
-          embed
-            .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-            .setDescription("Only server administrators can modify channel context. Create a thread to customize the bot in your own space!")
-            .setColor(0xFF0000);
-          return await interaction.reply({ embeds: [embed], ephemeral: true });
+          return await interaction.reply({
+            embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only server administrators can modify channel context. Create a thread to customize the bot in your own space!")
+              .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+            ephemeral: true,
+          });
         }
         if (interaction.channel.isThread() && interaction.channel.ownerId !== interaction.user.id && !interaction.member.permissions.has("ManageChannels")) {
-          embed
-            .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-            .setDescription("Only the thread owner or server administrators can modify thread context.")
-            .setColor(0xFF0000);
-          return await interaction.reply({ embeds: [embed], ephemeral: true });
+          return await interaction.reply({
+            embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only the thread owner or server administrators can modify thread context.")
+              .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+            ephemeral: true,
+          });
         }
         const characteristicValue = interaction.options.getString("characteristics") ?? characteristics;
         const personalityValue = interaction.options.getString("personality") ?? personality;
@@ -178,27 +172,27 @@ module.exports = {
           topicValue !== "" && `Topic: ${topicValue}`,
         ];
         desc = list.filter(Boolean).join("\n");
-        embed
-          .setAuthor({ name: "Chatbot Context Updated", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(desc)
-          .setColor(0xF9844A);
-        await interaction.reply({ embeds: [embed], ephemeral: true });
-        break;  
+        await interaction.reply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, desc, COLORS.info)
+            .setAuthor({ name: "Chatbot Context Updated", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+          ephemeral: true,
+        });
+        break;
       case "reset":
         // Same permission check as 'set'
         if (!interaction.channel.isThread() && !interaction.member.permissions.has("ManageChannels")) {
-          embed
-            .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-            .setDescription("Only server administrators can reset channel context.")
-            .setColor(0xFF0000);
-          return await interaction.reply({ embeds: [embed], ephemeral: true });
+          return await interaction.reply({
+            embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only server administrators can reset channel context.")
+              .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+            ephemeral: true,
+          });
         }
         if (interaction.channel.isThread() && interaction.channel.ownerId !== interaction.user.id && !interaction.member.permissions.has("ManageChannels")) {
-          embed
-            .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-            .setDescription("Only the thread owner or server administrators can reset thread context.")
-            .setColor(0xFF0000);
-          return await interaction.reply({ embeds: [embed], ephemeral: true });
+          return await interaction.reply({
+            embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only the thread owner or server administrators can reset thread context.")
+              .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+            ephemeral: true,
+          });
         }
         const blankContext = {
           roleplay_options: {
@@ -215,11 +209,11 @@ module.exports = {
           messagesSinceLastFacts: 0,
         };
         await updateThreadContext(channel, blankContext);
-        embed
-          .setAuthor({ name: "Chatbot Context Reset", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription("Successfully reset chatbot context.")
-          .setColor(0xF9844A);
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, "Successfully reset chatbot context.", COLORS.info)
+            .setAuthor({ name: "Chatbot Context Reset", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
+          ephemeral: true,
+        });
         break;
       case "summary":
         const summaryScope = interaction.options.getString("scope") || "channel";
@@ -238,12 +232,9 @@ module.exports = {
         const summaryPage = Math.min(interaction.options.getInteger("page") || 1, summaryTotalPages);
         const summarySlice = reversedSummaries.slice((summaryPage - 1) * SUMMARIES_PER_PAGE, summaryPage * SUMMARIES_PER_PAGE);
         if (summarySlice.length === 0) {
-          embed
-            .setAuthor({ name: "Error", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-            .setDescription(`No ${summaryScope} summaries found! Continue chatting with the bot and try again later`)
-            .setColor(0xF9844A);
           return await interaction.reply({
-            content: `No ${summaryScope} summaries found! Continue chatting with the bot and try again later`,
+            embeds: [buildErrorEmbed(interaction.user, interaction.client, `No ${summaryScope} summaries found! Continue chatting with the bot and try again later.`)
+              .setAuthor({ name: "No Summaries Found", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
             ephemeral: true,
           });
         }
@@ -254,11 +245,12 @@ module.exports = {
           return { name: `Summary #${globalIndex}`, value: [preview, meta].filter(Boolean).join("\n"), inline: false };
         });
         const summaryPageLabel = summaryTotalPages > 1 ? ` (Page ${summaryPage}/${summaryTotalPages})` : "";
-        embed
-          .setAuthor({ name: `${summaryScope === "user" ? "User" : "Channel"} Summaries for "${summarySourceName}"${summaryPageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setFields(summaryFields)
-          .setColor(0xF9844A);
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, undefined, COLORS.info)
+            .setAuthor({ name: `${summaryScope === "user" ? "User" : "Channel"} Summaries for "${summarySourceName}"${summaryPageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setFields(summaryFields)],
+          ephemeral: true,
+        });
         break;
       case "facts":
         const factsScope = interaction.options.getString("scope") || "channel";
@@ -281,11 +273,12 @@ module.exports = {
         const page = Math.min(interaction.options.getInteger("page") || 1, totalPages);
         const pageFields = allFields.slice((page - 1) * FIELDS_PER_PAGE, page * FIELDS_PER_PAGE);
         const pageLabel = totalPages > 1 ? ` (Page ${page}/${totalPages})` : "";
-        embed
-          .setAuthor({ name: `${factsScope === "user" ? "User" : "Channel"} Facts for "${factsSourceName}"${pageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setFields(pageFields.length > 0 ? pageFields : [{ name: "No facts found", value: "Continue chatting with the bot and try again later", inline: false }])
-          .setColor(0xF9844A);
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        await interaction.reply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, undefined, COLORS.info)
+            .setAuthor({ name: `${factsScope === "user" ? "User" : "Channel"} Facts for "${factsSourceName}"${pageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+            .setFields(pageFields.length > 0 ? pageFields : [{ name: "No facts found", value: "Continue chatting with the bot and try again later", inline: false }])],
+          ephemeral: true,
+        });
         break;
       default:
         await interaction.reply({

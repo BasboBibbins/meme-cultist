@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getThemeList } = require("../../themes/configs");
 const { getOwnedThemes, getEquippedTheme } = require("../../themes/manager");
 const {
@@ -9,7 +9,7 @@ const {
   PREVIEW_GAMES, GAME_LABELS, GAME_EMOJIS, GAME_FILES,
   getPreviewAttachment,
 } = require("../../utils/inventory");
-const logger = require("../../utils/logger");
+const { buildBaseEmbed, buildErrorEmbed, COLORS } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -93,12 +93,11 @@ module.exports = {
           desc += "\n";
         }
 
-        const embed = new EmbedBuilder()
+        const embed = buildBaseEmbed(user, interaction.client)
           .setAuthor({ name: `${user.displayName} | Themes`, iconURL: user.displayAvatarURL({ dynamic: true }) })
           .setDescription(desc.trim())
-          .setColor(0x5865F2)
-          .setFooter(footer)
-          .setTimestamp();
+          .setColor(COLORS.blurple)
+          .setFooter(footer);
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
@@ -108,12 +107,10 @@ module.exports = {
         const item = getItemById(themeId);
 
         if (!item) {
-          const embed = new EmbedBuilder()
-            .setDescription(`Unknown theme \`${themeId}\`.`)
-            .setColor(0xFF0000)
-            .setFooter(footer)
-            .setTimestamp();
-          return interaction.reply({ embeds: [embed], ephemeral: true });
+          return interaction.reply({
+            embeds: [buildErrorEmbed(user, interaction.client, `Unknown theme \`${themeId}\`.`).setFooter(footer)],
+            ephemeral: true,
+          });
         }
 
         const isOwned = await ownsItem(user.id, themeId);

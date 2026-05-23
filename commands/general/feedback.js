@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildBaseEmbed, buildErrorEmbed, buildInfoEmbed, COLORS } = require("../../utils/embeds");
 const { sendDM } = require("../../utils/dm");
 const { chatWithSchema } = require("../../utils/schemas");
 const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
@@ -105,18 +105,19 @@ async function notifyOwner(client, feedback) {
       general: "💬 General Feedback"
     };
 
-    const embed = new EmbedBuilder()
+    const fakeUser = { displayName: feedback.username, displayAvatarURL: () => feedback.avatarURL };
+    const color = feedback.type === "bug" ? COLORS.error : feedback.type === "suggestion" ? COLORS.success : COLORS.primary;
+    const embed = buildBaseEmbed(fakeUser, client)
       .setAuthor({ name: `New Feedback from ${feedback.username}`, iconURL: feedback.avatarURL })
       .setTitle(typeLabels[feedback.type])
       .setDescription(feedback.description)
-      .setColor(feedback.type === "bug" ? "#ff4444" : feedback.type === "suggestion" ? "#44ff44" : "#4444ff")
+      .setColor(color)
       .addFields(
         { name: "User", value: `${feedback.username} (${feedback.userId})`, inline: true },
         { name: "Category", value: feedback.category, inline: true },
         { name: "Component", value: feedback.component || "general", inline: true },
         { name: "Guild", value: feedback.guildName || "Unknown", inline: true }
-      )
-      .setTimestamp();
+      );
 
     if (feedback.type === "bug" || feedback.type === "suggestion") {
       embed.addFields({
@@ -277,28 +278,22 @@ module.exports = {
     const validation = await validateFeedback(type, description, interaction.user.displayName);
 
     if (!validation.valid) {
-      const rejectEmbed = new EmbedBuilder()
-        .setAuthor({ name: "Feedback Rejected", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-        .setTitle("Unable to Submit Feedback")
-        .setDescription(`Your feedback was flagged as **${validation.category}**.\n\nReason: ${validation.reason}`)
-        .setColor("#ff4444")
-        .setTimestamp();
-
-      await interaction.editReply({ embeds: [rejectEmbed] });
+      await interaction.editReply({
+        embeds: [buildErrorEmbed(interaction.user, interaction.client, `Your feedback was flagged as **${validation.category}**.\n\nReason: ${validation.reason}`)
+          .setAuthor({ name: "Feedback Rejected", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setTitle("Unable to Submit Feedback")],
+      });
       logger.log(`[Feedback] Rejected (${validation.category}) from ${interaction.user.displayName}: ${description.slice(0, 50)}...`);
       return;
     }
 
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: "Feedback Received", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-      .setTitle(typeLabels[type])
-      .setDescription(description)
-      .setColor(randomHexColor())
-      .addFields({ name: "Status", value: "Pending review", inline: true })
-      .setFooter({ text: `From ${interaction.user.displayName} (${interaction.user.id})` })
-      .setTimestamp();
-
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({
+      embeds: [buildInfoEmbed(interaction.user, interaction.client, description)
+        .setAuthor({ name: "Feedback Received", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+        .setTitle(typeLabels[type])
+        .addFields({ name: "Status", value: "Pending review", inline: true })
+        .setFooter({ text: `From ${interaction.user.displayName} (${interaction.user.id})` })],
+    });
 
     let githubResult = null;
     if (type === "bug" || type === "suggestion") {

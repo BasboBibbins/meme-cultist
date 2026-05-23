@@ -1,10 +1,9 @@
 const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const Canvas = require("canvas");
-const { registerFont, ImageData, loadImage, createCanvas } = require("canvas");
+const { registerFont, loadImage, createCanvas } = require("canvas");
 const { wrapText } = require("../../utils/Canvas.js");
 const { encodeGIF } = require("../../utils/gifUtil");
 const { parseGIF, decompressFrames } = require("gifuct-js");
-const logger = require("../../utils/logger");
 const path = require("path");
 registerFont(path.join(__dirname, "..", "..", "assets", "fonts", "FuturaCondensedExtraBold.ttf"), {family: "FuturaCondensedExtraBold"});
 

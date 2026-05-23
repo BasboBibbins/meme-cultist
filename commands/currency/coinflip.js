@@ -1,9 +1,10 @@
-const {SlashCommandBuilder, EmbedBuilder} = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
 const logger = require("../../utils/logger");
 const { recordGameResult } = require("../../utils/gameResults");
+const { buildErrorEmbed, buildBaseEmbed, COLORS } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -22,38 +23,27 @@ module.exports = {
       await addNewDBUser(interaction.user.id);
     }
 
-    const error_embed = new EmbedBuilder()
-      .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-      .setColor(0xFF0000)
-      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-      .setTimestamp();
+    const errorEmbed = buildErrorEmbed(interaction.user, interaction.client);
 
     if (isNaN(bet)) {
-      error_embed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`);
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (bet % 1 !== 0) {
-      error_embed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`);
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (bet < 1) {
-      error_embed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`);
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (bet > await db.get(`${interaction.user.id}.balance`)) {
-      error_embed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
     }
 
     const chance = Math.floor(Math.random() * 100) + 1;
 
-    const embed = new EmbedBuilder()
-      .setAuthor({name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-      .setTimestamp();
+    const embed = buildBaseEmbed(interaction.user, interaction.client);
 
     if (chance > 50) {
-      embed.setColor(0x00FF00);
+      embed.setColor(COLORS.success);
       embed.setTitle("Congratulations!");
       embed.setDescription(`You won **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME}!\n\nYour new balance is **${(dbUser.balance + bet).toLocaleString("en-US")}** ${CURRENCY_NAME}.`);
       await db.add(`${interaction.user.id}.balance`, bet);
@@ -65,7 +55,7 @@ module.exports = {
       try { recordGameResult({ guildId: interaction.guildId, channelId: interaction.channelId, userId: interaction.user.id, game: "flip", result: { bet, roll: chance, outcome: "win", payout: bet, net: bet } }); } catch (_) {}
       await interaction.reply({embeds: [embed]});
     } else {
-      embed.setColor(0xFF0000);
+      embed.setColor(COLORS.error);
       embed.setTitle("You lose!");
       embed.setDescription(`I'll be taking **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} from you.\n\nYour new balance is **${(dbUser.balance - bet).toLocaleString("en-US")}** ${CURRENCY_NAME}. ${(dbUser.balance - bet) <= 0 ? "You're now broke!" : ""}`);
       await db.sub(`${interaction.user.id}.balance`, bet);

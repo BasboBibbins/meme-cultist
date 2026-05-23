@@ -1,9 +1,7 @@
-const { AttachmentBuilder, CommandInteraction, SlashCommandBuilder } = require("discord.js");
-const { CanvasRenderingContext2D, createCanvas, ImageData, loadImage } = require("canvas");
-const { wrapText } = require("../../utils/Canvas.js");
+const { AttachmentBuilder, SlashCommandBuilder } = require("discord.js");
+const { createCanvas, loadImage } = require("canvas");
 const { encodeGIF } = require("../../utils/gifUtil");
 const { parseGIF, decompressFrames } = require("gifuct-js");
-const logger = require("../../utils/logger");
 
 module.exports = {
   data: new SlashCommandBuilder()

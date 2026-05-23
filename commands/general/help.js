@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
 const { OWNER_ID } = require("../../config.js");
 const explanations = require("../../utils/explanations");
 const logger = require("../../utils/logger");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,13 +25,13 @@ module.exports = {
   async execute(interaction) {
     const commandName = interaction.options.getString("command");
     if (!commandName) {
-      const embed = new EmbedBuilder()
+      const embed = buildInfoEmbed(interaction.user, interaction.client)
         .setAuthor({ name: `${interaction.client.user.username} Help`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
         .addFields(
-          { 
-            name: "General Information", 
-            value: `**${interaction.client.user.displayName }** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to use the \`/feedback\`command!`,
-            inline: false 
+          {
+            name: "General Information",
+            value: `**${interaction.client.user.displayName}** is a bot created by <@${OWNER_ID}> mainly for the purpose of being a fun bot for the Meme Cult. It has a variety of features, including a currency system, a music player, and other fun commands.\n\nThe bot is still in development, so expect more features to be added in the future. If you have any suggestions, feel free to use the \`/feedback\`command!`,
+            inline: false
           },
           {
             name: "Commands",
@@ -48,10 +48,7 @@ module.exports = {
             value: `© ${new Date().getFullYear()} BasboBibbins [<@${OWNER_ID}>].\nLicensed under the [MIT License](https://github.com/BasboBibbins/meme-cultist/blob/master/LICENSE) and the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).`,
             inline: false
           }
-        )
-        .setColor(randomHexColor())
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
-        .setTimestamp();
+        );
 
       const row = new ActionRowBuilder()
         .addComponents(
@@ -73,12 +70,11 @@ module.exports = {
         await collector.resetTimer();
         await i.deferUpdate();
         const explanation = explanations[i.values[0]];
-        const embed = new EmbedBuilder()
-          .setAuthor({ name: explanation.name, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`**Explanation:** ${explanation.description}\n\n${explanation.rules ? `**Rules:** ${explanation.rules}\n\n` : ""}${explanation.example ? `**Example:** ${explanation.example}\n\n` : ""}${explanation.note ? `**Note:** ${explanation.note}\n\n` : ""}`)
-          .setColor(randomHexColor())
-          .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
-          .setTimestamp();
+        const embed = buildInfoEmbed(
+          interaction.user,
+          interaction.client,
+          `**Explanation:** ${explanation.description}\n\n${explanation.rules ? `**Rules:** ${explanation.rules}\n\n` : ""}${explanation.example ? `**Example:** ${explanation.example}\n\n` : ""}${explanation.note ? `**Note:** ${explanation.note}\n\n` : ""}`
+        ).setAuthor({ name: explanation.name, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
         await i.editReply({embeds: [embed]});
       });
       collector.on("end", async (collected, reason) => {
@@ -95,20 +91,13 @@ module.exports = {
       await interaction.reply({content: `No command found with name \`${commandName}\``, ephemeral: true});
       return;
     }
-    const embed = new EmbedBuilder()
+    const embed = buildInfoEmbed(
+      interaction.user,
+      interaction.client,
+      `${command.data.description}\n\n**Usage:** \`/${command.data.name} ${command.data.options.map(option => option.required ? `<${option.name}>` : `[${option.name}]`).join(" ")}\`\n\n**__Options:__**`
+    )
       .setAuthor({ name: `/${command.data.name}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setDescription(`${command.data.description}\n\n**Usage:** \`/${command.data.name} ${command.data.options.map(option => option.required ? `<${option.name}>` : `[${option.name}]`).join(" ")}\`\n\n**__Options:__**`)
-      .addFields(command.data.options.map(option => {
-        return {
-          name: option.name,
-          value: option.description,
-          inline: true
-        };
-      })
-      )
-      .setColor(randomHexColor())
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
-      .setTimestamp();
+      .addFields(command.data.options.map(option => ({ name: option.name, value: option.description, inline: true })));
     await interaction.reply({embeds: [embed], ephemeral: true});
   },
 };

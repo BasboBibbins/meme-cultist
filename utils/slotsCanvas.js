@@ -4,7 +4,6 @@ const { CURRENCY_NAME } = require("../config.js");
 const { getTheme } = require("./slotsThemes");
 const { encodeGIF } = require("./gifUtil");
 const CanvasUtil = require("./Canvas");
-const logger = require("./logger");
 const {
   roundRect,
   withAlpha,

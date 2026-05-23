@@ -1,5 +1,5 @@
-const {SlashCommandBuilder, EmbedBuilder} = require("discord.js");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { SlashCommandBuilder } = require("discord.js");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -41,12 +41,8 @@ module.exports = {
     ];
     const rng = Math.floor(Math.random() * eightball.length);
     const question = interaction.options.getString("question");
-    const embed = new EmbedBuilder()
-      .setAuthor({name: question, iconURL: interaction.user.displayAvatarURL({dynamic: true})})
-      .setDescription(`The magic 8ball says... **${eightball[rng]}**`)
-      .setColor(randomHexColor())
-      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client, `The magic 8ball says... **${eightball[rng]}**`)
+      .setAuthor({ name: question, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
     await interaction.reply({embeds: [embed]});
   },
 };

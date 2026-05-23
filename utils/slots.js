@@ -1,7 +1,6 @@
 const { EmbedBuilder } = require("discord.js");
 const { db } = require("../database");
 const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET, SLOTS_FULLSCREEN_CHANCE, SLOTS_FULLSCREEN_MULTIPLIER } = require("../config.js");
-const { randomHexColor } = require("./randomcolor");
 const wait = require("node:timers/promises").setTimeout;
 const logger = require("../utils/logger");
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require("./jackpot");

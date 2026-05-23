@@ -1,5 +1,4 @@
 const logger = require("./logger");
-const { formatChatbotChannelMentions } = require("./channels");
 
 const imageGenTimestamps = new Map();
 const mentionTimestamps = new Map();

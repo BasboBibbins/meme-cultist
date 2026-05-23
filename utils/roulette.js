@@ -1,7 +1,6 @@
 const { createCanvas, loadImage } = require("canvas");
 const { AttachmentBuilder } = require("discord.js");
 const { getThemeColors } = require("../themes/resolver");
-const logger = require("./logger");
 const {
   roundRect,
   drawBackground,

@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { SlashCommandBuilder } = require("discord.js");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -32,12 +32,8 @@ module.exports = {
     ];
     const rate_prompt = rate_prompts[Math.floor(Math.random() * rate_prompts.length)];
             
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-      .setColor(randomHexColor())
-      .setDescription(rate_prompt)
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client, rate_prompt)
+      .setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
     await interaction.reply({ embeds: [embed] });
   },
 };

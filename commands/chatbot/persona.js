@@ -1,9 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const personas = require("../../utils/personas");
 const { getThreadContext, updateThreadContext, addNewThreadContext } = require("../../utils/openai");
 const { OWNER_ID } = require("../../config.js");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const MAX_PROMPT_LEN = 2000;
@@ -158,12 +158,12 @@ module.exports = {
         const visibility = p.isPublic ? "" : " *(private)*";
         return `**${p.name}**${visibility} — by <@${p.creatorId}>${marker}`;
       });
-      const embed = new EmbedBuilder()
-        .setTitle(`Personas in ${interaction.guild.name}`)
-        .setDescription(lines.join("\n").slice(0, 4000))
-        .setColor(randomHexColor())
-        .setFooter({ text: `${all.length} persona${all.length === 1 ? "" : "s"}` });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({
+        embeds: [buildInfoEmbed(interaction.user, interaction.client, lines.join("\n").slice(0, 4000))
+          .setTitle(`Personas in ${interaction.guild.name}`)
+          .setFooter({ text: `${all.length} persona${all.length === 1 ? "" : "s"}` })],
+        ephemeral: true,
+      });
     }
 
     if (sub === "delete") {
