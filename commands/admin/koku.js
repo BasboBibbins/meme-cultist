@@ -1,9 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
 const { sendDM } = require("../../utils/dm");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -69,11 +69,8 @@ module.exports = {
       await addNewDBUser(user);
     }
 
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: `${user.username}'s ${CURRENCY_NAME} balance updated.`, iconURL: interaction.user.displayAvatarURL({dynamic: true}) })
-      .setColor(randomHexColor())
-      .setTimestamp()
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+    const embed = buildInfoEmbed(interaction.user, interaction.client)
+      .setAuthor({ name: `${user.username}'s ${CURRENCY_NAME} balance updated.`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
 
     switch (subcommand) {
       case "add":
@@ -81,42 +78,27 @@ module.exports = {
         logger.log(`Added ${amount} ${CURRENCY_NAME} to ${user.username} (${user.id})'s bank.`);
         embed.setDescription(`Added **${amount}** ${CURRENCY_NAME} to **${user.username}**'s bank.`);
         await interaction.reply({embeds: [embed], ephemeral: true});
-        await sendDM(user, {embeds: [new EmbedBuilder()
-          .setAuthor({ name: `${interaction.user.username} has added ${amount} ${CURRENCY_NAME} to your account in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({dynamic: true}) })
-          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-          .setDescription(`You now have **${dbUser.bank + amount}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
-          .setColor(randomHexColor())
-          .setTimestamp()
-          .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        ]});
+        await sendDM(user, { embeds: [buildInfoEmbed(user, interaction.client, `You now have **${dbUser.bank + amount}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
+          .setAuthor({ name: `${interaction.user.username} has added ${amount} ${CURRENCY_NAME} to your account in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))] });
         break;
       case "remove":
         await db.set(`${user.id}.bank`, (dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount));
         logger.log(`Removed ${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)} ${CURRENCY_NAME} from ${user.username} (${user.id})'s bank.`);
         embed.setDescription(`Removed **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} from **${user.username}**'s bank.`);
         await interaction.reply({embeds: [embed], ephemeral: true});
-        await sendDM(user, {embeds: [new EmbedBuilder()
-          .setAuthor({ name: `${interaction.user.username} has removed ${amount} ${CURRENCY_NAME} from your account in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({dynamic: true}) })
-          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-          .setDescription(`You now have **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
-          .setColor(randomHexColor())
-          .setTimestamp()
-          .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        ]});
+        await sendDM(user, { embeds: [buildInfoEmbed(user, interaction.client, `You now have **${(dbUser.bank - amount) < 0 ? 0 : (dbUser.bank - amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
+          .setAuthor({ name: `${interaction.user.username} has removed ${amount} ${CURRENCY_NAME} from your account in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))] });
         break;
       case "set":
         await db.set(`${user.id}.bank`, (amount < 0 ? 0 : amount));
         logger.log(`Set ${user.username} (${user.id})'s bank to ${(amount < 0 ? 0 : amount)} ${CURRENCY_NAME}.`);
         embed.setDescription(`Set **${user.username}**'s bank to **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME}.`);
         await interaction.reply({embeds: [embed], ephemeral: true});
-        await sendDM(user, {embeds: [new EmbedBuilder()
-          .setAuthor({ name: `${interaction.user.username} has set your bank to ${amount} ${CURRENCY_NAME} in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({dynamic: true}) })
-          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))
-          .setDescription(`You now have **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
-          .setColor(randomHexColor())
-          .setTimestamp()
-          .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        ]});
+        await sendDM(user, { embeds: [buildInfoEmbed(user, interaction.client, `You now have **${(amount < 0 ? 0 : amount)}** ${CURRENCY_NAME} in your bank.\n\n*If you believe this is a mistake, please contact a server administrator.*`)
+          .setAuthor({ name: `${interaction.user.username} has set your bank to ${amount} ${CURRENCY_NAME} in ${interaction.guild.name}!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+          .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true, size: 1024 }))] });
         break;
     }
   },

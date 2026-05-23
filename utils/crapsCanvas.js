@@ -967,18 +967,47 @@ async function drawPaytable(themeColors) {
   return new AttachmentBuilder(buffer, { name: "craps-paytable.png" });
 }
 
-async function crapsPreview(themeId) {
+/**
+ * Generate a craps preview PNG for the shop.
+ * Features the user's avatar as the shooter when provided.
+ */
+async function crapsPreview(themeId, user = null, clientUser = null) {
   const colors = getThemeColors(themeId, "craps");
+  const userAvatars = {};
+  const userColors = {};
+  const totals = {};
+  const shooterOrder = [];
+
+  if (user) {
+    const uid = user.id || "user";
+    shooterOrder.push(uid);
+    userAvatars[uid] = user.displayAvatarURL ? user.displayAvatarURL({ extension: "png", size: 128 }) : null;
+    userColors[uid] = colors.gold || "#ffd700";
+    totals[uid] = { wagered: 0, won: 0, username: user.displayName || "You" };
+  }
+  if (clientUser) {
+    const cid = clientUser.id || "bot";
+    shooterOrder.push(cid);
+    userAvatars[cid] = clientUser.displayAvatarURL ? clientUser.displayAvatarURL({ extension: "png", size: 128 }) : null;
+    userColors[cid] = colors.textWhite || "#ffffff";
+    totals[cid] = { wagered: 0, won: 0, username: clientUser.displayName || "Dealer" };
+  }
+  if (shooterOrder.length === 0) {
+    shooterOrder.push("preview");
+    userColors.preview = colors.gold || "#ffd700";
+    totals.preview = { wagered: 0, won: 0, username: "Preview Shooter" };
+  }
+
   const previewState = {
     phase: "point",
     point: 6,
     bets: [],
-    shooterOrder: ["preview"],
-    shooterId: "preview",
-    shooterUsername: "Preview Shooter",
-    userAvatars: {},
-    userColors: { preview: colors.gold || "#ffd700" },
-    totals: { preview: { wagered: 0, won: 0 } },
+    shooterOrder,
+    shooterId: shooterOrder[0],
+    shooterUsername: totals[shooterOrder[0]].username,
+    userAvatars,
+    userColors,
+    totals,
     lastRoll: { d1: 4, d2: 2, total: 6, isHard: false },
     rollHistory: [
       { d1: 3, d2: 4, total: 7, kind: "natural" },

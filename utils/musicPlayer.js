@@ -1,7 +1,7 @@
-const { EmbedBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../utils/logger");
-const { randomHexColor } = require("./randomcolor");
+const { buildInfoEmbed } = require("./embeds");
 
 let msg = null;
 
@@ -38,20 +38,10 @@ module.exports = {
       currentQueue[index] = track;
     });
 
-    const player = new EmbedBuilder()
-      .setTitle(`🎧 Now Playing${queue.channel ? ` in ${queue.channel.name}` : ""}`) 
-      .setAuthor({
-        name: `Requested by ${requestedBy.displayName}`,
-        iconURL: requestedBy.displayAvatarURL({ dynamic: true })
-      })
-      .setDescription(`${desc}\n\n${track.isStream ? "🔴 LIVE" : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`)
-      .setThumbnail(track.thumbnail)
-      .setColor(randomHexColor())
-      .setFooter({
-        text: `${client.user.username} | Version ${require("../package.json").version}`,
-        iconURL: client.user.displayAvatarURL({ dynamic: true })
-      })
-      .setTimestamp();
+    const player = buildInfoEmbed(requestedBy, client, `${desc}\n\n${track.isStream ? "🔴 LIVE" : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`)
+      .setTitle(`🎧 Now Playing${queue.channel ? ` in ${queue.channel.name}` : ""}`)
+      .setAuthor({ name: `Requested by ${requestedBy.displayName}`, iconURL: requestedBy.displayAvatarURL({ dynamic: true }) })
+      .setThumbnail(track.thumbnail);
 
     msg = await channel.send({ embeds: [player], components: [row] });
 

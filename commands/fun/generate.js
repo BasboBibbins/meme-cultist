@@ -1,9 +1,9 @@
-const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
 const { generateImage } = require("../../utils/llm");
 const { canGenerateImage } = require("../../utils/ratelimiter");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("../../utils/channels");
+const { buildErrorEmbed, buildInfoEmbed, COLORS } = require("../../utils/embeds");
 
 function parseCloudflareError(err) {
   try {
@@ -32,27 +32,21 @@ module.exports = {
     const prompt = interaction.options.getString("prompt");
 
     if (!isChatbotChannel(interaction.channelId, interaction.channel?.parentId)) {
-      const embed = new EmbedBuilder()
-        .setTitle("Not Available")
-        .setDescription(`Image generation is only available in chatbot channels: ${formatChatbotChannelMentions(interaction.client)}`)
-        .setColor(0xffaa00)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({
+        embeds: [buildInfoEmbed(interaction.user, interaction.client, `Image generation is only available in chatbot channels: ${formatChatbotChannelMentions(interaction.client)}`, COLORS.warning)
+          .setTitle("Not Available")],
+        ephemeral: true,
+      });
     }
 
     await interaction.deferReply();
 
     const rateCheck = canGenerateImage(interaction.user.id);
     if (!rateCheck.allowed) {
-      const embed = new EmbedBuilder()
-        .setTitle("Rate Limited")
-        .setDescription(rateCheck.reason)
-        .setColor(0xffaa00)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-      return interaction.editReply({ embeds: [embed] });
-    } 
+      return interaction.editReply({
+        embeds: [buildInfoEmbed(interaction.user, interaction.client, rateCheck.reason, COLORS.warning).setTitle("Rate Limited")],
+      });
+    }
 
     try {
       const { buffer, mimeType } = await generateImage({ prompt });
@@ -60,25 +54,17 @@ module.exports = {
       const fileName = `generated.${ext}`;
       const attachment = new AttachmentBuilder(buffer).setName(fileName);
 
-      const embed = new EmbedBuilder()
-        .setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-        .setColor(randomHexColor())
-        .setDescription(prompt)
-        .setImage(`attachment://${fileName}`)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-
-      await interaction.editReply({ embeds: [embed], files: [attachment] });
+      await interaction.editReply({
+        embeds: [buildInfoEmbed(interaction.user, interaction.client, prompt)
+          .setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+          .setImage(`attachment://${fileName}`)],
+        files: [attachment],
+      });
     } catch (err) {
       logger.error(`[/generate] ${err.message}`);
-      const desc = parseCloudflareError(err);
-      const embed = new EmbedBuilder()
-        .setTitle("Error")
-        .setDescription(desc)
-        .setColor(0xff0000)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({
+        embeds: [buildErrorEmbed(interaction.user, interaction.client, parseCloudflareError(err)).setTitle("Error")],
+      });
     }
   }
 };

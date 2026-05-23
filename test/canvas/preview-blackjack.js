@@ -7,15 +7,15 @@ const { getThemeColors } = require("../../themes/resolver");
 const { THEMES, avatarPath, saveRender } = require("./preview-common");
 
 const dealerCards = [
-  { code: "AS" },
-  { code: "KH" },
+  { code: "AS", suit: "SPADES", value: "ACE", emoji: "♠️", name: "Ace", char: "A", numericValue: 11 },
+  { code: "KH", suit: "HEARTS", value: "KING", emoji: "♥️", name: "King", char: "K", numericValue: 10 },
 ];
 
 const playerHands = [
   {
     cards: [
-      { code: "0D" },
-      { code: "8C" },
+      { code: "0D", suit: "DIAMONDS", value: "10", emoji: "♦️", name: "Ten", char: "10", numericValue: 10 },
+      { code: "8C", suit: "CLUBS", value: "8", emoji: "♣️", name: "Eight", char: "8", numericValue: 8 },
     ],
     value: 18,
     bust: false,

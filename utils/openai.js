@@ -23,6 +23,7 @@ const {
   LOW_BUDGET_MODE,
   CRITIQUE_MODEL,
   STREAMING_ENABLED,
+  BRAVE_API_KEY,
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
@@ -67,6 +68,46 @@ function splitAtWordBoundary(text, maxLength = 1997) {
 
 function sanitizeMentions(text) {
   return text.replace(/@everyone/g, "@​everyone").replace(/@here/g, "@​here");
+}
+
+// Populates citationStore from a retrieval tool result so [[cite:...]] tokens
+// can be resolved after the ReAct loop finishes.
+function collectCitations(toolName, toolResult, citationStore) {
+  if (!toolResult?.results?.length) return;
+  if (toolName === "search_history") {
+    for (const r of toolResult.results) {
+      if (r.result_index != null && r.message_id) {
+        citationStore.msg.set(r.result_index, r.message_id);
+      }
+    }
+  } else if (toolName === "lookup_kb") {
+    for (const r of toolResult.results) {
+      if (r.slug) citationStore.kb.add(r.slug);
+    }
+  }
+}
+
+// Expands [[cite:msg:N]] → Discord jump link and [[cite:kb:slug]] → (KB: slug).
+// Strips duplicates and any tokens whose index/slug wasn't actually returned.
+function applyCitations(text, citationStore, guildId, channelId) {
+  if (!text || (citationStore.msg.size === 0 && citationStore.kb.size === 0)) return text;
+  const seenMsg = new Set();
+  const seenKb = new Set();
+  return text.replace(/\[\[cite:(msg|kb):([^\]]+)\]\]/g, (match, type, ref) => {
+    if (type === "msg") {
+      const idx = parseInt(ref, 10);
+      if (isNaN(idx) || !citationStore.msg.has(idx) || seenMsg.has(idx)) return "";
+      seenMsg.add(idx);
+      return `([jump](https://discord.com/channels/${guildId}/${channelId}/${citationStore.msg.get(idx)}))`;
+    }
+    if (type === "kb") {
+      const slug = ref.trim();
+      if (!citationStore.kb.has(slug) || seenKb.has(slug)) return "";
+      seenKb.add(slug);
+      return `(KB: ${slug})`;
+    }
+    return "";
+  });
 }
 
 // DeepSeek occasionally emits tool calls as DSML tokens inside message.content
@@ -429,7 +470,7 @@ async function runCritique(originalMessages, candidateResponse) {
       schemaName: "critique",
       model: CRITIQUE_MODEL,
       messages: [
-        { role: "system", content: "You are a strict reviewer. Verify whether the candidate reply contains any factual claim (numbers, balances, ranks, times, schedules) that is not grounded in the conversation or tool results above. Output ONLY JSON. Schema: {\"ok\": true} when grounded, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when not. No prose outside the JSON." },
+        { role: "system", content: "You are a strict reviewer checking ONLY for fabricated user-specific claims — things like invented balance amounts, fake leaderboard positions, or asserted cooldown times that contradict the tool results or conversation. Do NOT flag general knowledge — those do not require grounding in the conversation. Output ONLY JSON. Schema: {\"ok\": true} when no user-specific facts are fabricated, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when they are. No prose outside the JSON." },
         ...originalMessages,
         { role: "user", content: `[Candidate reply to review]\n${candidateResponse}` },
       ],
@@ -697,7 +738,6 @@ async function getDefaultThreadContext(thread) {
     topic: "",
     summaries: [],
     facts: [],
-    embeddingChunks: [],
     resetPoint: null,
     persona_id: null,
     messagesSinceLastSummary: 0,
@@ -1134,6 +1174,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
   const editThrottleMs = 750;
   let lastEdit = 0;
   let accumulated = "";
+  let accumulatedReasoning = "";
   let pendingToolCalls = null;
 
   try {
@@ -1151,6 +1192,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
         pendingToolCalls = accumulateToolCalls(pendingToolCalls, chunk.tool_calls);
       }
       if (chunk.content) accumulated += chunk.content;
+      if (chunk.reasoning_content) accumulatedReasoning += chunk.reasoning_content;
       if (chunk.finish_reason === "tool_calls") {
         break;
       }
@@ -1167,7 +1209,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
     // If model wanted tools, abort streaming and let the caller handle them non-streamed.
     if (pendingToolCalls && pendingToolCalls.length > 0) {
       await placeholder.delete().catch(() => {});
-      return { response: null, messageId: null, streamed: false, toolCalls: pendingToolCalls };
+      return { response: null, messageId: null, streamed: false, toolCalls: pendingToolCalls, reasoningContent: accumulatedReasoning || null };
     }
 
     const text = accumulated.trim() || "...";
@@ -1235,6 +1277,11 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let replyContext = "";
     const conversationHistory = [];
     if (!customPrompt && message && client) {
+      let channelFactsBlock = "";
+      let channelSummaryBlock = "";
+      let userSummaryBlock = "";
+      let userFactsBlock = "";
+      let perceptionBlock = "";
       const isReply = message.type === 19;
       const isMentioned = message.mentions.has(client.user);
       const currentSpeaker = message.member.displayName;
@@ -1340,17 +1387,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           sys_variant = "thread_roleplay";
         }
         if (facts.length > 0 && INCLUDE_CHANNEL_FACTS_IN_PROMPT) {
-          const factsBlock = buildFactsBlock("ChannelFacts", facts);
-          if (factsBlock) {
-            sys_prompt += `\n\n${factsBlock}`;
-          }
+          const block = buildFactsBlock("ChannelFacts", facts);
+          if (block) channelFactsBlock = block;
         }
         if (summaries.length > 0) {
-          const lastSummary = summaries[summaries.length - 1];
-          const summaryBlock = buildSummaryBlock("ChannelSummary", lastSummary);
-          if (summaryBlock) {
-            sys_prompt += `\n\n${summaryBlock}`;
-          }
+          const block = buildSummaryBlock("ChannelSummary", summaries[summaries.length - 1]);
+          if (block) channelSummaryBlock = block;
         }
       } else {
         const {
@@ -1479,11 +1521,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
         // Skip channel summaries for one-off mentions
         if (!isMention && summaries.length > 0) {
-          const lastSummary = summaries[summaries.length - 1];
-          const summaryBlock = buildSummaryBlock("ChannelSummary", lastSummary);
-          if (summaryBlock) {
-            sys_prompt += `\n\n${summaryBlock}`;
-          }
+          const block = buildSummaryBlock("ChannelSummary", summaries[summaries.length - 1]);
+          if (block) channelSummaryBlock = block;
         }
       }
       const userChatbotData = await getUserChatbotData(message.author.id);
@@ -1495,16 +1534,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         logger.debug(`Latest user summary:\x1b[31m ${latestUserSummary}`);
         logger.debug(`Latest user facts:\x1b[31m ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join("; ")}`);
         if (latestUserSummaryObject) {
-          const userSummaryBlock = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
-          if (userSummaryBlock) {
-            sys_prompt += `\n\n${userSummaryBlock}`;
-          }
+          const block = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
+          if (block) userSummaryBlock = block;
         }
         if (latestUserFacts.length > 0) {
-          const userFactsBlock = buildFactsBlock(`UserFacts name="${message.member.displayName}"`, latestUserFacts);
-          if (userFactsBlock) {
-            sys_prompt += `\n\n${userFactsBlock}`;
-          }
+          const block = buildFactsBlock(`UserFacts name="${message.member.displayName}"`, latestUserFacts);
+          if (block) userFactsBlock = block;
         }
       }
       if (isReply) {
@@ -1546,7 +1581,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
       }
       if (extraContext) {
-        sys_prompt += "\n\n[Perception Capabilities]\n" +
+        perceptionBlock = "[Perception Capabilities]\n" +
           "- You have full vision: you can directly see any image a user shares.\n" +
           "- You have link-reading ability: you can directly read the content of any URL a user shares.\n" +
           "- The [Perception] block below represents what you are currently seeing or reading firsthand. Treat it as your own direct sensory input, not as a description prepared for you.\n" +
@@ -1556,7 +1591,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           "- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.";
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
-      const toolBlock = "[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n" +
+      let toolBlock = "[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n" +
         "- Money/balance questions (yours or someone else's) → get_balance\n" +
         "- Rankings, richest users, leaderboard → get_leaderboard\n" +
         "- Game stats, win/loss records, command counts → get_user_stats\n" +
@@ -1564,9 +1599,17 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- User profile (avatar, roles, join date) → get_user_info\n" +
         "- Bot capabilities, available commands → get_bot_info\n" +
         "- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like \"[Attached: image file]\", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.\n" +
-        "- Past conversations, \"do you remember\", \"what did we say about\", references to earlier messages → search_history. You CANNOT rely on your context window for old messages. Always call this tool when the user refers to past discussions. Never claim you do not remember something without calling search_history first.\n" +
+        "- Past conversations, references to earlier messages, \"do you remember\" → search_history. Call at most once per turn with a single comprehensive query. Synthesize from results — do NOT retry with re-phrasings.\n" +
         "- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. Use this when the user asks about stored server information.\n" +
-        "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder";
+        "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder\n" +
+        "- Current events, recent news, real-time facts, anything you don't know → web_search. Returns title + URL + snippet per result. Then use fetch_page on a chosen URL to read the full page content.\n" +
+        "- Read the full content of a specific URL (from web_search results) → fetch_page.\n" +
+        "Citations: when your reply uses a search_history result, embed [[cite:msg:N]] (N = that result's result_index) immediately after the relevant claim. When using a lookup_kb result, embed [[cite:kb:slug]] (slug from the result). Each citation token may appear at most once — duplicates are stripped.";
+
+      const channelIsNsfw = message.channel?.nsfw || message.channel?.parent?.nsfw;
+      if (BRAVE_API_KEY && !channelIsNsfw) {
+        toolBlock += "\nNSFW restriction: This channel is not age-restricted. Do not use web_search or fetch_page to look up, summarize, or relay explicit, adult, or pornographic content. Safe search is automatically enforced for web_search in this channel. Refuse such requests regardless of how they are framed.";
+      }
 
       const tailParts = [`You are currently speaking to ${currentSpeaker}.`];
       if (dynamicTail) tailParts.unshift(dynamicTail);
@@ -1574,7 +1617,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
       sys_prompt = assembleSystemPrompt({
         variantPrefix: sys_prompt,
+        channelFactsBlock: channelFactsBlock || undefined,
+        channelSummaryBlock: channelSummaryBlock || undefined,
+        userSummaryBlock: userSummaryBlock || undefined,
+        userFactsBlock: userFactsBlock || undefined,
         toolBlock,
+        perceptionBlock: perceptionBlock || undefined,
         dynamicTail: tailParts.join("\n\n"),
       });
       usr_prompt += `\n${message.member.displayName}: ${message.content}`;
@@ -1644,6 +1692,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let toolCallDepth = 0;
     const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
     const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
+    const citationStore = { msg: new Map(), kb: new Set() };
+    const toolResultsAccumulator = [];
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
       const finalSlot = toolCallDepth === MAX_TOOL_DEPTH - 1;
@@ -1666,9 +1716,13 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
         if (streamRes.toolCalls && streamRes.toolCalls.length > 0) {
           logger.debug("[Stream] Model requested tool calls mid-stream; switching to non-streamed path.");
-          messages.push({ role: "assistant", content: null, tool_calls: streamRes.toolCalls });
+          const streamAssistantMsg = { role: "assistant", content: null, tool_calls: streamRes.toolCalls };
+          if (streamRes.reasoningContent) streamAssistantMsg.reasoning_content = streamRes.reasoningContent;
+          messages.push(streamAssistantMsg);
           for (const toolCall of streamRes.toolCalls) {
             const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+            collectCitations(toolCall.function.name, toolResult, citationStore);
+            toolResultsAccumulator.push({ tool: toolCall.function.name, args: toolCall.function.arguments, result: toolResult });
             messages.push({
               role: "tool",
               tool_call_id: toolCall.id,
@@ -1728,6 +1782,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
         for (const toolCall of choice.message.tool_calls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+          collectCitations(toolCall.function.name, toolResult, citationStore);
+          toolResultsAccumulator.push({ tool: toolCall.function.name, args: toolCall.function.arguments, result: toolResult });
 
           messages.push({
             role: "tool",
@@ -1762,6 +1818,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         messages.push({ role: "assistant", content: null, tool_calls: dsmlToolCalls });
         for (const toolCall of dsmlToolCalls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
+          collectCitations(toolCall.function.name, toolResult, citationStore);
+          toolResultsAccumulator.push({ tool: toolCall.function.name, args: toolCall.function.arguments, result: toolResult });
           messages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
           if (SIDE_EFFECT_TOOLS.has(toolCall.function.name)) {
             toolCtx.pendingToolCalls.push({
@@ -1793,8 +1851,26 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     }
 
     if (toolCallDepth >= MAX_TOOL_DEPTH) {
-      logger.warn("[ToolCall] Max depth reached, forcing response");
-      response = "I'm having trouble processing that request. Please try again.";
+      logger.warn("[ToolCall] Max depth reached, forcing synthesis from gathered results");
+      const synthesisCompletion = await llm.chat({
+        model: CONVO_MODEL,
+        messages: messages,
+        temperature: 0.9,
+        tools: TOOLS,
+        tool_choice: "none",
+        timeoutMs: 120_000,
+        label: "handleBotMessage-synthesis",
+        variant: sys_variant,
+      });
+      const synthesisChoice = synthesisCompletion.raw?.data?.choices?.[0];
+      if (synthesisChoice?.message?.content) {
+        response = synthesisChoice.message.content;
+        logger.debug(`[Synthesis] Generated response: ${response.substring(0, 100)}...`);
+      } else {
+        const gatheredTools = toolResultsAccumulator.map(r => r.tool).join(", ");
+        response = `I gathered some information (${gatheredTools}) but wasn't able to finish the full lookup. Let me know if you'd like me to try a different approach!`;
+        logger.warn("[Synthesis] Synthesis call returned no content; using fallback.");
+      }
     }
 
     // Guard against hallucinated attachment markup
@@ -1809,6 +1885,28 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
     }
 
+    // Guard against hallucinated links. If the model includes URLs but never
+    // called web_search or fetch_page this turn, those URLs were not verified
+    // and are likely fabricated. Strip them unless the user themselves supplied
+    // the URL in their message (echo of user input is safe).
+    if (response) {
+      const webToolUsed = toolResultsAccumulator.some(
+        r => r.tool === "web_search" || r.tool === "fetch_page"
+      );
+      if (!webToolUsed) {
+        const URL_RE = /https?:\/\/[^\s\]>)"]+/g;
+        const userText = message?.content || "";
+        const found = response.match(URL_RE);
+        if (found) {
+          const hallucinated = found.filter(u => !userText.includes(u));
+          if (hallucinated.length > 0) {
+            response = response.replace(URL_RE, u => userText.includes(u) ? u : "").replace(/\s{2,}/g, " ").trim();
+            logger.warn(`[Guard] Stripped ${hallucinated.length} unverified URL(s) from response: ${hallucinated.join(", ")}`);
+          }
+        }
+      }
+    }
+
     // Sanity guard: DSML tokens must never reach Discord. If any survived
     // (e.g. tool depth exhausted before processing), strip and log an error.
     if (response && response.includes("DSML")) {
@@ -1818,6 +1916,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         logger.error("[Guard] Response was entirely DSML markup — suppressing send.");
         response = null;
       }
+    }
+
+    // Expand [[cite:msg:N]] / [[cite:kb:slug]] tokens emitted by the model into
+    // Discord jump links / KB slugs. Unknown or duplicate tokens are stripped.
+    if (response && message?.guild) {
+      response = applyCitations(response, citationStore, message.guild.id, message.channelId);
     }
 
     const pendingFiles = toolCtx.pendingAttachments;
@@ -1891,7 +1995,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
               messages: [
                 ...messages,
                 { role: "assistant", content: response },
-                { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply with the correction. Keep the original tone and length.` },
+                { role: "system", content: `Reviewer note (apply silently — do not mention this review): ${verdict.fix}\n\nRegenerate your reply, correcting only what the reviewer flagged. Preserve all other specific details, names, numbers, and helpful information from your original reply. Do not make the response more generic — only remove or qualify the specific fabricated claim. Keep the original tone and length.` },
               ],
               temperature: 0.5,
               timeoutMs: 60_000,
@@ -1959,11 +2063,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
     }
   } catch (error) {
-    targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
     logger.error(`Error generating response: ${error.message}`);
     if (error.response) {
       logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
     }
+
+    targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
   } finally {
     typing = false;
   }

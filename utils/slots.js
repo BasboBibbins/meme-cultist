@@ -1,13 +1,15 @@
 const { EmbedBuilder } = require("discord.js");
 const { db } = require("../database");
 const { CURRENCY_NAME, SLOTS_NEAR_MISS_CHANCE, SLOTS_BONUS_FREE_SPINS, SLOTS_BONUS_MULTIPLIER, SLOTS_DAILY_FREE_SPINS, SLOTS_DAILY_BET, SLOTS_FULLSCREEN_CHANCE, SLOTS_FULLSCREEN_MULTIPLIER } = require("../config.js");
-const { randomHexColor } = require("./randomcolor");
 const wait = require("node:timers/promises").setTimeout;
 const logger = require("../utils/logger");
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, getJackpotDisplay, MIN_BET } = require("./jackpot");
 const { drawSlotMachine, drawSpinAnimation, drawPaytable, PAYLINES } = require("./slotsCanvas");
 const { getTheme } = require("./slotsThemes");
 const { getEquippedTheme } = require("../themes/manager");
+const { recordGameResult } = require("./gameResults");
+
+const SYMBOL_NAMES = ["Apple", "Tangerine", "Lemon", "Grapes", "Cherry", "Bell", "BAR", "7", "Wild", "Scatter"];
 
 // Symbol definitions: index, weights, multipliers
 const SYMBOLS = [
@@ -394,6 +396,40 @@ async function executeSpin(interaction, user, options = {}, themeOverride = null
       "jackpot announcement"
     );
   }
+
+  try {
+    recordGameResult({
+      guildId: interaction.guildId || interaction.channel?.guildId || null,
+      channelId: interaction.channelId || interaction.channel?.id,
+      userId: user.id,
+      game: "slots",
+      result: {
+        grid: grid.map(row => row.map(idx => SYMBOL_NAMES[idx] ?? idx)),
+        winning_lines: winResults.map(w => ({
+          line: w.line,
+          symbol: SYMBOL_NAMES[w.matchSymbol] ?? w.matchSymbol,
+          count: w.count,
+          payout: Math.floor(actualBet * w.multiplier * bonusMultiplier),
+          is_wild: w.isWild || false,
+          is_jackpot: w.isJackpotTrigger || false,
+          is_fullscreen: w.isFullScreen || false,
+        })),
+        bet_per_line: actualBet,
+        active_lines: lines,
+        total_cost: isFreePlay || isBonus ? 0 : actualBet * lines,
+        total_payout: totalWin,
+        net: totalWin - (isFreePlay || isBonus ? 0 : actualBet * lines),
+        outcome: totalWin > 0 ? "win" : "loss",
+        is_jackpot: isJackpot,
+        jackpot_amount: jackpotAmount || null,
+        is_fullscreen: isFullScreen,
+        is_bonus: isBonus,
+        is_free: isFreePlay,
+        bonus_triggered: triggersBonus,
+        scatter_count: scatterCount,
+      },
+    });
+  } catch (_) {}
 
   return { totalWin, winResults, isJackpot, jackpotAmount, triggersBonus, scatterCount, failed: false };
 }

@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN } = require("../config.js");
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET } = require("../config.js");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
 
@@ -84,8 +84,8 @@ module.exports = {
             2. There are 8 symbols, each with a different multiplier — check the paytable for details.
             3. Wild icons count as any symbol on an active payline.
             4. Landing 3+ scatter icons triggers the Free Spin Bonus.
-            5. Triple 7s wins the progressive jackpot (minimum 10 ${CURRENCY_NAME} bet required, free spins eligible).
-            6. Bets below 10 ${CURRENCY_NAME} still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
+            5. Triple 7s wins the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required, free spins eligible).
+            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
   },
   poker: {
     name: "Poker",
@@ -96,7 +96,7 @@ module.exports = {
             After you are done discarding, you will be given your final hand and you will be paid out based on the paytable.
             You can see the paytable by using \`/poker paytable\`.
 
-            **Progressive Jackpot:** A royal flush wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 koku to qualify.
+            **Progressive Jackpot:** A royal flush wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} to qualify.
             `,
     note: `
             1. Aces can be high (above King) or low (in A-2-3-4-5 straight). Straights do not wrap around — only A-high and A-low straights are valid.
@@ -104,7 +104,7 @@ module.exports = {
             3. With this game being video poker, there is no dealer. You are playing against the machine, not other players.
             4. If you take too long to make a decision, you will be timed out and lose your bet.
             5. Since the probability of getting a good hand is low, the payouts are high. Try small bets at first to get a feel for the game.
-            6. The chance of getting a royal flush is 1 in 649,740. It wins the progressive jackpot! Minimum bet of 10 koku required. Bets below minimum receive a reduced 50x payout.
+            6. The chance of getting a royal flush is 1 in 649,740. It wins the progressive jackpot! Minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} required. Bets below minimum receive a reduced 50x payout.
             7. Every bet contributes 2% to the progressive jackpot pool.`
   },
   roulette: {
@@ -253,7 +253,7 @@ module.exports = {
 
             Once bought, items go to your \`/inventory\` and are yours forever. The daily rotation only controls *what you can buy today*, not what you can use.
 
-            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots or a royal flush on poker wins it (minimum bet of 10 ${CURRENCY_NAME} required).
+            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line) or a royal flush on poker (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME}) wins it.
             `,
     note: `
             The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
@@ -292,15 +292,15 @@ module.exports = {
             The progressive jackpot is a shared prize pool that grows with every qualifying bet on slots and poker.
 
             • Every bet contributes 2% to the jackpot pool
-            • **Slots:** Triple 7s wins the jackpot (minimum 10 ${CURRENCY_NAME} bet required)
-            • **Poker:** A royal flush wins the jackpot (minimum 10 ${CURRENCY_NAME} bet required)
+            • **Slots:** Triple 7s wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required)
+            • **Poker:** A royal flush wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} bet required)
             • Bets below the minimum still contribute to the jackpot but receive a reduced fixed payout instead
             • The jackpot also earns daily interest, growing even when no one is playing
 
             Use \`/jackpot\` to check the current jackpot amount and last winner.
             `,
     note: `
-            The jackpot starts at 1,000,000 koku if it ever resets. A minimum bet of 10 koku on slots or poker is required for full jackpot eligibility.`
+            The jackpot starts at 1,000,000 ${CURRENCY_NAME} if it ever resets. A minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} is required for full jackpot eligibility — per line on slots, flat on poker.`
   },
   chatbot: {
     name: "Chatbot",

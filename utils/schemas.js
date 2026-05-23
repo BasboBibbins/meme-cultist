@@ -114,4 +114,22 @@ async function chatWithSchema(args) {
   return { ...retryRes, validated: null, schemaError: retryParsed.error, raw: retryRaw };
 }
 
-module.exports = { parseAndValidate, chatWithSchema };
+// Validates tool-call arguments against schemas/tools/<toolName>.json.
+// Returns { valid: true } on pass or when no schema is registered for the tool.
+// Returns { valid: false, errors: "<detail>" } on violation — caller should
+// return { error: "invalid_arguments", details: errors } to the LLM rather
+// than throwing, so the ReAct loop can self-correct.
+function validateToolArgs(toolName, args) {
+  let validate;
+  try {
+    validate = loadSchema(`tools/${toolName}`);
+  } catch (err) {
+    if (err.code === "MODULE_NOT_FOUND") return { valid: true };
+    throw err;
+  }
+  if (validate(args)) return { valid: true };
+  const errors = validate.errors.map(e => `${e.instancePath || "root"}: ${e.message}`).join("; ");
+  return { valid: false, errors };
+}
+
+module.exports = { parseAndValidate, chatWithSchema, validateToolArgs };

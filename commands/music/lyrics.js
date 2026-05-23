@@ -1,7 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { SlashCommandBuilder } = require("discord.js");
 const logger = require("../../utils/logger");
 const { Client: GeniusClient } = require("genius-lyrics");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 const genius = new GeniusClient(process.env.GENIUS_API_KEY);
 
@@ -28,10 +28,7 @@ module.exports = {
         .setRequired(false)),
   async execute(interaction) {
     await interaction.deferReply();
-    const embed = new EmbedBuilder()
-      .setColor(randomHexColor())
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client);
         
     const player = interaction.client.player;
     const currentTrack = player.nodes.get(interaction.guild.id)?.currentTrack;

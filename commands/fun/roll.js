@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { roll } = require("../../utils/roll");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,12 +20,11 @@ module.exports = {
     const dice = interaction.options.getInteger("dice") || 6;
     const number = interaction.options.getInteger("number") || 1;
         
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: interaction.user.displayName , iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-      .setDescription(`${number > 1 ? `You rolled **${number} ${dice}**-sided dice and got:` : `You rolled a **${dice}**-sided die and got:`}\n**${await roll(dice, number)}**`)
-      .setColor(randomHexColor())
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+    const embed = buildInfoEmbed(
+      interaction.user,
+      interaction.client,
+      `${number > 1 ? `You rolled **${number} ${dice}**-sided dice and got:` : `You rolled a **${dice}**-sided die and got:`}\n**${await roll(dice, number)}**`
+    );
     await interaction.reply({ embeds: [embed], fetchReply: true});
   },
 };

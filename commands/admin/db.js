@@ -1,8 +1,9 @@
-const {SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits} = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB, db } = require("../../database");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
 const wait = require("util").promisify(setTimeout);
+const { buildErrorEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -70,23 +71,16 @@ module.exports = {
     const key = interaction.options.getString("key");
     const value = interaction.options.getString("value");
 
-    const error_embed = new EmbedBuilder()
-      .setAuthor({ name: user.username , iconURL: user.displayAvatarURL({ dynamic: true }) })
-      .setColor(0xFF0000)
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
+    const errorEmbed = buildErrorEmbed(user, interaction.client);
 
     const isOwner = interaction.user.id === OWNER_ID;
     const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
     const allowed = isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
     if (!allowed) {
-      error_embed.setDescription("You do not have permission to use this command.");
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [errorEmbed.setDescription("You do not have permission to use this command.")], ephemeral: true });
     }
-
     if (user.bot) {
-      error_embed.setDescription("You cannot use this command on a bot.");
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [errorEmbed.setDescription("You cannot use this command on a bot.")], ephemeral: true });
     }
 
     await interaction.deferReply({ephemeral: true});

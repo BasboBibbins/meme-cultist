@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
+const { buildErrorEmbed, buildSuccessEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,13 +22,7 @@ module.exports = {
     const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
 
     if (dbUser.cooldowns.daily > Date.now()) {
-      const embed = new EmbedBuilder()
-        .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-        .setDescription(`You have already claimed your daily ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.daily)}**.`)
-        .setColor(0xFF0000)
-        .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-        .setTimestamp();
-      return await interaction.reply({embeds: [embed]});
+      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `You have already claimed your daily ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.daily)}**.`)] });
     }
 
     let streakprompt = "";
@@ -50,13 +45,8 @@ module.exports = {
     await db.add(`${user.id}.stats.dailies.claimed`, 1);
     await db.set(`${user.id}.cooldowns.daily`, Date.now() + cooldown);
 
-    const embed = new EmbedBuilder()
-      .setAuthor({name: user.displayName , iconURL: user.displayAvatarURL({dynamic: true})})
-      .setDescription(`You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus).toLocaleString("en-US")}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:"" + streakprompt}`)
-      .setColor(0x00FF00)
-      .setFooter({text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})})
-      .setTimestamp();
-    await interaction.reply({embeds: [embed]});
+    const embed = buildSuccessEmbed(user, interaction.client, `You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus).toLocaleString("en-US")}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:"" + streakprompt}`);
+    await interaction.reply({ embeds: [embed] });
     logger.log(`${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${amount + bonus} (${amount} + ${bonus}) ${CURRENCY_NAME}.`);
     logger.debug(`Current streak: ${streak} | Longest streak: ${dbUser.stats.dailies.longestStreak} | Total claimed: ${dbUser.stats.dailies.claimed}`);
   },

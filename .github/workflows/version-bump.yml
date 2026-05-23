@@ -1,0 +1,108 @@
+name: Version Bump
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip if not a merge commit or if latest commit is a version bump
+        id: skip-check
+        run: |
+          # Only bump on branch merges, not direct pushes
+          if [ "$(git rev-list --count --merges -1 HEAD)" -eq 0 ]; then
+            echo "Not a merge commit — skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          LATEST_MSG=$(git log -1 --pretty=%B)
+          if echo "$LATEST_MSG" | grep -q "^chore(version): bump version to"; then
+            echo "Latest commit is a version bump — skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.skip-check.outputs.skip == 'false'
+        with:
+          node-version: 18
+
+      - name: Calculate new version
+        if: steps.skip-check.outputs.skip == 'false'
+        id: calc
+        run: |
+          # Initial push year — kept at 2021 so major stays aligned with v5.x.x
+          INITIAL_YEAR=2021
+
+          CURRENT_YEAR=$(date +%Y)
+          CURRENT_MONTH=$(date +%-m)
+
+          MAJOR=$((CURRENT_YEAR - INITIAL_YEAR))
+          MINOR=$CURRENT_MONTH
+
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          CURRENT_MAJOR=$(echo "$CURRENT_VERSION" | cut -d. -f1)
+          CURRENT_MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
+          CURRENT_PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
+
+          # If major/minor changed (new month/year), reset patch to 1
+          # Otherwise increment patch by 1
+          if [ "$MAJOR" -ne "$CURRENT_MAJOR" ] || [ "$MINOR" -ne "$CURRENT_MINOR" ]; then
+            PATCH=1
+          else
+            PATCH=$((CURRENT_PATCH + 1))
+          fi
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+          echo "current=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          echo "new=${NEW_VERSION}" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update package files
+        if: steps.skip-check.outputs.skip == 'false' && steps.calc.outputs.changed == 'true'
+        run: |
+          npm version ${{ steps.calc.outputs.new }} --no-git-tag-version
+
+      - name: Create version bump PR
+        if: steps.skip-check.outputs.skip == 'false' && steps.calc.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="chore/version-bump-${{ steps.calc.outputs.new }}"
+
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "Branch $BRANCH already exists — skipping."
+            exit 0
+          fi
+
+          git checkout -b "$BRANCH"
+          git add package.json package-lock.json
+          git commit -m "chore(version): bump version to ${{ steps.calc.outputs.new }}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore(version): bump version to ${{ steps.calc.outputs.new }}" \
+            --body "Automated version bump triggered by push to master." \
+            --base master \
+            --head "$BRANCH"

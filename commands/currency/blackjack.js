@@ -12,20 +12,14 @@ const { getBlackjackColors } = require("../../themes/resolver");
 const { withUserLock } = require("../../utils/userlock");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { buildErrorEmbed } = require("../../utils/embeds");
+const { recordGameResult } = require("../../utils/gameResults");
 
 const PACKAGE_VERSION = require("../../package.json").version;
 const MAX_HANDS = BLACKJACK_MAX_HANDS || 4;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function errorEmbed(user, client, description) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(description)
-    .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
-}
 
 function footerText(client) {
   return `${client.user.username} | Version ${PACKAGE_VERSION}`;
@@ -94,10 +88,15 @@ async function openHubPanel(interaction, user, client) {
   const key = sessionKey(interaction.channelId, user.id);
   const existing = client.blackjackTables.get(key);
   if (existing && existing.status !== "ended") {
-    return interaction.reply({
-      embeds: [errorEmbed(user, client, "You already have a blackjack table open in this channel. Use the buttons on your existing table.")],
+    if (existing.lastEphemeralInteraction) {
+      existing.lastEphemeralInteraction.deleteReply().catch(() => {});
+    }
+    await interaction.reply({
+      embeds: [buildErrorEmbed(user, client, "You already have a blackjack table open in this channel. Use the buttons on your existing table.")],
       ephemeral: true,
     });
+    existing.lastEphemeralInteraction = interaction;
+    return;
   }
 
   let dbUser = await db.get(user.id);
@@ -142,6 +141,7 @@ function createSession(userId, channelId, key, messageId, lastBet, status, start
     messageId,
     lastBet,
     lastBetExpression: null,
+    lastEphemeralInteraction: null,
     status,
     collector: null,
     startBalance,
@@ -275,19 +275,23 @@ async function handleChangeBet(buttonInt, session, client) {
 
   const current = client.blackjackTables.get(session.key);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [errorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
   }
   current.lastBet = amount;
   current.lastBetExpression = expression;
   await db.set(`${user.id}.blackjack.lastBet`, expression).catch(() => {});
 
-  return submit.reply({
+  if (current.lastEphemeralInteraction) {
+    current.lastEphemeralInteraction.deleteReply().catch(() => {});
+  }
+  await submit.reply({
     embeds: [new EmbedBuilder()
       .setColor(0x1a6b3c)
       .setDescription(`Default bet updated to **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click **Deal Again** to use it.`)
       .setTimestamp()],
     ephemeral: true,
   });
+  current.lastEphemeralInteraction = submit;
 }
 
 async function handleDeal(buttonInt, session, client, channel) {
@@ -300,10 +304,15 @@ async function handleDeal(buttonInt, session, client, channel) {
     const resolved = await resolveBet(session.lastBetExpression, user.id);
     if (!resolved.ok) {
       session.lastBetExpression = null;
-      return buttonInt.reply({
-        embeds: [errorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
+      if (session.lastEphemeralInteraction) {
+        session.lastEphemeralInteraction.deleteReply().catch(() => {});
+      }
+      await buttonInt.reply({
+        embeds: [buildErrorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
         ephemeral: true,
       });
+      session.lastEphemeralInteraction = buttonInt;
+      return;
     }
     return dealWithAmount(buttonInt, session, client, channel, user, resolved.amount, /* deferUpdate */ true);
   }
@@ -322,11 +331,11 @@ async function handleDeal(buttonInt, session, client, channel) {
 async function dealWithAmount(interaction, session, client, channel, user, amount, deferUpdate) {
   const current = client.blackjackTables.get(session.key);
   if (!current || current.status !== "waiting") {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
   }
 
   if (amount % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -336,7 +345,7 @@ async function dealWithAmount(interaction, session, client, channel, user, amoun
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   current.lastBet = amount;
@@ -426,6 +435,23 @@ async function runHand(interaction, user, client, session, originalBet, message,
     }
     await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
     deleteDeck(deckId);
+    try {
+      const bjPush = dealerTotal === 21;
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "blackjack",
+        result: {
+          player_hand: { cards: initialCards.map(c => c.code), value: 21 },
+          dealer_hand: { cards: dealerCards.map(c => c.code), value: dealerTotal },
+          total_bet: originalBet,
+          payout: bjPush ? originalBet : originalBet + Math.ceil(originalBet * 1.5),
+          net: bjPush ? 0 : Math.ceil(originalBet * 1.5),
+          outcome: bjPush ? "push" : "blackjack",
+        },
+      });
+    } catch (_) {}
     return finishHand(client, message, session, channel, embed.data.description, attachment);
   }
 
@@ -443,6 +469,23 @@ async function runHand(interaction, user, client, session, originalBet, message,
       .setFooter({ text: `Bet: ${originalBet.toLocaleString("en-US")} ${CURRENCY_NAME} | ${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) });
     await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
     deleteDeck(deckId);
+    try {
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "blackjack",
+        result: {
+          player_hand: { cards: initialCards.map(c => c.code), value: getHandValue(initialCards) },
+          dealer_hand: { cards: dealerCards.map(c => c.code), value: 21 },
+          total_bet: originalBet,
+          payout: 0,
+          net: -originalBet,
+          outcome: "loss",
+          dealer_blackjack: true,
+        },
+      });
+    } catch (_) {}
     return finishHand(client, message, session, channel, embed.data.description, attachment);
   }
 
@@ -461,6 +504,23 @@ async function runHand(interaction, user, client, session, originalBet, message,
       const result = await playHand(currentHand, currentHandIndex, canSplitThisHand, canDouble, canForfeit);
       if (result === "forfeit") {
         const forfeitAttachment = currentHand._forfeitAttachment || null;
+        try {
+          const refund = Math.floor(currentHand.bet / 2);
+          recordGameResult({
+            guildId: channel.guildId,
+            channelId: channel.id,
+            userId: user.id,
+            game: "blackjack",
+            result: {
+              player_hand: { cards: currentHand.cards.map(c => c.code), value: getHandValue(currentHand.cards) },
+              dealer_hand: { cards: dealerCards.map(c => c.code), value: getHandValue(dealerCards) },
+              total_bet: currentHand.bet,
+              payout: refund,
+              net: refund - currentHand.bet,
+              outcome: "forfeit",
+            },
+          });
+        } catch (_) {}
         await finishHand(client, message, session, channel, "You forfeited the hand.", forfeitAttachment);
         return;
       }
@@ -747,6 +807,28 @@ async function runHand(interaction, user, client, session, originalBet, message,
     embed.setColor(totalWinnings > totalBets ? 0x00AE86 : (totalWinnings > 0 ? 0xFFFF00 : 0xFF0000));
     await message.edit({ embeds: [embed], components: [], files: attachment ? [attachment] : [] });
 
+    try {
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "blackjack",
+        result: {
+          player_hands: hands.map((hand, i) => ({
+            cards: hand.cards.map(c => c.code),
+            value: getHandValue(hand.cards),
+            bet: hand.bet,
+            outcome: outcomes[i] || "loss",
+            doubled: hand.isDoubled || false,
+          })),
+          dealer_hand: { cards: dealerCards.map(c => c.code), value: dealerTotal },
+          total_bet: totalBets,
+          payout: totalWinnings,
+          net: totalWinnings - totalBets,
+        },
+      });
+    } catch (_) {}
+
     await finishHand(client, message, session, channel, desc, attachment);
   }
 
@@ -789,13 +871,13 @@ async function dealOnExistingTable(interaction, session, client, user, betExpres
   const dbUser = (await db.get(user.id)) || {};
   const bet = Number(await parseBet(betExpression, user.id));
   if (isNaN(bet) || bet < 1) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   if (bet % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
   }
   if (bet > (dbUser.balance ?? 0)) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -805,7 +887,7 @@ async function dealOnExistingTable(interaction, session, client, user, betExpres
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   session.lastBet = bet;
@@ -858,12 +940,17 @@ module.exports = {
       if (betOption && existing.status === "waiting") {
         return dealOnExistingTable(interaction, existing, client, user, betOption);
       }
-      return interaction.reply({
-        embeds: [errorEmbed(user, client, existing.status === "playing"
+      if (existing.lastEphemeralInteraction) {
+        existing.lastEphemeralInteraction.deleteReply().catch(() => {});
+      }
+      await interaction.reply({
+        embeds: [buildErrorEmbed(user, client, existing.status === "playing"
           ? "A hand is already in progress on your table. Wait for it to finish."
           : "You already have a blackjack table open in this channel. Use the buttons on your existing message.")],
         ephemeral: true,
       });
+      existing.lastEphemeralInteraction = interaction;
+      return;
     }
 
     if (!betOption) {
@@ -879,13 +966,13 @@ module.exports = {
 
     const originalBet = Number(await parseBet(betOption, user.id));
     if (isNaN(originalBet) || originalBet < 1) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
     }
     if (originalBet % 1 !== 0) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
     }
     if (originalBet > (dbUser.balance ?? 0)) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
     }
 
     await interaction.deferReply();
@@ -898,7 +985,7 @@ module.exports = {
       return true;
     });
     if (!debited) {
-      return interaction.editReply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)] });
+      return interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)] });
     }
 
     logger.info(`${user.username}(${user.id}) started blackjack (fast path) with bet ${originalBet} ${CURRENCY_NAME}.`);

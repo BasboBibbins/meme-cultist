@@ -1,8 +1,8 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const wait = require("util").promisify(setTimeout);
 const { queueString } = require("../../utils/musicPlayer");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -25,10 +25,7 @@ module.exports = {
     ),
   async execute(interaction) {
     const player = interaction.client.player;
-    const embed = new EmbedBuilder()
-      .setColor(randomHexColor())
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client);
 
     if (!interaction.member.voice.channelId) {
       embed.setTitle("You are not in a voice channel!");

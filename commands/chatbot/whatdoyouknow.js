@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { getUserChatbotData, getThreadContext } = require("../../utils/openai");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 const { MAX_FACTS_IN_PROMPT } = require("../../config.js");
 
 function fmtTimestamp(ts) {
@@ -41,12 +41,9 @@ module.exports = {
       const summaries = ctx?.summaries || [];
       const lastSummary = summaries.length > 0 ? summaries[summaries.length - 1] : null;
 
-      const embed = new EmbedBuilder()
+      const embed = buildInfoEmbed(interaction.user, interaction.client)
         .setTitle(`Channel memory — #${interaction.channel.name}`)
-        .setColor(randomHexColor())
-        .addFields(
-          { name: `Facts (${facts.length})`, value: factLines(facts).slice(0, MAX_FACTS_IN_PROMPT || 15).join("\n").slice(0, 1024) || "_(none)_" },
-        )
+        .addFields({ name: `Facts (${facts.length})`, value: factLines(facts).slice(0, MAX_FACTS_IN_PROMPT || 15).join("\n").slice(0, 1024) || "_(none)_" })
         .setFooter({ text: ctx?.persona_id ? `Persona pinned: id=${ctx.persona_id}` : "No persona pinned" });
       if (lastSummary) {
         embed.addFields({
@@ -68,9 +65,8 @@ module.exports = {
       flags.push(`${data.incognitoChannels.length} channel${data.incognitoChannels.length === 1 ? "" : "s"} incognito`);
     }
 
-    const embed = new EmbedBuilder()
+    const embed = buildInfoEmbed(interaction.user, interaction.client)
       .setAuthor({ name: `${interaction.user.displayName}'s memory`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-      .setColor(randomHexColor())
       .addFields({
         name: `Facts (${facts.length})`,
         value: factLines(facts).slice(0, MAX_FACTS_IN_PROMPT || 15).join("\n").slice(0, 1024) || "_(none)_",

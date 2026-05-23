@@ -1,10 +1,11 @@
-const {SlashCommandBuilder, EmbedBuilder} = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
-const { CURRENCY_NAME, INTEREST_RATE } = require("../../config.js");
+const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 const wait = require("util").promisify(setTimeout);
 const { deposit, withdraw, parseAmount } = require("../../utils/bank");
+const { buildBaseEmbed, COLORS } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -46,14 +47,13 @@ module.exports = {
         
     await interaction.deferReply({ ephemeral: true });
 
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: `${user.displayName }'s Bank`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-      .setColor(`${accentColor}`)
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) });
+    const embed = buildBaseEmbed(user, interaction.client)
+      .setAuthor({ name: `${user.displayName}'s Bank`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+      .setColor(accentColor);
 
     if (isNaN(amount) || (amount < 1)) {
       embed.setDescription(`Please enter a valid amount of ${CURRENCY_NAME} to ${subcommand}!`);
-      embed.setColor("#FF0000");
+      embed.setColor(COLORS.error);
       await interaction.editReply({embeds: [embed]});
       await wait(30000).then(() => {
         interaction.deleteReply();
@@ -66,12 +66,12 @@ module.exports = {
       case "deposit":
         if (currentBalance < amount) {
           embed.setDescription(`You don't have enough ${CURRENCY_NAME} to deposit!\n\nYour current balance is **${currentBalance.toLocaleString("en-US")} ${CURRENCY_NAME}**`);
-          embed.setColor("#FF0000");
+          embed.setColor(COLORS.error);
         } else {
           logger.info(`Depositing ${amount.toLocaleString("en-US")} ${CURRENCY_NAME} from ${user.username} (${user.id})'s wallet to their bank...`);
           await deposit(user.id, amount);
           embed.setDescription(`Successfully deposited **${amount.toLocaleString("en-US")} ${CURRENCY_NAME}** into your bank!\n\nYou now have **${(currentBalance-amount).toLocaleString("en-US")}** ${CURRENCY_NAME} in your wallet and **${(currentBank+amount).toLocaleString("en-US")} ${CURRENCY_NAME}** in your bank!`);
-          embed.setColor("#00FF00");
+          embed.setColor(COLORS.success);
         }
         await interaction.editReply({embeds: [embed]});
         await wait(30000).then(() => {
@@ -81,12 +81,12 @@ module.exports = {
       case "withdraw":
         if (currentBank < amount) {
           embed.setDescription(`You don't have enough ${CURRENCY_NAME} to withdraw!\n\nYour current bank balance is **${currentBank.toLocaleString("en-US")} ${CURRENCY_NAME}**`);
-          embed.setColor("#FF0000");
+          embed.setColor(COLORS.error);
         } else {
           logger.info(`Withdrawing ${amount} ${CURRENCY_NAME} from ${user.username} (${user.id})'s bank to their wallet...`);
           await withdraw(user.id, amount);
           embed.setDescription(`Successfully withdrew ${amount.toLocaleString("en-US")} ${CURRENCY_NAME} from your bank!\n\nYou now have **${(currentBalance+amount).toLocaleString("en-US")}** ${CURRENCY_NAME} in your wallet and **${(currentBank-amount).toLocaleString("en-US")} ${CURRENCY_NAME}** in your bank!`);
-          embed.setColor("#00FF00");
+          embed.setColor(COLORS.success);
         }
         await interaction.editReply({embeds: [embed]});
         await wait(30000).then(() => {

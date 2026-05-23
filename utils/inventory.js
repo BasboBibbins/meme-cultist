@@ -439,26 +439,43 @@ async function respondThemeAutocomplete(interaction, { onlyOwned = false } = {})
 
 // ── Game preview helpers (shared by /theme info and /shop preview) ─────
 
-const PREVIEW_GAMES = ["slots", "roulette", "poker"];
-const GAME_LABELS = { slots: "Slots", roulette: "Roulette", poker: "Poker" };
-const GAME_EMOJIS = { slots: "\u{1F3B0}", roulette: "\u{1F3B2}", poker: "\u{1F0CF}" };
-const GAME_FILES = { slots: "slots-spin.gif", roulette: "roulette.png", poker: "hand.png" };
+const PREVIEW_GAMES = ["slots", "roulette", "poker", "blackjack", "craps", "duel"];
+const GAME_LABELS = {
+  slots: "Slots", roulette: "Roulette", poker: "Poker",
+  blackjack: "Blackjack", craps: "Craps", duel: "Duel",
+};
+const GAME_EMOJIS = {
+  slots: "\u{1F3B0}", roulette: "\u{1F3B2}", poker: "\u{1F0CF}",
+  blackjack: "\u{1F0A1}", craps: "\u{1F3B2}", duel: "\u{2694}",
+};
+const GAME_FILES = {
+  slots: "slots-result.png", roulette: "roulette.png", poker: "hand.png",
+  blackjack: "blackjack.png", craps: "craps.png", duel: "duel.png",
+};
 
 const MAX_PREVIEW_CACHE = 50;
 const _previewCache = new Map();
 
-async function getPreviewAttachment(themeId, game) {
-  const key = `${themeId}-${game}`;
+async function getPreviewAttachment(themeId, game, user = null, clientUser = null) {
+  const uid = user ? user.id : "";
+  const cid = clientUser ? clientUser.id : "";
+  const key = `${themeId}-${game}-${uid}-${cid}`;
   if (_previewCache.has(key)) return _previewCache.get(key);
   let attachment = null;
   try {
     const { slotsPreview } = require("./slotsCanvas");
     const { roulettePreview } = require("./roulette");
     const { pokerPreview } = require("./poker");
+    const { blackjackPreview } = require("./blackjackCanvas");
+    const { crapsPreview } = require("./crapsCanvas");
+    const { duelPreview } = require("./duelCanvas");
     switch (game) {
-      case "slots":    attachment = await slotsPreview(themeId); break;
-      case "roulette": attachment = await roulettePreview(themeId); break;
-      case "poker":    attachment = await pokerPreview(themeId); break;
+      case "slots":     attachment = await slotsPreview(themeId); break;
+      case "roulette":  attachment = await roulettePreview(themeId); break;
+      case "poker":     attachment = await pokerPreview(themeId, user); break;
+      case "blackjack": attachment = await blackjackPreview(themeId, user, clientUser); break;
+      case "craps":     attachment = await crapsPreview(themeId, user, clientUser); break;
+      case "duel":      attachment = await duelPreview(themeId, user, clientUser); break;
     }
   } catch (err) {
     // Lazy-load may fail if canvas deps are missing; non-fatal

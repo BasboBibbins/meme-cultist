@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const kbStore = require("../../utils/kb");
 const llm = require("../../utils/llm");
 const jobs = require("../../utils/jobs");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildErrorEmbed, buildSuccessEmbed, buildInfoEmbed } = require("../../utils/embeds");
 
 const SLUG_RE = /^[a-z0-9-]{1,64}$/;
 const MAX_TITLE_LEN = 100;
@@ -14,15 +14,6 @@ function isAdmin(interaction) {
   const isOwner = interaction.user.id === OWNER_ID;
   const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
   return isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
-}
-
-function denyEmbed(interaction) {
-  return new EmbedBuilder()
-    .setTitle("Permission Denied")
-    .setDescription("You do not have permission to manage the knowledge base.")
-    .setColor(0xff0000)
-    .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
 }
 
 function enqueueEmbed(guildId, slug) {
@@ -87,7 +78,7 @@ module.exports = {
 
     if (sub === "add") {
       if (!isAdmin(interaction)) {
-        return interaction.reply({ embeds: [denyEmbed(interaction)], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], ephemeral: true });
       }
       const slug = interaction.options.getString("slug").trim().toLowerCase();
       const title = interaction.options.getString("title").trim();
@@ -111,18 +102,15 @@ module.exports = {
       enqueueEmbed(guildId, slug);
       logger.log(`[KB] ${interaction.user.tag} created "${slug}" in guild ${guildId}`);
 
-      const embed = new EmbedBuilder()
-        .setTitle("Knowledge Base Entry Added")
-        .setDescription(`**${entry.title}** (${entry.slug})`)
-        .setColor(0x00aa00)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({
+        embeds: [buildSuccessEmbed(interaction.user, interaction.client, `**${entry.title}** (${entry.slug})`).setTitle("Knowledge Base Entry Added")],
+        ephemeral: true,
+      });
     }
 
     if (sub === "edit") {
       if (!isAdmin(interaction)) {
-        return interaction.reply({ embeds: [denyEmbed(interaction)], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], ephemeral: true });
       }
       const slug = interaction.options.getString("slug").trim().toLowerCase();
       const entry = kbStore.getBySlug(guildId, slug);
@@ -145,18 +133,15 @@ module.exports = {
       enqueueEmbed(guildId, slug);
       logger.log(`[KB] ${interaction.user.tag} edited "${slug}"`);
 
-      const embed = new EmbedBuilder()
-        .setTitle("Knowledge Base Entry Updated")
-        .setDescription(`**${entry.title}** (${slug})`)
-        .setColor(0x00aa00)
-        .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-        .setTimestamp();
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({
+        embeds: [buildSuccessEmbed(interaction.user, interaction.client, `**${entry.title}** (${slug})`).setTitle("Knowledge Base Entry Updated")],
+        ephemeral: true,
+      });
     }
 
     if (sub === "delete") {
       if (!isAdmin(interaction)) {
-        return interaction.reply({ embeds: [denyEmbed(interaction)], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], ephemeral: true });
       }
       const slug = interaction.options.getString("slug").trim().toLowerCase();
       const entry = kbStore.getBySlug(guildId, slug);
@@ -173,12 +158,12 @@ module.exports = {
         return interaction.reply({ content: "No knowledge base entries yet. Admins can add them with `\/kb add`.", ephemeral: true });
       }
       const lines = all.map(e => `**${e.slug}** — ${e.title}`);
-      const embed = new EmbedBuilder()
-        .setTitle(`Knowledge Base — ${interaction.guild.name}`)
-        .setDescription(lines.join("\n").slice(0, 4000))
-        .setColor(randomHexColor())
-        .setFooter({ text: `${all.length} entr${all.length === 1 ? "y" : "ies"}` });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({
+        embeds: [buildInfoEmbed(interaction.user, interaction.client, lines.join("\n").slice(0, 4000))
+          .setTitle(`Knowledge Base — ${interaction.guild.name}`)
+          .setFooter({ text: `${all.length} entr${all.length === 1 ? "y" : "ies"}` })],
+        ephemeral: true,
+      });
     }
 
     if (sub === "search") {
@@ -197,12 +182,12 @@ module.exports = {
           const snippet = r.content.length > 200 ? r.content.slice(0, 200) + "..." : r.content;
           return `${i + 1}. **${r.title}** (${r.slug})\n${snippet}`;
         });
-        const embed = new EmbedBuilder()
-          .setTitle(`Search Results — "${query}"`)
-          .setDescription(lines.join("\n\n").slice(0, 4000))
-          .setColor(randomHexColor())
-          .setFooter({ text: `${results.length} result${results.length === 1 ? "" : "s"}` });
-        return interaction.editReply({ embeds: [embed], ephemeral: true });
+        return interaction.editReply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, lines.join("\n\n").slice(0, 4000))
+            .setTitle(`Search Results — "${query}"`)
+            .setFooter({ text: `${results.length} result${results.length === 1 ? "" : "s"}` })],
+          ephemeral: true,
+        });
       } catch (err) {
         logger.error(`[KB search] ${err.message}`);
         return interaction.editReply({ content: "Search failed. Please try again later.", ephemeral: true });

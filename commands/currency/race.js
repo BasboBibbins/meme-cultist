@@ -9,7 +9,9 @@ const { generateHorses, determineTopThree, calculatePayout, buildBettingDescript
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { buildErrorEmbed } = require("../../utils/embeds");
 const wait = require("node:timers/promises").setTimeout;
+const { recordGameResult } = require("../../utils/gameResults");
 
 const HOUSE_EDGE = RACE_HOUSE_EDGE ?? 0.10;
 const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
@@ -68,13 +70,6 @@ module.exports = {
   },
 };
 
-function errorEmbed(user, description) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(description)
-    .setTimestamp();
-}
 
 function formatBetType(type) {
   const t = (type || "win").toLowerCase();
@@ -124,7 +119,7 @@ async function handleStartRace(interaction, client, user) {
     const phaseMsg = existingGame.phase === "betting"
       ? "A race is already accepting bets in this channel — click a horse on the existing panel to wager."
       : "A race is already in progress. Please wait for it to finish.";
-    return interaction.reply({ embeds: [errorEmbed(user, phaseMsg)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,phaseMsg)], ephemeral: true });
   }
 
   await interaction.deferReply();
@@ -227,7 +222,7 @@ async function handleStartRace(interaction, client, user) {
       }
       if (i.customId === "race_start_now") {
         if (i.user.id !== game.creatorId) {
-          return i.reply({ embeds: [errorEmbed(i.user, `Only **${game.creatorUsername}** can start this race.`)], ephemeral: true });
+          return i.reply({ embeds: [buildErrorEmbed(i.user, i.client,`Only **${game.creatorUsername}** can start this race.`)], ephemeral: true });
         }
         clearInterval(game.countdownInterval);
         await i.deferUpdate().catch(() => {});
@@ -239,7 +234,7 @@ async function handleStartRace(interaction, client, user) {
       }
       if (i.customId === "race_cancel") {
         if (i.user.id !== game.creatorId) {
-          return i.reply({ embeds: [errorEmbed(i.user, `Only **${game.creatorUsername}** can cancel this race.`)], ephemeral: true });
+          return i.reply({ embeds: [buildErrorEmbed(i.user, i.client,`Only **${game.creatorUsername}** can cancel this race.`)], ephemeral: true });
         }
         clearInterval(game.countdownInterval);
 
@@ -287,7 +282,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   const user = buttonInt.user;
 
   if (game.phase !== "betting") {
-    return buttonInt.reply({ embeds: [errorEmbed(user, "Betting is closed for this race.")], ephemeral: true });
+    return buttonInt.reply({ embeds: [buildErrorEmbed(user, client,"Betting is closed for this race.")], ephemeral: true });
   }
 
   const dbUser = await db.get(user.id);
@@ -298,7 +293,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
 
   const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
   if (horseIndex === -1) {
-    return buttonInt.reply({ embeds: [errorEmbed(user, "Unknown horse.")], ephemeral: true });
+    return buttonInt.reply({ embeds: [buildErrorEmbed(user, client,"Unknown horse.")], ephemeral: true });
   }
   const horse = game.horses[horseIndex];
 
@@ -331,12 +326,12 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
 
   const betTypeRaw = submit.fields.getTextInputValue("betType").trim().toLowerCase();
   if (!BET_TYPES.has(betTypeRaw)) {
-    return submit.reply({ embeds: [errorEmbed(submit.user, "Bet type must be `win`, `place`, or `show`.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Bet type must be `win`, `place`, or `show`.")], ephemeral: true });
   }
 
   const current = client.raceGames.get(game.channelId);
   if (!current || current.phase !== "betting") {
-    return submit.reply({ embeds: [errorEmbed(submit.user, "Betting is no longer open for this race.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open for this race.")], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -346,7 +341,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     return true;
   });
   if (!debited) {
-    return submit.reply({ embeds: [errorEmbed(submit.user, "Insufficient funds in wallet!")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Insufficient funds in wallet!")], ephemeral: true });
   }
   await db.add(`${user.id}.stats.race.totalBet`, amount);
   await db.set(`${user.id}.race.lastBet`, expression);
@@ -411,19 +406,19 @@ async function handleSlashBet(interaction, client, user) {
   const game = client.raceGames.get(channelId);
   if (!game) {
     return interaction.reply({
-      embeds: [errorEmbed(user, "No active race in this channel. Use `/race start` to begin a new race.")],
+      embeds: [buildErrorEmbed(user, client,"No active race in this channel. Use `/race start` to begin a new race.")],
       ephemeral: true,
     });
   }
   if (game.phase !== "betting") {
     return interaction.reply({
-      embeds: [errorEmbed(user, "Betting is closed for this race. Please wait for it to finish.")],
+      embeds: [buildErrorEmbed(user, client,"Betting is closed for this race. Please wait for it to finish.")],
       ephemeral: true,
     });
   }
   if (!BET_TYPES.has(betTypeRaw)) {
     return interaction.reply({
-      embeds: [errorEmbed(user, "Bet type must be `win`, `place`, or `show`.")],
+      embeds: [buildErrorEmbed(user, client,"Bet type must be `win`, `place`, or `show`.")],
       ephemeral: true,
     });
   }
@@ -436,23 +431,23 @@ async function handleSlashBet(interaction, client, user) {
 
   const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
   if (horseIndex === -1) {
-    return interaction.reply({ embeds: [errorEmbed(user, "Horse number must be between 1 and 8!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,"Horse number must be between 1 and 8!")], ephemeral: true });
   }
   const horse = game.horses[horseIndex];
 
   const expression = betAmountStr.trim();
   const amount = Number(await parseBet(expression, user.id));
   if (isNaN(amount) || amount % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, `You must bet a valid whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,`You must bet a valid whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   if (amount <= 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, "Bet must be greater than zero.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,"Bet must be greater than zero.")], ephemeral: true });
   }
   if (RACE_MIN_BET && amount < RACE_MIN_BET) {
-    return interaction.reply({ embeds: [errorEmbed(user, `Minimum bet is ${RACE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,`Minimum bet is ${RACE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   if (RACE_MAX_BET && amount > RACE_MAX_BET) {
-    return interaction.reply({ embeds: [errorEmbed(user, `Maximum bet is ${RACE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,`Maximum bet is ${RACE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -464,7 +459,7 @@ async function handleSlashBet(interaction, client, user) {
   if (!debited) {
     const currentBalance = await db.get(`${user.id}.balance`) ?? 0;
     return interaction.reply({
-      embeds: [errorEmbed(user, `Insufficient funds! You have **${currentBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)],
+      embeds: [buildErrorEmbed(user, client,`Insufficient funds! You have **${currentBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)],
       ephemeral: true,
     });
   }
@@ -480,7 +475,7 @@ async function handleSlashBet(interaction, client, user) {
     await withUserLock(user.id, () => db.add(`${user.id}.balance`, amount));
     await db.sub(`${user.id}.stats.race.totalBet`, amount);
     return interaction.reply({
-      embeds: [errorEmbed(user, "Betting closed while your bet was being placed — refunded.")],
+      embeds: [buildErrorEmbed(user, client,"Betting closed while your bet was being placed — refunded.")],
       ephemeral: true,
     });
   }
@@ -571,17 +566,17 @@ async function handleClearBets(buttonInt, client, game) {
 
   const typed = submit.fields.getTextInputValue("confirm").trim().toUpperCase();
   if (typed !== "CONFIRM") {
-    return submit.reply({ embeds: [errorEmbed(submit.user, "You must type `CONFIRM` exactly to clear your bets. No bets were removed.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"You must type `CONFIRM` exactly to clear your bets. No bets were removed.")], ephemeral: true });
   }
 
   const current = client.raceGames.get(game.channelId);
   if (!current || current.phase !== "betting") {
-    return submit.reply({ embeds: [errorEmbed(submit.user, "Betting is no longer open — your bets are already locked in.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open — your bets are already locked in.")], ephemeral: true });
   }
 
   const standingBets = current.bets.filter(b => b.userId === user.id);
   if (standingBets.length === 0) {
-    return submit.reply({ embeds: [errorEmbed(submit.user, "You no longer have any standing bets to clear.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"You no longer have any standing bets to clear.")], ephemeral: true });
   }
 
   const refund = standingBets.reduce((sum, b) => sum + b.amount, 0);
@@ -764,6 +759,42 @@ async function resolveRace(client, channel, message, game) {
 
     results.push({ ...bet, won, winnings, horsePosition });
   }
+
+  try {
+    const finishOrder = game.topThree.finishOrder || [];
+    const podium = [0, 1, 2].map(place => {
+      const idx = finishOrder[place];
+      return idx !== undefined ? { place: place + 1, number: horses[idx].number, name: horses[idx].name, emoji: horses[idx].emoji } : null;
+    }).filter(Boolean);
+
+    const byUser = {};
+    for (const r of results) {
+      if (!byUser[r.userId]) byUser[r.userId] = [];
+      byUser[r.userId].push({
+        horse: horses[r.horseIndex].name,
+        horse_number: horses[r.horseIndex].number,
+        bet_type: r.betType || "win",
+        amount: r.amount,
+        outcome: r.won ? "win" : "loss",
+        payout: r.winnings,
+        net: r.won ? r.winnings - r.amount : -r.amount,
+      });
+    }
+    for (const [uid, userBets] of Object.entries(byUser)) {
+      const net = userBets.reduce((sum, b) => sum + b.net, 0);
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: uid,
+        game: "race",
+        result: {
+          finish_order: podium,
+          bets: userBets,
+          net,
+        },
+      });
+    }
+  } catch (_) {}
 
   if (game.guildId && Object.keys(horseDeltas).length > 0) {
     try {

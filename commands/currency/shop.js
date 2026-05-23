@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
+const { buildBaseEmbed, buildErrorEmbed, buildSuccessEmbed, COLORS } = require("../../utils/embeds");
 const {
   RARITY, RARITY_ORDER,
   getItemById,
@@ -85,12 +86,11 @@ module.exports = {
         desc += `*Inventory resets at ${resetIn} each day.*`;
         if (!desc) desc = "The shop is empty today. Check back tomorrow!";
 
-        const embed = new EmbedBuilder()
+        const embed = buildBaseEmbed(user, interaction.client)
           .setAuthor({ name: `Daily Shop — ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
           .setDescription(desc.trim())
           .setFooter({ ...footer, text: `${footer.text}` })
-          .setColor(0x5865F2)
-          .setTimestamp();
+          .setColor(COLORS.blurple);
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
@@ -110,28 +110,23 @@ module.exports = {
             case "insufficient_funds": desc = `You need **${formatPrice(result.item.price)}** but only have **${(result.balance ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**.`; break;
             default:                   desc = `Purchase failed: \`${result.error}\`.`;
           }
-          const embed = new EmbedBuilder()
-            .setDescription(desc)
-            .setColor(0xFF0000)
-            .setFooter(footer)
-            .setTimestamp();
-          return interaction.reply({ embeds: [embed], ephemeral: true });
+          return interaction.reply({
+            embeds: [buildErrorEmbed(user, interaction.client, desc).setFooter(footer)],
+            ephemeral: true,
+          });
         }
 
         logger.info(`${user.tag} (${user.id}) purchased ${result.item.id} for ${result.item.price} in guild ${interaction.guildId}`);
 
         const prefix = result.item.emoji ? `${result.item.emoji} ` : "";
-        const embed = new EmbedBuilder()
-          .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-          .setDescription(
+        return interaction.reply({
+          embeds: [buildSuccessEmbed(user, interaction.client,
             `Purchased ${prefix}**${result.item.name}** for **${formatPrice(result.item.price)}**!\n`
-                        + `New balance: **${result.newBalance.toLocaleString("en-US")} ${CURRENCY_NAME}**\n\n`
-                        + "Use `/theme set` to equip it!"
-          )
-          .setColor(0x00FF00)
-          .setFooter(footer)
-          .setTimestamp();
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+            + `New balance: **${result.newBalance.toLocaleString("en-US")} ${CURRENCY_NAME}**\n\n`
+            + "Use `/theme set` to equip it!"
+          ).setFooter(footer)],
+          ephemeral: true,
+        });
       }
 
       // ── /shop preview ───────────────────────────────────────
@@ -139,12 +134,10 @@ module.exports = {
         const itemId = interaction.options.getString("item");
         const item = getItemById(itemId);
         if (!item) {
-          const embed = new EmbedBuilder()
-            .setDescription(`Unknown item \`${itemId}\`.`)
-            .setColor(0xFF0000)
-            .setFooter(footer)
-            .setTimestamp();
-          return interaction.reply({ embeds: [embed], ephemeral: true });
+          return interaction.reply({
+            embeds: [buildErrorEmbed(user, interaction.client, `Unknown item \`${itemId}\`.`).setFooter(footer)],
+            ephemeral: true,
+          });
         }
 
         const isOwned = await ownsItem(user.id, itemId);
@@ -152,7 +145,7 @@ module.exports = {
         // Non-theme items: static embed
         if (item.category !== "theme") {
           const rarityLabel = item.rarity ? RARITY[item.rarity].label : "Unlisted";
-          const rarityColor = item.rarity ? RARITY[item.rarity].color : 0x5865F2;
+          const rarityColor = item.rarity ? RARITY[item.rarity].color : COLORS.blurple;
 
           let desc = `${item.description}\n\n`;
           desc += `**Rarity:** ${rarityLabel}\n`;
@@ -163,13 +156,14 @@ module.exports = {
           desc += `**Price:** ${formatPrice(item.price)}\n`;
           desc += `**Status:** ${isOwned ? "Owned" : "Not Owned"}\n`;
 
-          const embed = new EmbedBuilder()
-            .setTitle(`${item.emoji ? `${item.emoji} ` : ""}${item.name}`)
-            .setDescription(desc)
-            .setColor(rarityColor)
-            .setFooter(footer)
-            .setTimestamp();
-          return interaction.reply({ embeds: [embed], ephemeral: true });
+          return interaction.reply({
+            embeds: [buildBaseEmbed(user, interaction.client)
+              .setTitle(`${item.emoji ? `${item.emoji} ` : ""}${item.name}`)
+              .setDescription(desc)
+              .setColor(rarityColor)
+              .setFooter(footer)],
+            ephemeral: true,
+          });
         }
 
         // Theme items: paginated game previews
@@ -178,7 +172,7 @@ module.exports = {
 
         const attachments = {};
         for (const game of PREVIEW_GAMES) {
-          attachments[game] = await getPreviewAttachment(itemId, game);
+          attachments[game] = await getPreviewAttachment(itemId, game, interaction.user, interaction.client.user);
         }
 
         let currentPage = 0;

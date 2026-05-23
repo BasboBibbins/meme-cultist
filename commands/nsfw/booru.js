@@ -1,7 +1,7 @@
-const {SlashCommandBuilder, EmbedBuilder} = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const Booru = require("booru");
 const logger = require("../../utils/logger");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -83,13 +83,10 @@ module.exports = {
             return favicon ? `https://www.google.com/s2/favicons?domain=${favicon[0]}` : interaction.client.user.displayAvatarURL();
           };
           logger.log(`${interaction.user.tag} (${interaction.user.id}) searched for \x1b[33m${tags.join(", ")}\x1b[0m on \x1b[33m${post.booru.site.domain}\x1b[0m.`);
-          const embed = new EmbedBuilder()
-            .setColor(randomHexColor())
-            .setAuthor({name: post.booru.site.domain, iconURL: getFavicon(post.booru.site.domain), url: post.fileUrl})
-            .setDescription("```\n"+post.tags.join(", ")+"```")
+          const embed = buildInfoEmbed(interaction.user, interaction.client, "```\n"+post.tags.join(", ")+"```")
+            .setAuthor({ name: post.booru.site.domain, iconURL: getFavicon(post.booru.site.domain), url: post.fileUrl })
             .setImage(post.fileUrl)
-            .setFooter({text: `Score: ${post.score ? post.score : "0"} | ID: #${post.id}`})
-            .setTimestamp();
+            .setFooter({ text: `Score: ${post.score ? post.score : "0"} | ID: #${post.id}` });
 
           interaction.reply({embeds: [embed]}).then(() => {
             if (post.fileUrl.endsWith(".webm") || post.fileUrl.endsWith(".mp4")) {

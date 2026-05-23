@@ -1,0 +1,15 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "when":        { "type": "string", "minLength": 1 },
+        "message":     { "type": "string", "minLength": 1 },
+        "channel_id":  { "type": "string", "minLength": 1 },
+        "targets":     { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "frequency":   { "type": "string", "enum": ["once", "daily", "weekly"] },
+        "end_date":    { "type": "string", "minLength": 1 },
+        "occurrences": { "type": "integer", "minimum": 1 }
+    },
+    "required": ["when", "message"],
+    "additionalProperties": false
+}

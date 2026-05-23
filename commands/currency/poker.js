@@ -11,6 +11,8 @@ const { canvasHand, pokerScore, drawPokerPaytable } = require("../../utils/poker
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, MIN_BET } = require("../../utils/jackpot");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getThemeColors } = require("../../themes/resolver");
+const { recordGameResult } = require("../../utils/gameResults");
+const { buildErrorEmbed } = require("../../utils/embeds");
 
 const PACKAGE_VERSION = require("../../package.json").version;
 const HAND_TIMEOUT_MS = 30000;
@@ -41,14 +43,6 @@ function footer(client) {
   };
 }
 
-function errorEmbed(user, client, message) {
-  return new EmbedBuilder()
-    .setAuthor({ name: user.displayName, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setColor(0xFF0000)
-    .setDescription(message)
-    .setFooter(footer(client))
-    .setTimestamp();
-}
 
 function sessionKey(channelId, userId) {
   return `${channelId}:${userId}`;
@@ -146,7 +140,7 @@ async function openHubPanel(interaction, user, client) {
   const existing = client.pokerTables.get(key);
   if (existing && existing.status !== "ended") {
     return interaction.reply({
-      embeds: [errorEmbed(user, client, "You already have a poker table open in this channel. Use the buttons on your existing table.")],
+      embeds: [buildErrorEmbed(user, client, "You already have a poker table open in this channel. Use the buttons on your existing table.")],
       ephemeral: true,
     });
   }
@@ -317,7 +311,7 @@ async function handleChangeBet(buttonInt, session, client) {
 
   const current = client.pokerTables.get(session.key);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [errorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
   }
   current.lastBet = amount;
   current.lastBetExpression = expression;
@@ -340,7 +334,7 @@ async function handleDeal(buttonInt, session, client, channel) {
     if (!resolved.ok) {
       session.lastBetExpression = null;
       return buttonInt.reply({
-        embeds: [errorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
+        embeds: [buildErrorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
         ephemeral: true,
       });
     }
@@ -361,11 +355,11 @@ async function handleDeal(buttonInt, session, client, channel) {
 async function dealWithAmount(interaction, session, client, channel, user, amount, deferUpdate) {
   const current = client.pokerTables.get(session.key);
   if (!current || current.status !== "waiting") {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
   }
 
   if (amount % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -375,7 +369,7 @@ async function dealWithAmount(interaction, session, client, channel, user, amoun
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   await contributeToJackpot(amount);
 
@@ -606,6 +600,32 @@ async function runHand(user, client, session, bet, message, channel) {
       }
     }
 
+    try {
+      const isLoss = reason === "time" || !PAYOUTS[reason];
+      const isWin = !isLoss;
+      let payout = 0;
+      if (reason === "Royal Flush") {
+        payout = isJackpotEligible(bet) ? 0 : Math.ceil(bet * 50);
+      } else if (PAYOUTS[reason]) {
+        payout = Math.ceil(bet * PAYOUTS[reason].mult);
+      }
+      recordGameResult({
+        guildId: channel.guildId,
+        channelId: channel.id,
+        userId: user.id,
+        game: "poker",
+        result: {
+          final_hand: heldCards.map(c => c.code),
+          hand_name: reason === "time" ? "Forfeit (timed out)" : (reason || "No win"),
+          bet,
+          payout,
+          net: isWin ? payout - bet : -bet,
+          outcome: isWin ? "win" : "loss",
+          is_jackpot: reason === "Royal Flush" && isJackpotEligible(bet),
+        },
+      });
+    } catch (_) {}
+
     // Hub buttons (Deal Again / Change Bet / Paytable / Leave) are already
     // attached to the verdict embed above. Just re-arm the outer collector
     // so the idle timer resets and the next round can begin.
@@ -624,10 +644,10 @@ async function runHand(user, client, session, bet, message, channel) {
 async function dealOnExistingPanel(interaction, session, client, user, betExpression) {
   const bet = Number(await parseBet(betExpression, user.id));
   if (!Number.isFinite(bet) || bet < 1) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   if (bet % 1 !== 0) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -637,7 +657,7 @@ async function dealOnExistingPanel(interaction, session, client, user, betExpres
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
   }
   await contributeToJackpot(bet);
 
@@ -711,7 +731,7 @@ module.exports = {
     }
     if (existing && existing.status !== "ended") {
       return interaction.reply({
-        embeds: [errorEmbed(user, client, "A hand is already in progress on your panel. Wait for it to finish.")],
+        embeds: [buildErrorEmbed(user, client, "A hand is already in progress on your panel. Wait for it to finish.")],
         ephemeral: true,
       });
     }
@@ -728,18 +748,18 @@ module.exports = {
 
     if (!Number.isFinite(bet) || bet < 1) {
       return interaction.reply({
-        embeds: [errorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)],
+        embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)],
         ephemeral: true,
       });
     }
     if (bet % 1 !== 0) {
       return interaction.reply({
-        embeds: [errorEmbed(user, client, "You must bet in whole numbers!")],
+        embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")],
         ephemeral: true,
       });
     }
     if (bet > (dbUser.balance ?? 0)) {
-      return interaction.reply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
     }
 
     await interaction.deferReply();
@@ -766,7 +786,7 @@ module.exports = {
     });
     if (!debited) {
       client.pokerTables.delete(key);
-      return interaction.editReply({ embeds: [errorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], components: [] });
+      return interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], components: [] });
     }
     await contributeToJackpot(bet);
     session.lastBet = bet;

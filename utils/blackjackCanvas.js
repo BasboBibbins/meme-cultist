@@ -285,4 +285,34 @@ async function canvasBlackjack(dealerCards, playerHands, colors, themeId, reveal
   }
 }
 
-module.exports = { canvasBlackjack };
+/**
+ * Generate a blackjack preview PNG for the shop.
+ * Player wins with blackjack (21) against dealer 18.
+ */
+async function blackjackPreview(themeId, user = null, dealerUser = null) {
+  const colors = require("../themes/resolver").getThemeColors(themeId, "blackjack");
+  const dealerCards = [
+    { code: "0D", suit: "DIAMONDS", value: "10", emoji: "♦️", name: "Ten", char: "10", numericValue: 10 },
+    { code: "8C", suit: "CLUBS", value: "8", emoji: "♣️", name: "Eight", char: "8", numericValue: 8 },
+  ];
+  const playerHands = [
+    {
+      cards: [
+        { code: "AS", suit: "SPADES", value: "ACE", emoji: "♠️", name: "Ace", char: "A", numericValue: 11 },
+        { code: "JC", suit: "CLUBS", value: "JACK", emoji: "♣️", name: "Jack", char: "J", numericValue: 10 },
+      ],
+      value: 21,
+      bust: false,
+      isBlackjack: true,
+    },
+  ];
+  return canvasBlackjack(dealerCards, playerHands, colors, themeId, true, 0, {
+    user,
+    dealerUser,
+    outcomes: ["win"],
+    dealerOutcome: "loss",
+    playerOutcome: "win",
+  });
+}
+
+module.exports = { canvasBlackjack, blackjackPreview };

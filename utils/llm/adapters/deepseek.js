@@ -30,7 +30,7 @@ async function chat(args) {
   const client = getClient();
   const payload = {
     model: args.model,
-    messages: args.messages,
+    messages: args.messages || [],
   };
   if (args.temperature !== undefined) payload.temperature = args.temperature;
   if (args.max_tokens !== undefined) payload.max_tokens = args.max_tokens;
@@ -84,6 +84,7 @@ async function* chatStream(args) {
         const finish_reason = parsed.choices?.[0]?.finish_reason;
         yield {
           content: delta?.content || "",
+          reasoning_content: delta?.reasoning_content || "",
           tool_calls: delta?.tool_calls,
           finish_reason,
         };
@@ -103,6 +104,7 @@ async function* chatStream(args) {
         const finish_reason = parsed.choices?.[0]?.finish_reason;
         yield {
           content: delta?.content || "",
+          reasoning_content: delta?.reasoning_content || "",
           tool_calls: delta?.tool_calls,
           finish_reason,
         };

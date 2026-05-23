@@ -1,8 +1,9 @@
-const {SlashCommandBuilder, EmbedBuilder} = require("discord.js");
+const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
+const { buildErrorEmbed, buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -19,32 +20,22 @@ module.exports = {
       logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`, "warn");
       await addNewDBUser(user);
     }
-    const error_embed = new EmbedBuilder()
-      .setAuthor({ name: user.displayName , iconURL: user.displayAvatarURL({ dynamic: true }) })
-      .setColor(0xFF0000)
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
-
     if (user.bot) {
-      error_embed.setDescription(`**${user.displayName }** is a bot, and therefore cannot have a balance.`);
-      return await interaction.reply({embeds: [error_embed], ephemeral: true});
+      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `**${user.displayName}** is a bot, and therefore cannot have a balance.`)], ephemeral: true });
     }
 
     const fetchedUser = await user.fetch();
     const accentColor = fetchedUser.hexAccentColor ? fetchedUser.hexAccentColor : randomHexColor();
         
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: `${user.displayName }'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-      .setColor(`${accentColor}`)
+    const embed = buildInfoEmbed(user, interaction.client, undefined, accentColor)
+      .setAuthor({ name: `${user.displayName}'s Balance`, iconURL: user.displayAvatarURL({ dynamic: true }) })
       .addFields(
         { name: "Wallet", value: `${dbUser.balance.toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
         { name: "Bank", value: `${dbUser.bank.toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
-      )
-      .setTimestamp()
-      .setFooter( interaction.options.getUser("user") ? 
-        { text: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) } : 
-        { text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true})}
       );
-    await interaction.reply({embeds: [embed]});
+    if (interaction.options.getUser("user")) {
+      embed.setFooter({ text: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
+    }
+    await interaction.reply({ embeds: [embed] });
   },
 };

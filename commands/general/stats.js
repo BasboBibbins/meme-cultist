@@ -1,4 +1,4 @@
-const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require("discord.js");
 const { CURRENCY_NAME } = require("../../config.js");
 const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require("../../utils/openai");
@@ -6,7 +6,7 @@ const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { todayStamp } = require("../../utils/time.js");
-const { AttachmentBuilder } = require("discord.js");
+const { buildBaseEmbed } = require("../../utils/embeds");
 
 function totalNumOfCmds(type) {
   return Object.keys(type).reduce((a, b) => a + type[b], 0);
@@ -84,15 +84,14 @@ async function generateStatsEmbed(page, interaction, user) {
   const accentColor = fetchedUser.displayHexColor || randomHexColor();
 
   const stats = await db.get(user.id);
-  const embed = new EmbedBuilder()
+  const embed = buildBaseEmbed(interaction.user, interaction.client)
     .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
     .setColor(`${accentColor}`)
-    .setTimestamp();
+    .setFooter({ text: `${user.displayName}'s Stats | Page ${page}/5`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
 
   if (user !== interaction.user) {
-    embed.setAuthor({ name: `Requested by ${interaction.user.displayName }`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
+    embed.setAuthor({ name: `Requested by ${interaction.user.displayName}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
   }
-  embed.setFooter({ text: `${user.displayName }'s Stats | Page ${page}/5`, iconURL: interaction.guild.iconURL({ dynamic: true }) });
   switch (page) {
     case 1:
       embed.setTitle(`${user.displayName }'s General Stats`);

@@ -268,7 +268,7 @@ const themes = {
         bannerBackgroundEnd: "#120e18",
         motionBlurOverlay:   "rgba(48, 36, 54, 0.5)",
         paylineColors:       ["#b094d4", "#88ddc0", "#f0e8f8", "#e08870", "#f5c0e0"],
-        symbols: sprites("fwenCult", ["Miku Plushie", "Fwen", "Server Icon", "Boba", "Cat", "MLG Doge", "BAR", "Seven", "Wild", "Bonus"]),
+        symbols: sprites("fwenCult", ["Sad Raymoo", "Sad Bean", "Uooaaadon", "The Bird", "What the Cup", "Cohnny", "Band-stacking Cirno", "Turty Miker", "MIKU WIT DA WILD", "fwen bonus :)"]),
       },
       roulette: {
         woodInner:       "#2e2038",
@@ -327,7 +327,7 @@ const themes = {
 
   july4: limited("july4", "July 4th",
     "Stars, stripes, and fireworks. A patriotic celebration in red, white, and blue.",
-    741776, "🎆",
+    250000, "🎆",
     { start: { month: 6, day: 28 }, end: { month: 7, day: 7 } },
     {
       background:  path.join(BACKGROUND_BASE, "july4.png"),
@@ -356,7 +356,7 @@ const themes = {
         bannerBackgroundEnd: "#030618",
         motionBlurOverlay:   "rgba(10, 20, 60, 0.5)",
         paylineColors:       ["#b22234", "#ffffff", "#002868", "#f5c842", "#e8e8e8"],
-        symbols: sprites("july4", ["Bald Eagle", "Liberty Bell", "Flag", "Firework", "Uncle Sam Hat", "Star", "Hot Dog", "Beer", "Wild", "Bonus"]),
+        symbols: sprites("july4", ["Hot Dog", "Liberty Bell", "Flags", "Firework", "Uncle Sam Hat", "Statue of Liberty", "Beer", "Bald Eagle", "Jackpot", "Bonus"]),
       },
       roulette: {
         woodInner:       "#1a2a5a",
@@ -720,7 +720,7 @@ const themes = {
         bannerBackgroundEnd: "#050320",
         motionBlurOverlay:   "rgba(8, 14, 42, 0.5)",
         paylineColors:       ["#00ffd0", "#b388ff", "#ff7b8a", "#80d8c0", "#6a8aff"],
-        symbols: sprites("deepSea", ["Anglerfish", "Jellyfish", "Seahorse", "Coral", "Pearl", "Shell", "BAR", "Trident", "Wild", "Treasure"]),
+        symbols: sprites("deepSea", ["Shell", "Seastar", "Seahorse", "Pufferfish", "Pearl", "Coral", "Anchor", "Anglerfish", "Treasure", "Kraken"]),
       },
       roulette: {
         woodInner:       "#142838",
@@ -1409,7 +1409,6 @@ const themes = {
 // Disabled themes. These do not show up on the list, or in the shop.
 
 themes.minimal.disabled = true;
-themes.y2k.disabled = true;
 
 /**
  * Get a theme definition by ID. Returns classic if not found.

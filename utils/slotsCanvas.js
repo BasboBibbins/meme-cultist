@@ -4,7 +4,6 @@ const { CURRENCY_NAME } = require("../config.js");
 const { getTheme } = require("./slotsThemes");
 const { encodeGIF } = require("./gifUtil");
 const CanvasUtil = require("./Canvas");
-const logger = require("./logger");
 const {
   roundRect,
   withAlpha,
@@ -582,6 +581,8 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
   await preloadThemeImages(theme);
   const c = theme.colors;
   const plColors = getPaylineColors(theme);
+  const wildLabel = theme.symbols[8]?.label || "WILD";
+  const scatterLabel = theme.symbols[9]?.label || "SCATTER";
 
   const PT_W = 720;
   const MARGIN_X = 24;
@@ -634,18 +635,22 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
     ctx.font = "bold 13px Arial";
     ctx.fillStyle = c.textWhite;
     const themeSym = theme.symbols[sym.index];
-    ctx.fillText(themeSym?.label || sym.name || "Symbol", MARGIN_X + 58, y + 4);
+    const labelText = themeSym?.label || sym.name || "Symbol";
+    ctx.fillText(labelText, MARGIN_X + 58, y + 4);
+
+    const labelW = ctx.measureText(labelText).width;
+    const payoutX = Math.max(MARGIN_X + 150, MARGIN_X + 58 + labelW + 12);
 
     ctx.font = "12px Arial";
     if (sym.index === 8) {
       ctx.fillStyle = c.textWin;
-      ctx.fillText("3x WILD = JACKPOT  |  Substitutes for any symbol (except Scatter)", MARGIN_X + 150, y + 4);
+      ctx.fillText(`3x ${wildLabel} = JACKPOT  |  Substitutes for any symbol (except ${scatterLabel})`, payoutX, y + 4);
     } else if (sym.index === 9) {
       ctx.fillStyle = c.textPrimary;
-      ctx.fillText("3+ anywhere = Bonus Free Spins (2x multiplier)", MARGIN_X + 150, y + 4);
+      ctx.fillText("3+ anywhere = Bonus Free Spins (2x multiplier)", payoutX, y + 4);
     } else {
       ctx.fillStyle = c.textWin;
-      ctx.fillText(`3-match: ${sym.multiplier}x  |  2-match: ${sym.partial}x`, MARGIN_X + 150, y + 4);
+      ctx.fillText(`3-match: ${sym.multiplier}x  |  2-match: ${sym.partial}x`, payoutX, y + 4);
     }
   }
 
@@ -711,7 +716,7 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("Bet is per line. Total cost = bet \u00D7 lines. Default: 1 line (middle row).", PT_W / 2, rulesTop + 20);
-  ctx.fillText("WILD substitutes for all symbols except SCATTER. 3+ SCATTER = Bonus Free Spins!", PT_W / 2, rulesTop + 38);
+  ctx.fillText(`${wildLabel} substitutes for all symbols except ${scatterLabel}. 3+ ${scatterLabel} = Bonus Free Spins!`, PT_W / 2, rulesTop + 38);
   ctx.restore();
 
   const buffer = canvas.toBuffer("image/png");
@@ -719,14 +724,28 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
 }
 
 /**
- * Generate a deterministic slots spin preview GIF for the shop.
- * Row 0 is three cherries (index 4) — a guaranteed winning line.
+ * Generate a deterministic slots result preview PNG for the shop.
+ * Middle row is a three-of-a-kind win.
  */
 async function slotsPreview(themeId) {
   const theme = getTheme(themeId);
   await preloadThemeImages(theme);
-  const grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-  return drawSpinAnimation(grid, { jackpotDisplay: "0 koku", activeLines: 1, bet: 0, theme });
+  const grid = [
+    [0, 2, 4],
+    [8, 8, 8],
+    [6, 7, 9],
+  ];
+  const winResults = [
+    { line: 1, count: 3, symbol: 8, payout: 100 },
+  ];
+  return drawSlotMachine(grid, {
+    theme,
+    activeLines: 5,
+    bet: 1000,
+    totalWin: 50000,
+    balance: 125000,
+    winResults,
+  });
 }
 
 module.exports = {

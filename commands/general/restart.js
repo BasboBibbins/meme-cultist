@@ -1,5 +1,6 @@
-const {EmbedBuilder, SlashCommandBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, PermissionFlagsBits} = require("discord.js");
+const { SlashCommandBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle, PermissionFlagsBits } = require("discord.js");
 const logger = require("../../utils/logger");
+const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -10,12 +11,8 @@ module.exports = {
       return await interaction.reply({content: "You do not have permission to use this command.", ephemeral: true});
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle(":warning: WARNING :warning:")
-      .setDescription("Are you sure you want to restart the bot? This will cause the bot to go offline for a few seconds.")
-      .setColor(0x00AE86)
-      .setFooter({ text: `${interaction.client.user.username} | Version ${require("../../package.json").version}`, iconURL: interaction.client.user.displayAvatarURL({dynamic: true}) })
-      .setTimestamp();
+    const embed = buildInfoEmbed(interaction.user, interaction.client, "Are you sure you want to restart the bot? This will cause the bot to go offline for a few seconds.", 0x00AE86)
+      .setTitle(":warning: WARNING :warning:");
     const row = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()

@@ -13,6 +13,7 @@ const { withUserLock } = require("../../utils/userlock");
 const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
 const wait = require("node:timers/promises").setTimeout;
+const { recordGameResult } = require("../../utils/gameResults");
 
 const PACKAGE_VERSION = require("../../package.json").version;
 
@@ -493,6 +494,42 @@ async function handleRoll(i, state, client) {
   if (pointHit) dbWrites.push(db.add(`${state.shooterId}.stats.craps.pointsHit`, 1));
   if (sevenOut) dbWrites.push(db.add(`${state.shooterId}.stats.craps.sevenOuts`, 1));
   await Promise.all(dbWrites);
+
+  try {
+    for (const [uid, u] of Object.entries(perUser)) {
+      const userBets = [];
+      let wagered = 0;
+      for (let idx = 0; idx < results.length; idx++) {
+        if (lockedBets[idx].userId !== uid) continue;
+        const r = results[idx];
+        const def = BET_DEFINITIONS[r.betKey];
+        userBets.push({
+          type: def ? def.label : r.betKey,
+          amount: r.originalAmount,
+          outcome: r.status,
+          payout: r.payoutAmount || 0,
+          net: (r.payoutAmount || 0) - r.originalAmount,
+        });
+        wagered += r.originalAmount;
+      }
+      if (userBets.length === 0) continue;
+      recordGameResult({
+        guildId: i.guildId,
+        channelId: state.channelId,
+        userId: uid,
+        game: "craps",
+        result: {
+          dice: { d1: roll.d1, d2: roll.d2, total: roll.total, is_hard: roll.isHard },
+          roll_type: rollKind,
+          phase_before: oldPhase,
+          point: oldPhase === "point" ? oldPoint : (pointJustSet ? newPoint : null),
+          bets: userBets,
+          total_wagered: wagered,
+          net: u.balanceChange - wagered,
+        },
+      });
+    }
+  } catch (_) {}
 
   let header = `🎲 **${state.shooterUsername}** rolled **${roll.d1}** + **${roll.d2}** = **${roll.total}**`;
   if (roll.isHard) header += " (hard)";
