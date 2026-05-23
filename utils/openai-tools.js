@@ -884,9 +884,11 @@ async function handleGetShop(args, message, client) {
   }
 }
 
-async function handleWebSearch(args) {
+async function handleWebSearch(args, message) {
   const count = Math.min(Math.max(args.count || 5, 1), 10);
-  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(args.query)}&count=${count}&result_filter=web`;
+  const isNsfw = message?.channel?.nsfw || message?.channel?.parent?.nsfw;
+  const safesearch = isNsfw ? "" : "&safesearch=strict";
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(args.query)}&count=${count}&result_filter=web${safesearch}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {

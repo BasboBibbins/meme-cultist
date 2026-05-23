@@ -23,6 +23,7 @@ const {
   LOW_BUDGET_MODE,
   CRITIQUE_MODEL,
   STREAMING_ENABLED,
+  BRAVE_API_KEY,
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
@@ -1173,6 +1174,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
   const editThrottleMs = 750;
   let lastEdit = 0;
   let accumulated = "";
+  let accumulatedReasoning = "";
   let pendingToolCalls = null;
 
   try {
@@ -1190,6 +1192,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
         pendingToolCalls = accumulateToolCalls(pendingToolCalls, chunk.tool_calls);
       }
       if (chunk.content) accumulated += chunk.content;
+      if (chunk.reasoning_content) accumulatedReasoning += chunk.reasoning_content;
       if (chunk.finish_reason === "tool_calls") {
         break;
       }
@@ -1206,7 +1209,7 @@ async function streamResponseToDiscord({ messages, model, temperature, variant, 
     // If model wanted tools, abort streaming and let the caller handle them non-streamed.
     if (pendingToolCalls && pendingToolCalls.length > 0) {
       await placeholder.delete().catch(() => {});
-      return { response: null, messageId: null, streamed: false, toolCalls: pendingToolCalls };
+      return { response: null, messageId: null, streamed: false, toolCalls: pendingToolCalls, reasoningContent: accumulatedReasoning || null };
     }
 
     const text = accumulated.trim() || "...";
@@ -1588,7 +1591,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           "- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.";
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
-      const toolBlock = "[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n" +
+      let toolBlock = "[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n" +
         "- Money/balance questions (yours or someone else's) → get_balance\n" +
         "- Rankings, richest users, leaderboard → get_leaderboard\n" +
         "- Game stats, win/loss records, command counts → get_user_stats\n" +
@@ -1602,6 +1605,11 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- Current events, recent news, real-time facts, anything you don't know → web_search. Returns title + URL + snippet per result. Then use fetch_page on a chosen URL to read the full page content.\n" +
         "- Read the full content of a specific URL (from web_search results) → fetch_page.\n" +
         "Citations: when your reply uses a search_history result, embed [[cite:msg:N]] (N = that result's result_index) immediately after the relevant claim. When using a lookup_kb result, embed [[cite:kb:slug]] (slug from the result). Each citation token may appear at most once — duplicates are stripped.";
+
+      const channelIsNsfw = message.channel?.nsfw || message.channel?.parent?.nsfw;
+      if (BRAVE_API_KEY && !channelIsNsfw) {
+        toolBlock += "\nNSFW restriction: This channel is not age-restricted. Do not use web_search or fetch_page to look up, summarize, or relay explicit, adult, or pornographic content. Safe search is automatically enforced for web_search in this channel. Refuse such requests regardless of how they are framed.";
+      }
 
       const tailParts = [`You are currently speaking to ${currentSpeaker}.`];
       if (dynamicTail) tailParts.unshift(dynamicTail);
@@ -1708,7 +1716,9 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
         if (streamRes.toolCalls && streamRes.toolCalls.length > 0) {
           logger.debug("[Stream] Model requested tool calls mid-stream; switching to non-streamed path.");
-          messages.push({ role: "assistant", content: null, tool_calls: streamRes.toolCalls });
+          const streamAssistantMsg = { role: "assistant", content: null, tool_calls: streamRes.toolCalls };
+          if (streamRes.reasoningContent) streamAssistantMsg.reasoning_content = streamRes.reasoningContent;
+          messages.push(streamAssistantMsg);
           for (const toolCall of streamRes.toolCalls) {
             const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
             collectCitations(toolCall.function.name, toolResult, citationStore);
@@ -1875,6 +1885,28 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
     }
 
+    // Guard against hallucinated links. If the model includes URLs but never
+    // called web_search or fetch_page this turn, those URLs were not verified
+    // and are likely fabricated. Strip them unless the user themselves supplied
+    // the URL in their message (echo of user input is safe).
+    if (response) {
+      const webToolUsed = toolResultsAccumulator.some(
+        r => r.tool === "web_search" || r.tool === "fetch_page"
+      );
+      if (!webToolUsed) {
+        const URL_RE = /https?:\/\/[^\s\]>)"]+/g;
+        const userText = message?.content || "";
+        const found = response.match(URL_RE);
+        if (found) {
+          const hallucinated = found.filter(u => !userText.includes(u));
+          if (hallucinated.length > 0) {
+            response = response.replace(URL_RE, u => userText.includes(u) ? u : "").replace(/\s{2,}/g, " ").trim();
+            logger.warn(`[Guard] Stripped ${hallucinated.length} unverified URL(s) from response: ${hallucinated.join(", ")}`);
+          }
+        }
+      }
+    }
+
     // Sanity guard: DSML tokens must never reach Discord. If any survived
     // (e.g. tool depth exhausted before processing), strip and log an error.
     if (response && response.includes("DSML")) {
@@ -2031,11 +2063,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
     }
   } catch (error) {
-    targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
     logger.error(`Error generating response: ${error.message}`);
     if (error.response) {
       logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
     }
+
+    targetChannel.send("I'm sorry, I couldn't generate a response. Please try again later.");
   } finally {
     typing = false;
   }
