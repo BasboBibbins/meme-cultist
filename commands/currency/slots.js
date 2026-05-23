@@ -115,6 +115,7 @@ function createSession(userId, channelId, key, messageId, lastBet, lastLines, st
     lastLines: Math.min(Math.max(lastLines || 1, 1), SLOTS_MAX_LINES),
     status: "waiting",
     collector: null,
+    lastEphemeralInteraction: null,
     startBalance: startBalance ?? 0,
     rounds: 0,
     spins: 0,
@@ -151,10 +152,15 @@ async function openSlotsPanel(interaction, user, client) {
   const key = sessionKey(interaction.channelId, user.id);
   const existing = client.slotsPanels.get(key);
   if (existing && existing.status !== "ended") {
-    return interaction.reply({
+    if (existing.lastEphemeralInteraction) {
+      existing.lastEphemeralInteraction.deleteReply().catch(() => {});
+    }
+    await interaction.reply({
       embeds: [buildErrorEmbed(user, client, "You already have a slots panel open in this channel. Use the buttons on your existing message.")],
       ephemeral: true,
     });
+    existing.lastEphemeralInteraction = interaction;
+    return;
   }
 
   let dbUser = await db.get(user.id);
@@ -318,10 +324,15 @@ async function handleSpin(buttonInt, session, client, channel) {
       const reason = !resolved.ok
         ? resolved.reason
         : `\`${session.lastBetExpression || ""}\` × ${session.lastLines} = ${totalCost.toLocaleString("en-US")} ${CURRENCY_NAME}, but you only have ${balance.toLocaleString("en-US")}.`;
-      return buttonInt.reply({
+      if (session.lastEphemeralInteraction) {
+        session.lastEphemeralInteraction.deleteReply().catch(() => {});
+      }
+      await buttonInt.reply({
         embeds: [buildErrorEmbed(user, client, `${reason} Click **Spin** again to enter a new bet.`)],
         ephemeral: true,
       });
+      session.lastEphemeralInteraction = buttonInt;
+      return;
     }
 
     session.lastBet = resolved.amount;
@@ -495,13 +506,17 @@ async function handleChangeBet(buttonInt, session, client) {
   current.lastBetExpression = expression;
   await persistPreferences(user.id, expression, null);
 
-  return submit.reply({
+  if (current.lastEphemeralInteraction) {
+    current.lastEphemeralInteraction.deleteReply().catch(() => {});
+  }
+  await submit.reply({
     embeds: [new EmbedBuilder()
       .setColor(0x0f4c25)
       .setDescription(`Bet updated to **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click **Spin** to play.`)
       .setTimestamp()],
     ephemeral: true,
   });
+  current.lastEphemeralInteraction = submit;
 }
 
 async function handleChangeLines(buttonInt, session, client) {
@@ -545,13 +560,17 @@ async function handleChangeLines(buttonInt, session, client) {
   current.lastLines = lines;
   await persistPreferences(user.id, null, lines);
 
-  return submit.reply({
+  if (current.lastEphemeralInteraction) {
+    current.lastEphemeralInteraction.deleteReply().catch(() => {});
+  }
+  await submit.reply({
     embeds: [new EmbedBuilder()
       .setColor(0x0f4c25)
       .setDescription(`Active paylines updated to **${lines}**. Click **Spin** to play.`)
       .setTimestamp()],
     ephemeral: true,
   });
+  current.lastEphemeralInteraction = submit;
 }
 
 async function handlePaytable(buttonInt, client) {
@@ -649,10 +668,15 @@ async function spinFromSlash(interaction, user, client, betExpression, linesOpti
     return spinOnExistingPanel(interaction, existing, client, user, betExpression, linesOption);
   }
   if (existing && existing.status !== "ended") {
-    return interaction.reply({
+    if (existing.lastEphemeralInteraction) {
+      existing.lastEphemeralInteraction.deleteReply().catch(() => {});
+    }
+    await interaction.reply({
       embeds: [buildErrorEmbed(user, client, "Your slots panel is mid-spin. Wait for it to finish.")],
       ephemeral: true,
     });
+    existing.lastEphemeralInteraction = interaction;
+    return;
   }
 
   const dbUser = (await db.get(user.id)) || {};

@@ -88,10 +88,15 @@ async function openHubPanel(interaction, user, client) {
   const key = sessionKey(interaction.channelId, user.id);
   const existing = client.blackjackTables.get(key);
   if (existing && existing.status !== "ended") {
-    return interaction.reply({
+    if (existing.lastEphemeralInteraction) {
+      existing.lastEphemeralInteraction.deleteReply().catch(() => {});
+    }
+    await interaction.reply({
       embeds: [buildErrorEmbed(user, client, "You already have a blackjack table open in this channel. Use the buttons on your existing table.")],
       ephemeral: true,
     });
+    existing.lastEphemeralInteraction = interaction;
+    return;
   }
 
   let dbUser = await db.get(user.id);
@@ -136,6 +141,7 @@ function createSession(userId, channelId, key, messageId, lastBet, status, start
     messageId,
     lastBet,
     lastBetExpression: null,
+    lastEphemeralInteraction: null,
     status,
     collector: null,
     startBalance,
@@ -275,13 +281,17 @@ async function handleChangeBet(buttonInt, session, client) {
   current.lastBetExpression = expression;
   await db.set(`${user.id}.blackjack.lastBet`, expression).catch(() => {});
 
-  return submit.reply({
+  if (current.lastEphemeralInteraction) {
+    current.lastEphemeralInteraction.deleteReply().catch(() => {});
+  }
+  await submit.reply({
     embeds: [new EmbedBuilder()
       .setColor(0x1a6b3c)
       .setDescription(`Default bet updated to **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click **Deal Again** to use it.`)
       .setTimestamp()],
     ephemeral: true,
   });
+  current.lastEphemeralInteraction = submit;
 }
 
 async function handleDeal(buttonInt, session, client, channel) {
@@ -294,10 +304,15 @@ async function handleDeal(buttonInt, session, client, channel) {
     const resolved = await resolveBet(session.lastBetExpression, user.id);
     if (!resolved.ok) {
       session.lastBetExpression = null;
-      return buttonInt.reply({
+      if (session.lastEphemeralInteraction) {
+        session.lastEphemeralInteraction.deleteReply().catch(() => {});
+      }
+      await buttonInt.reply({
         embeds: [buildErrorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
         ephemeral: true,
       });
+      session.lastEphemeralInteraction = buttonInt;
+      return;
     }
     return dealWithAmount(buttonInt, session, client, channel, user, resolved.amount, /* deferUpdate */ true);
   }
@@ -925,12 +940,17 @@ module.exports = {
       if (betOption && existing.status === "waiting") {
         return dealOnExistingTable(interaction, existing, client, user, betOption);
       }
-      return interaction.reply({
+      if (existing.lastEphemeralInteraction) {
+        existing.lastEphemeralInteraction.deleteReply().catch(() => {});
+      }
+      await interaction.reply({
         embeds: [buildErrorEmbed(user, client, existing.status === "playing"
           ? "A hand is already in progress on your table. Wait for it to finish."
           : "You already have a blackjack table open in this channel. Use the buttons on your existing message.")],
         ephemeral: true,
       });
+      existing.lastEphemeralInteraction = interaction;
+      return;
     }
 
     if (!betOption) {
