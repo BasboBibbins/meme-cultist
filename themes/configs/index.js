@@ -268,7 +268,7 @@ const themes = {
         bannerBackgroundEnd: "#120e18",
         motionBlurOverlay:   "rgba(48, 36, 54, 0.5)",
         paylineColors:       ["#b094d4", "#88ddc0", "#f0e8f8", "#e08870", "#f5c0e0"],
-        symbols: sprites("fwenCult", ["Miku Plushie", "Fwen", "Server Icon", "Boba", "Cat", "MLG Doge", "BAR", "Seven", "Wild", "Bonus"]),
+        symbols: sprites("fwenCult", ["Sad Raymoo", "Sad Bean", "Uooaaadon", "The Bird", "What the Cup", "Cohnny", "Band-stacking Cirno", "Turty Miker", "MIKU WITH DA WILD?!", "MIKU MIKU BONUS"]),
       },
       roulette: {
         woodInner:       "#2e2038",
@@ -356,7 +356,7 @@ const themes = {
         bannerBackgroundEnd: "#030618",
         motionBlurOverlay:   "rgba(10, 20, 60, 0.5)",
         paylineColors:       ["#b22234", "#ffffff", "#002868", "#f5c842", "#e8e8e8"],
-        symbols: sprites("july4", ["Bald Eagle", "Liberty Bell", "Flag", "Firework", "Uncle Sam Hat", "Star", "Hot Dog", "Beer", "Wild", "Bonus"]),
+        symbols: sprites("july4", ["Hot Dog", "Liberty Bell", "Flags", "Firework", "Uncle Sam Hat", "Statue of Liberty", "Beer", "Bald Eagle", "Jackpot", "Bonus"]),
       },
       roulette: {
         woodInner:       "#1a2a5a",
@@ -1409,7 +1409,6 @@ const themes = {
 // Disabled themes. These do not show up on the list, or in the shop.
 
 themes.minimal.disabled = true;
-themes.y2k.disabled = true;
 
 /**
  * Get a theme definition by ID. Returns classic if not found.
