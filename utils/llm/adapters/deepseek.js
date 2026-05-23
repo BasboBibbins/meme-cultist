@@ -28,9 +28,15 @@ function getClient() {
 
 async function chat(args) {
   const client = getClient();
+  // Strip reasoning_content from assistant messages before sending.
+  const messages = (args.messages || []).map(m => {
+    if (m.role !== "assistant" || !("reasoning_content" in m)) return m;
+    const { reasoning_content: _rc, ...rest } = m;
+    return rest;
+  });
   const payload = {
     model: args.model,
-    messages: args.messages,
+    messages,
   };
   if (args.temperature !== undefined) payload.temperature = args.temperature;
   if (args.max_tokens !== undefined) payload.max_tokens = args.max_tokens;

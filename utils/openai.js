@@ -1685,6 +1685,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
     const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
     const citationStore = { msg: new Map(), kb: new Set() };
+    const toolResultsAccumulator = [];
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
       const finalSlot = toolCallDepth === MAX_TOOL_DEPTH - 1;
@@ -1711,6 +1712,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           for (const toolCall of streamRes.toolCalls) {
             const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
             collectCitations(toolCall.function.name, toolResult, citationStore);
+            toolResultsAccumulator.push({ tool: toolCall.function.name, args: toolCall.function.arguments, result: toolResult });
             messages.push({
               role: "tool",
               tool_call_id: toolCall.id,
@@ -1771,6 +1773,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         for (const toolCall of choice.message.tool_calls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
           collectCitations(toolCall.function.name, toolResult, citationStore);
+          toolResultsAccumulator.push({ tool: toolCall.function.name, args: toolCall.function.arguments, result: toolResult });
 
           messages.push({
             role: "tool",
@@ -1806,6 +1809,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         for (const toolCall of dsmlToolCalls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
           collectCitations(toolCall.function.name, toolResult, citationStore);
+          toolResultsAccumulator.push({ tool: toolCall.function.name, args: toolCall.function.arguments, result: toolResult });
           messages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(toolResult) });
           if (SIDE_EFFECT_TOOLS.has(toolCall.function.name)) {
             toolCtx.pendingToolCalls.push({
@@ -1837,8 +1841,26 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     }
 
     if (toolCallDepth >= MAX_TOOL_DEPTH) {
-      logger.warn("[ToolCall] Max depth reached, forcing response");
-      response = "I'm having trouble processing that request. Please try again.";
+      logger.warn("[ToolCall] Max depth reached, forcing synthesis from gathered results");
+      const synthesisCompletion = await llm.chat({
+        model: CONVO_MODEL,
+        messages: messages,
+        temperature: 0.9,
+        tools: TOOLS,
+        tool_choice: "none",
+        timeoutMs: 120_000,
+        label: "handleBotMessage-synthesis",
+        variant: sys_variant,
+      });
+      const synthesisChoice = synthesisCompletion.raw?.data?.choices?.[0];
+      if (synthesisChoice?.message?.content) {
+        response = synthesisChoice.message.content;
+        logger.debug(`[Synthesis] Generated response: ${response.substring(0, 100)}...`);
+      } else {
+        const gatheredTools = toolResultsAccumulator.map(r => r.tool).join(", ");
+        response = `I gathered some information (${gatheredTools}) but wasn't able to finish the full lookup. Let me know if you'd like me to try a different approach!`;
+        logger.warn("[Synthesis] Synthesis call returned no content; using fallback.");
+      }
     }
 
     // Guard against hallucinated attachment markup
