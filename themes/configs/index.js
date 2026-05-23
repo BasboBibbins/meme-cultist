@@ -268,7 +268,7 @@ const themes = {
         bannerBackgroundEnd: "#120e18",
         motionBlurOverlay:   "rgba(48, 36, 54, 0.5)",
         paylineColors:       ["#b094d4", "#88ddc0", "#f0e8f8", "#e08870", "#f5c0e0"],
-        symbols: sprites("fwenCult", ["Sad Raymoo", "Sad Bean", "Uooaaadon", "The Bird", "What the Cup", "Cohnny", "Band-stacking Cirno", "Turty Miker", "MIKU WITH DA WILD?!", "MIKU MIKU BONUS"]),
+        symbols: sprites("fwenCult", ["Sad Raymoo", "Sad Bean", "Uooaaadon", "The Bird", "What the Cup", "Cohnny", "Band-stacking Cirno", "Turty Miker", "MIKU WIT DA WILD", "fwen bonus :)"]),
       },
       roulette: {
         woodInner:       "#2e2038",
@@ -720,7 +720,7 @@ const themes = {
         bannerBackgroundEnd: "#050320",
         motionBlurOverlay:   "rgba(8, 14, 42, 0.5)",
         paylineColors:       ["#00ffd0", "#b388ff", "#ff7b8a", "#80d8c0", "#6a8aff"],
-        symbols: sprites("deepSea", ["Anglerfish", "Jellyfish", "Seahorse", "Coral", "Pearl", "Shell", "BAR", "Trident", "Wild", "Treasure"]),
+        symbols: sprites("deepSea", ["Shell", "Seastar", "Seahorse", "Pufferfish", "Pearl", "Coral", "Anchor", "Anglerfish", "Treasure", "Kraken"]),
       },
       roulette: {
         woodInner:       "#142838",
