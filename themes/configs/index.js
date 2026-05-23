@@ -327,7 +327,7 @@ const themes = {
 
   july4: limited("july4", "July 4th",
     "Stars, stripes, and fireworks. A patriotic celebration in red, white, and blue.",
-    741776, "🎆",
+    250000, "🎆",
     { start: { month: 6, day: 28 }, end: { month: 7, day: 7 } },
     {
       background:  path.join(BACKGROUND_BASE, "july4.png"),
