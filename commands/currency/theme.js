@@ -119,7 +119,7 @@ module.exports = {
 
         const attachments = {};
         for (const game of PREVIEW_GAMES) {
-          attachments[game] = await getPreviewAttachment(themeId, game);
+          attachments[game] = await getPreviewAttachment(themeId, game, interaction.user, interaction.client.user);
         }
 
         let currentPage = 0;

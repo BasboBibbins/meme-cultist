@@ -172,7 +172,7 @@ module.exports = {
 
         const attachments = {};
         for (const game of PREVIEW_GAMES) {
-          attachments[game] = await getPreviewAttachment(itemId, game);
+          attachments[game] = await getPreviewAttachment(itemId, game, interaction.user, interaction.client.user);
         }
 
         let currentPage = 0;

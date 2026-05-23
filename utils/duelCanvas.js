@@ -433,4 +433,23 @@ async function renderDuel({ challenger, opponent, bet, challengerChoice, opponen
   return new AttachmentBuilder(buffer, { name: "duel.png" });
 }
 
-module.exports = { renderDuel };
+/**
+ * Generate a duel preview PNG for the shop.
+ * User wins against the bot with rock vs scissors.
+ */
+async function duelPreview(themeId, user = null, clientUser = null) {
+  const colors = require("../themes/resolver").getThemeColors(themeId, "duel");
+  const challenger = user || { displayName: "You", displayAvatarURL: () => null };
+  const opponent = clientUser || { displayName: "Dealer", displayAvatarURL: () => null };
+  return renderDuel({
+    challenger,
+    opponent,
+    bet: 25000,
+    challengerChoice: "rock",
+    opponentChoice: "scissors",
+    result: "challenger",
+    colors,
+  });
+}
+
+module.exports = { renderDuel, duelPreview };

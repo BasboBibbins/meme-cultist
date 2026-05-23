@@ -718,14 +718,28 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
 }
 
 /**
- * Generate a deterministic slots spin preview GIF for the shop.
- * Row 0 is three cherries (index 4) — a guaranteed winning line.
+ * Generate a deterministic slots result preview PNG for the shop.
+ * Middle row is a three-of-a-kind win.
  */
 async function slotsPreview(themeId) {
   const theme = getTheme(themeId);
   await preloadThemeImages(theme);
-  const grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
-  return drawSpinAnimation(grid, { jackpotDisplay: "0 koku", activeLines: 1, bet: 0, theme });
+  const grid = [
+    [0, 2, 4],
+    [8, 8, 8],
+    [6, 7, 9],
+  ];
+  const winResults = [
+    { line: 1, count: 3, symbol: 8, payout: 100 },
+  ];
+  return drawSlotMachine(grid, {
+    theme,
+    activeLines: 5,
+    bet: 1000,
+    totalWin: 50000,
+    balance: 125000,
+    winResults,
+  });
 }
 
 module.exports = {
