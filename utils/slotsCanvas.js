@@ -581,6 +581,8 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
   await preloadThemeImages(theme);
   const c = theme.colors;
   const plColors = getPaylineColors(theme);
+  const wildLabel = theme.symbols[8]?.label || "WILD";
+  const scatterLabel = theme.symbols[9]?.label || "SCATTER";
 
   const PT_W = 720;
   const MARGIN_X = 24;
@@ -633,18 +635,22 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
     ctx.font = "bold 13px Arial";
     ctx.fillStyle = c.textWhite;
     const themeSym = theme.symbols[sym.index];
-    ctx.fillText(themeSym?.label || sym.name || "Symbol", MARGIN_X + 58, y + 4);
+    const labelText = themeSym?.label || sym.name || "Symbol";
+    ctx.fillText(labelText, MARGIN_X + 58, y + 4);
+
+    const labelW = ctx.measureText(labelText).width;
+    const payoutX = Math.max(MARGIN_X + 150, MARGIN_X + 58 + labelW + 12);
 
     ctx.font = "12px Arial";
     if (sym.index === 8) {
       ctx.fillStyle = c.textWin;
-      ctx.fillText("3x WILD = JACKPOT  |  Substitutes for any symbol (except Scatter)", MARGIN_X + 150, y + 4);
+      ctx.fillText(`3x ${wildLabel} = JACKPOT  |  Substitutes for any symbol (except ${scatterLabel})`, payoutX, y + 4);
     } else if (sym.index === 9) {
       ctx.fillStyle = c.textPrimary;
-      ctx.fillText("3+ anywhere = Bonus Free Spins (2x multiplier)", MARGIN_X + 150, y + 4);
+      ctx.fillText("3+ anywhere = Bonus Free Spins (2x multiplier)", payoutX, y + 4);
     } else {
       ctx.fillStyle = c.textWin;
-      ctx.fillText(`3-match: ${sym.multiplier}x  |  2-match: ${sym.partial}x`, MARGIN_X + 150, y + 4);
+      ctx.fillText(`3-match: ${sym.multiplier}x  |  2-match: ${sym.partial}x`, payoutX, y + 4);
     }
   }
 
@@ -710,7 +716,7 @@ async function drawPaytable(jackpotDisplay, symbolTable, theme) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("Bet is per line. Total cost = bet \u00D7 lines. Default: 1 line (middle row).", PT_W / 2, rulesTop + 20);
-  ctx.fillText("WILD substitutes for all symbols except SCATTER. 3+ SCATTER = Bonus Free Spins!", PT_W / 2, rulesTop + 38);
+  ctx.fillText(`${wildLabel} substitutes for all symbols except ${scatterLabel}. 3+ ${scatterLabel} = Bonus Free Spins!`, PT_W / 2, rulesTop + 38);
   ctx.restore();
 
   const buffer = canvas.toBuffer("image/png");
