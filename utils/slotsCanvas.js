@@ -492,6 +492,7 @@ async function drawSpinAnimation(finalGrid, options = {}) {
     isBonus = false,
     isFreePlay = false,
     theme: themeOverride,
+    noDownscale = false,
   } = options;
 
   const theme = themeOverride || getTheme("classic");
@@ -500,74 +501,110 @@ async function drawSpinAnimation(finalGrid, options = {}) {
   await preloadThemeImages(theme);
 
   const symCount = theme.symbols.length;
-
-  // --- Half-resolution canvas for spin frames (Pi 3B optimization) ---
-  // Use ctx.scale(0.5, 0.5) so all drawing functions use full-res coordinates
-  // and the canvas automatically scales everything down.
-  const halfW = Math.floor(W / 2);
-  const halfH = Math.floor(H / 2);
-
-  const halfFrameCanvas = createCanvas(halfW, halfH);
-  const halfFrameCtx = halfFrameCanvas.getContext("2d");
-  halfFrameCtx.scale(0.5, 0.5);
-  await drawFrame(halfFrameCtx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
-
-  const halfSpinCanvas = createCanvas(halfW, halfH);
-  const halfSpinCtx = halfSpinCanvas.getContext("2d");
-
-  // --- Full-resolution canvas to scale half-res frames up for encoding ---
-  const fullCanvas = createCanvas(W, H);
-  const fullCtx = fullCanvas.getContext("2d");
-
   const frames = [];
   const totalFrames = 10;
   const lockFrames = [3, 6, 9]; // Column lock points
 
-  for (let frame = 0; frame < totalFrames; frame++) {
-    // Blit frame at native half-res size (no scale transform)
-    halfSpinCtx.drawImage(halfFrameCanvas, 0, 0);
+  if (noDownscale) {
+    // --- Full-resolution path (preview / high-quality) ---
+    const frameCanvas = createCanvas(W, H);
+    const frameCtx = frameCanvas.getContext("2d");
+    await drawFrame(frameCtx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
 
-    // Apply scale transform for symbol drawing (full-res coords → half-res pixels)
-    halfSpinCtx.save();
-    halfSpinCtx.scale(0.5, 0.5);
+    const spinCanvas = createCanvas(W, H);
+    const spinCtx = spinCanvas.getContext("2d");
 
-    for (let col = 0; col < 3; col++) { 
-      const lockFrame = lockFrames[col];
-      const locked = frame >= lockFrame;
+    for (let frame = 0; frame < totalFrames; frame++) {
+      spinCtx.drawImage(frameCanvas, 0, 0);
 
-      for (let row = 0; row < 3; row++) {
-        const cx = layout.FRAME_X + col * layout.CELL_W + layout.CELL_W / 2;
-        const cy = layout.FRAME_Y + row * layout.CELL_H + layout.CELL_H / 2;
+      for (let col = 0; col < 3; col++) {
+        const lockFrame = lockFrames[col];
+        const locked = frame >= lockFrame;
 
-        if (locked) {
-          drawSymbol(halfSpinCtx, finalGrid[row][col], cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
-        } else {
-          const randomSym = Math.floor(Math.random() * symCount);
-          halfSpinCtx.save();
-          halfSpinCtx.globalAlpha = 0.4;
-          drawSymbol(halfSpinCtx, randomSym, cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
-          halfSpinCtx.globalAlpha = 1.0;
-          halfSpinCtx.fillStyle = theme.colors.motionBlurOverlay;
-          halfSpinCtx.fillRect(
-            layout.FRAME_X + col * layout.CELL_W + 1,
-            layout.FRAME_Y + row * layout.CELL_H + 1,
-            layout.CELL_W - 2,
-            layout.CELL_H - 2
-          );
-          halfSpinCtx.restore();
+        for (let row = 0; row < 3; row++) {
+          const cx = layout.FRAME_X + col * layout.CELL_W + layout.CELL_W / 2;
+          const cy = layout.FRAME_Y + row * layout.CELL_H + layout.CELL_H / 2;
+
+          if (locked) {
+            drawSymbol(spinCtx, finalGrid[row][col], cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
+          } else {
+            const randomSym = Math.floor(Math.random() * symCount);
+            drawSymbol(spinCtx, randomSym, cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
+          }
         }
       }
+
+      let delay = 80;
+      if (lockFrames.includes(frame)) delay = 300;
+      else if (frame === totalFrames - 1) delay = 500;
+
+      frames.push({ data: spinCtx.getImageData(0, 0, W, H).data, delay });
     }
-    halfSpinCtx.restore();
+  } else {
+    // --- Half-resolution canvas for spin frames (Pi 3B optimization) ---
+    // Use ctx.scale(0.5, 0.5) so all drawing functions use full-res coordinates
+    // and the canvas automatically scales everything down.
+    const halfW = Math.floor(W / 2);
+    const halfH = Math.floor(H / 2);
 
-    // Scale half-res frame up to full resolution for GIF encoding
-    fullCtx.drawImage(halfSpinCanvas, 0, 0, W, H);
+    const halfFrameCanvas = createCanvas(halfW, halfH);
+    const halfFrameCtx = halfFrameCanvas.getContext("2d");
+    halfFrameCtx.scale(0.5, 0.5);
+    await drawFrame(halfFrameCtx, jackpotDisplay, activeLines, bet, isBonus, isFreePlay, theme, layout);
 
-    let delay = 80;
-    if (lockFrames.includes(frame)) delay = 300;
-    else if (frame === totalFrames - 1) delay = 500;
+    const halfSpinCanvas = createCanvas(halfW, halfH);
+    const halfSpinCtx = halfSpinCanvas.getContext("2d");
 
-    frames.push({ data: fullCtx.getImageData(0, 0, W, H).data, delay });
+    // --- Full-resolution canvas to scale half-res frames up for encoding ---
+    const fullCanvas = createCanvas(W, H);
+    const fullCtx = fullCanvas.getContext("2d");
+
+    for (let frame = 0; frame < totalFrames; frame++) {
+      // Blit frame at native half-res size (no scale transform)
+      halfSpinCtx.drawImage(halfFrameCanvas, 0, 0);
+
+      // Apply scale transform for symbol drawing (full-res coords → half-res pixels)
+      halfSpinCtx.save();
+      halfSpinCtx.scale(0.5, 0.5);
+
+      for (let col = 0; col < 3; col++) {
+        const lockFrame = lockFrames[col];
+        const locked = frame >= lockFrame;
+
+        for (let row = 0; row < 3; row++) {
+          const cx = layout.FRAME_X + col * layout.CELL_W + layout.CELL_W / 2;
+          const cy = layout.FRAME_Y + row * layout.CELL_H + layout.CELL_H / 2;
+
+          if (locked) {
+            drawSymbol(halfSpinCtx, finalGrid[row][col], cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
+          } else {
+            const randomSym = Math.floor(Math.random() * symCount);
+            halfSpinCtx.save();
+            halfSpinCtx.globalAlpha = 0.4;
+            drawSymbol(halfSpinCtx, randomSym, cx, cy, Math.min(layout.CELL_W, layout.CELL_H), theme);
+            halfSpinCtx.globalAlpha = 1.0;
+            halfSpinCtx.fillStyle = theme.colors.motionBlurOverlay;
+            halfSpinCtx.fillRect(
+              layout.FRAME_X + col * layout.CELL_W + 1,
+              layout.FRAME_Y + row * layout.CELL_H + 1,
+              layout.CELL_W - 2,
+              layout.CELL_H - 2
+            );
+            halfSpinCtx.restore();
+          }
+        }
+      }
+      halfSpinCtx.restore();
+
+      // Scale half-res frame up to full resolution for GIF encoding
+      fullCtx.drawImage(halfSpinCanvas, 0, 0, W, H);
+
+      let delay = 80;
+      if (lockFrames.includes(frame)) delay = 300;
+      else if (frame === totalFrames - 1) delay = 500;
+
+      frames.push({ data: fullCtx.getImageData(0, 0, W, H).data, delay });
+    }
   }
 
   return encodeGIF(frames, { width: W, height: H, repeat: -1, filename: "slots-spin.gif" });
