@@ -314,6 +314,24 @@ if (DELETE_SLASH) {
       }
     });
 
+    const episodeStore = require("./utils/episodes");
+    jobs.register("episode_embed", async (payload) => {
+      const { episodeIds } = payload;
+      if (!episodeIds || episodeIds.length === 0) return;
+      const llm = require("./utils/llm");
+      const unembedded = episodeStore.getUnembeddedAny(200).filter(r => episodeIds.includes(r.id));
+      if (unembedded.length === 0) return;
+      for (const ep of unembedded) {
+        try {
+          const { embedding } = await llm.embed({ text: ep.summary });
+          episodeStore.setEmbedding(ep.id, embedding);
+        } catch (err) {
+          logger.error(`[EpisodeEmbed] Failed for episode ${ep.id}: ${err.message}`);
+        }
+      }
+      logger.log(`[EpisodeEmbed] Embedded ${unembedded.length} episodes`);
+    });
+
     jobs.register("backfill_messages", async (payload) => {
       const { channelIds } = payload;
       if (!channelIds || channelIds.length === 0) return;

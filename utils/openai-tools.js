@@ -16,6 +16,7 @@ const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
 const { validateToolArgs } = require("./schemas");
 const gameResults = require("./gameResults");
+const episodes = require("./episodes");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
@@ -275,6 +276,32 @@ const TOOLS = [
           limit: { type: "integer", description: "Number of results to return (default 5, max 10)" }
         },
         required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "recall_episode",
+      description:
+        "Retrieve specific past events from episodic memory — things that happened on a particular occasion, " +
+        "like 'basbo hit a jackpot last Tuesday' or 'we decided to start a race tournament in May'. " +
+        "Use this when the user references a specific past event, asks what happened on a specific occasion, " +
+        "or when semantic facts are not enough. " +
+        "Scope 'channel' searches shared channel events; 'user' searches the speaker's personal episodes; " +
+        "'both' searches both.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Natural-language description of the event to recall." },
+          scope: {
+            type: "string",
+            enum: ["channel", "user", "both"],
+            description: "Which episode store to search (default: both)."
+          },
+          limit: { type: "integer", description: "Max episodes to return (1–10, default 5)." }
+        },
+        required: ["query"]
       }
     }
   },
@@ -732,6 +759,82 @@ async function handleSearchHistory(args, message, client) {
   }
 }
 
+async function handleRecallEpisode(args, message) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const scope = args.scope || "both";
+  const limit = Math.min(Math.max(args.limit || 5, 1), 10);
+
+  const scopePairs = [];
+  if (scope === "channel" || scope === "both") {
+    scopePairs.push({ scopeType: "channel", scopeId: message.channelId });
+  }
+  if (scope === "user" || scope === "both") {
+    scopePairs.push({ scopeType: "user", scopeId: message.author.id });
+  }
+  if (scopePairs.length === 0) return { error: "Invalid scope value." };
+
+  try {
+    const ftsQuery = buildFTSQuery(args.query);
+    const ftsResults = episodes.searchFTS(scopePairs, ftsQuery, 30);
+
+    if (ftsResults.length === 0) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const semanticResults = episodes.searchSemanticFull(scopePairs, embedding, limit);
+        if (semanticResults.length > 0) {
+          return {
+            results: semanticResults.map((r, i) => ({
+              result_index: i + 1,
+              scope: r.scope_type,
+              summary: r.summary,
+              tags: r.tags ? JSON.parse(r.tags) : [],
+              source: r.source,
+              occurred_at: `<t:${Math.floor(r.created_at / 1000)}:R>`,
+            })),
+            note: "Results via semantic search (no FTS matches).",
+          };
+        }
+      } catch (err) {
+        logger.warn(`[recall_episode] Semantic fallback failed: ${err.message}`);
+      }
+      return {
+        results: [],
+        note: "No episodes found for that query. Do not retry with paraphrases.",
+      };
+    }
+
+    let finalResults = ftsResults.slice(0, limit);
+    const topRank = ftsResults[0]?.rank;
+    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+
+    if (needsSemantic) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const candidateIds = ftsResults.map(r => r.id);
+        const reranked = episodes.searchSemantic(embedding, candidateIds, limit);
+        if (reranked.length > 0) finalResults = reranked;
+      } catch (err) {
+        logger.warn(`[recall_episode] Semantic re-rank failed: ${err.message}`);
+      }
+    }
+
+    return {
+      results: finalResults.map((r, i) => ({
+        result_index: i + 1,
+        scope: r.scope_type,
+        summary: r.summary,
+        tags: r.tags ? JSON.parse(r.tags) : [],
+        source: r.source,
+        occurred_at: `<t:${Math.floor(r.created_at / 1000)}:R>`,
+      })),
+      total_matches: ftsResults.length,
+    };
+  } catch (err) {
+    logger.error(`[recall_episode] ${err.message}`);
+    return { error: `Episode recall failed: ${err.message}` };
+  }
+}
+
 function describeCommand(command) {
   const data = command.data;
   const options = (data.options || []).map(opt => {
@@ -1105,6 +1208,7 @@ const TOOL_HANDLERS = {
   get_jackpot: handleGetJackpot,
   get_shop: handleGetShop,
   get_command_help: handleGetCommandHelp,
+  recall_episode: handleRecallEpisode,
   web_search: handleWebSearch,
   fetch_page: handleFetchPage,
   get_game_result: handleGetGameResult,
