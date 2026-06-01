@@ -201,6 +201,9 @@ const config = {
   // to disable that axis.
   ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "90", 10),
   ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "10000", 10),
+  // Minimum archived chunks per channel before the 6h compaction job converts
+  // the oldest SUMMARY_INTERVAL-sized window into an episode entry.
+  ARCHIVE_COMPACTION_THRESHOLD: parseInt(process.env.ARCHIVE_COMPACTION_THRESHOLD || "100", 10),
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),

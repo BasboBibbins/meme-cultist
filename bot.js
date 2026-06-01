@@ -61,6 +61,15 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
+schedule.scheduleJob("0 */6 * * *", async () => { // every 6 h
+  try {
+    const { runCompactionJob } = require("./utils/compaction");
+    await runCompactionJob();
+  } catch (err) {
+    logger.error(`[Compaction] Scheduled job failed: ${err.message}`);
+  }
+});
+
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
   logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`);
   await interest(client);
