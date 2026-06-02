@@ -10,7 +10,7 @@ const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE } = require("../config.js");
 const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
@@ -780,7 +780,13 @@ async function handleRecallEpisode(args, message) {
     if (ftsResults.length === 0) {
       try {
         const { embedding } = await embed({ text: args.query });
-        const semanticResults = episodes.searchSemanticFull(scopePairs, embedding, limit);
+        // Apply a relevance floor: searchSemanticFull always returns the
+        // closest episodes regardless of how weak the match is, so without
+        // this an unrelated query surfaces irrelevant episodes instead of an
+        // empty result. See EPISODE_RECALL_MIN_SCORE in config.js.
+        const semanticResults = episodes
+          .searchSemanticFull(scopePairs, embedding, limit)
+          .filter(r => r.score >= EPISODE_RECALL_MIN_SCORE);
         if (semanticResults.length > 0) {
           return {
             results: semanticResults.map((r, i) => ({

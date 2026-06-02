@@ -204,6 +204,12 @@ const config = {
   // Minimum archived chunks per channel before the 6h compaction job converts
   // the oldest SUMMARY_INTERVAL-sized window into an episode entry.
   ARCHIVE_COMPACTION_THRESHOLD: parseInt(process.env.ARCHIVE_COMPACTION_THRESHOLD || "100", 10),
+  // Minimum cosine similarity an episode must clear in recall_episode's semantic
+  // fallback (the branch taken when FTS finds no keyword match). Without a floor
+  // the closest-ranked episodes are always returned, so unrelated queries surface
+  // irrelevant episodes instead of an empty "no record" result. Measured noise
+  // sits ~0.51 and genuine matches ~0.58, so 0.55 separates them.
+  EPISODE_RECALL_MIN_SCORE: parseFloat(process.env.EPISODE_RECALL_MIN_SCORE || "0.55"),
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
