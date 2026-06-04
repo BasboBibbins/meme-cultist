@@ -151,3 +151,30 @@ describe("buildParticipantsBlock", () => {
     expect(buildParticipantsBlock({}, ["99"])).toBe("");
   });
 });
+
+describe("legacy fact migration semantics", () => {
+  // Mirrors the getUserChatbotData / migrateUserFactSubjects backfill: a legacy
+  // fact with no subjectUserId is stamped with the store owner's id BEFORE it
+  // reaches mergeFacts, so a later same-key update dedups instead of duplicating.
+  const backfill = (facts, ownerId) =>
+    facts.map(f => (f && !f.subjectUserId) ? { ...f, subjectUserId: ownerId } : f);
+
+  test("backfilled legacy fact updates in place instead of duplicating", () => {
+    const legacy = [{ key: "job", value: "nurse" }];
+    const merged = mergeFacts(backfill(legacy, "U"), [{ key: "job", value: "doctor" }], "", "U");
+    expect(merged).toHaveLength(1);
+    expect(merged[0].value).toBe("doctor");
+    expect(merged[0].subjectUserId).toBe("U");
+  });
+
+  test("without backfill the same merge would duplicate (documents the bug)", () => {
+    const legacy = [{ key: "job", value: "nurse" }]; // no subjectUserId
+    const merged = mergeFacts(legacy, [{ key: "job", value: "doctor" }], "", "U");
+    expect(merged).toHaveLength(2); // exactly what the migration prevents
+  });
+
+  test("backfill is idempotent for already-attributed facts", () => {
+    const facts = [{ key: "job", value: "nurse", subjectUserId: "V" }];
+    expect(backfill(facts, "U")[0].subjectUserId).toBe("V");
+  });
+});

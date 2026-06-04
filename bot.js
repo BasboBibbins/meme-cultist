@@ -216,6 +216,15 @@ if (DELETE_SLASH) {
   client.once(Events.ClientReady, async () => {
     if (LOAD_DB) {
       initDB(client);
+      // backfill subjectUserId on existing user facts so stored memory
+      // matches the new (key, subjectUserId) format.
+      try {
+        const { migrateUserFactSubjects } = require("./utils/openai");
+        const res = await migrateUserFactSubjects();
+        logger.info(`Fact subject migration: stamped ${res.factsStamped} fact(s) across ${res.users} user(s).`);
+      } catch (err) {
+        logger.error(`Fact subject migration failed: ${err.message}`);
+      }
     }
     // Initialize progressive jackpot
     await initJackpot();

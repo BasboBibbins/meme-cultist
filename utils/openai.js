@@ -386,7 +386,10 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "", defaultSubje
   return combined;
 }
 
-async function compressFacts(facts, scope = "channel") {
+// subjectId stamps the merged output so compression doesn't strip a user store's
+// (key, subjectUserId) attribution. User stores are single-subject (the owner),
+// so one subjectId is correct for every merged fact; channel stores pass null.
+async function compressFacts(facts, scope = "channel", subjectId = null) {
   if (!Array.isArray(facts) || facts.length === 0) return facts;
   try {
     // Pinned facts (bookmarked via 📌) are never merged or rewritten.
@@ -463,6 +466,7 @@ async function compressFacts(facts, scope = "channel") {
       confidence: "high",
       extractedFrom: "compressed",
       reinforcedCount: 1,
+      ...(subjectId ? { subjectUserId: subjectId } : {}),
     }));
     const result = [...pinned, ...kept, ...mergedIn];
     logger.log(`[Facts] compressFacts ${scope}: ${facts.length} -> ${result.length} (pinned=${pinned.length}, replaced ${groupedKeySet.size} grouped with ${mergedIn.length} merged)`);
@@ -979,6 +983,13 @@ async function getUserChatbotData(userId) {
     ...defaults,
     ...existing,
     incognitoChannels: Array.isArray(existing.incognitoChannels) ? existing.incognitoChannels : [],
+    // self-healing migration: a user store only ever holds facts ABOUT its
+    // owner, so any legacy fact missing subjectUserId is attributed to the owner.
+    // This keeps (key, subjectUserId) dedup working against newly-stamped facts;
+    // the normalized array persists on the next updateUserChatbotData write.
+    facts: Array.isArray(existing.facts)
+      ? existing.facts.map(f => (f && !f.subjectUserId) ? { ...f, subjectUserId: userId } : f)
+      : [],
   };
 }
 
@@ -993,6 +1004,46 @@ async function updateUserChatbotData(userId, updates) {
       logger.debug(`User [${userId}] is in incognito mode; skipping chatbot data update.`);
     }
   });
+}
+
+// one-shot migration: backfill subjectUserId on every stored user fact so
+// existing memory matches the new (key, subjectUserId) format eagerly rather
+// than lazily on first touch. Run via `node bot.js dbinit`. Idempotent: facts
+// that already carry a subjectUserId are left untouched. Channel facts are left
+// null-subject by design (shared context), so only the user store is migrated.
+async function migrateUserFactSubjects() {
+  let rows;
+  try {
+    rows = await usersDb.all();
+  } catch (err) {
+    logger.error(`[Migrate] Could not enumerate users: ${err.message}`);
+    return { users: 0, factsStamped: 0 };
+  }
+  let usersTouched = 0;
+  let factsStamped = 0;
+  for (const row of rows) {
+    const userId = row.id;
+    const preview = row.value?.chatbot?.facts;
+    if (!Array.isArray(preview) || !preview.some(f => f && !f.subjectUserId)) continue;
+    try {
+      await withLock(`user:${userId}`, async () => {
+        const current = await usersDb.get(`${userId}.chatbot`);
+        if (!current || !Array.isArray(current.facts)) return;
+        let changed = false;
+        current.facts = current.facts.map(f => {
+          if (f && !f.subjectUserId) { changed = true; factsStamped++; return { ...f, subjectUserId: userId }; }
+          return f;
+        });
+        if (!changed) return;
+        await usersDb.set(`${userId}.chatbot`, current);
+        usersTouched++;
+      });
+    } catch (err) {
+      logger.error(`[Migrate] Failed to migrate facts for [${userId}]: ${err.message}`);
+    }
+  }
+  logger.log(`[Migrate] subjectUserId backfill complete: ${factsStamped} fact(s) across ${usersTouched} user(s).`);
+  return { users: usersTouched, factsStamped };
 }
 
 async function summarizeMessages(messages, thread) {
@@ -1188,10 +1239,10 @@ async function generateUserFacts(userId, userMessages) {
     }
   }
 
-  let combinedFacts = mergeFacts(existingFacts, parsedFacts, latestSummary || "");
+  let combinedFacts = mergeFacts(existingFacts, parsedFacts, latestSummary || "", userId);
 
   if (combinedFacts.length >= MAX_FACTS - 3) {
-    combinedFacts = await compressFacts(combinedFacts, "user");
+    combinedFacts = await compressFacts(combinedFacts, "user", userId);
   }
   combinedFacts = sortAndPruneFacts(combinedFacts);
 
@@ -2339,6 +2390,7 @@ module.exports = {
   getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
   getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts,
   extractImmediateFacts, extractImmediateChannelFacts,
-  runImmediateClassifier, mergeFacts, sortAndPruneFacts,
-  applyParticipantUpdate, resolveSubjectId, buildParticipantsBlock, buildMultiUserFactsBlock
+  runImmediateClassifier, mergeFacts, sortAndPruneFacts, compressFacts,
+  applyParticipantUpdate, resolveSubjectId, buildParticipantsBlock, buildMultiUserFactsBlock,
+  migrateUserFactSubjects
 };
