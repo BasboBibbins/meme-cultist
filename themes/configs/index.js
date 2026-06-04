@@ -157,6 +157,27 @@ const y2kColors = {
   embedColor:  0x5ab2e0,
 };
 
+// Built around the provided precision.png background: near-black field
+// (avg #1e1f1a, dominated by #101010/#000000) with a sharp yellow-green
+// reticle. The image's green samples ~#a8cc3a, peaking at #c8e740, and the
+// "Precision Roleplay" text is a cool silver-gray (#d8dcd0). The `gold` token
+// maps to the reticle green so the canvas chrome echoes the background.
+const precisionColors = {
+  background:  path.join(BACKGROUND_BASE, "precision.png"),
+  feltColor:   "rgba(12, 14, 12, 0.85)",
+  feltDark:    "#0a0c0a",
+  tableGreen:  "#1a2410",
+  gold:        "#a8cc3a",
+  goldDark:    "#7a9628",
+  goldBronze:  "#566c1c",
+  textWhite:   "#d8dcd0",
+  textBlack:   "#0a0c0a",
+  textWin:     "#9be84a",
+  textLoss:    "#d6603c",
+  textPrimary: "#a8cc3a",
+  embedColor:  0x0c0e0c,
+};
+
 // ─────────────────────────────────────────────────────────────────────
 const themes = {
   classic,
@@ -239,7 +260,7 @@ const themes = {
 
   fwenCult: limited("fwenCult", "Fwen Cult",
     "A colorful theme celebrating the new-gen TMC community and the Fwen Cult-era!",
-    300000, "<:miku:1250275823710113824>",
+    500000, "<:miku:1250275823710113824>",
     { start: { month: 6, day: 9 }, end: { month: 6, day: 20 } },
     {
       background:  path.join(BACKGROUND_BASE, "fwenCult.png"),
@@ -410,6 +431,81 @@ const themes = {
         resultBorder:     "#f5c842",
       },
       poker: poker({ feltColor: "rgba(10, 20, 60, 0.85)", tableGreen: "#0e1840", gold: "#e8e8e8", goldDark: "#b0b0b0" }),
+    },
+  ),
+
+  precision: limited("precision", "Precision",
+    "A tactical theme inspired by the Precision Roleplay DarkRP server. Near-black field with a sharp yellow-green reticle accent and cool silver text.",
+    100000, "🎯",
+    { start: { month: 6, day: 23 }, end: { month: 6, day: 30 } },
+    precisionColors,
+    {
+      slots: {
+        // No custom sprite sheet yet — slots falls back to classic default
+        // sprites under this palette until precision.png lands in imgs/slots.
+        reelBackground:      "rgba(16, 18, 14, 0.8)",
+        frameColor:          "#a8cc3a",
+        frameDarkColor:      "#7a9628",
+        frameBronze:         "#566c1c",
+        dividerColor:        "#1a2410",
+        highlightWin:        "rgba(168, 204, 58, 0.55)",
+        bannerBackground:    "#12150f",
+        bannerBackgroundEnd: "#0a0c08",
+        motionBlurOverlay:   "rgba(12, 14, 12, 0.5)",
+        paylineColors:       ["#a8cc3a", "#c8e740", "#9be84a", "#d6603c", "#d8dcd0"],
+      },
+      roulette: {
+        woodInner:       "#33342c",
+        woodMid:         "#22231c",
+        woodOuter:       "#141410",
+        goldRim:         "#a8cc3a",
+        pocketRed:       "#b8472e",
+        pocketBlack:     "#101010",
+        pocketGreen:     "#7a9628",
+        winnerHighlight: "#c8e740",
+        textBlack:       "#0a0c0a",
+        textWhite:       "#d8dcd0",
+        feltInner:       "#1a2410",
+        feltMid:         "#141c0c",
+        feltOuter:       "#0e1408",
+        spokeColor:      "#a8cc3a",
+        hubLight:        "#c8e740",
+        hubMid:          "#a8cc3a",
+        hubDark:         "#566c1c",
+        hubStroke:       "#d8dcd0",
+        tableGreen:      "#1a2410",
+        zeroGreen:       "#7a9628",
+        numberRed:       "#b8472e",
+        numberBlack:     "#101010",
+        betArea:         "#1c2812",
+        betBorder:       "#a8cc3a",
+        resultOverlay:   "rgba(12, 14, 12, 0.85)",
+        resultBorder:    "#a8cc3a",
+      },
+      craps: {
+        feltInner:        "#1a2410",
+        feltMid:          "#141c0c",
+        feltOuter:        "#0e1408",
+        layoutLine:       "#a8cc3a",
+        layoutLabel:      "#d8dcd0",
+        passLineColor:    "#566c1c",
+        dontPassColor:    "#3a2018",
+        fieldColor:       "#22231c",
+        comeColor:        "#1c2812",
+        placeColor:       "#1a2410",
+        hardWaysColor:    "#b8472e",
+        propsColor:       "#33342c",
+        bigSixEightColor: "#1a2410",
+        puckOff:          "#101010",
+        puckOn:           "#a8cc3a",
+        puckText:         "#0a0c0a",
+        diceFace:         "#d8dcd0",
+        diceDots:         "#0a0c0a",
+        winnerHighlight:  "#c8e740",
+        resultOverlay:    "rgba(12, 14, 12, 0.85)",
+        resultBorder:     "#a8cc3a",
+      },
+      poker: poker(precisionColors),
     },
   ),
 
