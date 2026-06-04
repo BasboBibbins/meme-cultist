@@ -1928,6 +1928,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     const sentMessageIds = [];
     let firstSentMessage = null;
 
+    // Final safety net: reply with a fallback instead of leaving the user in silence.
+    if (!response && !streamedMessageId && pendingFiles.length === 0) {
+      logger.warn("[Guard] Turn produced no content to send; using fallback reply.");
+      response = "Sorry, I blanked on that one — mind saying it again?";
+    }
+
     // Send the response to Discord immediately so the user isn't blocked
     // by background memory processing (summaries, facts, archiving).
     try {
