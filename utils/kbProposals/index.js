@@ -1,6 +1,3 @@
-// Public surface for the KB proposal subsystem: the durable store, the owner
-// approval flow, and the §3.9 fact-keyword auto-promote trigger.
-
 const logger = require("../logger");
 const kbStore = require("../kb");
 const store = require("./store");

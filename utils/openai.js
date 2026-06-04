@@ -189,7 +189,9 @@ function scoreFacts(facts, now = Date.now()) {
   });
 }
 
-function buildFactsBlock(tag, factsArray) {
+// maxOverride caps the number of facts selected for this block.
+// passes a per-user budget so several [UserFacts] blocks can share one total.
+function buildFactsBlock(tag, factsArray, maxOverride = null) {
   if (!factsArray || !Array.isArray(factsArray) || factsArray.length === 0) return "";
 
   const filtered = factsArray.filter(f => {
@@ -202,9 +204,11 @@ function buildFactsBlock(tag, factsArray) {
   const core = filtered.filter(f => isCoreIdentityKey(f.key));
   const rest = filtered.filter(f => !isCoreIdentityKey(f.key));
   const scored = scoreFacts(rest).sort((a, b) => b._score - a._score);
-  const effectiveMax = LOW_BUDGET_MODE
-    ? Math.min(MAX_FACTS_IN_PROMPT || filtered.length, 8)
-    : (MAX_FACTS_IN_PROMPT || filtered.length);
+  const effectiveMax = maxOverride != null
+    ? maxOverride
+    : (LOW_BUDGET_MODE
+      ? Math.min(MAX_FACTS_IN_PROMPT || filtered.length, 8)
+      : (MAX_FACTS_IN_PROMPT || filtered.length));
   const slots = Math.max(0, effectiveMax - core.length);
   const selected = [...core, ...scored.slice(0, slots)];
   selected.sort((a, b) => a.key.localeCompare(b.key));
@@ -212,6 +216,31 @@ function buildFactsBlock(tag, factsArray) {
   const factsBody = selected.map(f => `${f.key}: ${f.value}`).join("\n");
   logger.debug(`[Facts] buildFactsBlock ${tag}: total=${factsArray.length} filtered=${filtered.length} core=${core.length} selected=${selected.length} (slots=${slots})`);
   return `[${tag} n=${selected.length}]\n${factsBody}`;
+}
+
+// build one [UserFacts name id] block per participant who spoke
+// in the current window. The current speaker gets ~60% of MAX_FACTS_IN_PROMPT;
+// the remainder is split evenly across the others. Incognito users are skipped
+// entirely. perUserFacts maps userId -> facts[]; nameOf resolves a display name.
+function buildMultiUserFactsBlock(currentUserId, orderedIds, perUserFacts, nameOf) {
+  const totalBudget = LOW_BUDGET_MODE
+    ? Math.min(MAX_FACTS_IN_PROMPT || 8, 8)
+    : (MAX_FACTS_IN_PROMPT || 15);
+  const others = orderedIds.filter(id => id !== currentUserId);
+  const speakerBudget = others.length > 0 ? Math.max(1, Math.round(totalBudget * 0.6)) : totalBudget;
+  const otherBudgetEach = others.length > 0 ? Math.max(1, Math.floor((totalBudget - speakerBudget) / others.length)) : 0;
+
+  const blocks = [];
+  for (const uid of [currentUserId, ...others]) {
+    const facts = perUserFacts[uid];
+    if (!Array.isArray(facts) || facts.length === 0) continue;
+    const budget = uid === currentUserId ? speakerBudget : otherBudgetEach;
+    if (budget <= 0) continue;
+    const name = nameOf(uid) || "user";
+    const block = buildFactsBlock(`UserFacts name="${name}" id="${uid}"`, facts, budget);
+    if (block) blocks.push(block);
+  }
+  return blocks.join("\n\n");
 }
 
 const STOPWORDS = new Set([
@@ -241,29 +270,6 @@ function detectConfidence(text) {
   return "high";
 }
 
-function referencesOtherUser(message) {
-  if (!message) return false;
-  try {
-    if (message.mentions?.users && message.mentions.users.size > 0) {
-      for (const [uid] of message.mentions.users) {
-        if (uid !== message.author?.id) return true;
-      }
-    }
-  } catch (_) {}
-  try {
-    const guildMembers = message.guild?.members?.cache;
-    if (guildMembers && message.content) {
-      const content = message.content.toLowerCase();
-      for (const [, member] of guildMembers) {
-        if (member.id === message.author?.id) continue;
-        const name = (member.displayName || member.user?.username || "").toLowerCase();
-        if (name && name.length > 2 && content.includes(name)) return true;
-      }
-    }
-  } catch (_) {}
-  return false;
-}
-
 const USER_KEYWORDS = /\b(i|i'?m|my|mine|me|myself)\b|\b(like|love|hate|prefer|enjoy|work|live|study|play|watch|read|am|use|own|have|listen|speak|born|grew)\b/i;
 const CHANNEL_KEYWORDS = /\b(tomorrow|tonight|today|yesterday|next\s+week|meeting|event|everyone|we\s+should|let'?s|scheduled|plan(ning)?|party|hangout|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
 
@@ -290,7 +296,12 @@ function valueOverlapsExisting(newValue, existingFacts, threshold = 0.6) {
   return null;
 }
 
-function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
+// facts carry a subjectUserId (who the fact is about). Dedup, update, and
+// retraction all match on (key, subjectUserId) so a fact about Bob never
+// overwrites the same-keyed fact about Alice. raw.subjectUserId wins; otherwise
+// defaultSubjectId is applied. Legacy facts (no subjectUserId) compare as null,
+// preserving the old key-only behavior for already-stored single-subject data.
+function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "", defaultSubjectId = null) {
   let combined = Array.isArray(existingFacts) ? existingFacts.map(f => ({
     key: f.key,
     value: f.value,
@@ -298,6 +309,7 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
     confidence: f.confidence || "high",
     extractedFrom: f.extractedFrom || "",
     reinforcedCount: f.reinforcedCount || 1,
+    ...(f.subjectUserId ? { subjectUserId: f.subjectUserId } : {}),
     ...(f.pinned ? { pinned: true } : {}),
   })) : [];
 
@@ -310,8 +322,12 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
     const value = (raw.value ?? "").toString().trim();
     if (!key) continue;
 
+    const sid = raw.subjectUserId || defaultSubjectId || null;
+    const sameSubject = f => (f.subjectUserId || null) === sid;
+    const withSubject = extra => ({ ...extra, ...(sid ? { subjectUserId: sid } : {}) });
+
     if (value === "__deleted__") {
-      const idx = combined.findIndex(f => f.key === key);
+      const idx = combined.findIndex(f => f.key === key && sameSubject(f));
       if (idx !== -1) {
         if (combined[idx].pinned) {
           logger.debug(`[Facts] Refused to delete pinned fact: ${key}`);
@@ -325,7 +341,7 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
 
     if (value.length < 2) continue;
 
-    const keyIdx = combined.findIndex(f => f.key === key);
+    const keyIdx = combined.findIndex(f => f.key === key && sameSubject(f));
     if (keyIdx !== -1) {
       if (combined[keyIdx].value === value) {
         combined[keyIdx].reinforcedCount = (combined[keyIdx].reinforcedCount || 1) + 1;
@@ -333,20 +349,22 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
         if (raw.confidence === "high") combined[keyIdx].confidence = "high";
       } else {
         const old = combined[keyIdx].value;
-        combined[keyIdx] = {
+        combined[keyIdx] = withSubject({
           key,
           value,
           updatedAt: Date.now(),
           confidence: raw.confidence || "high",
           extractedFrom: snippet,
           reinforcedCount: 1,
-        };
+        });
         logger.log(`[Facts] Updated: ${key} "${old}" -> "${value}"`);
       }
       continue;
     }
 
-    const overlap = valueOverlapsExisting(value, combined);
+    // Only treat as a near-duplicate if it overlaps an existing fact about the
+    // same subject — otherwise identical phrasings about two people would merge.
+    const overlap = valueOverlapsExisting(value, combined.filter(sameSubject));
     if (overlap) {
       overlap.reinforcedCount = (overlap.reinforcedCount || 1) + 1;
       overlap.updatedAt = Date.now();
@@ -354,15 +372,15 @@ function mergeFacts(existingFacts, parsedFacts, sourceSnippet = "") {
       continue;
     }
 
-    combined.push({
+    combined.push(withSubject({
       key,
       value,
       updatedAt: Date.now(),
       confidence: raw.confidence || "high",
       extractedFrom: snippet,
       reinforcedCount: 1,
-    });
-    logger.debug(`[Facts] Added: ${key}=${value} (confidence=${raw.confidence || "high"})`);
+    }));
+    logger.debug(`[Facts] Added: ${key}=${value} (confidence=${raw.confidence || "high"}, subject=${sid || "default"})`);
   }
 
   return combined;
@@ -518,20 +536,142 @@ function sortAndPruneFacts(combined) {
   return combined;
 }
 
+// Participants idle longer than this are pruned from a channel's registry.
+const PARTICIPANT_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// Static behavioral block: teaches the model to trust the [user_NNN] anchor over
+// drifting display names so it stops conflating users in multi-person channels.
+const IDENTITY_RULES_BLOCK = [
+  "[Identity Rules]",
+  "- The bracketed [user_NNN] prefix on each message is the ground-truth author identifier. Display names can change; the ID never does.",
+  "- Facts are grouped per user under [UserFacts name=\"...\" id=\"...\"]. Attribute each fact only to the user whose block it appears in — never assume one user's facts belong to another.",
+  "- When a user's facts contain previous_name=Y but they now speak under a different name, treat Y as that same person's former display name. Reconcile by ID, not by name.",
+  "- Never argue with a user about their own identity or preferences. If they correct you, accept it immediately and do not reference the earlier mistake.",
+].join("\n");
+
+// Pure participant-map transition. Given the existing map and a list of
+// {userId, displayName} seen now, returns { participants, renames } where
+// renames lists display-name changes so the caller can record provenance.
+// Entries idle past PARTICIPANT_TTL_MS are pruned. Kept pure for unit testing.
+function applyParticipantUpdate(participants, members, now = Date.now()) {
+  const next = { ...(participants || {}) };
+  const renames = [];
+  for (const m of members || []) {
+    const userId = m && m.userId;
+    const displayName = m && m.displayName;
+    if (!userId || !displayName) continue;
+    const existing = next[userId];
+    if (!existing) {
+      next[userId] = { currentName: displayName, namesSeen: [displayName], firstSeen: now, lastSeen: now };
+      continue;
+    }
+    const namesSeen = Array.isArray(existing.namesSeen) ? existing.namesSeen.slice() : [existing.currentName].filter(Boolean);
+    if (existing.currentName !== displayName) {
+      renames.push({ userId, oldName: existing.currentName, newName: displayName });
+      if (!namesSeen.includes(displayName)) namesSeen.push(displayName);
+    }
+    next[userId] = { currentName: displayName, namesSeen, firstSeen: existing.firstSeen || now, lastSeen: now };
+  }
+  for (const uid of Object.keys(next)) {
+    if (now - (next[uid].lastSeen || 0) > PARTICIPANT_TTL_MS) delete next[uid];
+  }
+  return { participants: next, renames };
+}
+
+// Persist the participant registry for a channel from the members seen this turn.
+// One locked read-modify-write so concurrent messages can't clobber the map. On
+// rename, stamps a previous_name fact in the renamed user's store so the identity
+// link survives; Phase 5's summary rewrite handles narrative name drift.
+async function updateParticipants(channel, members) {
+  if (!channel?.id || !Array.isArray(members) || members.length === 0) return {};
+  let renames = [];
+  let participants = {};
+  await withLock(`thread:${channel.id}`, async () => {
+    const ctx = await db.get(channel.id);
+    if (!ctx) return; // context is created lazily upstream; nothing to update yet
+    const result = applyParticipantUpdate(ctx.participants, members);
+    ctx.participants = result.participants;
+    renames = result.renames;
+    participants = result.participants;
+    await db.set(channel.id, ctx);
+  });
+  for (const r of renames) {
+    try {
+      const data = await getUserChatbotData(r.userId);
+      const merged = mergeFacts(
+        data.facts || [],
+        [{ key: "previous_name", value: r.oldName, confidence: "high" }],
+        `rename:${r.oldName}->${r.newName}`,
+        r.userId,
+      );
+      await updateUserChatbotData(r.userId, { facts: sortAndPruneFacts(merged) });
+      logger.log(`[Identity] ${r.userId} renamed "${r.oldName}" -> "${r.newName}"; recorded previous_name`);
+    } catch (err) {
+      logger.warn(`[Identity] Failed to record rename for ${r.userId}: ${err.message}`);
+    }
+  }
+  return participants;
+}
+
+// Build the [Participants] roster for the users present in the current window.
+// Dynamic (changes as people speak), so it is injected late in the prompt.
+function buildParticipantsBlock(participants, presentIds) {
+  if (!participants) return "";
+  const seen = new Set();
+  const lines = [];
+  for (const uid of presentIds || []) {
+    if (seen.has(uid)) continue;
+    seen.add(uid);
+    const p = participants[uid];
+    if (!p) continue;
+    const others = Array.isArray(p.namesSeen) ? p.namesSeen.filter(n => n !== p.currentName) : [];
+    const aka = others.length > 0 ? ` (aka ${others.join(", ")})` : "";
+    lines.push(`${p.currentName} (user_${uid})${aka}: present`);
+  }
+  if (lines.length === 0) return "";
+  return `[Participants]\n${lines.join("\n")}`;
+}
+
+// Resolve a subject name emitted by the fact classifier to a stable user ID.
+// "self"/empty/the author's own name → the author. Otherwise match the channel
+// participant registry (current or former names) then the guild member cache.
+// Unresolvable names fall back to the author so a fact is never misattributed.
+function resolveSubjectId(subject, authorId, authorName, participants, guildMembers) {
+  const raw = (subject || "").trim().toLowerCase();
+  if (!raw || raw === "self" || raw === "me" || raw === "i" || (authorName && raw === authorName.toLowerCase())) {
+    return authorId;
+  }
+  if (participants) {
+    for (const [uid, p] of Object.entries(participants)) {
+      const names = [p.currentName, ...(Array.isArray(p.namesSeen) ? p.namesSeen : [])];
+      if (names.some(n => n && n.toLowerCase() === raw)) return uid;
+    }
+  }
+  if (guildMembers) {
+    for (const [uid, member] of guildMembers) {
+      const dn = (member.displayName || member.user?.username || "").toLowerCase();
+      if (dn && dn === raw) return uid;
+    }
+  }
+  return authorId;
+}
+
 async function runImmediateClassifier(text, scope) {
   const userSysPrompt = [
-    "Extract permanent, first-person, self-referential facts from the message.",
-    "Respond with ONLY valid JSON matching the schema: {\"facts\": [{\"key\":\"...\",\"value\":\"...\",\"confidence\":\"high|low\"}]}.",
+    "Extract permanent, identity-level facts about a person from the message.",
+    "Respond with ONLY valid JSON matching the schema: {\"facts\": [{\"key\":\"...\",\"value\":\"...\",\"confidence\":\"high|low\",\"subject\":\"...\"}]}.",
+    "The \"subject\" field names WHO the fact is about: use \"self\" when the speaker states a fact about themselves, or the other person's name exactly as written when the fact is about someone else they mention.",
     "Empty facts array if none.",
-    "DO NOT extract: temporary states (tired/hungry/bored), hypotheticals, sarcasm (lol/jk//s), or facts about other people.",
-    "Use key=__deleted__ in the value field if the user negates or retracts a prior fact.",
+    "DO NOT extract: temporary states (tired/hungry/bored), hypotheticals, sarcasm (lol/jk//s).",
+    "Use key=__deleted__ in the value field if the speaker negates or retracts a prior fact (set subject the same way).",
     "",
     "Examples:",
-    "\"I work as a nurse in Boston\" -> job=nurse\\nlocation=Boston",
-    "\"I love ramen\" -> favorite_food=ramen",
+    "\"I work as a nurse in Boston\" -> job=nurse (subject=self)\\nlocation=Boston (subject=self)",
+    "\"I love ramen\" -> favorite_food=ramen (subject=self)",
+    "\"Bob is allergic to peanuts\" -> allergy=peanuts (subject=Bob)",
     "\"I'm tired\" -> (empty)",
     "\"lol maybe I like pineapple pizza\" -> (empty)",
-    "\"I don't play tennis anymore\" -> sport=__deleted__",
+    "\"I don't play tennis anymore\" -> sport=__deleted__ (subject=self)",
   ].join("\n");
 
   const channelSysPrompt = [
@@ -605,10 +745,6 @@ async function extractImmediateFacts(message, userId) {
     logger.debug(`[ImmediateFacts] user [${userId}] skipped: gate (len=${text.length}, keyword match=${USER_KEYWORDS.test(text)})`);
     return;
   }
-  if (referencesOtherUser(message)) {
-    logger.debug(`[ImmediateFacts] user [${userId}] skipped: references other user`);
-    return;
-  }
 
   const chatbotData = await getUserChatbotData(userId);
   const incognitoChannels = Array.isArray(chatbotData.incognitoChannels) ? chatbotData.incognitoChannels : [];
@@ -630,12 +766,34 @@ async function extractImmediateFacts(message, userId) {
   }
 
   const confidence = detectConfidence(text);
-  const tagged = parsed.map(f => ({ ...f, confidence }));
-  const before = (chatbotData.facts || []).length;
-  const merged = mergeFacts(chatbotData.facts || [], tagged, text);
-  const pruned = sortAndPruneFacts(merged);
-  await updateUserChatbotData(userId, { facts: pruned });
-  logger.debug(`[ImmediateFacts] user [${userId}] +${parsed.length} parsed (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${parsed.map(f => f.key).join(",")}]`);
+
+  // resolve each fact's subject to a stable user ID and route it
+  // to the store of the user it is ABOUT, so a fact about Bob lives in Bob's
+  // store (and surfaces when Bob speaks) rather than the author's.
+  const authorName = message.member?.displayName || message.author?.username || "";
+  const channelCtx = await getThreadContext(message.channel).catch(() => null);
+  const participants = channelCtx?.participants || {};
+  const guildMembers = message.guild?.members?.cache || null;
+
+  const groups = new Map();
+  for (const f of parsed) {
+    const sid = resolveSubjectId(f.subject, userId, authorName, participants, guildMembers);
+    if (!groups.has(sid)) groups.set(sid, []);
+    groups.get(sid).push({ key: f.key, value: f.value, confidence });
+  }
+
+  for (const [subjectId, facts] of groups) {
+    const subjectData = subjectId === userId ? chatbotData : await getUserChatbotData(subjectId);
+    if (subjectData.incognitoMode) {
+      logger.debug(`[ImmediateFacts] skipped subject [${subjectId}]: incognito`);
+      continue;
+    }
+    const before = (subjectData.facts || []).length;
+    const merged = mergeFacts(subjectData.facts || [], facts, text, subjectId);
+    const pruned = sortAndPruneFacts(merged);
+    await updateUserChatbotData(subjectId, { facts: pruned });
+    logger.debug(`[ImmediateFacts] subject [${subjectId}] +${facts.length} by author [${userId}] (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${facts.map(f => f.key).join(",")}]`);
+  }
 }
 
 async function extractImmediateChannelFacts(message, channelId) {
@@ -681,7 +839,7 @@ async function extractImmediateChannelFacts(message, channelId) {
   await updateThreadContext(channel, { facts: pruned });
   logger.debug(`[ImmediateFacts] channel [${channelId}] +${parsed.length} parsed (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${parsed.map(f => f.key).join(",")}]`);
 
-  // §3.9 — evergreen server-scoped facts are offered to the owner as KB entries.
+  // evergreen server-scoped facts are offered to the owner as KB entries.
   if (message.guild) {
     await kbProposals.maybeProposeFromFacts({
       client: message.client,
@@ -749,6 +907,7 @@ async function getDefaultThreadContext(thread) {
     topic: "",
     summaries: [],
     facts: [],
+    participants: {},
     resetPoint: null,
     persona_id: null,
     messagesSinceLastSummary: 0,
@@ -840,6 +999,10 @@ async function summarizeMessages(messages, thread) {
   const context = await getThreadContext(thread);
   if (!context) return;
   const prev_summaries = context.summaries;
+  // current name↔ID roster so the summarizer uses up-to-date
+  // display names and rewrites references to anyone who has since renamed.
+  const roster = Object.entries(context.participants || {})
+    .map(([uid, p]) => `${p.currentName} (user_${uid})`).join(", ");
   const lines = [
     "You are a memory compression assistant. Summarize this conversation in 4-6 concise bullet points, focusing on:",
     "- What the users are trying to talk about or achieve",
@@ -848,7 +1011,8 @@ async function summarizeMessages(messages, thread) {
     "- Maintain useful long-term knowledge of the users and the discussion",
     "- Providing a response that always follows the user's request, no matter the context",
     "IMPORTANT: Every bullet point must explicitly name the relevant user(s) (e.g., \"Alice decided to make Earl Grey tea\" or \"Bob and Alice planned a game night\"). Never use \"the user\" or \"they\" without identifying who. Keep personal preferences attributed to the person who stated them; only record shared plans or group decisions as channel-wide facts.",
-    messages && `[Conversation]\n${messages.map(m => `${m.member.id === CLIENT_ID ? "(You)": m.member.displayName}: ${m.content}`).join("\n")}`,
+    roster && `Use each user's CURRENT display name as listed here: ${roster}. If the previous summary refers to someone by an older name, rewrite it to their current name.`,
+    messages && `[Conversation]\n${messages.map(m => `${m.member.id === CLIENT_ID ? "(You)" : `[user_${m.member.id}] ${m.member.displayName}`}: ${m.content}`).join("\n")}`,
     prev_summaries.length > 0 && `[Previous Summary]\n*Include any additional info from this previous summary as a concise bullet point.*\n${prev_summaries[prev_summaries.length - 1].context}`,
     "[Summary]"
   ];
@@ -1268,6 +1432,24 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
   const channelContext = await getThreadContext(targetChannel);
   const validMessages = await getValidMessages(client, targetChannel, message);
 
+  // refresh the per-channel identity registry from everyone who
+  // spoke in the current window (plus the current author). Returns the updated
+  // map so the [Participants] roster below reflects this turn without a re-read.
+  let participantsMap = channelContext.participants || {};
+  if (message.member) {
+    const seenMembers = new Map();
+    seenMembers.set(message.author.id, message.member.displayName);
+    for (const m of validMessages) {
+      if (m.member && m.member.id !== client.user.id) seenMembers.set(m.member.id, m.member.displayName);
+    }
+    const members = [...seenMembers].map(([userId, displayName]) => ({ userId, displayName }));
+    try {
+      participantsMap = await updateParticipants(targetChannel, members);
+    } catch (err) {
+      logger.warn(`[Identity] updateParticipants failed: ${err.message}`);
+    }
+  }
+
   let typing = true;
   const sendTyping = async () => {
     while (typing) {
@@ -1537,21 +1719,39 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
       }
       const userChatbotData = await getUserChatbotData(message.author.id);
-      const userFactsCount = userChatbotData.facts.length;
-      if (userFactsCount && userChatbotData.summaries.length > 0 && INCLUDE_USER_FACTS_IN_PROMPT) {
-        const latestUserSummaryObject = userChatbotData.summaries[userChatbotData.summaries.length - 1];
-        const latestUserSummary = latestUserSummaryObject ? latestUserSummaryObject.context : null;
-        const latestUserFacts = userChatbotData.facts;
-        logger.debug(`Latest user summary:\x1b[31m ${latestUserSummary}`);
-        logger.debug(`Latest user facts:\x1b[31m ${latestUserFacts.map(f => `${f.key}: ${f.value}`).join("; ")}`);
-        if (latestUserSummaryObject) {
-          const block = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
-          if (block) userSummaryBlock = block;
+      if (INCLUDE_USER_FACTS_IN_PROMPT) {
+        // Current speaker's profile summary stays speaker-scoped.
+        if (userChatbotData.summaries.length > 0) {
+          const latestUserSummaryObject = userChatbotData.summaries[userChatbotData.summaries.length - 1];
+          if (latestUserSummaryObject) {
+            const block = buildSummaryBlock(`UserSummary name="${message.member.displayName}"`, latestUserSummaryObject);
+            if (block) userSummaryBlock = block;
+          }
         }
-        if (latestUserFacts.length > 0) {
-          const block = buildFactsBlock(`UserFacts name="${message.member.displayName}"`, latestUserFacts);
-          if (block) userFactsBlock = block;
+
+        // load facts for every participant who spoke in the
+        // window (current speaker first), not just the author, so the bot can
+        // reason about everyone present without conflating their identities.
+        const participantIds = [];
+        const pushId = id => { if (id && !participantIds.includes(id)) participantIds.push(id); };
+        pushId(message.author.id);
+        for (const m of validMessages) {
+          if (m.member && m.member.id !== client.user.id) pushId(m.member.id);
         }
+
+        const perUserFacts = {};
+        for (const uid of participantIds) {
+          const data = uid === message.author.id ? userChatbotData : await getUserChatbotData(uid);
+          if (data.incognitoMode) continue; // never surface an opted-out user's facts
+          if (Array.isArray(data.facts) && data.facts.length > 0) perUserFacts[uid] = data.facts;
+        }
+
+        const nameOf = uid => participantsMap[uid]?.currentName
+          || message.guild?.members?.cache?.get(uid)?.displayName
+          || (uid === message.author.id ? message.member.displayName : null);
+
+        const block = buildMultiUserFactsBlock(message.author.id, participantIds, perUserFacts, nameOf);
+        if (block) userFactsBlock = block;
       }
       if (isReply) {
         const msgReference = await targetChannel.messages.fetch(message.reference.messageId);
@@ -1582,7 +1782,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
             }
             conversationHistory.push({ role: "assistant", content: m.content });
           } else {
-            conversationHistory.push({ role: "user", content: `${m.member.displayName}: ${m.content}` });
+            conversationHistory.push({ role: "user", content: `[user_${m.member.id}] ${m.member.displayName}: ${m.content}` });
           }
         }
         // Dynamic cap: trim oldest messages if total exceeds MAX_API_MESSAGES
@@ -1626,17 +1826,26 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       if (dynamicTail) tailParts.unshift(dynamicTail);
       if (replyContext) tailParts.unshift(replyContext);
 
+      // roster of everyone present this turn, name↔ID anchored.
+      const presentIds = [message.author.id];
+      for (const m of validMessages) {
+        if (m.member && m.member.id !== client.user.id && !presentIds.includes(m.member.id)) presentIds.push(m.member.id);
+      }
+      const participantsBlock = buildParticipantsBlock(participantsMap, presentIds);
+
       sys_prompt = assembleSystemPrompt({
         variantPrefix: sys_prompt,
+        identityRulesBlock: IDENTITY_RULES_BLOCK,
         channelFactsBlock: channelFactsBlock || undefined,
         channelSummaryBlock: channelSummaryBlock || undefined,
         userSummaryBlock: userSummaryBlock || undefined,
         userFactsBlock: userFactsBlock || undefined,
         toolBlock,
         perceptionBlock: perceptionBlock || undefined,
+        participantsBlock: participantsBlock || undefined,
         dynamicTail: tailParts.join("\n\n"),
       });
-      usr_prompt += `\n${message.member.displayName}: ${message.content}`;
+      usr_prompt += `\n[user_${message.member.id}] ${message.member.displayName}: ${message.content}`;
     } else if (customPrompt) {
       sys_prompt = customPrompt;
       sys_variant = "custom";
@@ -2130,5 +2339,6 @@ module.exports = {
   getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
   getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts,
   extractImmediateFacts, extractImmediateChannelFacts,
-  runImmediateClassifier, mergeFacts, sortAndPruneFacts
+  runImmediateClassifier, mergeFacts, sortAndPruneFacts,
+  applyParticipantUpdate, resolveSubjectId, buildParticipantsBlock, buildMultiUserFactsBlock
 };
