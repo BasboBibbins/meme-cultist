@@ -156,12 +156,6 @@ const y2kColors = {
   textPrimary: "#ff6600",
   embedColor:  0x5ab2e0,
 };
-
-// Built around the provided precision.png background: near-black field
-// (avg #1e1f1a, dominated by #101010/#000000) with a sharp yellow-green
-// reticle. The image's green samples ~#a8cc3a, peaking at #c8e740, and the
-// "Precision Roleplay" text is a cool silver-gray (#d8dcd0). The `gold` token
-// maps to the reticle green so the canvas chrome echoes the background.
 const precisionColors = {
   background:  path.join(BACKGROUND_BASE, "precision.png"),
   feltColor:   "rgba(12, 14, 12, 0.85)",
@@ -176,6 +170,21 @@ const precisionColors = {
   textLoss:    "#d6603c",
   textPrimary: "#a8cc3a",
   embedColor:  0x0c0e0c,
+};
+const glassColors = {
+  background:  path.join(BACKGROUND_BASE, "glass.png"),
+  feltColor:   "rgba(228, 238, 250, 0.58)",
+  feltDark:    "#dce6f2",
+  tableGreen:  "#cfe0f2",
+  gold:        "#4f8fd6",
+  goldDark:    "#3a6ca8",
+  goldBronze:  "#2a5080",
+  textWhite:   "#16242e",
+  textBlack:   "#0a0e14",
+  textWin:     "#1f9e6a",
+  textLoss:    "#d9534f",
+  textPrimary: "#4f8fd6",
+  embedColor:  0xdce6f5,
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -942,6 +951,79 @@ const themes = {
         resultBorder:     "#ff6600",
       },
       poker: poker(y2kColors),
+    },
+  ),
+
+  glass: full("glass", "Glass",
+    "Liquid Glass design language. Frosted translucent panels, soft blue LED accents, and a bright azure glass background. Light, airy, and premium.",
+    350000, 5, "🪟", glassColors,
+    {
+      slots: {
+        // No custom sprite sheet yet — slots falls back to classic default
+        // sprites under this palette until glass.png lands in imgs/slots.
+        reelBackground:      "rgba(228, 240, 252, 0.85)",
+        frameColor:          "#4f8fd6",
+        frameDarkColor:      "#3a6ca8",
+        frameBronze:         "#2a5080",
+        dividerColor:        "#bcd2e8",
+        highlightWin:        "rgba(79, 143, 214, 0.45)",
+        bannerBackground:    "#e4eef8",
+        bannerBackgroundEnd: "#cfe0f2",
+        motionBlurOverlay:   "rgba(228, 238, 250, 0.5)",
+        paylineColors:       ["#4f8fd6", "#1f9e6a", "#d9534f", "#7fb3e8", "#2a5080"],
+      },
+      roulette: {
+        woodInner:       "#7fb0d8",
+        woodMid:         "#5a90c0",
+        woodOuter:       "#3e6e9e",
+        goldRim:         "#cfe6ff",
+        pocketRed:       "#d9534f",
+        pocketBlack:     "#1a3a5e",
+        pocketGreen:     "#1f9e6a",
+        winnerHighlight: "#cfe6ff",
+        textBlack:       "#0a1a2e",
+        textWhite:       "#ffffff",
+        feltInner:       "#4a86c4",
+        feltMid:         "#3a72ae",
+        feltOuter:       "#2c5a90",
+        spokeColor:      "#cfe6ff",
+        hubLight:        "#eaf6ff",
+        hubMid:          "#9cc4e8",
+        hubDark:         "#5a90c0",
+        hubStroke:       "#ffffff",
+        tableGreen:      "#4a86c4",
+        zeroGreen:       "#1f9e6a",
+        numberRed:       "#d9534f",
+        numberBlack:     "#1a3a5e",
+        betArea:         "#3e72a8",
+        betBorder:       "#cfe6ff",
+        resultOverlay:   "rgba(20, 44, 78, 0.82)",
+        resultBorder:    "#cfe6ff",
+      },
+      craps: {
+        feltInner:        "#4a86c4",
+        feltMid:          "#3a72ae",
+        feltOuter:        "#2c5a90",
+        layoutLine:       "#cfe6ff",
+        layoutLabel:      "#ffffff",
+        passLineColor:    "#3e72a8",
+        dontPassColor:    "#8a4a4a",
+        fieldColor:       "#5a90c0",
+        comeColor:        "#4a86c4",
+        placeColor:       "#3e72a8",
+        hardWaysColor:    "#d9534f",
+        propsColor:       "#3a72ae",
+        bigSixEightColor: "#3e72a8",
+        puckOff:          "#1a3a5e",
+        puckOn:           "#cfe6ff",
+        puckText:         "#0a1a2e",
+        diceFace:         "#eaf6ff",
+        diceDots:         "#1a3a5e",
+        winnerHighlight:  "#cfe6ff",
+        resultOverlay:    "rgba(20, 44, 78, 0.82)",
+        resultBorder:     "#cfe6ff",
+      },
+      poker: poker(glassColors),
     },
   ),
 
