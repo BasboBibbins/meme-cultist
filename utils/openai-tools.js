@@ -17,9 +17,10 @@ const { parseWhen } = require("./reminders/parse");
 const { validateToolArgs } = require("./schemas");
 const gameResults = require("./gameResults");
 const episodes = require("./episodes");
+const kbProposals = require("./kbProposals");
 
 // Tool definitions for DeepSeek function calling
-const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
+const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry"]);
 
 const TOOLS = [
   {
@@ -302,6 +303,31 @@ const TOOLS = [
           limit: { type: "integer", description: "Max episodes to return (1–10, default 5)." }
         },
         required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_kb_entry",
+      description:
+        "Propose a new knowledge-base article for the bot owner to review. " +
+        "Call this ONLY when the conversation has produced durable, server-scoped knowledge worth saving to the wiki — " +
+        "a lore decision, a custom rule clarification, an established server event, or a fact everyone in the server should be able to look up later. " +
+        "Do NOT call for personal facts about a user, transient chatter, opinions, or anything already answerable via lookup_kb. " +
+        "The entry is NOT added immediately — it is queued for the owner to approve, edit, or reject.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "A short, descriptive title for the article (max 100 chars)." },
+          body: { type: "string", description: "The article content: the durable knowledge to record (max 4000 chars)." },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional short keywords to help retrieve this entry later."
+          }
+        },
+        required: ["title", "body"]
       }
     }
   },
@@ -1200,6 +1226,42 @@ async function handleGetRecentGameResults(args, message) {
   }
 }
 
+async function handleProposeKbEntry(args, message, client) {
+  const guild = message.guild;
+  if (!guild) return { error: "The knowledge base is only available in servers." };
+
+  const title = (args.title || "").trim();
+  const body = (args.body || "").trim();
+  if (title.length < 2 || title.length > 100) return { error: "Title must be 2–100 characters." };
+  if (body.length < 2 || body.length > 4000) return { error: "Body must be 2–4000 characters." };
+
+  const tags = Array.isArray(args.tags) && args.tags.length
+    ? args.tags.map(t => String(t).trim()).filter(Boolean).join(", ").slice(0, 200) || null
+    : null;
+
+  try {
+    const proposal = kbProposals.create({
+      guildId: guild.id,
+      title,
+      content: body,
+      tags,
+      source: "tool",
+      originUserId: message.author?.id || null,
+    });
+    if (!proposal) {
+      return { note: "A matching entry is already pending the owner's review — no need to propose it again." };
+    }
+    await kbProposals.notifyOwnerOfProposal(client, proposal);
+    return {
+      success: true,
+      message: `Proposed "${title}" to the knowledge base. It is pending the owner's approval before it goes live.`,
+    };
+  } catch (err) {
+    logger.error(`[propose_kb_entry] ${err.message}`);
+    return { error: `Could not submit the proposal: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -1215,6 +1277,7 @@ const TOOL_HANDLERS = {
   get_shop: handleGetShop,
   get_command_help: handleGetCommandHelp,
   recall_episode: handleRecallEpisode,
+  propose_kb_entry: handleProposeKbEntry,
   web_search: handleWebSearch,
   fetch_page: handleFetchPage,
   get_game_result: handleGetGameResult,

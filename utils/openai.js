@@ -35,6 +35,7 @@ const { withLock } = require("./lock");
 const { estimateTokenCount, estimateCost } = require("./llm/cost");
 const llm = require("./llm");
 const personas = require("./personas");
+const kbProposals = require("./kbProposals");
 const messageArchive = require("./messageArchive");
 const { assembleSystemPrompt } = require("./openai-system-prompts");
 const { chatWithSchema, parseAndValidate } = require("./schemas");
@@ -679,6 +680,16 @@ async function extractImmediateChannelFacts(message, channelId) {
   const pruned = sortAndPruneFacts(merged);
   await updateThreadContext(channel, { facts: pruned });
   logger.debug(`[ImmediateFacts] channel [${channelId}] +${parsed.length} parsed (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${parsed.map(f => f.key).join(",")}]`);
+
+  // §3.9 — evergreen server-scoped facts are offered to the owner as KB entries.
+  if (message.guild) {
+    await kbProposals.maybeProposeFromFacts({
+      client: message.client,
+      guildId: message.guild.id,
+      facts: tagged,
+      originUserId: userId,
+    });
+  }
 }
 
 function isValidMessage(message) {

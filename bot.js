@@ -26,6 +26,7 @@ const { DefaultExtractors } = require("@discord-player/extractor");
 const playdl = require("play-dl");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
+const { handleProposalInteraction } = require("./utils/kbProposals");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -501,6 +502,15 @@ if (DELETE_SLASH) {
   });
 
   client.on(Events.InteractionCreate, async interaction => {
+    // KB proposal buttons live in the owner's DMs (no guild/member), so route
+    // them before any guild-scoped checks below. The edit modal is awaited
+    // inline by the button handler, so its submit is acknowledged here too.
+    if (interaction.isButton() && interaction.customId.startsWith("kbprop:")) {
+      return handleProposalInteraction(interaction, client);
+    }
+    if (interaction.type === InteractionType.ModalSubmit && interaction.customId.startsWith("kbpropedit:")) {
+      return;
+    }
     if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
       return await sendDM(interaction.user, {
         content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`,
