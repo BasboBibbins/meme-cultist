@@ -270,7 +270,7 @@ const themes = {
   fwenCult: limited("fwenCult", "Fwen Cult",
     "A colorful theme celebrating the new-gen TMC community and the Fwen Cult-era!",
     500000, "<:miku:1250275823710113824>",
-    { start: { month: 6, day: 9 }, end: { month: 6, day: 20 } },
+    { start: { month: 6, day: 9 }, end: { month: 6, day: 25 } },
     {
       background:  path.join(BACKGROUND_BASE, "fwenCult.png"),
       feltColor:   "rgba(48, 36, 54, 0.75)",

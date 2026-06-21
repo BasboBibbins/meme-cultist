@@ -8,6 +8,7 @@ const {
   getDailyShopStock, nextShopResetEpoch,
   ownsItem, purchaseItem,
   isThemeAvailable, formatAvailability,
+  availabilityEndEpoch, isOneTimeAvailability,
   buildFooter, formatPrice, buildThemeInfoEmbed,
   PREVIEW_GAMES, GAME_LABELS, GAME_EMOJIS, GAME_FILES,
   getPreviewAttachment
@@ -70,7 +71,7 @@ module.exports = {
           const rarity = item.rarity || "common";
           (grouped[rarity] || (grouped[rarity] = [])).push({ ...item, owned: ownedFlags[idx] });
         });
-        const resetIn = `<t:${nextShopResetEpoch()}:t>`;
+        const resetIn = nextShopResetEpoch()
         let desc = "";
         for (const rarity of RARITY_ORDER) {
           const items = grouped[rarity];
@@ -80,10 +81,15 @@ module.exports = {
             const mark = i.owned ? " ✅" : "";
             const prefix = i.emoji ? `${i.emoji} ` : "";
             desc += `${prefix}**${i.name}** · ${formatPrice(i.price)}${mark}\n`;
+            if (i.tier === "limited" && i.availability) {
+              const until = availabilityEndEpoch(i.availability);
+              const gone = isOneTimeAvailability(i.availability) ? " · ⚠️ Won't return" : "";
+              desc += `> ⏳ **AVAILABLE UNTIL** <t:${until}:d> (<t:${until}:R>)${gone}\n`;
+            }
           }
           desc += "\n";
         }
-        desc += `*Inventory resets at ${resetIn} each day.*`;
+        desc += `*Shop resets at <t:${resetIn}:t> (<t:${resetIn}:R>).*`;
         if (!desc) desc = "The shop is empty today. Check back tomorrow!";
 
         const embed = buildBaseEmbed(user, interaction.client)
@@ -150,8 +156,14 @@ module.exports = {
           let desc = `${item.description}\n\n`;
           desc += `**Rarity:** ${rarityLabel}\n`;
           if (item.tier === "limited" && item.availability) {
+            const inSeason = isThemeAvailable(item.availability);
             desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
-            desc += `**Season:** ${isThemeAvailable(item.availability) ? "In Season" : "Out of Season"}\n`;
+            desc += `**Season:** ${inSeason ? "In Season" : "Out of Season"}\n`;
+            if (inSeason) {
+              const until = availabilityEndEpoch(item.availability);
+              const gone = isOneTimeAvailability(item.availability) ? " ⚠️ Won't return" : "";
+              desc += `**Available until:** <t:${until}:d> (<t:${until}:R>)${gone}\n`;
+            }
           }
           desc += `**Price:** ${formatPrice(item.price)}\n`;
           desc += `**Status:** ${isOwned ? "Owned" : "Not Owned"}\n`;
