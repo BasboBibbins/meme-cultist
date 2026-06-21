@@ -1987,8 +1987,12 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
         if (streamRes.toolCalls && streamRes.toolCalls.length > 0) {
           logger.debug("[Stream] Model requested tool calls mid-stream; switching to non-streamed path.");
-          const streamAssistantMsg = { role: "assistant", content: null, tool_calls: streamRes.toolCalls };
-          if (streamRes.reasoningContent) streamAssistantMsg.reasoning_content = streamRes.reasoningContent;
+          const streamAssistantMsg = {
+            role: "assistant",
+            content: null,
+            tool_calls: streamRes.toolCalls,
+            reasoning_content: streamRes.reasoningContent || "",
+          };
           messages.push(streamAssistantMsg);
           for (const toolCall of streamRes.toolCalls) {
             const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
@@ -2086,7 +2090,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       const dsmlToolCalls = parseDSMLToolCalls(response);
       if (dsmlToolCalls.length > 0) {
         logger.warn(`[DSML] ${dsmlToolCalls.length} tool call(s) found in content — re-routing through tool loop`);
-        messages.push({ role: "assistant", content: null, tool_calls: dsmlToolCalls });
+        messages.push({ role: "assistant", content: null, tool_calls: dsmlToolCalls, reasoning_content: choice.message?.reasoning_content || "" });
         for (const toolCall of dsmlToolCalls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
           collectCitations(toolCall.function.name, toolResult, citationStore);
