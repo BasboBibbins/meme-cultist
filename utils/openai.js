@@ -2021,14 +2021,13 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       }
 
       if (finalSlot) {
-        logger.debug("[ToolCall] Final budget slot — forcing tool_choice=none to synthesize from existing results.");
+        logger.debug("[ToolCall] Final budget slot — omitting tools to synthesize from existing results.");
       }
       const completion = await llm.chat({
         model: CONVO_MODEL,
         messages: messages,
         temperature: 0.9,
-        tools: TOOLS,
-        tool_choice: finalSlot ? "none" : "auto",
+        ...(finalSlot ? {} : { tools: TOOLS, tool_choice: "auto" }),
         timeoutMs: 120_000,
         label: "handleBotMessage",
         variant: sys_variant,
@@ -2090,7 +2089,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       const dsmlToolCalls = parseDSMLToolCalls(response);
       if (dsmlToolCalls.length > 0) {
         logger.warn(`[DSML] ${dsmlToolCalls.length} tool call(s) found in content — re-routing through tool loop`);
-        messages.push({ role: "assistant", content: null, tool_calls: dsmlToolCalls, reasoning_content: choice.message?.reasoning_content || "" });
+        const dsmlReasoning = choice.message?.reasoning_content;
+        const dsmlAssistantMsg = { role: "assistant", content: null, tool_calls: dsmlToolCalls };
+        if (dsmlReasoning) dsmlAssistantMsg.reasoning_content = dsmlReasoning;
+        messages.push(dsmlAssistantMsg);
         for (const toolCall of dsmlToolCalls) {
           const toolResult = await executeToolCall(toolCall, message, client, toolCtx);
           collectCitations(toolCall.function.name, toolResult, citationStore);
@@ -2107,6 +2109,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         }
         toolCallDepth++;
         continue;
+      }
+      if (!response?.trim() && choice.message?.reasoning_content?.trim()) {
+        logger.warn("[Recover] Empty content with populated reasoning_content — using reasoning_content as the reply.");
+        response = choice.message.reasoning_content.trim();
       }
 
       if (!response) {
@@ -2131,15 +2137,18 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         model: CONVO_MODEL,
         messages: messages,
         temperature: 0.9,
-        tools: TOOLS,
-        tool_choice: "none",
         timeoutMs: 120_000,
         label: "handleBotMessage-synthesis",
         variant: sys_variant,
       });
       const synthesisChoice = synthesisCompletion.raw?.data?.choices?.[0];
-      if (synthesisChoice?.message?.content) {
-        response = synthesisChoice.message.content;
+      const synthesisContent = synthesisChoice?.message?.content?.trim()
+        ? synthesisChoice.message.content
+        : synthesisChoice?.message?.reasoning_content?.trim()
+          ? synthesisChoice.message.reasoning_content.trim()
+          : null;
+      if (synthesisContent) {
+        response = synthesisContent;
         logger.debug(`[Synthesis] Generated response: ${response.substring(0, 100)}...`);
       } else {
         const gatheredTools = toolResultsAccumulator.map(r => r.tool).join(", ");
