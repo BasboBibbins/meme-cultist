@@ -166,15 +166,23 @@ async function handleProposalInteraction(interaction, client) {
 
     if (action === "edit") {
       await interaction.showModal(editModal(proposal));
+      // Track that a collector is awaiting this modal so bot.js can tell an
+      // in-flight submit (let the collector handle it) from a late/orphan one
+      // (ack it there to avoid Discord's "This interaction failed").
+      const modalId = `kbpropedit:${id}`;
+      const pending = (client.pendingKbEdits ||= new Set());
+      pending.add(modalId);
       let submitted;
       try {
         submitted = await interaction.awaitModalSubmit({
           time: 5 * 60 * 1000,
-          filter: i => i.customId === `kbpropedit:${id}` && i.user.id === interaction.user.id,
+          filter: i => i.customId === modalId && i.user.id === interaction.user.id,
         });
       } catch (_) {
         // Modal timed out — leave the original buttons live for a later decision.
         return;
+      } finally {
+        pending.delete(modalId);
       }
       const title = submitted.fields.getTextInputValue("title").trim();
       const content = submitted.fields.getTextInputValue("content").trim();

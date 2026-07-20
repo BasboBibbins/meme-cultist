@@ -34,7 +34,13 @@ async function maybeProposeFromFacts({ client, guildId, facts, originUserId }) {
   try {
     const proposal = store.create({ guildId, title, content, source: "auto", originUserId });
     if (!proposal) return;
-    await notifyOwnerOfProposal(client, proposal);
+    if (!(await notifyOwnerOfProposal(client, proposal))) {
+      // DM delivery failed — drop the row so it isn't stranded pending with no
+      // approval path, and its dedup_hash doesn't block re-proposing this later.
+      store.remove(proposal.id);
+      logger.warn(`[KBProposals] Dropped auto-promote suggestion ${proposal.id}: owner notification failed.`);
+      return;
+    }
     logger.log(`[KBProposals] Auto-promote suggestion ${proposal.id} for "${candidate.key}" in guild ${guildId}`);
   } catch (err) {
     logger.error(`[KBProposals] maybeProposeFromFacts failed: ${err.message}`);

@@ -1260,7 +1260,12 @@ async function handleProposeKbEntry(args, message, client) {
     if (!proposal) {
       return { note: "A matching entry is already pending the owner's review — no need to propose it again." };
     }
-    await kbProposals.notifyOwnerOfProposal(client, proposal);
+    if (!(await kbProposals.notifyOwnerOfProposal(client, proposal))) {
+      // Owner DM failed — drop the stranded row so its dedup_hash won't block a
+      // retry, and tell the model so it doesn't claim success.
+      kbProposals.store.remove(proposal.id);
+      return { error: "Could not deliver the proposal to the owner for review. It was not saved." };
+    }
     return {
       success: true,
       message: `Proposed "${title}" to the knowledge base. It is pending the owner's approval before it goes live.`,

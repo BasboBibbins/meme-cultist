@@ -520,9 +520,18 @@ if (DELETE_SLASH) {
       return handleProposalInteraction(interaction, client);
     }
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId.startsWith("kbpropedit:")) {
-      return;
+      // A collector in the edit handler awaits this modal inline. If it's still
+      // waiting, let that resolve it; otherwise the collector already timed out,
+      // so ack here rather than leaving the owner with "This interaction failed".
+      if (client.pendingKbEdits && client.pendingKbEdits.has(interaction.customId)) return;
+      return interaction.reply({
+        content: "That edit window has expired. Re-open the suggestion and use Edit again.",
+        ephemeral: true,
+      }).catch(() => {});
     }
-    if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
+    // interaction.member is null for DM interactions (e.g. owner-DM components),
+    // so guard before the guild-only roles check.
+    if (!interaction.isCommand() && interaction.member && interaction.member.roles.cache.has(banned)) {
       return await sendDM(interaction.user, {
         content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`,
       });
