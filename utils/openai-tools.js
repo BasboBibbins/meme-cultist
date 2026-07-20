@@ -22,6 +22,11 @@ const kbProposals = require("./kbProposals");
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry"]);
 
+// SQLite FTS5 bm25 `rank` is negative (a stronger match is MORE negative). When
+// the best keyword hit sits above this floor (closer to 0 == weak) we re-rank the
+// FTS candidates with embeddings for better ordering.
+const FTS_WEAK_RANK_THRESHOLD = -1.0;
+
 const TOOLS = [
   {
     type: "function",
@@ -750,7 +755,9 @@ async function handleSearchHistory(args, message, client) {
 
     let finalResults = ftsResults.slice(0, limit);
     const topRank = ftsResults[0]?.rank;
-    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+    const needsSemantic =
+      (typeof topRank === "number" && topRank > FTS_WEAK_RANK_THRESHOLD) ||
+      ftsResults.length < limit;
 
     if (needsSemantic) {
       try {
@@ -837,7 +844,9 @@ async function handleRecallEpisode(args, message) {
 
     let finalResults = ftsResults.slice(0, limit);
     const topRank = ftsResults[0]?.rank;
-    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+    const needsSemantic =
+      (typeof topRank === "number" && topRank > FTS_WEAK_RANK_THRESHOLD) ||
+      ftsResults.length < limit;
 
     if (needsSemantic) {
       try {

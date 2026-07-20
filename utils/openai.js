@@ -793,11 +793,10 @@ async function extractImmediateFacts(message, userId) {
       logger.debug(`[ImmediateFacts] skipped subject [${subjectId}]: incognito`);
       continue;
     }
-    const before = (subjectData.facts || []).length;
-    const merged = mergeFacts(subjectData.facts || [], facts, text, subjectId);
-    const pruned = sortAndPruneFacts(merged);
-    await updateUserChatbotData(subjectId, { facts: pruned });
-    logger.debug(`[ImmediateFacts] subject [${subjectId}] +${facts.length} by author [${userId}] (confidence=${confidence}) before=${before} after=${pruned.length} keys=[${facts.map(f => f.key).join(",")}]`);
+    const result = await mergeUserFacts(subjectId, facts, text);
+    if (result) {
+      logger.debug(`[ImmediateFacts] subject [${subjectId}] +${facts.length} by author [${userId}] (confidence=${confidence}) before=${result.before} after=${result.after} keys=[${facts.map(f => f.key).join(",")}]`);
+    }
   }
 }
 
@@ -1004,6 +1003,23 @@ async function updateUserChatbotData(userId, updates) {
     } else {
       logger.debug(`User [${userId}] is in incognito mode; skipping chatbot data update.`);
     }
+  });
+}
+
+// Atomically merge newly-extracted facts into a subject's store. The read,
+// merge, and write all happen inside a single per-user lock so concurrent
+// extractions about the same subject can't clobber each other — the immediate-
+// facts debounce is keyed on the AUTHOR, not the subject, so two authors talking
+// about the same person race here. Returns {before, after} on write, or null
+// when the subject is (globally) incognito. Caller handles per-channel incognito.
+async function mergeUserFacts(subjectId, newFacts, sourceText) {
+  return withLock(`user:${subjectId}`, async () => {
+    const data = await getUserChatbotData(subjectId);
+    if (data.incognitoMode) return null;
+    const before = (data.facts || []).length;
+    const pruned = sortAndPruneFacts(mergeFacts(data.facts || [], newFacts, sourceText, subjectId));
+    await usersDb.set(`${subjectId}.chatbot`, { ...data, facts: pruned });
+    return { before, after: pruned.length };
   });
 }
 

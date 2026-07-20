@@ -139,6 +139,19 @@ function getUnembeddedAny(limit = 100) {
   ).all(limit);
 }
 
+// Fetch specific episodes (id, summary) that still need an embedding, by id.
+// Used by the episode_embed job to embed exactly the rows it was enqueued for,
+// rather than scanning the oldest-N unembedded window (which silently skips a
+// freshly-created episode once the backlog exceeds that window).
+function getByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const db = openDb();
+  const ph = ids.map(() => "?").join(",");
+  return db.prepare(
+    `SELECT id, summary FROM episodes WHERE id IN (${ph}) AND embedding IS NULL`
+  ).all(...ids);
+}
+
 function setEmbedding(id, embedding) {
   const db = openDb();
   let buf = null;
@@ -191,7 +204,10 @@ function searchSemantic(queryEmbedding, candidateIds, limit = 5) {
   const scored = rows.map(r => {
     const vec = bufferToFloatArray(r.embedding);
     if (!vec || vec.length !== queryVec.length) return null;
-    return { ...r, score: cosineSimilarity(queryVec, vec) };
+    const score = cosineSimilarity(queryVec, vec);
+    // A zero/degenerate embedding yields NaN (dot/0); NaN would survive here and
+    // corrupt the sort, so drop non-finite scores.
+    return Number.isFinite(score) ? { ...r, score } : null;
   }).filter(Boolean);
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
@@ -209,7 +225,8 @@ function searchSemanticFull(scopePairs, queryEmbedding, limit = 5) {
   const scored = rows.map(r => {
     const vec = bufferToFloatArray(r.embedding);
     if (!vec || vec.length !== queryVec.length) return null;
-    return { ...r, score: cosineSimilarity(queryVec, vec) };
+    const score = cosineSimilarity(queryVec, vec);
+    return Number.isFinite(score) ? { ...r, score } : null;
   }).filter(Boolean);
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, limit);
@@ -227,6 +244,7 @@ module.exports = {
   countForScope,
   getUnembedded,
   getUnembeddedAny,
+  getByIds,
   setEmbedding,
   searchFTS,
   searchSemantic,

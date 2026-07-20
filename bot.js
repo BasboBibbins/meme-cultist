@@ -338,17 +338,19 @@ if (DELETE_SLASH) {
       const { episodeIds } = payload;
       if (!episodeIds || episodeIds.length === 0) return;
       const llm = require("./utils/llm");
-      const unembedded = episodeStore.getUnembeddedAny(200).filter(r => episodeIds.includes(r.id));
+      const unembedded = episodeStore.getByIds(episodeIds);
       if (unembedded.length === 0) return;
+      let embedded = 0;
       for (const ep of unembedded) {
         try {
           const { embedding } = await llm.embed({ text: ep.summary });
           episodeStore.setEmbedding(ep.id, embedding);
+          embedded += 1;
         } catch (err) {
           logger.error(`[EpisodeEmbed] Failed for episode ${ep.id}: ${err.message}`);
         }
       }
-      logger.log(`[EpisodeEmbed] Embedded ${unembedded.length} episodes`);
+      if (embedded > 0) logger.log(`[EpisodeEmbed] Embedded ${embedded} episodes`);
     });
 
     jobs.register("backfill_messages", async (payload) => {
