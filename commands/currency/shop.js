@@ -71,7 +71,7 @@ module.exports = {
           const rarity = item.rarity || "common";
           (grouped[rarity] || (grouped[rarity] = [])).push({ ...item, owned: ownedFlags[idx] });
         });
-        const resetIn = nextShopResetEpoch()
+        const resetIn = nextShopResetEpoch();
         let desc = "";
         for (const rarity of RARITY_ORDER) {
           const items = grouped[rarity];

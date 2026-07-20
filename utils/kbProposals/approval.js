@@ -113,8 +113,16 @@ function editModal(proposal) {
 }
 
 async function finishApproval(interaction, client, proposal, resolvedBy) {
+  // Flip the status first: setStatus is an atomic pending->approved guard, so a
+  // double-click or two raced buttons can't both reach promoteToKb and create
+  // duplicate live KB entries (foo and foo-2) from a single proposal.
+  if (!store.setStatus(proposal.id, "approved", resolvedBy)) {
+    return interaction.update({
+      embeds: [buildInfoEmbed(interaction.user, client, "This suggestion has already been handled.").setTitle("Already Resolved")],
+      components: [],
+    }).catch(() => {});
+  }
   const slug = await promoteToKb(proposal, resolvedBy);
-  store.setStatus(proposal.id, "approved", resolvedBy);
   logger.log(`[KBProposals] Approved proposal ${proposal.id} -> kb "${slug}" (${proposal.guildId})`);
   const owner = interaction.user;
   await interaction.update({

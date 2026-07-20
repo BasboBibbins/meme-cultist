@@ -788,7 +788,8 @@ async function extractImmediateFacts(message, userId) {
 
   for (const [subjectId, facts] of groups) {
     const subjectData = subjectId === userId ? chatbotData : await getUserChatbotData(subjectId);
-    if (subjectData.incognitoMode) {
+    const subjectIncognitoChannels = Array.isArray(subjectData.incognitoChannels) ? subjectData.incognitoChannels : [];
+    if (subjectData.incognitoMode || subjectIncognitoChannels.includes(message.channel?.id)) {
       logger.debug(`[ImmediateFacts] skipped subject [${subjectId}]: incognito`);
       continue;
     }
@@ -1790,10 +1791,13 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           if (m.member && m.member.id !== client.user.id) pushId(m.member.id);
         }
 
+        const currentChannelId = message.channel?.id;
         const perUserFacts = {};
         for (const uid of participantIds) {
           const data = uid === message.author.id ? userChatbotData : await getUserChatbotData(uid);
-          if (data.incognitoMode) continue; // never surface an opted-out user's facts
+          // never surface facts for a user who opted out globally or in this channel
+          const incogChannels = Array.isArray(data.incognitoChannels) ? data.incognitoChannels : [];
+          if (data.incognitoMode || incogChannels.includes(currentChannelId)) continue;
           if (Array.isArray(data.facts) && data.facts.length > 0) perUserFacts[uid] = data.facts;
         }
 
