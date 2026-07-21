@@ -806,6 +806,15 @@ async function handleRecallEpisode(args, message) {
   }
   if (scopePairs.length === 0) return { error: "Invalid scope value." };
 
+  const formatEpisode = (r, i) => ({
+    result_index: i + 1,
+    scope: r.scope_type,
+    summary: r.summary,
+    tags: r.tags ? JSON.parse(r.tags) : [],
+    source: r.source,
+    occurred_at: `<t:${Math.floor(r.created_at / 1000)}:R>`,
+  });
+
   try {
     const ftsQuery = buildFTSQuery(args.query);
     const ftsResults = episodes.searchFTS(scopePairs, ftsQuery, 30);
@@ -822,14 +831,7 @@ async function handleRecallEpisode(args, message) {
           .filter(r => r.score >= EPISODE_RECALL_MIN_SCORE);
         if (semanticResults.length > 0) {
           return {
-            results: semanticResults.map((r, i) => ({
-              result_index: i + 1,
-              scope: r.scope_type,
-              summary: r.summary,
-              tags: r.tags ? JSON.parse(r.tags) : [],
-              source: r.source,
-              occurred_at: `<t:${Math.floor(r.created_at / 1000)}:R>`,
-            })),
+            results: semanticResults.map(formatEpisode),
             note: "Results via semantic search (no FTS matches).",
           };
         }
@@ -860,14 +862,7 @@ async function handleRecallEpisode(args, message) {
     }
 
     return {
-      results: finalResults.map((r, i) => ({
-        result_index: i + 1,
-        scope: r.scope_type,
-        summary: r.summary,
-        tags: r.tags ? JSON.parse(r.tags) : [],
-        source: r.source,
-        occurred_at: `<t:${Math.floor(r.created_at / 1000)}:R>`,
-      })),
+      results: finalResults.map(formatEpisode),
       total_matches: ftsResults.length,
     };
   } catch (err) {

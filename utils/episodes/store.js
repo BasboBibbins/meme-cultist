@@ -116,22 +116,6 @@ function addEpisode({ scopeType, scopeId, summary, tags = [], source = "manual" 
   return insertAndPrune();
 }
 
-function countForScope(scopeType, scopeId) {
-  const db = openDb();
-  return db.prepare(
-    "SELECT COUNT(*) AS c FROM episodes WHERE scope_type=? AND scope_id=?"
-  ).get(scopeType, scopeId).c;
-}
-
-function getUnembedded(scopeType, scopeId, limit = 50) {
-  const db = openDb();
-  return db.prepare(`
-    SELECT id, summary FROM episodes
-    WHERE scope_type=? AND scope_id=? AND embedding IS NULL
-    ORDER BY created_at ASC LIMIT ?
-  `).all(scopeType, scopeId, limit);
-}
-
 function getUnembeddedAny(limit = 100) {
   const db = openDb();
   return db.prepare(
@@ -241,8 +225,6 @@ function close() {
 
 module.exports = {
   addEpisode,
-  countForScope,
-  getUnembedded,
   getUnembeddedAny,
   getByIds,
   setEmbedding,
