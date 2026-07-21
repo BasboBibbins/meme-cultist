@@ -742,6 +742,19 @@ function checkDebounce(client, bucketKey) {
   return true;
 }
 
+// Ordered, de-duplicated ids of the human members present this turn: the current
+// author first, then everyone who spoke in the window, excluding the bot itself.
+// Anchors per-participant facts and the roster block.
+function presentMemberIds(validMessages, message, client) {
+  const ids = [message.author.id];
+  for (const m of validMessages) {
+    if (m.member && m.member.id !== client.user.id && !ids.includes(m.member.id)) {
+      ids.push(m.member.id);
+    }
+  }
+  return ids;
+}
+
 async function extractImmediateFacts(message, userId) {
   if (!IMMEDIATE_FACTS_ENABLED) return;
   const text = message?.content || "";
@@ -1800,17 +1813,18 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         // load facts for every participant who spoke in the
         // window (current speaker first), not just the author, so the bot can
         // reason about everyone present without conflating their identities.
-        const participantIds = [];
-        const pushId = id => { if (id && !participantIds.includes(id)) participantIds.push(id); };
-        pushId(message.author.id);
-        for (const m of validMessages) {
-          if (m.member && m.member.id !== client.user.id) pushId(m.member.id);
-        }
+        const participantIds = presentMemberIds(validMessages, message, client);
+
+        // Independent per-user reads — fetch in parallel rather than serially.
+        const dataById = new Map([[message.author.id, userChatbotData]]);
+        await Promise.all(participantIds
+          .filter(uid => !dataById.has(uid))
+          .map(async uid => { dataById.set(uid, await getUserChatbotData(uid)); }));
 
         const currentChannelId = message.channel?.id;
         const perUserFacts = {};
         for (const uid of participantIds) {
-          const data = uid === message.author.id ? userChatbotData : await getUserChatbotData(uid);
+          const data = dataById.get(uid);
           // never surface facts for a user who opted out globally or in this channel
           const incogChannels = Array.isArray(data.incognitoChannels) ? data.incognitoChannels : [];
           if (data.incognitoMode || incogChannels.includes(currentChannelId)) continue;
@@ -1898,10 +1912,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       if (replyContext) tailParts.unshift(replyContext);
 
       // roster of everyone present this turn, name↔ID anchored.
-      const presentIds = [message.author.id];
-      for (const m of validMessages) {
-        if (m.member && m.member.id !== client.user.id && !presentIds.includes(m.member.id)) presentIds.push(m.member.id);
-      }
+      const presentIds = presentMemberIds(validMessages, message, client);
       const participantsBlock = buildParticipantsBlock(participantsMap, presentIds);
 
       sys_prompt = assembleSystemPrompt({
