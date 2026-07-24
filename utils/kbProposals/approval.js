@@ -17,6 +17,7 @@ const {
 } = require("discord.js");
 const logger = require("../logger");
 const kbStore = require("../kb");
+const kbPreflight = require("../kb/preflight");
 const jobs = require("../jobs");
 const store = require("./store");
 const { sendDM } = require("../dm");
@@ -84,6 +85,7 @@ async function promoteToKb(proposal, resolvedBy) {
     tags: proposal.tags || null,
     creatorId: resolvedBy,
   });
+  kbPreflight.invalidate(proposal.guildId);
   try {
     jobs.enqueue({ kind: "kb_embed", payload: { guildId: proposal.guildId, slug }, run_at: Date.now() });
   } catch (err) {

@@ -13,7 +13,7 @@ const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
-const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai");
+const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
 const { describeImage } = require("./utils/llm");
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./utils/channels");
@@ -102,6 +102,7 @@ client.duelGames = new Map();
 client.pokerTables = new Map();
 client.immediateFactsDebounce = new Map();
 client.toolCallHistory = new Map();
+client.perceptionCache = new Map();
 
 if (!fs.existsSync("./db/users.sqlite")) {
   logger.error("Database file not found! Please run `node bot.js dbinit` to create the database.");
@@ -724,6 +725,14 @@ if (DELETE_SLASH) {
       const result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
       if (result?.description) {
         extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
+        recordPerception(client, message.channel.id, {
+          messageId: message.id,
+          authorId: message.author.id,
+          authorName: displayName,
+          kind: "image",
+          text: result.description,
+          at: message.createdTimestamp,
+        });
       } else if (result?.error) {
         extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user your vision failed and briefly mention why. Do NOT pretend to see the image.`;
       }
@@ -734,6 +743,14 @@ if (DELETE_SLASH) {
         const page = await fetchPageText(url);
         if (page?.text) {
           extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+          recordPerception(client, message.channel.id, {
+            messageId: message.id,
+            authorId: message.author.id,
+            authorName: message.member?.displayName || message.author.username,
+            kind: "link",
+            text: `${page.title ? `${page.title} — ` : ""}${page.text}`,
+            at: message.createdTimestamp,
+          });
         } else if (page?.error) {
           extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly mention why. Do NOT pretend to have read it.`;
         }

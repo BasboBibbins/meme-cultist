@@ -20,7 +20,7 @@ const episodes = require("./episodes");
 const kbProposals = require("./kbProposals");
 
 // Tool definitions for DeepSeek function calling
-const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry"]);
+const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry", "set_directive", "remove_directive"]);
 
 // SQLite FTS5 bm25 `rank` is negative (a stronger match is MORE negative). When
 // the best keyword hit sits above this floor (closer to 0 == weak) we re-rank the
@@ -308,6 +308,45 @@ const TOOLS = [
           limit: { type: "integer", description: "Max episodes to return (1–10, default 5)." }
         },
         required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_directive",
+      description:
+        "Record a standing instruction for this channel — a rule about your own behavior that must hold from now on, " +
+        "such as 'never reveal the answer to word games, give hints only when asked'. " +
+        "Call this the moment a user states a durable behavioral rule, even in passing, then confirm it briefly in your reply. " +
+        "Standing instructions never expire and survive context resets. " +
+        "Do NOT call for one-off requests, personal facts about a user, or anything scoped to the current message only.",
+      parameters: {
+        type: "object",
+        properties: {
+          instruction: {
+            type: "string",
+            description: "The rule as a short imperative sentence describing how you must behave."
+          }
+        },
+        required: ["instruction"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_directive",
+      description:
+        "Cancel a standing instruction the channel previously set, when a user explicitly retracts it " +
+        "(\"you can talk about spoilers again\"). Pass the instruction's id from the [Standing Instructions] block, " +
+        "or its wording if you do not have the id.",
+      parameters: {
+        type: "object",
+        properties: {
+          directive: { type: "string", description: "The directive id, or its text." }
+        },
+        required: ["directive"]
       }
     }
   },
@@ -1271,6 +1310,81 @@ async function handleProposeKbEntry(args, message, client) {
   }
 }
 
+// The turn's target channel, which is not always the message's own channel —
+// handleBotMessage accepts a channelId override, and writing a directive to
+// message.channel in that case would store it where it is never read back.
+function directiveChannel(message, toolCtx) {
+  return toolCtx?.targetChannel || message?.channel || null;
+}
+
+// Required lazily: utils/openai.js requires this module at load time, so a
+// top-level require here would be a cycle.
+async function handleSetDirective(args, message, client, toolCtx) {
+  const instruction = args?.instruction?.trim();
+  if (!instruction) return { error: "Missing required 'instruction' argument." };
+  const channel = directiveChannel(message, toolCtx);
+  if (!channel) return { error: "Standing instructions are only available in a channel." };
+
+  const { getThreadContext, updateThreadContext } = require("./openai");
+  const { mergeDirectives } = require("./directives");
+  const { withLock } = require("./lock");
+
+  try {
+    return await withLock(`directives:${channel.id}`, async () => {
+      const context = await getThreadContext(channel);
+      const existing = Array.isArray(context.directives) ? context.directives : [];
+      const merged = mergeDirectives(existing, [instruction], {
+        createdBy: message.author?.id || null,
+        source: "tool",
+      });
+      if (merged.added.length === 0 && merged.reinforced.length === 0) {
+        return { success: false, message: "That instruction could not be stored." };
+      }
+      await updateThreadContext(channel, { directives: merged.directives });
+      const entry = merged.added[0];
+      logger.log(`[Directives] set_directive stored "${instruction}" in ${channel.id}`);
+      return {
+        success: true,
+        directive_id: entry ? entry.id : merged.reinforced[0],
+        already_known: merged.added.length === 0,
+        total: merged.directives.length,
+        message: merged.added.length === 0
+          ? "That standing instruction was already recorded."
+          : "Standing instruction recorded. It will persist until a user retracts it.",
+      };
+    });
+  } catch (err) {
+    logger.error(`[set_directive] ${err.message}`);
+    return { error: `Could not store the instruction: ${err.message}` };
+  }
+}
+
+async function handleRemoveDirective(args, message, client, toolCtx) {
+  const target = args?.directive?.trim();
+  if (!target) return { error: "Missing required 'directive' argument." };
+  const channel = directiveChannel(message, toolCtx);
+  if (!channel) return { error: "Standing instructions are only available in a channel." };
+
+  const { getThreadContext, updateThreadContext } = require("./openai");
+  const { removeDirective } = require("./directives");
+  const { withLock } = require("./lock");
+
+  try {
+    return await withLock(`directives:${channel.id}`, async () => {
+      const context = await getThreadContext(channel);
+      const existing = Array.isArray(context.directives) ? context.directives : [];
+      const { directives, removed } = removeDirective(existing, target);
+      if (!removed) return { success: false, message: "No matching standing instruction found." };
+      await updateThreadContext(channel, { directives });
+      logger.log(`[Directives] remove_directive dropped "${removed.text}" from ${channel.id}`);
+      return { success: true, removed: removed.text, remaining: directives.length };
+    });
+  } catch (err) {
+    logger.error(`[remove_directive] ${err.message}`);
+    return { error: `Could not remove the instruction: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -1287,6 +1401,8 @@ const TOOL_HANDLERS = {
   get_command_help: handleGetCommandHelp,
   recall_episode: handleRecallEpisode,
   propose_kb_entry: handleProposeKbEntry,
+  set_directive: handleSetDirective,
+  remove_directive: handleRemoveDirective,
   web_search: handleWebSearch,
   fetch_page: handleFetchPage,
   get_game_result: handleGetGameResult,

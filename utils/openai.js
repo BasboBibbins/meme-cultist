@@ -24,6 +24,12 @@ const {
   CRITIQUE_MODEL,
   STREAMING_ENABLED,
   BRAVE_API_KEY,
+  DIRECTIVES_ENABLED,
+  FACT_RELEVANCE_WEIGHT,
+  PERCEPTION_CACHE_SIZE,
+  PERCEPTION_CACHE_TTL_MS,
+  KB_PREFLIGHT_ENABLED,
+  KB_PREFLIGHT_MAX_ENTRIES,
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
@@ -39,6 +45,9 @@ const kbProposals = require("./kbProposals");
 const messageArchive = require("./messageArchive");
 const { assembleSystemPrompt } = require("./openai-system-prompts");
 const { chatWithSchema, parseAndValidate } = require("./schemas");
+const { mergeDirectives, removeDirective, buildDirectivesBlock } = require("./directives");
+const { tokenize: tokenizeText } = require("./text");
+const kbPreflight = require("./kb/preflight");
 
 function splitAtWordBoundary(text, maxLength = 1997) {
   if (text.length <= maxLength) return [text];
@@ -177,21 +186,65 @@ function isCoreIdentityKey(key) {
   return /^(name|age|location|job|language)(_|$)/.test(key || "");
 }
 
-function scoreFacts(facts, now = Date.now()) {
+// Lexical overlap between the current turn's cue tokens and a fact. Without
+// this, selection is purely recency+reinforcement, so a fact that answers the
+// question being asked right now loses its slot to unrelated recent chatter.
+// A cue hitting the fact's KEY ("cat" against pet_cat_name) is a much stronger
+// signal than one hitting its value, so a single key match alone is already
+// enough to pull a stale fact into the prompt.
+function relevanceScore(fact, cueTokens) {
+  if (!cueTokens || cueTokens.size === 0) return 0;
+  const keyTokens = new Set(tokenizeValue(fact.key));
+  const valueTokens = new Set(tokenizeValue(fact.value));
+  let keyHits = 0;
+  let valueHits = 0;
+  for (const t of cueTokens) {
+    if (keyTokens.has(t)) keyHits++;
+    else if (valueTokens.has(t)) valueHits++;
+  }
+  if (keyHits === 0 && valueHits === 0) return 0;
+  return Math.min(1, keyHits * 0.6 + valueHits * 0.4);
+}
+
+function scoreFacts(facts, now = Date.now(), cueTokens = null) {
   const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  const relWeight = (cueTokens && cueTokens.size > 0) ? (FACT_RELEVANCE_WEIGHT ?? 0) : 0;
+  const remaining = 1 - relWeight;
   return facts.map(f => {
     const age = Math.max(0, now - (f.updatedAt || 0));
     const recencyScore = Math.max(0, 1 - age / ninetyDaysMs);
     const reinforced = f.reinforcedCount || 1;
     const reinforceNorm = Math.min(1, reinforced / 5);
-    const _score = reinforceNorm * 0.4 + recencyScore * 0.6;
+    const base = reinforceNorm * 0.4 + recencyScore * 0.6;
+    const _score = base * remaining + relevanceScore(f, cueTokens) * relWeight;
     return { ...f, _score };
   });
 }
 
+// Perception payloads run to thousands of characters (a fetched page body).
+// Feeding all of it in would make almost every stored fact score a relevance
+// hit, flattening the ranking this scoring exists to sharpen — so only the
+// leading, most topical slice of a perception block is used as a cue.
+const CUE_PERCEPTION_CHARS = 300;
+
+function cueSlice(text) {
+  return typeof text === "string" ? text.slice(0, CUE_PERCEPTION_CHARS) : text;
+}
+
+// Cue tokens for relevance scoring: what is actually being talked about this
+// turn (message text, image/link perception, the last couple of history lines).
+function buildCueTokens(...texts) {
+  const tokens = new Set();
+  for (const text of texts) {
+    if (!text) continue;
+    for (const t of tokenizeValue(text)) tokens.add(t);
+  }
+  return tokens;
+}
+
 // maxOverride caps the number of facts selected for this block.
 // passes a per-user budget so several [UserFacts] blocks can share one total.
-function buildFactsBlock(tag, factsArray, maxOverride = null) {
+function buildFactsBlock(tag, factsArray, maxOverride = null, cueTokens = null) {
   if (!factsArray || !Array.isArray(factsArray) || factsArray.length === 0) return "";
 
   const filtered = factsArray.filter(f => {
@@ -203,7 +256,7 @@ function buildFactsBlock(tag, factsArray, maxOverride = null) {
 
   const core = filtered.filter(f => isCoreIdentityKey(f.key));
   const rest = filtered.filter(f => !isCoreIdentityKey(f.key));
-  const scored = scoreFacts(rest).sort((a, b) => b._score - a._score);
+  const scored = scoreFacts(rest, Date.now(), cueTokens).sort((a, b) => b._score - a._score);
   const effectiveMax = maxOverride != null
     ? maxOverride
     : (LOW_BUDGET_MODE
@@ -222,7 +275,7 @@ function buildFactsBlock(tag, factsArray, maxOverride = null) {
 // in the current window. The current speaker gets ~60% of MAX_FACTS_IN_PROMPT;
 // the remainder is split evenly across the others. Incognito users are skipped
 // entirely. perUserFacts maps userId -> facts[]; nameOf resolves a display name.
-function buildMultiUserFactsBlock(currentUserId, orderedIds, perUserFacts, nameOf) {
+function buildMultiUserFactsBlock(currentUserId, orderedIds, perUserFacts, nameOf, cueTokens = null) {
   const totalBudget = LOW_BUDGET_MODE
     ? Math.min(MAX_FACTS_IN_PROMPT || 8, 8)
     : (MAX_FACTS_IN_PROMPT || 15);
@@ -237,23 +290,14 @@ function buildMultiUserFactsBlock(currentUserId, orderedIds, perUserFacts, nameO
     const budget = uid === currentUserId ? speakerBudget : otherBudgetEach;
     if (budget <= 0) continue;
     const name = nameOf(uid) || "user";
-    const block = buildFactsBlock(`UserFacts name="${name}" id="${uid}"`, facts, budget);
+    const block = buildFactsBlock(`UserFacts name="${name}" id="${uid}"`, facts, budget, cueTokens);
     if (block) blocks.push(block);
   }
   return blocks.join("\n\n");
 }
 
-const STOPWORDS = new Set([
-  "a","an","the","and","or","but","of","to","in","on","at","is","are","was","were",
-  "i","im","me","my","you","your","it","its","this","that","for","with","as","be","do",
-  "does","did","not","no","so","if","than","then","from","by","he","she","they","we"
-]);
-
 function tokenizeValue(v) {
-  return (v || "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter(t => t && t.length > 1 && !STOPWORDS.has(t));
+  return tokenizeText(v);
 }
 
 function normalizeFactKey(rawKey) {
@@ -551,6 +595,11 @@ const IDENTITY_RULES_BLOCK = [
   "- Facts are grouped per user under [UserFacts name=\"...\" id=\"...\"]. Attribute each fact only to the user whose block it appears in — never assume one user's facts belong to another.",
   "- When a user's facts contain previous_name=Y but they now speak under a different name, treat Y as that same person's former display name. Reconcile by ID, not by name.",
   "- Never argue with a user about their own identity or preferences. If they correct you, accept it immediately and do not reference the earlier mistake.",
+  "",
+  "[Memory Use]",
+  "- Before asking a user for a detail, check the fact blocks above. If a stored fact plausibly answers it, use it instead of asking — asking for something you already know reads as forgetting.",
+  "- When an image or link you are looking at shows something a stored fact covers (a pet, a game, a place, a project), connect them: refer to it by the name you already have rather than asking what it is.",
+  "- Recall confidently but never invent. If no fact covers it, ask — do not guess a name or detail that is not stored.",
 ].join("\n");
 
 // Pure participant-map transition. Given the existing map and a list of
@@ -733,6 +782,140 @@ async function runImmediateClassifier(text, scope) {
     .filter(f => f.key);
 }
 
+// Gate for the directive classifier. Standing rules are almost always phrased
+// with an absolute or a temporal-scope marker; everything else skips the call.
+// Bare "never" and "always" are among the most common words in casual chat
+// ("I always lose at slots", "never mind"), so gating on them alone would put
+// an LLM call on the majority of messages. Every alternative here requires a
+// scope marker or a verb describing something the BOT does.
+// Stems plus an inflection suffix, with the silent-e verbs spelled out so
+// "stop posting", "never telling", and "always giving" all match.
+const DIRECTIVE_VERB = "(?:tell|say|said|reveal|spoil|post|mention|answer|ask|remind|add|start|end|respond|call|show|reply|replie|bring up|giv|shar|us|includ)(?:e|es|s|ed|ing)?";
+const DIRECTIVE_KEYWORDS = new RegExp([
+  "\\b(?:from now on|going forward|in future|from here on)\\b",
+  `\\b(?:never|always|no longer|don'?t ever|do not ever|stop|quit)\\s+(?:\\w+\\s+){0,2}${DIRECTIVE_VERB}\\b`,
+  `\\b(?:remember|make sure) to\\s+(?:\\w+\\s+){0,2}${DIRECTIVE_VERB}\\b`,
+  `\\bevery time\\b.*\\b${DIRECTIVE_VERB}\\b`,
+  `\\bwhenever (?:i|we|someone)\\b.*\\b${DIRECTIVE_VERB}\\b`,
+  "\\b(?:forget|drop|cancel|nevermind) (?:that|the|this) rule\\b",
+  "\\byou can (?:now|again)\\b",
+].join("|"), "i");
+
+async function runDirectiveClassifier(text) {
+  const sys = [
+    "Extract STANDING INSTRUCTIONS directed at an AI chat bot: durable rules about how it should behave from now on.",
+    "Respond with ONLY valid JSON matching the schema: {\"directives\": [{\"instruction\":\"...\",\"action\":\"add|remove\"}]}.",
+    "Empty directives array if the message contains none.",
+    "An instruction qualifies only if it is addressed to the bot AND is meant to persist beyond the current message.",
+    "Rewrite each one as a short imperative rule in the third person, e.g. \"Never reveal the answer to word games; give hints only when asked directly.\"",
+    "Use action=remove when the speaker is cancelling a rule they set earlier.",
+    "DO NOT extract: one-off requests, personal facts, preferences about themselves, opinions, jokes, or anything phrased as a single-turn ask.",
+    "",
+    "Examples:",
+    "\"never spoil the wordle answer, just give hints if i ask\" -> add: \"Never reveal Wordle answers; give hints only when asked directly.\"",
+    "\"from now on keep your replies under 3 sentences\" -> add: \"Keep replies under three sentences.\"",
+    "\"you can talk about spoilers again\" -> remove: \"Do not discuss spoilers.\"",
+    "\"never mind, tell me the answer\" -> (empty)",
+    "\"i never eat breakfast\" -> (empty)",
+  ].join("\n");
+
+  const res = await chatWithSchema({
+    schemaName: "directive-extraction",
+    model: CONVO_MODEL,
+    messages: [
+      { role: "system", content: sys },
+      { role: "user", content: text },
+    ],
+    max_tokens: 250,
+    temperature: 0,
+    timeoutMs: 20_000,
+    label: "immediate-directive",
+    variant: "immediate_directive",
+  });
+
+  if (res.validated?.directives) {
+    return res.validated.directives.filter(d => d.instruction && d.action);
+  }
+  logger.warn(`[Directives] classifier schema failed: ${res.schemaError || "no output"}`);
+  return [];
+}
+
+// Directives live on the channel context so a rule set by one user applies to
+// the whole room, which is how a shared chatroom actually works.
+async function extractStandingDirectives(message, channel, overrideText = null) {
+  if (!DIRECTIVES_ENABLED) return;
+  const text = overrideText || message?.content || "";
+
+  // Debounced per author, not per channel: a channel-wide bucket lets one
+  // speaker's message swallow another's rule, and unlike facts (which the
+  // periodic summary pass re-extracts) a dropped directive is never revisited.
+  const allowed = await shouldExtract({
+    message,
+    label: `Directives channel [${channel.id}]`,
+    text,
+    gate: t => DIRECTIVE_KEYWORDS.test(t),
+    debounceKey: `directive:${channel.id}:${message?.author?.id}`,
+    channelId: channel.id,
+  });
+  if (!allowed) return;
+
+  const parsed = await runDirectiveClassifier(text);
+  if (parsed.length === 0) {
+    logger.debug(`[Directives] channel [${channel.id}] classifier returned 0 directives`);
+    return;
+  }
+
+  await withLock(`directives:${channel.id}`, async () => {
+    const context = await getThreadContext(channel);
+    let directives = Array.isArray(context.directives) ? context.directives : [];
+
+    const toRemove = parsed.filter(d => d.action === "remove");
+    for (const d of toRemove) {
+      const res = removeDirective(directives, d.instruction);
+      directives = res.directives;
+      if (res.removed) logger.log(`[Directives] Removed "${res.removed.text}" from ${channel.id}`);
+    }
+
+    const toAdd = parsed.filter(d => d.action === "add").map(d => d.instruction);
+    const merged = mergeDirectives(directives, toAdd, {
+      createdBy: message.author?.id || null,
+      source: "auto",
+    });
+
+    if (merged.added.length === 0 && merged.reinforced.length === 0 && toRemove.length === 0) return;
+    await updateThreadContext(channel, { directives: merged.directives });
+    logger.log(`[Directives] channel [${channel.id}] +${merged.added.length} added, ${merged.reinforced.length} reinforced, ${toRemove.length} removal(s) — now ${merged.directives.length}`);
+  });
+}
+
+// Shared entry gate for every background extractor (facts, channel facts,
+// directives). These three ran the same keyword-gate → incognito → debounce
+// sequence as separate copies, which is how the incognito check came to be
+// missing from one of them. One implementation means a guard added here cannot
+// silently apply to only some scopes.
+async function shouldExtract({ message, label, text, gate, debounceKey, channelId }) {
+  if (!text || !gate(text)) {
+    logger.debug(`[${label}] skipped: gate (len=${text?.length ?? 0})`);
+    return false;
+  }
+
+  const userId = message?.author?.id;
+  if (userId) {
+    const data = await getUserChatbotData(userId);
+    const incognitoChannels = Array.isArray(data.incognitoChannels) ? data.incognitoChannels : [];
+    if (data.incognitoMode || incognitoChannels.includes(channelId)) {
+      logger.debug(`[${label}] skipped: author incognito (global=${!!data.incognitoMode})`);
+      return false;
+    }
+  }
+
+  if (!checkDebounce(message?.client, debounceKey)) {
+    logger.debug(`[${label}] skipped: debounce`);
+    return false;
+  }
+  return true;
+}
+
 function checkDebounce(client, bucketKey) {
   if (!client?.immediateFactsDebounce) return true;
   const now = Date.now();
@@ -755,26 +938,88 @@ function presentMemberIds(validMessages, message, client) {
   return ids;
 }
 
-async function extractImmediateFacts(message, userId) {
-  if (!IMMEDIATE_FACTS_ENABLED) return;
-  const text = message?.content || "";
-  if (shouldSkipImmediate(text, "user")) {
-    logger.debug(`[ImmediateFacts] user [${userId}] skipped: gate (len=${text.length}, keyword match=${USER_KEYWORDS.test(text)})`);
-    return;
+// An image-only message carries no text, so isValidMessage drops it and the
+// next turn has no record the picture was ever posted. bot.js parks each
+// description in an in-memory ring; these helpers read it back.
+// Only PERCEPTION_SUMMARY_CHARS of the description is ever rendered, so store
+// exactly that much — a fetched page body is up to 4000 chars and the ring
+// would otherwise pin all of it for the entry's lifetime.
+const PERCEPTION_SUMMARY_CHARS = 200;
+
+function perceptionExpired(entry, now) {
+  return now - entry.at >= (PERCEPTION_CACHE_TTL_MS || 3600000);
+}
+
+// Channels are only visited again if someone speaks there, so a channel read
+// once would keep its entries forever. Sweep every channel on write instead.
+function sweepPerceptionCache(cache, now) {
+  for (const [id, list] of cache) {
+    const fresh = list.filter(p => !perceptionExpired(p, now));
+    if (fresh.length === 0) cache.delete(id);
+    else if (fresh.length !== list.length) cache.set(id, fresh);
   }
+}
+
+function recordPerception(client, channelId, entry) {
+  if (!client || !channelId || !entry?.text) return;
+  if (!client.perceptionCache) client.perceptionCache = new Map();
+  const now = Date.now();
+  sweepPerceptionCache(client.perceptionCache, now);
+
+  const list = client.perceptionCache.get(channelId) || [];
+  list.push({
+    ...entry,
+    text: entry.text.replace(/\s+/g, " ").trim().slice(0, PERCEPTION_SUMMARY_CHARS),
+    at: entry.at || now,
+  });
+  while (list.length > (PERCEPTION_CACHE_SIZE || 5)) list.shift();
+  client.perceptionCache.set(channelId, list);
+}
+
+function getRecentPerception(client, channelId) {
+  const list = client?.perceptionCache?.get(channelId);
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const now = Date.now();
+  const fresh = list.filter(p => !perceptionExpired(p, now));
+  if (fresh.length === 0) client.perceptionCache.delete(channelId);
+  else if (fresh.length !== list.length) client.perceptionCache.set(channelId, fresh);
+  return fresh;
+}
+
+function formatPerceptionLine(entry) {
+  const label = entry.kind === "link" ? "shared a link" : "shared an image";
+  return `[user_${entry.authorId}] ${entry.authorName}: [${label}: ${entry.text}]`;
+}
+
+// Facts drawn only from perception are low-confidence: a stray object in
+// someone's photo should not become a hard fact until it is reinforced. When
+// the user did write something, hedging is judged on THEIR words only —
+// generated image descriptions habitually hedge ("appears to be", "maybe"),
+// and scoring those would downgrade facts the user stated plainly.
+function perceptionConfidence(message, overrideText) {
+  const ownWords = (message?.content || "").trim();
+  if (overrideText && !ownWords) return "low";
+  return detectConfidence(ownWords);
+}
+
+// overrideText lets the caller fold in perception (image description, page
+// text) so a picture posted with no caption can still reinforce or extract
+// facts.
+async function extractImmediateFacts(message, userId, overrideText = null) {
+  if (!IMMEDIATE_FACTS_ENABLED) return;
+  const text = overrideText || message?.content || "";
+
+  const allowed = await shouldExtract({
+    message,
+    label: `ImmediateFacts user [${userId}]`,
+    text,
+    gate: t => !shouldSkipImmediate(t, "user"),
+    debounceKey: `user:${userId}`,
+    channelId: message.channel?.id,
+  });
+  if (!allowed) return;
 
   const chatbotData = await getUserChatbotData(userId);
-  const incognitoChannels = Array.isArray(chatbotData.incognitoChannels) ? chatbotData.incognitoChannels : [];
-  if (chatbotData.incognitoMode || incognitoChannels.includes(message.channel?.id)) {
-    logger.debug(`[ImmediateFacts] user [${userId}] skipped: incognito (global=${!!chatbotData.incognitoMode})`);
-    return;
-  }
-
-  if (!checkDebounce(message.client, `user:${userId}`)) {
-    logger.debug(`[ImmediateFacts] user [${userId}] skipped: debounce`);
-    return;
-  }
-
   logger.debug(`[ImmediateFacts] user [${userId}] running classifier (len=${text.length})`);
   const parsed = await runImmediateClassifier(text, "user");
   if (parsed.length === 0) {
@@ -782,7 +1027,7 @@ async function extractImmediateFacts(message, userId) {
     return;
   }
 
-  const confidence = detectConfidence(text);
+  const confidence = perceptionConfidence(message, overrideText);
 
   // resolve each fact's subject to a stable user ID and route it
   // to the store of the user it is ABOUT, so a fact about Bob lives in Bob's
@@ -813,28 +1058,20 @@ async function extractImmediateFacts(message, userId) {
   }
 }
 
-async function extractImmediateChannelFacts(message, channelId) {
+async function extractImmediateChannelFacts(message, channelId, overrideText = null) {
   if (!IMMEDIATE_FACTS_ENABLED) return;
-  const text = message?.content || "";
-  if (shouldSkipImmediate(text, "channel")) {
-    logger.debug(`[ImmediateFacts] channel [${channelId}] skipped: gate (len=${text.length}, keyword match=${CHANNEL_KEYWORDS.test(text)})`);
-    return;
-  }
-
+  const text = overrideText || message?.content || "";
   const userId = message?.author?.id;
-  if (userId) {
-    const chatbotData = await getUserChatbotData(userId);
-    const incognitoChannels = Array.isArray(chatbotData.incognitoChannels) ? chatbotData.incognitoChannels : [];
-    if (chatbotData.incognitoMode || incognitoChannels.includes(channelId)) {
-      logger.debug(`[ImmediateFacts] channel [${channelId}] skipped: author incognito`);
-      return;
-    }
-  }
 
-  if (!checkDebounce(message.client, `channel:${channelId}`)) {
-    logger.debug(`[ImmediateFacts] channel [${channelId}] skipped: debounce`);
-    return;
-  }
+  const allowed = await shouldExtract({
+    message,
+    label: `ImmediateFacts channel [${channelId}]`,
+    text,
+    gate: t => !shouldSkipImmediate(t, "channel"),
+    debounceKey: `channel:${channelId}`,
+    channelId,
+  });
+  if (!allowed) return;
 
   const channel = message.client?.channels?.cache?.get(channelId) || message.channel;
   if (!channel) return;
@@ -848,7 +1085,7 @@ async function extractImmediateChannelFacts(message, channelId) {
     return;
   }
 
-  const confidence = detectConfidence(text);
+  const confidence = perceptionConfidence(message, overrideText);
   const tagged = parsed.map(f => ({ ...f, confidence }));
   const before = existingFacts.length;
   const merged = mergeFacts(existingFacts, tagged, text);
@@ -924,6 +1161,7 @@ async function getDefaultThreadContext(thread) {
     topic: "",
     summaries: [],
     facts: [],
+    directives: [],
     participants: {},
     resetPoint: null,
     persona_id: null,
@@ -1398,6 +1636,41 @@ async function tickMessageCount(channel, messages, userId) {
   }
 }
 
+// Trimming history by message count or token budget can cut between an
+// assistant message carrying tool_calls and the role:"tool" replies that
+// answer it. Either half alone is a 400 from the API, so repair the pairing
+// after any trim: drop tool replies whose call was cut, then drop tool_calls
+// whose replies were cut.
+function pruneDanglingToolMessages(history) {
+  // Iterated to a fixpoint: dropping a partially-answered assistant message
+  // orphans the replies that DID survive, which then have to go too.
+  let current = history;
+  for (;;) {
+    const knownCallIds = new Set();
+    for (const m of current) {
+      if (m.role === "assistant" && Array.isArray(m.tool_calls)) {
+        for (const c of m.tool_calls) knownCallIds.add(c.id);
+      }
+    }
+
+    const answered = new Set();
+    const withoutOrphanReplies = current.filter(m => {
+      if (m.role !== "tool") return true;
+      if (!knownCallIds.has(m.tool_call_id)) return false;
+      answered.add(m.tool_call_id);
+      return true;
+    });
+
+    const next = withoutOrphanReplies.filter(m => {
+      if (m.role !== "assistant" || !Array.isArray(m.tool_calls) || m.tool_calls.length === 0) return true;
+      return m.tool_calls.every(c => answered.has(c.id));
+    });
+
+    if (next.length === current.length) return next;
+    current = next;
+  }
+}
+
 function accumulateToolCalls(existing, deltas) {
   if (!existing) existing = [];
   for (const d of deltas) {
@@ -1550,12 +1823,18 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let dynamicTail = "";
     let replyContext = "";
     const conversationHistory = [];
+    // Pre-flight KB hits reach the model without a lookup_kb call, so their
+    // slugs must be seeded into the citation store or applyCitations would
+    // strip (or leak) the [[cite:kb:...]] tokens the KB block invites.
+    const preflightKbSlugs = [];
     if (!customPrompt && message && client) {
       let channelFactsBlock = "";
       let channelSummaryBlock = "";
       let userSummaryBlock = "";
       let userFactsBlock = "";
       let perceptionBlock = "";
+      let kbContextBlock = "";
+      const cueTokens = buildCueTokens(message.content, cueSlice(extraContext));
       const isReply = message.type === 19;
       const isMentioned = message.mentions.has(client.user);
       const currentSpeaker = message.member.displayName;
@@ -1661,7 +1940,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           sys_variant = "thread_roleplay";
         }
         if (facts.length > 0 && INCLUDE_CHANNEL_FACTS_IN_PROMPT) {
-          const block = buildFactsBlock("ChannelFacts", facts);
+          const block = buildFactsBlock("ChannelFacts", facts, null, cueTokens);
           if (block) channelFactsBlock = block;
         }
         if (summaries.length > 0) {
@@ -1835,7 +2114,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           || message.guild?.members?.cache?.get(uid)?.displayName
           || (uid === message.author.id ? message.member.displayName : null);
 
-        const block = buildMultiUserFactsBlock(message.author.id, participantIds, perUserFacts, nameOf);
+        const block = buildMultiUserFactsBlock(message.author.id, participantIds, perUserFacts, nameOf, cueTokens);
         if (block) userFactsBlock = block;
       }
       if (isReply) {
@@ -1843,7 +2122,21 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         replyContext = `${message.member.displayName} replied to a message from: ${message.mentions.repliedUser !== client.user ? message.mentions.repliedUser.displayName : "you"}:\n${msgReference.content}\n\nNow, respond to this reply in a fitting way without introduction or quotations:`;
       } else {
         const effectiveHistory = validMessages.slice(0, PAST_MESSAGES);
+        // Perception entries older than the window's first message are dropped;
+        // the rest are folded back in so image-only turns stay visible.
+        const oldestTimestamp = effectiveHistory.length > 0
+          ? effectiveHistory[effectiveHistory.length - 1].createdTimestamp
+          : 0;
+        const pastPerception = getRecentPerception(client, targetChannel.id)
+          .filter(p => p.messageId !== message.id && p.at >= oldestTimestamp)
+          .sort((a, b) => a.at - b.at);
+        let perceptionCursor = 0;
         for (const m of effectiveHistory.reverse()) {
+          while (perceptionCursor < pastPerception.length
+            && pastPerception[perceptionCursor].at <= m.createdTimestamp) {
+            conversationHistory.push({ role: "user", content: formatPerceptionLine(pastPerception[perceptionCursor]) });
+            perceptionCursor++;
+          }
           if (m.member.id === client.user.id) {
             // Inject synthetic tool-call messages if this bot message had side-effect tool calls
             const turns = client.toolCallHistory?.get(m.id);
@@ -1870,10 +2163,19 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
             conversationHistory.push({ role: "user", content: `[user_${m.member.id}] ${m.member.displayName}: ${m.content}` });
           }
         }
+        for (; perceptionCursor < pastPerception.length; perceptionCursor++) {
+          conversationHistory.push({ role: "user", content: formatPerceptionLine(pastPerception[perceptionCursor]) });
+        }
         // Dynamic cap: trim oldest messages if total exceeds MAX_API_MESSAGES
         if (conversationHistory.length > MAX_API_MESSAGES) {
           logger.debug(`[HistoryTrim] Trimming conversation history from ${conversationHistory.length} to ${MAX_API_MESSAGES} messages.`);
           conversationHistory.splice(0, conversationHistory.length - MAX_API_MESSAGES);
+          const repaired = pruneDanglingToolMessages(conversationHistory);
+          if (repaired.length !== conversationHistory.length) {
+            logger.debug(`[HistoryTrim] Dropped ${conversationHistory.length - repaired.length} dangling tool message(s) after trim.`);
+            conversationHistory.length = 0;
+            conversationHistory.push(...repaired);
+          }
         }
       }
       if (extraContext) {
@@ -1887,6 +2189,17 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
           "- If VISION UNAVAILABLE or LINK UNAVAILABLE is mentioned in the [Perception] block, do NOT tell the user WHY it is unavailable.";
         usr_prompt += `\n[Perception]\n${extraContext}\n`;
       }
+
+      if (KB_PREFLIGHT_ENABLED && message.guild) {
+        const cueText = [message.content, cueSlice(extraContext)].filter(Boolean).join("\n");
+        const matches = kbPreflight.findRelevant(message.guild.id, cueText, KB_PREFLIGHT_MAX_ENTRIES);
+        if (matches.length > 0) {
+          kbContextBlock = kbPreflight.buildKbContextBlock(matches);
+          for (const m of matches) preflightKbSlugs.push(m.slug);
+          logger.debug(`[KBPreflight] Injected ${matches.length} entr(ies): ${matches.map(m => `${m.slug}(${m.score.toFixed(2)})`).join(", ")}`);
+        }
+      }
+
       let toolBlock = "[Tools] You have tools available. Use them silently when the user's request matches — do not mention tools by name to the user.\n" +
         "- Money/balance questions (yours or someone else's) → get_balance\n" +
         "- Rankings, richest users, leaderboard → get_leaderboard\n" +
@@ -1896,7 +2209,8 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- Bot capabilities, available commands → get_bot_info\n" +
         "- Image creation (draw, make, generate a picture/meme/artwork) → generate_image. You CANNOT produce images yourself — always use this tool. Never claim you made an image without calling it. When you use generate_image, the image is attached to your reply automatically. Do NOT include any text like \"[Attached: image file]\", markup, or placeholders in your response. If a user asks for an image, you MUST call generate_image. Typing attachment markup is wrong and will be rejected.\n" +
         "- Past conversations, references to earlier messages, \"do you remember\" → search_history. Call at most once per turn with a single comprehensive query. Synthesize from results — do NOT retry with re-phrasings.\n" +
-        "- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. Use this when the user asks about stored server information.\n" +
+        "- Server rules, FAQs, wiki topics, curated knowledge → lookup_kb. If a [KnowledgeBase] block is already present above, answer from it directly; only call lookup_kb for a topic that block does not cover.\n" +
+        "- A user telling you how to behave from now on (\"never do X\", \"always do Y\") → set_directive, then confirm briefly. Cancelling such a rule → remove_directive.\n" +
         "- Reminders (e.g. \"remind me in 2 hours\") → set_reminder\n" +
         "- Current events, recent news, real-time facts, anything you don't know → web_search. Returns title + URL + snippet per result. Then use fetch_page on a chosen URL to read the full page content.\n" +
         "- Read the full content of a specific URL (from web_search results) → fetch_page.\n" +
@@ -1915,9 +2229,15 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       const presentIds = presentMemberIds(validMessages, message, client);
       const participantsBlock = buildParticipantsBlock(participantsMap, presentIds);
 
+      const directivesBlock = DIRECTIVES_ENABLED
+        ? buildDirectivesBlock(channelContext.directives)
+        : "";
+
       sys_prompt = assembleSystemPrompt({
         variantPrefix: sys_prompt,
         identityRulesBlock: IDENTITY_RULES_BLOCK,
+        directivesBlock: directivesBlock || undefined,
+        kbContextBlock: kbContextBlock || undefined,
         channelFactsBlock: channelFactsBlock || undefined,
         channelSummaryBlock: channelSummaryBlock || undefined,
         userSummaryBlock: userSummaryBlock || undefined,
@@ -1979,7 +2299,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
       logger.debug(`[PromptTrim] History trimmed from ${conversationHistory.length} to ${trimmedHistory.length} messages. New estimate: ${estimatedTokens} tokens.`);
       conversationHistory.length = 0;
-      conversationHistory.push(...trimmedHistory);
+      conversationHistory.push(...pruneDanglingToolMessages(trimmedHistory));
     }
     logger.debug(`Estimated token count: ${estimatedTokens} tokens`);
 
@@ -1993,8 +2313,11 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     let streamedMessageId = null;
     let toolCallDepth = 0;
     const MAX_TOOL_DEPTH = LOW_BUDGET_MODE ? 2 : 5;
-    const toolCtx = { client, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
-    const citationStore = { msg: new Map(), kb: new Set() };
+    // targetChannel, not message.channel: handleBotMessage can be pointed at a
+    // different channel via the channelId argument, and a directive written to
+    // the message's own channel would never be read back.
+    const toolCtx = { client, targetChannel, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
+    const citationStore = { msg: new Map(), kb: new Set(preflightKbSlugs) };
     const toolResultsAccumulator = [];
 
     while (toolCallDepth < MAX_TOOL_DEPTH) {
@@ -2376,11 +2699,18 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     if (!isMention) {
       tickMessageCount(targetChannel, validMessages, message.author.id)
         .catch(err => logger.error(`[MemoryTick] Background tick failed: ${err.message}`));
+      // Perception is folded into the extraction text so a captionless image
+      // can still surface or reinforce facts about what it shows.
+      const memoryText = [message.content, extraContext].filter(Boolean).join("\n") || null;
       if (IMMEDIATE_FACTS_ENABLED && message?.author && !message.author.bot) {
-        extractImmediateFacts(message, message.author.id)
+        extractImmediateFacts(message, message.author.id, memoryText)
           .catch(err => logger.error(`[ImmediateFacts] user: ${err.message}`));
-        extractImmediateChannelFacts(message, targetChannel.id)
+        extractImmediateChannelFacts(message, targetChannel.id, memoryText)
           .catch(err => logger.error(`[ImmediateFacts] channel: ${err.message}`));
+      }
+      if (DIRECTIVES_ENABLED && message?.author && !message.author.bot) {
+        extractStandingDirectives(message, targetChannel)
+          .catch(err => logger.error(`[Directives] extraction: ${err.message}`));
       }
     }
   } catch (error) {
@@ -2433,8 +2763,10 @@ module.exports = {
   deleteThreadContext, getValidMessages, summarizeMessages, generateFacts,
   getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
   getUserChatbotData, updateUserChatbotData, summarizeUserMessages, generateUserFacts,
-  extractImmediateFacts, extractImmediateChannelFacts,
+  extractImmediateFacts, extractImmediateChannelFacts, extractStandingDirectives,
   runImmediateClassifier, mergeFacts, sortAndPruneFacts, compressFacts,
   applyParticipantUpdate, resolveSubjectId, buildParticipantsBlock, buildMultiUserFactsBlock,
+  buildFactsBlock, buildCueTokens, scoreFacts, recordPerception, getRecentPerception,
+  perceptionConfidence, pruneDanglingToolMessages, DIRECTIVE_KEYWORDS,
   migrateUserFactSubjects
 };

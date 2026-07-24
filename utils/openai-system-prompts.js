@@ -4,25 +4,29 @@
 // Order:
 //   1. Variant prefix (static behavioral rules for this channel/thread type)
 //   2. Topic / background
-//   3. Identity rules 
-//   4. Channel facts
-//   5. Channel summary
-//   6. User summary
-//   7. User facts
-//   8. Tool instructions
-//   9. Perception capabilities
-//  10. Participants roster
-//  11. Dynamic tail (time, users, speaker, reply context)
+//   3. Identity rules
+//   4. Standing directives (near-static per channel — kept high for cache reuse)
+//   5. Channel facts
+//   6. Channel summary
+//   7. User summary
+//   8. User facts
+//   9. Knowledge-base context (pre-flight retrieval for this turn)
+//  10. Tool instructions
+//  11. Perception capabilities
+//  12. Participants roster
+//  13. Dynamic tail (time, users, speaker, reply context)
 
 function assembleSystemPrompt(parts) {
   const sections = [
     parts.variantPrefix,
     parts.topic,
     parts.identityRulesBlock,
+    parts.directivesBlock,
     parts.channelFactsBlock,
     parts.channelSummaryBlock,
     parts.userSummaryBlock,
     parts.userFactsBlock,
+    parts.kbContextBlock,
     parts.toolBlock,
     parts.perceptionBlock,
     parts.participantsBlock,
