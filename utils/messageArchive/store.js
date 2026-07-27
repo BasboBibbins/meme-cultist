@@ -177,6 +177,24 @@ function countForChannel(channelId) {
   return row?.c || 0;
 }
 
+function getOldestChunks(channelId, limit) {
+  const db = openDb();
+  return db.prepare(
+    "SELECT id, message_id, author_id, content, created_at FROM message_chunks WHERE channel_id=? ORDER BY created_at ASC LIMIT ?"
+  ).all(channelId, limit);
+}
+
+// Delete a specific set of chunk IDs from both the base table and the FTS index.
+function deleteChunks(ids) {
+  if (!ids || ids.length === 0) return 0;
+  const db = openDb();
+  const ph = ids.map(() => "?").join(",");
+  try { db.prepare(`DELETE FROM message_chunks_fts WHERE rowid IN (${ph})`).run(...ids); }
+  catch (err) { logger.warn(`[MessageArchive] FTS delete failed: ${err.message}`); }
+  const info = db.prepare(`DELETE FROM message_chunks WHERE id IN (${ph})`).run(...ids);
+  return info.changes;
+}
+
 function close() {
   if (_db) {
     try { _db.close(); } catch (_) {}
@@ -242,6 +260,8 @@ module.exports = {
   searchSemantic,
   searchSemanticFull,
   getUnembeddedForChannel,
+  getOldestChunks,
+  deleteChunks,
   setEmbedding,
   getMaxMessageIdForChannel,
   countForChannel,

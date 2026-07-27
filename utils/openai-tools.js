@@ -10,15 +10,22 @@ const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE } = require("../config.js");
 const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
 const { validateToolArgs } = require("./schemas");
 const gameResults = require("./gameResults");
+const episodes = require("./episodes");
+const kbProposals = require("./kbProposals");
 
 // Tool definitions for DeepSeek function calling
-const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder"]);
+const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry", "set_directive", "remove_directive"]);
+
+// SQLite FTS5 bm25 `rank` is negative (a stronger match is MORE negative). When
+// the best keyword hit sits above this floor (closer to 0 == weak) we re-rank the
+// FTS candidates with embeddings for better ordering.
+const FTS_WEAK_RANK_THRESHOLD = -1.0;
 
 const TOOLS = [
   {
@@ -275,6 +282,96 @@ const TOOLS = [
           limit: { type: "integer", description: "Number of results to return (default 5, max 10)" }
         },
         required: []
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "recall_episode",
+      description:
+        "Retrieve specific past events from episodic memory — things that happened on a particular occasion, " +
+        "like 'basbo hit a jackpot last Tuesday' or 'we decided to start a race tournament in May'. " +
+        "Use this when the user references a specific past event, asks what happened on a specific occasion, " +
+        "or when semantic facts are not enough. " +
+        "Scope 'channel' searches shared channel events; 'user' searches the speaker's personal episodes; " +
+        "'both' searches both.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Natural-language description of the event to recall." },
+          scope: {
+            type: "string",
+            enum: ["channel", "user", "both"],
+            description: "Which episode store to search (default: both)."
+          },
+          limit: { type: "integer", description: "Max episodes to return (1–10, default 5)." }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_directive",
+      description:
+        "Record a standing instruction for this channel — a rule about your own behavior that must hold from now on, " +
+        "such as 'never reveal the answer to word games, give hints only when asked'. " +
+        "Call this the moment a user states a durable behavioral rule, even in passing, then confirm it briefly in your reply. " +
+        "Standing instructions never expire and survive context resets. " +
+        "Do NOT call for one-off requests, personal facts about a user, or anything scoped to the current message only.",
+      parameters: {
+        type: "object",
+        properties: {
+          instruction: {
+            type: "string",
+            description: "The rule as a short imperative sentence describing how you must behave."
+          }
+        },
+        required: ["instruction"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_directive",
+      description:
+        "Cancel a standing instruction the channel previously set, when a user explicitly retracts it " +
+        "(\"you can talk about spoilers again\"). Pass the instruction's id from the [Standing Instructions] block, " +
+        "or its wording if you do not have the id.",
+      parameters: {
+        type: "object",
+        properties: {
+          directive: { type: "string", description: "The directive id, or its text." }
+        },
+        required: ["directive"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_kb_entry",
+      description:
+        "Propose a new knowledge-base article for the bot owner to review. " +
+        "Call this ONLY when the conversation has produced durable, server-scoped knowledge worth saving to the wiki — " +
+        "a lore decision, a custom rule clarification, an established server event, or a fact everyone in the server should be able to look up later. " +
+        "Do NOT call for personal facts about a user, transient chatter, opinions, or anything already answerable via lookup_kb. " +
+        "The entry is NOT added immediately — it is queued for the owner to approve, edit, or reject.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "A short, descriptive title for the article (max 100 chars)." },
+          body: { type: "string", description: "The article content: the durable knowledge to record (max 4000 chars)." },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional short keywords to help retrieve this entry later."
+          }
+        },
+        required: ["title", "body"]
       }
     }
   },
@@ -697,7 +794,9 @@ async function handleSearchHistory(args, message, client) {
 
     let finalResults = ftsResults.slice(0, limit);
     const topRank = ftsResults[0]?.rank;
-    const needsSemantic = topRank > 1.0 || ftsResults.length < limit;
+    const needsSemantic =
+      (typeof topRank === "number" && topRank > FTS_WEAK_RANK_THRESHOLD) ||
+      ftsResults.length < limit;
 
     if (needsSemantic) {
       try {
@@ -729,6 +828,85 @@ async function handleSearchHistory(args, message, client) {
   } catch (err) {
     logger.error(`[search_history] ${err.message}`);
     return { error: `Message history search failed: ${err.message}` };
+  }
+}
+
+async function handleRecallEpisode(args, message) {
+  if (!args?.query) return { error: "Missing required 'query' argument." };
+  const scope = args.scope || "both";
+  const limit = Math.min(Math.max(args.limit || 5, 1), 10);
+
+  const scopePairs = [];
+  if (scope === "channel" || scope === "both") {
+    scopePairs.push({ scopeType: "channel", scopeId: message.channelId });
+  }
+  if (scope === "user" || scope === "both") {
+    scopePairs.push({ scopeType: "user", scopeId: message.author.id });
+  }
+  if (scopePairs.length === 0) return { error: "Invalid scope value." };
+
+  const formatEpisode = (r, i) => ({
+    result_index: i + 1,
+    scope: r.scope_type,
+    summary: r.summary,
+    tags: r.tags ? JSON.parse(r.tags) : [],
+    source: r.source,
+    occurred_at: `<t:${Math.floor(r.created_at / 1000)}:R>`,
+  });
+
+  try {
+    const ftsQuery = buildFTSQuery(args.query);
+    const ftsResults = episodes.searchFTS(scopePairs, ftsQuery, 30);
+
+    if (ftsResults.length === 0) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        // Apply a relevance floor: searchSemanticFull always returns the
+        // closest episodes regardless of how weak the match is, so without
+        // this an unrelated query surfaces irrelevant episodes instead of an
+        // empty result. See EPISODE_RECALL_MIN_SCORE in config.js.
+        const semanticResults = episodes
+          .searchSemanticFull(scopePairs, embedding, limit)
+          .filter(r => r.score >= EPISODE_RECALL_MIN_SCORE);
+        if (semanticResults.length > 0) {
+          return {
+            results: semanticResults.map(formatEpisode),
+            note: "Results via semantic search (no FTS matches).",
+          };
+        }
+      } catch (err) {
+        logger.warn(`[recall_episode] Semantic fallback failed: ${err.message}`);
+      }
+      return {
+        results: [],
+        note: "No episodes found for that query. Do not retry with paraphrases.",
+      };
+    }
+
+    let finalResults = ftsResults.slice(0, limit);
+    const topRank = ftsResults[0]?.rank;
+    const needsSemantic =
+      (typeof topRank === "number" && topRank > FTS_WEAK_RANK_THRESHOLD) ||
+      ftsResults.length < limit;
+
+    if (needsSemantic) {
+      try {
+        const { embedding } = await embed({ text: args.query });
+        const candidateIds = ftsResults.map(r => r.id);
+        const reranked = episodes.searchSemantic(embedding, candidateIds, limit);
+        if (reranked.length > 0) finalResults = reranked;
+      } catch (err) {
+        logger.warn(`[recall_episode] Semantic re-rank failed: ${err.message}`);
+      }
+    }
+
+    return {
+      results: finalResults.map(formatEpisode),
+      total_matches: ftsResults.length,
+    };
+  } catch (err) {
+    logger.error(`[recall_episode] ${err.message}`);
+    return { error: `Episode recall failed: ${err.message}` };
   }
 }
 
@@ -1091,6 +1269,122 @@ async function handleGetRecentGameResults(args, message) {
   }
 }
 
+async function handleProposeKbEntry(args, message, client) {
+  const guild = message.guild;
+  if (!guild) return { error: "The knowledge base is only available in servers." };
+
+  const title = (args.title || "").trim();
+  const body = (args.body || "").trim();
+  if (title.length < 2 || title.length > 100) return { error: "Title must be 2–100 characters." };
+  if (body.length < 2 || body.length > 4000) return { error: "Body must be 2–4000 characters." };
+
+  const tags = Array.isArray(args.tags) && args.tags.length
+    ? args.tags.map(t => String(t).trim()).filter(Boolean).join(", ").slice(0, 200) || null
+    : null;
+
+  try {
+    const proposal = kbProposals.create({
+      guildId: guild.id,
+      title,
+      content: body,
+      tags,
+      source: "tool",
+      originUserId: message.author?.id || null,
+    });
+    if (!proposal) {
+      return { note: "A matching entry is already pending the owner's review — no need to propose it again." };
+    }
+    if (!(await kbProposals.notifyOwnerOfProposal(client, proposal))) {
+      // Owner DM failed — drop the stranded row so its dedup_hash won't block a
+      // retry, and tell the model so it doesn't claim success.
+      kbProposals.store.remove(proposal.id);
+      return { error: "Could not deliver the proposal to the owner for review. It was not saved." };
+    }
+    return {
+      success: true,
+      message: `Proposed "${title}" to the knowledge base. It is pending the owner's approval before it goes live.`,
+    };
+  } catch (err) {
+    logger.error(`[propose_kb_entry] ${err.message}`);
+    return { error: `Could not submit the proposal: ${err.message}` };
+  }
+}
+
+// The turn's target channel, which is not always the message's own channel —
+// handleBotMessage accepts a channelId override, and writing a directive to
+// message.channel in that case would store it where it is never read back.
+function directiveChannel(message, toolCtx) {
+  return toolCtx?.targetChannel || message?.channel || null;
+}
+
+// Required lazily: utils/openai.js requires this module at load time, so a
+// top-level require here would be a cycle.
+async function handleSetDirective(args, message, client, toolCtx) {
+  const instruction = args?.instruction?.trim();
+  if (!instruction) return { error: "Missing required 'instruction' argument." };
+  const channel = directiveChannel(message, toolCtx);
+  if (!channel) return { error: "Standing instructions are only available in a channel." };
+
+  const { getThreadContext, updateThreadContext } = require("./openai");
+  const { mergeDirectives } = require("./directives");
+  const { withLock } = require("./lock");
+
+  try {
+    return await withLock(`directives:${channel.id}`, async () => {
+      const context = await getThreadContext(channel);
+      const existing = Array.isArray(context.directives) ? context.directives : [];
+      const merged = mergeDirectives(existing, [instruction], {
+        createdBy: message.author?.id || null,
+        source: "tool",
+      });
+      if (merged.added.length === 0 && merged.reinforced.length === 0) {
+        return { success: false, message: "That instruction could not be stored." };
+      }
+      await updateThreadContext(channel, { directives: merged.directives });
+      const entry = merged.added[0];
+      logger.log(`[Directives] set_directive stored "${instruction}" in ${channel.id}`);
+      return {
+        success: true,
+        directive_id: entry ? entry.id : merged.reinforced[0],
+        already_known: merged.added.length === 0,
+        total: merged.directives.length,
+        message: merged.added.length === 0
+          ? "That standing instruction was already recorded."
+          : "Standing instruction recorded. It will persist until a user retracts it.",
+      };
+    });
+  } catch (err) {
+    logger.error(`[set_directive] ${err.message}`);
+    return { error: `Could not store the instruction: ${err.message}` };
+  }
+}
+
+async function handleRemoveDirective(args, message, client, toolCtx) {
+  const target = args?.directive?.trim();
+  if (!target) return { error: "Missing required 'directive' argument." };
+  const channel = directiveChannel(message, toolCtx);
+  if (!channel) return { error: "Standing instructions are only available in a channel." };
+
+  const { getThreadContext, updateThreadContext } = require("./openai");
+  const { removeDirective } = require("./directives");
+  const { withLock } = require("./lock");
+
+  try {
+    return await withLock(`directives:${channel.id}`, async () => {
+      const context = await getThreadContext(channel);
+      const existing = Array.isArray(context.directives) ? context.directives : [];
+      const { directives, removed } = removeDirective(existing, target);
+      if (!removed) return { success: false, message: "No matching standing instruction found." };
+      await updateThreadContext(channel, { directives });
+      logger.log(`[Directives] remove_directive dropped "${removed.text}" from ${channel.id}`);
+      return { success: true, removed: removed.text, remaining: directives.length };
+    });
+  } catch (err) {
+    logger.error(`[remove_directive] ${err.message}`);
+    return { error: `Could not remove the instruction: ${err.message}` };
+  }
+}
+
 const TOOL_HANDLERS = {
   get_balance: handleGetBalance,
   get_leaderboard: handleGetLeaderboard,
@@ -1105,6 +1399,10 @@ const TOOL_HANDLERS = {
   get_jackpot: handleGetJackpot,
   get_shop: handleGetShop,
   get_command_help: handleGetCommandHelp,
+  recall_episode: handleRecallEpisode,
+  propose_kb_entry: handleProposeKbEntry,
+  set_directive: handleSetDirective,
+  remove_directive: handleRemoveDirective,
   web_search: handleWebSearch,
   fetch_page: handleFetchPage,
   get_game_result: handleGetGameResult,

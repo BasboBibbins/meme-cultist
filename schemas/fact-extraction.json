@@ -9,7 +9,8 @@
                 "properties": {
                     "key": { "type": "string", "minLength": 1 },
                     "value": { "type": "string", "minLength": 1 },
-                    "confidence": { "type": "string", "enum": ["high", "low"] }
+                    "confidence": { "type": "string", "enum": ["high", "low"] },
+                    "subject": { "type": "string" }
                 },
                 "required": ["key", "value"],
                 "additionalProperties": false

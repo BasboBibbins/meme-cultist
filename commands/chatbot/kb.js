@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const kbStore = require("../../utils/kb");
+const kbPreflight = require("../../utils/kb/preflight");
 const llm = require("../../utils/llm");
 const jobs = require("../../utils/jobs");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
@@ -17,6 +18,7 @@ function isAdmin(interaction) {
 }
 
 function enqueueEmbed(guildId, slug) {
+  kbPreflight.invalidate(guildId);
   try {
     jobs.enqueue({
       kind: "kb_embed",
@@ -148,6 +150,7 @@ module.exports = {
       if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, ephemeral: true });
 
       kbStore.deleteBySlug(guildId, slug);
+      kbPreflight.invalidate(guildId);
       logger.log(`[KB] ${interaction.user.tag} deleted "${slug}"`);
       return interaction.reply({ content: `Deleted **${slug}**.`, ephemeral: true });
     }

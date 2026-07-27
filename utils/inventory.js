@@ -167,6 +167,44 @@ function isThemeAvailable(availability, date = new Date()) {
   return nowMs >= startMs && nowMs <= endMs;
 }
 
+// Unix epoch (seconds) at which the current in-season window closes.  Mirrors
+// the end-of-window math in isThemeAvailable so the "available until" deadline
+// lines up exactly with when purchasing stops being allowed.
+function availabilityEndEpoch(availability, date = new Date()) {
+  if (!availability) return null;
+  const { start, end } = availability;
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth() + 1;
+  const d = date.getUTCDate();
+
+  const startYear = start.year ?? y;
+  const endYear = end.year ?? (start.year ? end.year ?? start.year : y);
+
+  const startMonth = start.month;
+  const startDay = start.day ?? 1;
+  const endMonth = end.month;
+  const endDay = end.day ?? new Date(endYear, endMonth, 0).getUTCDate();
+
+  const startMs = Date.UTC(startYear, startMonth - 1, startDay);
+  let endMs = Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
+  const nowMs = Date.UTC(y, m - 1, d);
+
+  // Year-wrap (yearly themes, e.g. Dec 20 → Jan 5): while still in the December
+  // head of the window, the window actually closes next January.
+  if (startMs > endMs && !end.year && nowMs >= startMs) {
+    endMs = Date.UTC(endYear + 1, endMonth - 1, endDay, 23, 59, 59, 999);
+  }
+
+  return Math.floor(endMs / 1000);
+}
+
+// Whether a limited theme is tied to a specific year (a one-time event that
+// will not come back) versus a recurring yearly window.
+function isOneTimeAvailability(availability) {
+  if (!availability) return false;
+  return availability.start.year != null || availability.end.year != null;
+}
+
 function formatAvailability(availability) {
   if (!availability) return "";
   const { start, end } = availability;
@@ -374,8 +412,14 @@ function buildThemeInfoEmbed({ item, isOwned, footer }) {
   desc += `**Rarity:** ${rarityLabel}\n`;
   desc += `**Style:** ${styleLabel}\n`;
   if (item.tier === "limited" && item.availability) {
+    const inSeason = isThemeAvailable(item.availability);
     desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
-    desc += `**Season:** ${isThemeAvailable(item.availability) ? "In Season" : "Out of Season"}\n`;
+    desc += `**Season:** ${inSeason ? "In Season" : "Out of Season"}\n`;
+    if (inSeason) {
+      const until = availabilityEndEpoch(item.availability);
+      const gone = isOneTimeAvailability(item.availability) ? " ⚠️ Won't return" : "";
+      desc += `**Available until:** <t:${until}:f> (<t:${until}:R>)${gone}\n`;
+    }
   }
   desc += `**Price:** ${formatPrice(item.price)}\n`;
   desc += `**Status:** ${isOwned ? "Owned" : "Not Owned"}\n`;
@@ -508,6 +552,8 @@ module.exports = {
   getPreviewAttachment,
   isThemeAvailable,
   formatAvailability,
+  availabilityEndEpoch,
+  isOneTimeAvailability,
   getAllItems,
   getItemById,
   getPurchasableItems,

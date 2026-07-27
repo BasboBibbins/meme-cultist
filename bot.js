@@ -13,7 +13,7 @@ const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
-const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages } = require("./utils/openai");
+const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
 const { describeImage } = require("./utils/llm");
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./utils/channels");
@@ -26,6 +26,7 @@ const { DefaultExtractors } = require("@discord-player/extractor");
 const playdl = require("play-dl");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
+const { handleProposalInteraction } = require("./utils/kbProposals");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -61,6 +62,15 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
+schedule.scheduleJob("0 */6 * * *", async () => { // every 6 h
+  try {
+    const { runCompactionJob } = require("./utils/compaction");
+    await runCompactionJob();
+  } catch (err) {
+    logger.error(`[Compaction] Scheduled job failed: ${err.message}`);
+  }
+});
+
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
   logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`);
   await interest(client);
@@ -92,6 +102,7 @@ client.duelGames = new Map();
 client.pokerTables = new Map();
 client.immediateFactsDebounce = new Map();
 client.toolCallHistory = new Map();
+client.perceptionCache = new Map();
 
 if (!fs.existsSync("./db/users.sqlite")) {
   logger.error("Database file not found! Please run `node bot.js dbinit` to create the database.");
@@ -206,6 +217,15 @@ if (DELETE_SLASH) {
   client.once(Events.ClientReady, async () => {
     if (LOAD_DB) {
       initDB(client);
+      // backfill subjectUserId on existing user facts so stored memory
+      // matches the new (key, subjectUserId) format.
+      try {
+        const { migrateUserFactSubjects } = require("./utils/openai");
+        const res = await migrateUserFactSubjects();
+        logger.info(`Fact subject migration: stamped ${res.factsStamped} fact(s) across ${res.users} user(s).`);
+      } catch (err) {
+        logger.error(`Fact subject migration failed: ${err.message}`);
+      }
     }
     // Initialize progressive jackpot
     await initJackpot();
@@ -312,6 +332,26 @@ if (DELETE_SLASH) {
       } catch (err) {
         logger.error(`[MessageEmbed] Batch failed for ${channelId}: ${err.message}`);
       }
+    });
+
+    const episodeStore = require("./utils/episodes");
+    jobs.register("episode_embed", async (payload) => {
+      const { episodeIds } = payload;
+      if (!episodeIds || episodeIds.length === 0) return;
+      const llm = require("./utils/llm");
+      const unembedded = episodeStore.getByIds(episodeIds);
+      if (unembedded.length === 0) return;
+      let embedded = 0;
+      for (const ep of unembedded) {
+        try {
+          const { embedding } = await llm.embed({ text: ep.summary });
+          episodeStore.setEmbedding(ep.id, embedding);
+          embedded += 1;
+        } catch (err) {
+          logger.error(`[EpisodeEmbed] Failed for episode ${ep.id}: ${err.message}`);
+        }
+      }
+      if (embedded > 0) logger.log(`[EpisodeEmbed] Embedded ${embedded} episodes`);
     });
 
     jobs.register("backfill_messages", async (payload) => {
@@ -474,7 +514,25 @@ if (DELETE_SLASH) {
   });
 
   client.on(Events.InteractionCreate, async interaction => {
-    if (!interaction.isCommand() && interaction.member.roles.cache.has(banned)) {
+    // KB proposal buttons live in the owner's DMs (no guild/member), so route
+    // them before any guild-scoped checks below. The edit modal is awaited
+    // inline by the button handler, so its submit is acknowledged here too.
+    if (interaction.isButton() && interaction.customId.startsWith("kbprop:")) {
+      return handleProposalInteraction(interaction, client);
+    }
+    if (interaction.type === InteractionType.ModalSubmit && interaction.customId.startsWith("kbpropedit:")) {
+      // A collector in the edit handler awaits this modal inline. If it's still
+      // waiting, let that resolve it; otherwise the collector already timed out,
+      // so ack here rather than leaving the owner with "This interaction failed".
+      if (client.pendingKbEdits && client.pendingKbEdits.has(interaction.customId)) return;
+      return interaction.reply({
+        content: "That edit window has expired. Re-open the suggestion and use Edit again.",
+        ephemeral: true,
+      }).catch(() => {});
+    }
+    // interaction.member is null for DM interactions (e.g. owner-DM components),
+    // so guard before the guild-only roles check.
+    if (!interaction.isCommand() && interaction.member && interaction.member.roles.cache.has(banned)) {
       return await sendDM(interaction.user, {
         content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`,
       });
@@ -667,6 +725,14 @@ if (DELETE_SLASH) {
       const result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
       if (result?.description) {
         extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
+        recordPerception(client, message.channel.id, {
+          messageId: message.id,
+          authorId: message.author.id,
+          authorName: displayName,
+          kind: "image",
+          text: result.description,
+          at: message.createdTimestamp,
+        });
       } else if (result?.error) {
         extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user your vision failed and briefly mention why. Do NOT pretend to see the image.`;
       }
@@ -677,6 +743,14 @@ if (DELETE_SLASH) {
         const page = await fetchPageText(url);
         if (page?.text) {
           extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+          recordPerception(client, message.channel.id, {
+            messageId: message.id,
+            authorId: message.author.id,
+            authorName: message.member?.displayName || message.author.username,
+            kind: "link",
+            text: `${page.title ? `${page.title} — ` : ""}${page.text}`,
+            at: message.createdTimestamp,
+          });
         } else if (page?.error) {
           extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly mention why. Do NOT pretend to have read it.`;
         }

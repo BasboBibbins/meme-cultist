@@ -41,10 +41,18 @@ module.exports = {
       const summaries = ctx?.summaries || [];
       const lastSummary = summaries.length > 0 ? summaries[summaries.length - 1] : null;
 
+      const directives = ctx?.directives || [];
+
       const embed = buildInfoEmbed(interaction.user, interaction.client)
         .setTitle(`Channel memory — #${interaction.channel.name}`)
         .addFields({ name: `Facts (${facts.length})`, value: factLines(facts).slice(0, MAX_FACTS_IN_PROMPT || 15).join("\n").slice(0, 1024) || "_(none)_" })
         .setFooter({ text: ctx?.persona_id ? `Persona pinned: id=${ctx.persona_id}` : "No persona pinned" });
+      if (directives.length > 0) {
+        embed.addFields({
+          name: `Standing instructions (${directives.length})`,
+          value: directives.map(d => `• \`${d.id}\` ${d.text}`).join("\n").slice(0, 1024),
+        });
+      }
       if (lastSummary) {
         embed.addFields({
           name: `Latest summary ${fmtTimestamp(lastSummary.timestamp)}`,

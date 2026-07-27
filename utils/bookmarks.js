@@ -109,7 +109,7 @@ async function handleBookmarkReaction(reaction, user) {
     extractedFrom: `bookmark:${message.id}`,
   }));
 
-  const merged = mergeFacts(chatbot.facts || [], tagged, content);
+  const merged = mergeFacts(chatbot.facts || [], tagged, content, author.id);
   // Ensure the pinned flag survives mergeFacts (which only carries it forward for existing-as-pinned).
   for (const t of tagged) {
     const hit = merged.find(f => f.key === t.key);

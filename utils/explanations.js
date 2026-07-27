@@ -438,6 +438,28 @@ module.exports = {
     note: `
             Use the KB for stable, shared facts (rules, role guides, server lore, recurring how-tos). For personal preferences, use the chatbot's user memory (\`/whatdoyouknow\`, \`/forget\`) instead.`
   },
+  directives: {
+    name: "Standing Instructions",
+    description: `
+            Standing instructions are rules the chatbot must follow in a channel from now on — "never spoil the Wordle answer, give hints instead", "keep replies under three sentences". Unlike the facts the bot picks up about you, they never expire and survive \`/refresh\` and restarts.
+
+            **Slash command:**
+            • \`/directives add instruction:"…"\` — add a rule (Manage Channels)
+            • \`/directives list\` — show the rules active in this channel
+            • \`/directives remove directive:<rule>\` — remove a rule (Manage Channels)
+
+            **From chat:** just tell the bot. Phrasing like "from now on…", "never…", "always…" is picked up automatically and stored — the bot will confirm. Retract one the same way ("you can talk about spoilers again").
+        `,
+    rules: `
+            1. Instructions are channel-wide: a rule set by one person applies to everyone talking in that channel.
+            2. Up to 10 per channel. Adding an 11th drops the oldest.
+            3. Instructions outrank a conflicting later request — if you ask for something a rule forbids, the bot honors the rule and offers what it can.
+            4. Near-duplicates are merged rather than stacked.
+            5. Threads keep their own instructions, separate from the parent channel.
+            6. \`/directives list\` is open to everyone; adding and removing needs Manage Channels, or ask the bot in chat.`,
+    note: `
+            Use standing instructions for how the bot should *behave*. For things it should *know* about you, let it learn them in conversation and review them with \`/whatdoyouknow\`.`
+  },
   aifeatures: {
     name: "AI Features",
     description: `

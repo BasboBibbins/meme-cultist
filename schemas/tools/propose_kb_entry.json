@@ -1,0 +1,11 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "title": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "body":  { "type": "string", "minLength": 2, "maxLength": 4000 },
+        "tags":  { "type": "array", "items": { "type": "string", "minLength": 1 } }
+    },
+    "required": ["title", "body"],
+    "additionalProperties": false
+}

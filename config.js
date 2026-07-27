@@ -69,6 +69,31 @@ const config = {
   MAX_FACTS_IN_PROMPT: 15,
   FACT_CONFIDENCE_THRESHOLD: 2,
 
+  // Standing directives — persistent behavioral rules a channel has asked the
+  // bot to follow. Unlike facts these never expire and are never compressed.
+  DIRECTIVES_ENABLED: true,
+  MAX_DIRECTIVES: 10,
+  DIRECTIVE_MAX_LENGTH: 300,
+
+  // Weight of lexical relevance-to-current-turn in fact selection. The
+  // remaining weight is split between reinforcement and recency. Set to 0 to
+  // restore purely score-based selection.
+  FACT_RELEVANCE_WEIGHT: 0.5,
+
+  // Deterministic knowledge-base pre-flight: lexical (no embedding call) match
+  // of each inbound turn against KB titles/tags/content, injected into the
+  // prompt so the model does not have to spend a lookup_kb tool call.
+  KB_PREFLIGHT_ENABLED: true,
+  KB_PREFLIGHT_MIN_SCORE: 0.25,
+  KB_PREFLIGHT_MAX_ENTRIES: 2,
+  KB_PREFLIGHT_CONTENT_CHARS: 400,
+
+  // Per-channel ring of recent image/link descriptions, kept in memory only so
+  // image-only messages (which carry no text and are dropped from history)
+  // remain visible on follow-up turns.
+  PERCEPTION_CACHE_SIZE: 5,
+  PERCEPTION_CACHE_TTL_MS: 3600000,
+
   // Rate limiting
   MENTION_COOLDOWN: parseInt(process.env.MENTION_COOLDOWN || "60", 10),
   IMAGE_GEN_LIMIT: 5,
@@ -201,6 +226,15 @@ const config = {
   // to disable that axis.
   ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "90", 10),
   ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "10000", 10),
+  // Minimum archived chunks per channel before the 6h compaction job converts
+  // the oldest SUMMARY_INTERVAL-sized window into an episode entry.
+  ARCHIVE_COMPACTION_THRESHOLD: parseInt(process.env.ARCHIVE_COMPACTION_THRESHOLD || "100", 10),
+  // Minimum cosine similarity an episode must clear in recall_episode's semantic
+  // fallback (the branch taken when FTS finds no keyword match). Without a floor
+  // the closest-ranked episodes are always returned, so unrelated queries surface
+  // irrelevant episodes instead of an empty "no record" result. Measured noise
+  // sits ~0.51 and genuine matches ~0.58, so 0.55 separates them.
+  EPISODE_RECALL_MIN_SCORE: parseFloat(process.env.EPISODE_RECALL_MIN_SCORE || "0.55"),
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),

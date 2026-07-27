@@ -1,10 +1,10 @@
 /**
  * Renders the slot machine for each theme:
  *   slots-<themeId>.gif  — animated spin (via slotsPreview)
- *   slots-<themeId>-result.png — static result with win highlights
+ *   slots-<themeId>-spinning.gif — full-resolution animated spin (via drawSpinAnimation)
  * Usage: node test/canvas/preview-slots.js
  */
-const { slotsPreview, drawSlotMachine } = require("../../utils/slotsCanvas");
+const { slotsPreview, drawSpinAnimation } = require("../../utils/slotsCanvas");
 const { getTheme } = require("../../utils/slotsThemes");
 const { THEMES, saveRender } = require("./preview-common");
 
@@ -27,14 +27,12 @@ const WIN_RESULTS = [
     const spin = await slotsPreview(themeId);
     saveRender(spin, `slots-${themeId}.gif`);
 
-    const result = await drawSlotMachine(RESULT_GRID, {
+    const spinning = await drawSpinAnimation(RESULT_GRID, {
       theme,
       activeLines: 5,
       bet: 1000,
-      totalWin: 50000,
-      balance: 125000,
-      winResults: WIN_RESULTS,
+      noDownscale: true,
     });
-    saveRender(result, `slots-${themeId}-result.png`);
+    saveRender(spinning, `slots-${themeId}-spinning.gif`);
   }
 })();
