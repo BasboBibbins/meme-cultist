@@ -47,7 +47,23 @@ const config = {
   CHATBOT_LOCAL: false,
   CONVO_MODEL: process.env.CONVO_MODEL || "deepseek-v4-flash",
   PAST_MESSAGES: 15,
-  MAX_API_MESSAGES: 25,
+  MAX_API_MESSAGES: 45,
+
+  // History window anchoring. A window that slides by one message every turn
+  // breaks the prompt cache immediately after the system message, so the oldest
+  // message is instead pinned and the window grows until it hits the ceiling —
+  // turning a miss every turn into a miss every (MAX - MIN) turns.
+  HISTORY_ANCHOR_ENABLED: true,
+  HISTORY_MIN_MESSAGES: 15,
+  HISTORY_MAX_MESSAGES: 30,
+  HISTORY_FETCH_LIMIT: 60,
+
+  // Custom emoji listed in the prompt roster.
+  EMOJI_BLOCK_CAP: 25,
+
+  // Replayed side-effect tool results are truncated: an uncapped image or KB
+  // payload can dominate the history window.
+  TOOL_RESULT_REPLAY_CHARS: 400,
   SUMMARY_INTERVAL: 25,
   FACTS_INTERVAL: 15,
   TOPIC_UPDATE_INTERVAL: 20,
@@ -56,8 +72,9 @@ const config = {
   FACT_TTL_DAYS: 30, // Days before facts expire (TTL)
   OOC_PREFIX: ">",
 
-  // AI model token limits
-  CHAT_MAX_PROMPT_TOKENS: 6000,
+  // AI model token limits. CHAT_MAX_PROMPT_TOKENS now covers the tool schema
+  // too (~3k tokens), which the estimator previously ignored entirely.
+  CHAT_MAX_PROMPT_TOKENS: 10000,
   SUMMARY_MAX_PROMPT_TOKENS: 4000,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT: true,
   INCLUDE_USER_FACTS_IN_PROMPT: true,

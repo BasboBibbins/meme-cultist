@@ -13,6 +13,7 @@ module.exports = {
   generateImage: router.generateImage,
   embed: router.embed,
   getCacheStats: router.getCacheStats,
+  resetCacheStats: router.resetCacheStats,
   closeEmbedCache: embedCache.close,
   estimateCost,
   estimateTokenCount,

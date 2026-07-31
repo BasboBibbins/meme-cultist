@@ -58,6 +58,9 @@ async function* chatStream(args) {
     model: args.model,
     messages: args.messages,
     stream: true,
+    // Without this DeepSeek omits usage entirely from a streamed response, so
+    // streamed turns would be invisible to cache-hit accounting.
+    stream_options: args.stream_options ?? { include_usage: true },
   };
   if (args.temperature !== undefined) payload.temperature = args.temperature;
   if (args.max_tokens !== undefined) payload.max_tokens = args.max_tokens;
@@ -78,19 +81,8 @@ async function* chatStream(args) {
       if (!trimmed.startsWith("data: ")) continue;
       const data = trimmed.slice(6).trim();
       if (data === "[DONE]") return;
-      try {
-        const parsed = JSON.parse(data);
-        const delta = parsed.choices?.[0]?.delta;
-        const finish_reason = parsed.choices?.[0]?.finish_reason;
-        yield {
-          content: delta?.content || "",
-          reasoning_content: delta?.reasoning_content || "",
-          tool_calls: delta?.tool_calls,
-          finish_reason,
-        };
-      } catch (_) {
-        // ignore malformed SSE lines
-      }
+      const frame = parseStreamFrame(data);
+      if (frame) yield frame;
     }
   }
 
@@ -98,19 +90,29 @@ async function* chatStream(args) {
   if (buffer.trim().startsWith("data: ")) {
     const data = buffer.trim().slice(6).trim();
     if (data !== "[DONE]") {
-      try {
-        const parsed = JSON.parse(data);
-        const delta = parsed.choices?.[0]?.delta;
-        const finish_reason = parsed.choices?.[0]?.finish_reason;
-        yield {
-          content: delta?.content || "",
-          reasoning_content: delta?.reasoning_content || "",
-          tool_calls: delta?.tool_calls,
-          finish_reason,
-        };
-      } catch (_) {}
+      const frame = parseStreamFrame(data);
+      if (frame) yield frame;
     }
   }
+}
+
+// The final usage frame carries an empty `choices` array, so every field here
+// has to tolerate the delta being absent.
+function parseStreamFrame(data) {
+  let parsed;
+  try {
+    parsed = JSON.parse(data);
+  } catch (_) {
+    return null; // malformed SSE line
+  }
+  const delta = parsed.choices?.[0]?.delta;
+  return {
+    content: delta?.content || "",
+    reasoning_content: delta?.reasoning_content || "",
+    tool_calls: delta?.tool_calls,
+    finish_reason: parsed.choices?.[0]?.finish_reason,
+    usage: parsed.usage,
+  };
 }
 
 module.exports = { chat, chatStream, getClient };

@@ -14,6 +14,8 @@ const { trackStart, trackEnd } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
+const cacheDiag = require("./utils/cacheDiag");
+const { summarizeFailure } = require("./utils/toolErrors");
 const { describeImage } = require("./utils/llm");
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./utils/channels");
@@ -93,6 +95,7 @@ const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM e
 client.slashcommands = new Collection();
 
 client.contextResetPoints = new Map();
+client.historyAnchors = new Map();
 client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.crapsGames = new Map();
@@ -654,6 +657,8 @@ if (DELETE_SLASH) {
   client.on(Events.ThreadDelete, async (thread) => {
     logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
     client.contextResetPoints.delete(thread.id);
+    client.historyAnchors.delete(thread.id);
+    cacheDiag.forgetChannel(thread.id);
     if (isChatbotChannel(thread.parentId)) {
       await deleteThreadContext(thread);
     }
@@ -717,47 +722,65 @@ if (DELETE_SLASH) {
       }
     }
 
-    let extraContext = null;
-    const imageAttachment = message.attachments.find(a => a.contentType?.startsWith("image/"));
-    if (imageAttachment) {
-      message.channel.sendTyping().catch(() => {});
-      const displayName = message.member?.displayName || message.author.username;
-      const result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
-      if (result?.description) {
-        extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
-        recordPerception(client, message.channel.id, {
-          messageId: message.id,
-          authorId: message.author.id,
-          authorName: displayName,
-          kind: "image",
-          text: result.description,
-          at: message.createdTimestamp,
-        });
-      } else if (result?.error) {
-        extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user your vision failed and briefly mention why. Do NOT pretend to see the image.`;
-      }
-    } else {
-      const url = extractFirstUrl(message.content);
-      if (url) {
+    // Perception must never abort the turn: a failure here still has to reach
+    // handleBotMessage as [VISION/LINK UNAVAILABLE] so the bot explains itself
+    // instead of going silent. The finally also has to cover this block, or a
+    // throw would leak the user's chat-turn slot and lock them out.
+    try {
+      let extraContext = null;
+      const imageAttachment = message.attachments.find(a => a.contentType?.startsWith("image/"));
+      if (imageAttachment) {
         message.channel.sendTyping().catch(() => {});
-        const page = await fetchPageText(url);
-        if (page?.text) {
-          extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+        const displayName = message.member?.displayName || message.author.username;
+        let result;
+        try {
+          result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
+        } catch (err) {
+          const { code, reason } = summarizeFailure(err);
+          logger.error(`[Perception] describeImage threw (${code}): ${err.message}`);
+          result = { error: `vision is unavailable right now — ${reason}` };
+        }
+        if (result?.description) {
+          extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
           recordPerception(client, message.channel.id, {
             messageId: message.id,
             authorId: message.author.id,
-            authorName: message.member?.displayName || message.author.username,
-            kind: "link",
-            text: `${page.title ? `${page.title} — ` : ""}${page.text}`,
+            authorName: displayName,
+            kind: "image",
+            text: result.description,
             at: message.createdTimestamp,
           });
-        } else if (page?.error) {
-          extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly mention why. Do NOT pretend to have read it.`;
+        } else if (result?.error) {
+          extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user you couldn't see the image and briefly say why, in your own words. Do NOT pretend to see it, and do NOT quote error text, status codes, or service names.`;
+        }
+      } else {
+        const url = extractFirstUrl(message.content);
+        if (url) {
+          message.channel.sendTyping().catch(() => {});
+          let page;
+          try {
+            page = await fetchPageText(url);
+          } catch (err) {
+            const { code, reason } = summarizeFailure(err);
+            logger.error(`[Perception] fetchPageText threw (${code}): ${err.message}`);
+            page = { url, error: `the page could not be loaded — ${reason}` };
+          }
+          if (page?.text) {
+            extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+            recordPerception(client, message.channel.id, {
+              messageId: message.id,
+              authorId: message.author.id,
+              authorName: message.member?.displayName || message.author.username,
+              kind: "link",
+              text: `${page.title ? `${page.title} — ` : ""}${page.text}`,
+              at: message.createdTimestamp,
+            });
+          } else if (page?.error) {
+            extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly say why, in your own words. Do NOT pretend to have read it, and do NOT quote error text, status codes, or service names.`;
+          }
         }
       }
-    }
 
-    try {
       if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
         await handleBotMessage(client, message, null, null, false, extraContext);
       } else if (isMentioned) {

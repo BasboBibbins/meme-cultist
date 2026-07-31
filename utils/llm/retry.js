@@ -16,8 +16,19 @@ function isTransientError(error) {
   if (!error) return false;
   if (error.code === "ECONNRESET" || error.code === "ETIMEDOUT" || error.code === "ENOTFOUND") return true;
   if (error.message?.includes("timeout") || error.message?.includes("network")) return true;
-  if (error.response?.status >= 500 && error.response?.status < 600) return true;
-  if (error.response?.status === 429) return true;
+
+  // An exhausted quota is a 429 that retrying cannot fix — the allowance is
+  // gone for the billing period, so burning the retry budget just delays the
+  // failure the user is waiting on.
+  if (/\b(quota|billing|RESOURCE_EXHAUSTED|insufficient[_ ]funds)\b/i.test(error.message || "")) return false;
+
+  // Providers disagree on where the status lives: axios nests it under
+  // `response`, @google/genai and fetch-based clients put it at the top level.
+  const status = error.response?.status ?? error.status ?? error.statusCode;
+  if (Number.isInteger(status)) {
+    if (status >= 500 && status < 600) return true;
+    if (status === 429) return true;
+  }
   return false;
 }
 

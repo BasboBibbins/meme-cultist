@@ -17,13 +17,15 @@ const embedCache = require("./embedCache");
 // args.variant. Exposed via getCacheStats() for a future /admin command.
 const _cacheStats = new Map();
 function recordCacheStats(variant, usage) {
-  if (!variant) return;
-  const hit = usage?.prompt_cache_hit_tokens || 0;
-  const miss = usage?.prompt_cache_miss_tokens || 0;
-  const entry = _cacheStats.get(variant) || { hit: 0, miss: 0, calls: 0 };
+  if (!variant || !usage) return;
+  const hit = usage.prompt_cache_hit_tokens || 0;
+  const miss = usage.prompt_cache_miss_tokens || 0;
+  const entry = _cacheStats.get(variant) || { hit: 0, miss: 0, calls: 0, completion: 0, cost: 0 };
   entry.hit += hit;
   entry.miss += miss;
   entry.calls += 1;
+  entry.completion += usage.completion_tokens || 0;
+  entry.cost += Number(estimateCost({ usage }));
   _cacheStats.set(variant, entry);
   const ratio = ((entry.hit / Math.max(1, entry.hit + entry.miss)) || 0).toFixed(2);
   logger.debug(`[cache] variant=${variant} hit=${hit} miss=${miss} cum_ratio=${ratio} calls=${entry.calls}`);
@@ -32,6 +34,9 @@ function getCacheStats() {
   const out = {};
   for (const [k, v] of _cacheStats.entries()) out[k] = { ...v };
   return out;
+}
+function resetCacheStats() {
+  _cacheStats.clear();
 }
 
 async function _run(label, fn, { timeoutMs, retries, baseDelay } = {}) {
@@ -102,6 +107,7 @@ async function* chatStream(args) {
   const start = Date.now();
   let firstChunkAt = null;
   let chunks = 0;
+  let usage = null;
 
   const inner = deepseek.chatStream(args);
   const iter = inner[Symbol.asyncIterator]();
@@ -127,13 +133,15 @@ async function* chatStream(args) {
       if (step.done) break;
       if (firstChunkAt === null) firstChunkAt = Date.now();
       chunks += 1;
+      if (step.value?.usage) usage = step.value.usage;
       yield step.value;
     }
   } finally {
     const total = Date.now() - start;
     const ttfb = firstChunkAt !== null ? firstChunkAt - start : null;
     logger.debug(`[llm] ${label} stream done chunks=${chunks} ttfb_ms=${ttfb ?? "n/a"} total_ms=${total}`);
+    if (args.variant) recordCacheStats(args.variant, usage);
   }
 }
 
-module.exports = { chat, chatStream, describeImage, generateImage, embed, getCacheStats };
+module.exports = { chat, chatStream, describeImage, generateImage, embed, getCacheStats, resetCacheStats };

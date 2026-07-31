@@ -18,6 +18,7 @@ const { validateToolArgs } = require("./schemas");
 const gameResults = require("./gameResults");
 const episodes = require("./episodes");
 const kbProposals = require("./kbProposals");
+const { CODES: TOOL_ERROR_CODES, normalizeToolError, decorateToolError } = require("./toolErrors");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry", "set_directive", "remove_directive"]);
@@ -608,12 +609,20 @@ async function handleGetBotInfo(args, message, client) {
 async function handleGenerateImage(args, message, client, toolCtx) {
   if (!isChatbotChannel(message.channelId, message.channel?.parentId)) {
     const mentions = formatChatbotChannelMentions(client);
-    return { error: `Image generation is only available in chatbot channels: ${mentions}.` };
+    return {
+      ...normalizeToolError("generate_image", null, { code: TOOL_ERROR_CODES.NOT_PERMITTED }),
+      error: `Image generation is only available in chatbot channels: ${mentions}.`,
+    };
   }
-  if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
+  if (!args?.prompt) {
+    return normalizeToolError("generate_image", "Missing required 'prompt' argument.", { code: TOOL_ERROR_CODES.INVALID_INPUT });
+  }
   const rateCheck = canGenerateImage(message.author.id);
   if (!rateCheck.allowed) {
-    return { error: rateCheck.reason };
+    return {
+      ...normalizeToolError("generate_image", null, { code: TOOL_ERROR_CODES.RATE_LIMITED }),
+      error: rateCheck.reason,
+    };
   }
   try {
     const { buffer, mimeType } = await generateImage({ prompt: args.prompt });
@@ -629,7 +638,7 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     };
   } catch (err) {
     logger.error(`[generate_image] ${err.message}`);
-    return { error: `Image generation failed: ${err.message}` };
+    return normalizeToolError("generate_image", err);
   }
 }
 
@@ -733,7 +742,7 @@ async function handleLookupKb(args, message, client) {
     };
   } catch (err) {
     logger.error(`[lookup_kb] ${err.message}`);
-    return { error: `Knowledge base lookup failed: ${err.message}` };
+    return normalizeToolError("lookup_kb", err);
   }
 }
 
@@ -827,7 +836,7 @@ async function handleSearchHistory(args, message, client) {
     return out;
   } catch (err) {
     logger.error(`[search_history] ${err.message}`);
-    return { error: `Message history search failed: ${err.message}` };
+    return normalizeToolError("search_history", err);
   }
 }
 
@@ -906,7 +915,7 @@ async function handleRecallEpisode(args, message) {
     };
   } catch (err) {
     logger.error(`[recall_episode] ${err.message}`);
-    return { error: `Episode recall failed: ${err.message}` };
+    return normalizeToolError("recall_episode", err);
   }
 }
 
@@ -1003,7 +1012,7 @@ async function handleGetCommandHelp(args, message, client) {
     };
   } catch (err) {
     logger.error(`[get_command_help] ${err.message}`);
-    return { error: `Command help lookup failed: ${err.message}` };
+    return normalizeToolError("get_command_help", err);
   }
 }
 
@@ -1028,7 +1037,7 @@ async function handleGetJackpot(args, message, client) {
     return out;
   } catch (err) {
     logger.error(`[get_jackpot] ${err.message}`);
-    return { error: `Jackpot lookup failed: ${err.message}` };
+    return normalizeToolError("get_jackpot", err);
   }
 }
 
@@ -1058,7 +1067,7 @@ async function handleGetShop(args, message, client) {
     };
   } catch (err) {
     logger.error(`[get_shop] ${err.message}`);
-    return { error: `Shop lookup failed: ${err.message}` };
+    return normalizeToolError("get_shop", err);
   }
 }
 
@@ -1078,7 +1087,10 @@ async function handleWebSearch(args, message) {
       },
       signal: controller.signal,
     });
-    if (!res.ok) return { error: `Brave Search API returned HTTP ${res.status}.` };
+    if (!res.ok) {
+      logger.error(`[web_search] Brave Search API returned HTTP ${res.status}.`);
+      return normalizeToolError("web_search", { status: res.status });
+    }
     const data = await res.json();
     const results = (data.web?.results || []).map(r => ({
       title: r.title,
@@ -1088,9 +1100,10 @@ async function handleWebSearch(args, message) {
     if (results.length === 0) return { results: [], message: "No web results found." };
     return { results, query: args.query };
   } catch (err) {
-    const reason = err.name === "AbortError" ? "Search timed out after 10s." : err.message;
-    logger.error(`[web_search] ${reason}`);
-    return { error: `Web search failed: ${reason}` };
+    logger.error(`[web_search] ${err.name === "AbortError" ? "Search timed out after 10s." : err.message}`);
+    return normalizeToolError("web_search", err, {
+      code: err.name === "AbortError" ? TOOL_ERROR_CODES.TIMEOUT : undefined,
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -1098,7 +1111,10 @@ async function handleWebSearch(args, message) {
 
 async function handleFetchPage(args) {
   const result = await fetchPageText(args.url, 4000);
-  if (result.error) return { error: result.error };
+  if (result.error) {
+    logger.error(`[fetch_page] ${result.error}`);
+    return normalizeToolError("fetch_page", result.error);
+  }
   return { title: result.title, text: result.text, url: result.url };
 }
 
@@ -1243,7 +1259,7 @@ async function handleGetGameResult(args, message) {
     return formatGameResultForLlm(row);
   } catch (err) {
     logger.error(`[get_game_result] ${err.message}`);
-    return { error: `Game result lookup failed: ${err.message}` };
+    return normalizeToolError("get_game_result", err);
   }
 }
 
@@ -1265,7 +1281,7 @@ async function handleGetRecentGameResults(args, message) {
     return { results: rows.map(formatGameResultForLlm) };
   } catch (err) {
     logger.error(`[get_recent_game_results] ${err.message}`);
-    return { error: `Game results lookup failed: ${err.message}` };
+    return normalizeToolError("get_recent_game_results", err);
   }
 }
 
@@ -1306,7 +1322,7 @@ async function handleProposeKbEntry(args, message, client) {
     };
   } catch (err) {
     logger.error(`[propose_kb_entry] ${err.message}`);
-    return { error: `Could not submit the proposal: ${err.message}` };
+    return normalizeToolError("propose_kb_entry", err);
   }
 }
 
@@ -1355,7 +1371,7 @@ async function handleSetDirective(args, message, client, toolCtx) {
     });
   } catch (err) {
     logger.error(`[set_directive] ${err.message}`);
-    return { error: `Could not store the instruction: ${err.message}` };
+    return normalizeToolError("set_directive", err);
   }
 }
 
@@ -1381,7 +1397,7 @@ async function handleRemoveDirective(args, message, client, toolCtx) {
     });
   } catch (err) {
     logger.error(`[remove_directive] ${err.message}`);
-    return { error: `Could not remove the instruction: ${err.message}` };
+    return normalizeToolError("remove_directive", err);
   }
 }
 
@@ -1432,7 +1448,17 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const argCheck = validateToolArgs(fnName, fnArgs);
   if (!argCheck.valid) {
     logger.warn(`[ToolCall] ${fnName} invalid_arguments: ${argCheck.errors}`);
-    return { error: "invalid_arguments", details: argCheck.errors };
+    // Kept as a bare sentinel: this means the MODEL passed bad arguments, so
+    // the right response is for it to retry with correct ones, not to explain a
+    // failure to the user.
+    return {
+      error: "invalid_arguments",
+      error_code: TOOL_ERROR_CODES.INVALID_INPUT,
+      tool: fnName,
+      retryable: true,
+      guidance: "You passed invalid arguments. Correct them and call the tool again — do not tell the user about this.",
+      details: argCheck.errors,
+    };
   }
 
   const cacheable = toolCtx?.queryCache && !SIDE_EFFECT_TOOLS.has(fnName);
@@ -1454,9 +1480,12 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     } else {
       result = await handler(fnArgs, message, client, toolCtx);
     }
+    result = decorateToolError(fnName, result);
   } catch (err) {
-    logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);
-    result = { error: err.message };
+    // Raw exception text is useless to the model and unsafe to show a user, so
+    // only the classified form crosses this boundary. The detail stays in logs.
+    logger.error(`[ToolCall] Error in ${fnName}: ${err.stack || err.message}`);
+    result = normalizeToolError(fnName, err);
   }
 
   if (cacheable) toolCtx.queryCache.set(cacheKey, result);
