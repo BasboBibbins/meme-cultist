@@ -22,7 +22,7 @@ const jobs = require("../jobs");
 const store = require("./store");
 const { sendDM } = require("../dm");
 const { buildInfoEmbed, buildSuccessEmbed, buildErrorEmbed } = require("../embeds");
-const { OWNER_ID } = require("../../config.js");
+const { OWNER_ID, EMBED_JOB_MAX_ATTEMPTS } = require("../../config.js");
 
 const SOURCE_LABELS = { tool: "Bot-proposed", auto: "Auto-promoted fact" };
 
@@ -87,7 +87,7 @@ async function promoteToKb(proposal, resolvedBy) {
   });
   kbPreflight.invalidate(proposal.guildId);
   try {
-    jobs.enqueue({ kind: "kb_embed", payload: { guildId: proposal.guildId, slug }, run_at: Date.now() });
+    jobs.enqueue({ kind: "kb_embed", payload: { guildId: proposal.guildId, slug }, run_at: Date.now(), max_attempts: EMBED_JOB_MAX_ATTEMPTS });
   } catch (err) {
     logger.error(`[KBProposals] Failed to enqueue kb_embed for "${slug}": ${err.message}`);
   }

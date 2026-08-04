@@ -9,7 +9,7 @@ const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
-const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js");
+const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
@@ -295,67 +295,13 @@ if (DELETE_SLASH) {
     const { REMINDER_DM_FALLBACK, REMINDER_MAX_GROUP_SIZE } = require("./config.js");
     const kbStore = require("./utils/kb");
     const llm = require("./utils/llm");
-    jobs.register("kb_embed", async (payload) => {
-      const { guildId, slug } = payload;
-      const entry = kbStore.getBySlug(guildId, slug);
-      if (!entry) {
-        logger.warn(`[KB Embed] Entry ${slug} not found in guild ${guildId}`);
-        return;
-      }
-      try {
-        const text = `${entry.title}\n${entry.content}`;
-        const { embedding } = await llm.embed({ text });
-        kbStore.setEmbedding(guildId, slug, embedding);
-        logger.log(`[KB Embed] Embedded "${slug}" (${embedding.length} dims)`);
-      } catch (err) {
-        logger.error(`[KB Embed] Failed for "${slug}": ${err.message}`);
-      }
-    });
-
     const messageArchive = require("./utils/messageArchive");
-    jobs.register("message_embed", async (payload) => {
-      const { channelId, chunkIds } = payload;
-      try {
-        const all = messageArchive.getUnembeddedForChannel(channelId, 100);
-        const unembedded = chunkIds && chunkIds.length > 0
-          ? all.filter(r => chunkIds.includes(r.id))
-          : all;
-        if (unembedded.length === 0) return;
-
-        const llm = require("./utils/llm");
-        for (const chunk of unembedded) {
-          try {
-            const { embedding } = await llm.embed({ text: chunk.content });
-            messageArchive.setEmbedding(chunk.id, embedding);
-          } catch (err) {
-            logger.error(`[MessageEmbed] Failed for chunk ${chunk.id}: ${err.message}`);
-          }
-        }
-        logger.log(`[MessageEmbed] Embedded ${unembedded.length} chunks for ${channelId}`);
-      } catch (err) {
-        logger.error(`[MessageEmbed] Batch failed for ${channelId}: ${err.message}`);
-      }
-    });
-
     const episodeStore = require("./utils/episodes");
-    jobs.register("episode_embed", async (payload) => {
-      const { episodeIds } = payload;
-      if (!episodeIds || episodeIds.length === 0) return;
-      const llm = require("./utils/llm");
-      const unembedded = episodeStore.getByIds(episodeIds);
-      if (unembedded.length === 0) return;
-      let embedded = 0;
-      for (const ep of unembedded) {
-        try {
-          const { embedding } = await llm.embed({ text: ep.summary });
-          episodeStore.setEmbedding(ep.id, embedding);
-          embedded += 1;
-        } catch (err) {
-          logger.error(`[EpisodeEmbed] Failed for episode ${ep.id}: ${err.message}`);
-        }
-      }
-      if (embedded > 0) logger.log(`[EpisodeEmbed] Embedded ${embedded} episodes`);
-    });
+    // Handlers live in utils/jobs/embedHandlers.js so their failure behaviour is
+    // testable — they were inline here when they silently swallowed errors, which
+    // is largely why that went unnoticed.
+    const { registerEmbedHandlers } = require("./utils/jobs/embedHandlers");
+    registerEmbedHandlers(jobs, { kbStore, llm, messageArchive, episodeStore });
 
     jobs.register("backfill_messages", async (payload) => {
       const { channelIds } = payload;
@@ -396,6 +342,7 @@ if (DELETE_SLASH) {
               kind: "message_embed",
               payload: { channelId, chunkIds: [] },
               run_at: Date.now(),
+              max_attempts: EMBED_JOB_MAX_ATTEMPTS,
             });
             logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed job.`);
           } else {

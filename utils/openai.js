@@ -36,6 +36,7 @@ const {
   HISTORY_MAX_MESSAGES,
   HISTORY_FETCH_LIMIT,
   HISTORY_ANCHOR_ENABLED,
+  EMBED_JOB_MAX_ATTEMPTS,
 } = require("../config.js");
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
@@ -3043,6 +3044,7 @@ function archiveMessages(channelId, messages) {
       kind: "message_embed",
       payload: { channelId, chunkIds: insertedIds },
       run_at: Date.now(),
+      max_attempts: EMBED_JOB_MAX_ATTEMPTS,
     });
     logger.log(`[Archive] Inserted ${insertedIds.length} chunks for ${channelId}, enqueued embedding job.`);
   }

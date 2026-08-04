@@ -111,6 +111,13 @@ const config = {
   // deliberately made, where a weak match beats an error.
   KB_LEXICAL_FALLBACK_MIN_SCORE: 0.10,
 
+  // Retry budget for embedding jobs. The queue backs off by 2^attempts seconds,
+  // so the default of 3 covers only ~14s — shorter than any real provider
+  // outage, which is the one thing these jobs need to survive. 8 attempts spans
+  // roughly 8.5 minutes. Embedding is a background enhancement (FTS serves
+  // retrieval meanwhile), so a long tail costs nothing a user can feel.
+  EMBED_JOB_MAX_ATTEMPTS: 8,
+
   // Per-channel ring of recent image/link descriptions, kept in memory only so
   // image-only messages (which carry no text and are dropped from history)
   // remain visible on follow-up turns.

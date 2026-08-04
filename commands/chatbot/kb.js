@@ -3,7 +3,7 @@ const kbStore = require("../../utils/kb");
 const kbPreflight = require("../../utils/kb/preflight");
 const llm = require("../../utils/llm");
 const jobs = require("../../utils/jobs");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, KB_LEXICAL_FALLBACK_MIN_SCORE } = require("../../config.js");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, KB_LEXICAL_FALLBACK_MIN_SCORE, EMBED_JOB_MAX_ATTEMPTS } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed, buildSuccessEmbed, buildInfoEmbed } = require("../../utils/embeds");
 
@@ -24,6 +24,7 @@ function enqueueEmbed(guildId, slug) {
       kind: "kb_embed",
       payload: { guildId, slug },
       run_at: Date.now(),
+      max_attempts: EMBED_JOB_MAX_ATTEMPTS,
     });
   } catch (err) {
     logger.error(`[KB] Failed to enqueue embed job: ${err.message}`);
