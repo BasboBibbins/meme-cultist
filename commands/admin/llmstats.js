@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
+const jobs = require("../../utils/jobs");
 const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
 
 function formatRow(variant, entry) {
@@ -12,6 +13,31 @@ function formatRow(variant, entry) {
     `hit \`${entry.hit.toLocaleString("en-US")}\` / miss \`${entry.miss.toLocaleString("en-US")}\` → **${ratio.toFixed(1)}%** hit`,
     `cost \`$${entry.cost.toFixed(4)}\``,
   ].join("\n");
+}
+
+function formatHealthRow(snap) {
+  const lastOk = snap.lastOkAt ? `<t:${Math.floor(snap.lastOkAt / 1000)}:R>` : "never";
+  const lines = [
+    `${snap.degraded ? "⚠️" : "✅"} **${snap.provider}** — ${snap.calls} sample${snap.calls === 1 ? "" : "s"}`,
+    `success \`${(snap.successRate * 100).toFixed(0)}%\` · p50 \`${snap.p50}ms\` · p95 \`${snap.p95}ms\``,
+    `last success ${lastOk}`,
+  ];
+  if (snap.lastError) {
+    lines.push(`last error \`${snap.lastError.code}\` <t:${Math.floor(snap.lastError.at / 1000)}:R>`);
+  }
+  return lines.join("\n");
+}
+
+const BREAKER_ICONS = { closed: "✅", half_open: "🟡", open: "⛔" };
+
+function formatBreakerRow(snap, deferredCount) {
+  if (!snap.enabled) return "**embed breaker** — disabled";
+  const lines = [
+    `${BREAKER_ICONS[snap.state] || "❔"} **embed breaker** — \`${snap.state}\``,
+    `trips this session \`${snap.trips}\` · deferred jobs \`${deferredCount}\``,
+  ];
+  if (snap.openedAt) lines.push(`opened <t:${Math.floor(snap.openedAt / 1000)}:R>`);
+  return lines.join("\n");
 }
 
 module.exports = {
@@ -25,7 +51,11 @@ module.exports = {
     .addSubcommand(subcommand =>
       subcommand
         .setName("reset")
-        .setDescription("[ADMIN] Zero the collected cache statistics.")),
+        .setDescription("[ADMIN] Zero the collected cache statistics."))
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("health")
+        .setDescription("[ADMIN] Show per-provider success rate, latency, and degraded state.")),
 
   async execute(interaction) {
     const isOwner = interaction.user.id === OWNER_ID;
@@ -46,6 +76,24 @@ module.exports = {
         logger.log(`LLM cache stats reset by ${interaction.user.username} (${interaction.user.id}).`, "info");
         return await interaction.reply({
           embeds: [buildSuccessEmbed(interaction.user, interaction.client, "LLM cache statistics reset.")],
+          ephemeral: true,
+        });
+      }
+
+      if (subcommand === "health") {
+        const snapshots = Object.values(llm.getHealth());
+        const active = snapshots.filter(s => s.calls > 0);
+        if (active.length === 0) {
+          return await interaction.reply({
+            embeds: [buildInfoEmbed(interaction.user, interaction.client, "No provider calls recorded yet.")],
+            ephemeral: true,
+          });
+        }
+        const sections = active.map(formatHealthRow);
+        sections.push(formatBreakerRow(llm.getBreakerState(), jobs.countDeferred()));
+        return await interaction.reply({
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, sections.join("\n\n"))
+            .setTitle("Provider Health")],
           ephemeral: true,
         });
       }

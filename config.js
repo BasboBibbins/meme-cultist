@@ -236,6 +236,25 @@ const config = {
   // LLM provider layer (utils/llm/)
   LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
   LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),
+
+  // Provider health ring (§7.4). Disabling makes record() a no-op and
+  // isDegraded() always false, so every consumer falls back to prior behaviour.
+  PROVIDER_HEALTH_ENABLED: true,
+  PROVIDER_HEALTH_PROBE_ENABLED: true, // the periodic synthetic ping only
+  PROVIDER_HEALTH_RING_SIZE: 50,
+  // Below this many samples a provider is never reported degraded — two failures
+  // on a cold ring must not trip anything.
+  PROVIDER_HEALTH_MIN_SAMPLES: 10,
+  PROVIDER_DEGRADED_ERROR_RATE: 0.25,
+  PROVIDER_DEGRADED_P95_MS: 15000,
+  PROVIDER_PROBE_INTERVAL_MIN: 5,
+
+  // Embedding circuit breaker (§7.7). Thresholds are inherited from the health
+  // ring above rather than duplicated. Disabling pins the breaker CLOSED, which
+  // is exactly the pre-breaker behaviour.
+  EMBED_BREAKER_ENABLED: true,
+  EMBED_BREAKER_COOLDOWN_MIN: 10, // OPEN → HALF_OPEN
+  EMBED_BREAKER_DRAIN_RATE_PER_SEC: 1, // replay rate for deferred jobs on close
   // Per-chunk inactivity watchdog for streaming completions. Lower than the
   // overall LLM timeout because once chunks are flowing, a 30s gap is already
   // pathological.

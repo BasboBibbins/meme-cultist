@@ -9,7 +9,7 @@ const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
-const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS } = require("./config.js");
+const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
@@ -70,6 +70,17 @@ schedule.scheduleJob("0 */6 * * *", async () => { // every 6 h
     await runCompactionJob();
   } catch (err) {
     logger.error(`[Compaction] Scheduled job failed: ${err.message}`);
+  }
+});
+
+// Provider health probe. Self-gating: skips any provider that real traffic has
+// already exercised recently, and skips entirely under LOW_BUDGET_MODE.
+schedule.scheduleJob(`*/${PROVIDER_PROBE_INTERVAL_MIN} * * * *`, async () => {
+  try {
+    const { probeOnce } = require("./utils/llm/probe");
+    await probeOnce();
+  } catch (err) {
+    logger.error(`[health] Probe job failed: ${err.message}`);
   }
 });
 
@@ -302,6 +313,12 @@ if (DELETE_SLASH) {
     // is largely why that went unnoticed.
     const { registerEmbedHandlers } = require("./utils/jobs/embedHandlers");
     registerEmbedHandlers(jobs, { kbStore, llm, messageArchive, episodeStore });
+
+    // When the embed breaker closes, drain whatever piled up while it was open.
+    // Wired here rather than inside the breaker so that module stays unaware of
+    // the job queue.
+    const { embedBreaker } = require("./utils/llm/breaker");
+    embedBreaker.setOnClose(() => jobs.releaseDeferred(["kb_embed", "message_embed", "episode_embed"]));
 
     jobs.register("backfill_messages", async (payload) => {
       const { channelIds } = payload;
