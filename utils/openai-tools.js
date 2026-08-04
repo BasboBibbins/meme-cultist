@@ -87,7 +87,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_user_info",
-      description: "Get a Discord user's profile: display name, avatar URL, roles, and join date.",
+      description: "Get a Discord user's profile: display name, avatar URL, roles, and join date. Stored memory (user_facts, user_summary) is returned only when the user asked about is the person speaking; for anyone else those fields are omitted and memory_visibility is \"self_only\". When they are omitted, say you do not have that stored — do not infer or reconstruct what you know about that person from other context.",
       parameters: {
         type: "object",
         properties: {
@@ -563,7 +563,7 @@ async function handleGetUserInfo(args, message) {
 
   const userData = await usersDb.get(member.id);
 
-  return {
+  const info = {
     user_id: member.id,
     username: member.user.username,
     display_name: member.displayName,
@@ -577,10 +577,27 @@ async function handleGetUserInfo(args, message) {
     account_created: member.user.createdAt.toISOString(),
     balance: userData?.balance ?? 0,
     bank: userData?.bank ?? 0,
-    user_facts: userData?.chatbot?.facts || [],
-    user_summary: userData?.chatbot?.summaries ? userData.chatbot.summaries.slice(-1)[0] : null,
     chatbot_msg_count: userData?.chatbot?.messageCount || 0,
   };
+
+  // Stored memory is disclosed only to its subject. The keys are omitted rather
+  // than emptied because `user_facts: []` reads to the model as "this person has
+  // no stored facts" — a claim it will repeat. Absent keys assert nothing, and
+  // memory_visibility tells it why, so it says "I don't have that" instead of
+  // reconstructing an answer from channel context.
+  //
+  // Deliberately narrower than the multi-user fact block in the system prompt:
+  // that exists so the bot keeps present participants straight (identity
+  // anchoring), while this is a user-initiated query *about* someone else. Only
+  // the second is a disclosure. Do not "make them consistent".
+  if (member.id === message.author.id) {
+    info.user_facts = userData?.chatbot?.facts || [];
+    info.user_summary = userData?.chatbot?.summaries ? userData.chatbot.summaries.slice(-1)[0] : null;
+  } else {
+    info.memory_visibility = "self_only";
+  }
+
+  return info;
 }
 
 async function handleGetBotInfo(args, message, client) {
