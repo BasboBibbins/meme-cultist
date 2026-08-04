@@ -110,14 +110,19 @@ function scoreDocs(index, queryTokens) {
 }
 
 // Returns [{ slug, title, content, score }] above the configured threshold.
-function findRelevant(guildId, text, limit = KB_PREFLIGHT_MAX_ENTRIES) {
+//
+// `minScore` is overridable because the default is tuned for *ambient* injection
+// — it has to be strict enough that unrelated chatter doesn't pull KB entries
+// into every turn. An explicit lookup is the opposite situation: someone asked
+// outright, so a weak match beats returning nothing.
+function findRelevant(guildId, text, limit = KB_PREFLIGHT_MAX_ENTRIES, minScore = KB_PREFLIGHT_MIN_SCORE) {
   if (!guildId || !text) return [];
   try {
     const index = getIndex(guildId);
     const scored = scoreDocs(index, tokenize(text));
     const chars = KB_PREFLIGHT_CONTENT_CHARS || 400;
     return scored
-      .filter(s => s.score >= (KB_PREFLIGHT_MIN_SCORE ?? 0.25))
+      .filter(s => s.score >= (minScore ?? 0.25))
       .slice(0, limit)
       .map(s => ({
         slug: s.doc.slug,

@@ -3,7 +3,7 @@ const kbStore = require("../../utils/kb");
 const kbPreflight = require("../../utils/kb/preflight");
 const llm = require("../../utils/llm");
 const jobs = require("../../utils/jobs");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, KB_LEXICAL_FALLBACK_MIN_SCORE } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed, buildSuccessEmbed, buildInfoEmbed } = require("../../utils/embeds");
 
@@ -175,9 +175,22 @@ module.exports = {
 
       await interaction.deferReply({ ephemeral: true });
 
+      // Semantic first, keyword second. The KB store has no lexical index of its
+      // own, so without this an unavailable embedding endpoint turns every search
+      // into "Search failed" even though the pre-flight scorer can answer it
+      // locally from the same table.
+      let results;
+      let approximate = false;
       try {
         const { embedding } = await llm.embed({ text: query });
-        const results = kbStore.search(guildId, embedding, 5);
+        results = kbStore.search(guildId, embedding, 5);
+      } catch (err) {
+        logger.warn(`[KB search] Semantic search failed, falling back to lexical: ${err.message}`);
+        results = kbPreflight.findRelevant(guildId, query, 5, KB_LEXICAL_FALLBACK_MIN_SCORE);
+        approximate = true;
+      }
+
+      try {
         if (results.length === 0) {
           return interaction.editReply({ content: "No matching knowledge base entries found.", ephemeral: true });
         }
@@ -185,10 +198,13 @@ module.exports = {
           const snippet = r.content.length > 200 ? r.content.slice(0, 200) + "..." : r.content;
           return `${i + 1}. **${r.title}** (${r.slug})\n${snippet}`;
         });
+        const footer = approximate
+          ? `${results.length} result${results.length === 1 ? "" : "s"} — keyword match (approximate ranking)`
+          : `${results.length} result${results.length === 1 ? "" : "s"}`;
         return interaction.editReply({
           embeds: [buildInfoEmbed(interaction.user, interaction.client, lines.join("\n\n").slice(0, 4000))
             .setTitle(`Search Results — "${query}"`)
-            .setFooter({ text: `${results.length} result${results.length === 1 ? "" : "s"}` })],
+            .setFooter({ text: footer })],
           ephemeral: true,
         });
       } catch (err) {

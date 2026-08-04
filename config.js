@@ -105,6 +105,12 @@ const config = {
   KB_PREFLIGHT_MAX_ENTRIES: 2,
   KB_PREFLIGHT_CONTENT_CHARS: 400,
 
+  // Threshold for the lexical fallback used by lookup_kb and /kb search when the
+  // embedding endpoint is unavailable. Looser than the pre-flight score above:
+  // that one gates unprompted injection, this one answers a lookup someone
+  // deliberately made, where a weak match beats an error.
+  KB_LEXICAL_FALLBACK_MIN_SCORE: 0.10,
+
   // Per-channel ring of recent image/link descriptions, kept in memory only so
   // image-only messages (which carry no text and are dropped from history)
   // remain visible on follow-up turns.
