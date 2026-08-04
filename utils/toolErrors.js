@@ -23,6 +23,9 @@ const CODES = {
   NOT_FOUND: "not_found",
   NOT_PERMITTED: "not_permitted",
   EMPTY_RESULT: "empty_result",
+  // Internal control signal, not a real failure: the tool worked, the model just
+  // used up its per-turn allowance of it. Never shown to a user.
+  TOOL_BUDGET_EXHAUSTED: "tool_budget_exhausted",
   UNKNOWN: "unknown",
 };
 
@@ -40,6 +43,7 @@ const CODE_META = {
   [CODES.NOT_FOUND]: { retryable: false, reason: "there was nothing matching that" },
   [CODES.NOT_PERMITTED]: { retryable: false, reason: "that is not allowed here" },
   [CODES.EMPTY_RESULT]: { retryable: false, reason: "the lookup came back empty" },
+  [CODES.TOOL_BUDGET_EXHAUSTED]: { retryable: false, reason: "that lookup was already used as much as it can be this turn" },
   [CODES.UNKNOWN]: { retryable: true, reason: "something went wrong on the way" },
 };
 
@@ -155,6 +159,23 @@ function isToolError(result) {
   return Boolean(result && typeof result === "object" && result.error);
 }
 
+// Some `error` results are steering signals for the model, not things that went
+// wrong: bad arguments it should correct, or an allowance it has spent. They must
+// never reach the user-facing failure explanation, or a turn that recovered
+// perfectly well would still open with an apology.
+const CONTROL_SIGNAL_CODES = new Set([CODES.TOOL_BUDGET_EXHAUSTED]);
+
+function isControlSignal(result) {
+  if (!isToolError(result)) return false;
+  if (CONTROL_SIGNAL_CODES.has(result.error_code)) return true;
+  return result.error === "invalid_arguments";
+}
+
+// The failures worth explaining to a user.
+function isReportableFailure(result) {
+  return isToolError(result) && !isControlSignal(result);
+}
+
 // Handlers return their own wording for expected refusals ("only available in
 // chatbot channels"), which is better than a generic sentence — so that text is
 // preserved and only the classification is attached.
@@ -189,5 +210,7 @@ module.exports = {
   decorateToolError,
   describeToolFailure,
   isToolError,
+  isControlSignal,
+  isReportableFailure,
   humanizeTool,
 };

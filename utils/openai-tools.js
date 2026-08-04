@@ -12,6 +12,7 @@ const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
 const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE, KB_LEXICAL_FALLBACK_MIN_SCORE } = require("../config.js");
+const config = require("../config.js");
 const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
@@ -23,6 +24,35 @@ const { CODES: TOOL_ERROR_CODES, normalizeToolError, decorateToolError } = requi
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry", "set_directive", "remove_directive"]);
+
+// Per-turn call caps, so one tool cannot eat the whole global depth budget.
+//
+// The three existing guards (tool description, in-turn dedup cache, final-slot
+// tool_choice=none) all miss the same case: four *genuinely different* queries to
+// one retrieval tool. The dedup cache keys on normalised args, so "jackpot
+// history" / "who won last week" / "biggest payout" / "recent wins" are four
+// distinct keys, four real calls, and the turn is over.
+//
+// Only retrieval tools are capped — they are the ones the model re-phrases and
+// retries. Cheap deterministic lookups (get_balance, get_jackpot, get_shop,
+// get_command_help) are exactly what it *should* feel free to call, and capping
+// them would be a regression. Side-effect tools have their own rate limits.
+const TOOL_BUDGETS = {
+  search_history: 2,
+  lookup_kb: 2,
+  recall_episode: 2,
+  web_search: 2,
+};
+
+// Read off the config object rather than a destructured constant so the switch
+// takes effect without a process restart.
+function budgetFor(fnName) {
+  if (config.TOOL_BUDGETS_ENABLED === false) return null;
+  // Global depth is already 2 in low-budget mode, so per-tool caps are
+  // unreachable — skip the bookkeeping rather than leave a dead branch.
+  if (config.LOW_BUDGET_MODE) return null;
+  return TOOL_BUDGETS[fnName] ?? null;
+}
 
 // SQLite FTS5 bm25 `rank` is negative (a stronger match is MORE negative). When
 // the best keyword hit sits above this floor (closer to 0 == weak) we re-rank the
@@ -1500,6 +1530,10 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     };
   }
 
+  // NOTE: the dedup cache and the per-tool budget below are deliberately ordered.
+  // A cache hit must be served *before* the budget check and must not increment
+  // the counter — it consumes no depth today, and charging it would set the two
+  // guards fighting each other.
   const cacheable = toolCtx?.queryCache && !SIDE_EFFECT_TOOLS.has(fnName);
   const cacheKey = cacheable ? `${fnName}:${normalizeArgs(fnArgs)}` : null;
   if (cacheable && toolCtx.queryCache.has(cacheKey)) {
@@ -1509,6 +1543,28 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     const cloned = { ...cached };
     cloned.note = cloned.note ? `${cloned.note} ${dedupNote}` : dedupNote;
     return cloned;
+  }
+
+  // Counted here rather than beside the loop's `toolCallDepth++` because a single
+  // iteration can carry several tool calls — depth counts iterations, this counts
+  // calls. State lives on the per-turn toolCtx, so nothing persists between turns.
+  const budget = budgetFor(fnName);
+  if (budget !== null && toolCtx) {
+    if (!toolCtx.toolCounts) toolCtx.toolCounts = new Map();
+    const used = toolCtx.toolCounts.get(fnName) || 0;
+    if (used >= budget) {
+      logger.log(`[ToolCall] ${fnName} budget exhausted (${used}/${budget} this turn).`);
+      return {
+        error: "You have already used this tool as many times as allowed this turn.",
+        error_code: TOOL_ERROR_CODES.TOOL_BUDGET_EXHAUSTED,
+        tool: fnName,
+        retryable: false,
+        // Wording is the whole mitigation for the model treating this as a hard
+        // stop instead of a nudge to switch tools or answer from what it has.
+        guidance: "Answer from the results you already have, or use a different tool. Do not call this tool again this turn. Do not mention this limit to the user.",
+      };
+    }
+    toolCtx.toolCounts.set(fnName, used + 1);
   }
 
   let result;
@@ -1533,4 +1589,4 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
   return result;
 }
 
-module.exports = { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS };
+module.exports = { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS, TOOL_BUDGETS };

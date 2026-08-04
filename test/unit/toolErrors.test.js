@@ -6,6 +6,8 @@ const {
   decorateToolError,
   describeToolFailure,
   isToolError,
+  isControlSignal,
+  isReportableFailure,
   humanizeTool,
 } = require("../../utils/toolErrors");
 
@@ -208,5 +210,57 @@ describe("humanizeTool", () => {
   test("maps known tools to a readable noun and falls back otherwise", () => {
     expect(humanizeTool("generate_image")).toBe("image request");
     expect(humanizeTool("some_future_tool")).toBe("lookup");
+  });
+});
+
+describe("tool_budget_exhausted", () => {
+  test("is non-retryable — retrying is exactly what it exists to stop", () => {
+    const out = normalizeToolError("search_history", null, { code: CODES.TOOL_BUDGET_EXHAUSTED });
+    expect(out.retryable).toBe(false);
+    expect(out.guidance).toMatch(/do not retry/i);
+  });
+
+  test("is never inferred from free text — it is only ever set explicitly", () => {
+    expect(classifyToolError("tool budget exhausted")).not.toBe(CODES.TOOL_BUDGET_EXHAUSTED);
+    expect(classifyToolError(new Error("budget"))).not.toBe(CODES.TOOL_BUDGET_EXHAUSTED);
+  });
+
+  test("has a user-safe reason, in case it ever does surface", () => {
+    const sentence = describeToolFailure(CODES.TOOL_BUDGET_EXHAUSTED, "search_history");
+    expect(sentence).not.toMatch(/budget|tool_|error_code/i);
+    expect(sentence.endsWith(".")).toBe(true);
+  });
+});
+
+describe("control signals vs reportable failures", () => {
+  test("budget exhaustion is a control signal", () => {
+    const result = { error: "used up", error_code: CODES.TOOL_BUDGET_EXHAUSTED };
+    expect(isControlSignal(result)).toBe(true);
+    expect(isReportableFailure(result)).toBe(false);
+  });
+
+  test("the invalid_arguments sentinel is a control signal", () => {
+    const result = { error: "invalid_arguments", error_code: CODES.INVALID_INPUT };
+    expect(isControlSignal(result)).toBe(true);
+    expect(isReportableFailure(result)).toBe(false);
+  });
+
+  test("a real invalid-input failure is still reportable", () => {
+    // Same code, but a genuine handler failure rather than the bare sentinel.
+    const result = { error: "The image request failed because the request was missing something it needed.", error_code: CODES.INVALID_INPUT };
+    expect(isControlSignal(result)).toBe(false);
+    expect(isReportableFailure(result)).toBe(true);
+  });
+
+  test.each([CODES.TIMEOUT, CODES.NETWORK, CODES.QUOTA_EXCEEDED, CODES.UPSTREAM_ERROR])(
+    "%s stays reportable",
+    (code) => {
+      expect(isReportableFailure({ error: "boom", error_code: code })).toBe(true);
+    },
+  );
+
+  test("a success is neither", () => {
+    expect(isControlSignal({ results: [] })).toBe(false);
+    expect(isReportableFailure({ results: [] })).toBe(false);
   });
 });

@@ -57,7 +57,7 @@ const { tokenize: tokenizeText } = require("./text");
 const kbPreflight = require("./kb/preflight");
 const cacheDiag = require("./cacheDiag");
 const { selectAnchoredWindow } = require("./promptWindow");
-const { isToolError, describeToolFailure } = require("./toolErrors");
+const { isReportableFailure, describeToolFailure } = require("./toolErrors");
 
 function splitAtWordBoundary(text, maxLength = 1997) {
   if (text.length <= maxLength) return [text];
@@ -2586,7 +2586,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     // targetChannel, not message.channel: handleBotMessage can be pointed at a
     // different channel via the channelId argument, and a directive written to
     // the message's own channel would never be read back.
-    const toolCtx = { client, targetChannel, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map() };
+    const toolCtx = { client, targetChannel, pendingAttachments: [], pendingToolCalls: [], queryCache: new Map(), toolCounts: new Map() };
     const citationStore = { msg: new Map(), kb: new Set(preflightKbSlugs) };
     const toolResultsAccumulator = [];
 
@@ -2779,7 +2779,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       if (synthesisContent) {
         response = synthesisContent;
         logger.debug(`[Synthesis] Generated response: ${response.substring(0, 100)}...`);
-      } else if (!toolResultsAccumulator.some(r => isToolError(r.result))) {
+      } else if (!toolResultsAccumulator.some(r => isReportableFailure(r.result))) {
         const gatheredTools = toolResultsAccumulator.map(r => r.tool).join(", ");
         response = `I gathered some information (${gatheredTools}) but wasn't able to finish the full lookup. Let me know if you'd like me to try a different approach!`;
         logger.warn("[Synthesis] Synthesis call returned no content; using fallback.");
@@ -2803,7 +2803,10 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
     // exception string, would often return nothing at all. Escalate instead —
     // ask it to explain the failure, and only fall back to a canned sentence if
     // that call also comes up empty.
-    const toolFailures = toolResultsAccumulator.filter(r => isToolError(r.result));
+    // Budget exhaustion and bad-argument sentinels are steering signals, not
+    // failures — explaining them to the user would apologise for a turn that
+    // worked.
+    const toolFailures = toolResultsAccumulator.filter(r => isReportableFailure(r.result));
     if (!response && !streamedMessageId && toolFailures.length > 0) {
       logger.warn(`[ToolFailure] Turn produced no reply after ${toolFailures.length} tool failure(s): ${toolFailures.map(f => `${f.tool}=${f.result.error_code || "unknown"}`).join(", ")}`);
       response = await explainToolFailure(messages, toolFailures, message?.member?.displayName);

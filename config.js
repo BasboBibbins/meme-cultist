@@ -111,6 +111,12 @@ const config = {
   // deliberately made, where a weak match beats an error.
   KB_LEXICAL_FALLBACK_MIN_SCORE: 0.10,
 
+  // Per-tool call caps within a single turn, so one retrieval tool cannot spend
+  // the whole global depth budget re-phrasing the same question. The table itself
+  // lives in utils/openai-tools.js — it is keyed by tool name and only changes
+  // when the tools do. Disabling restores purely global depth limiting.
+  TOOL_BUDGETS_ENABLED: true,
+
   // Retry budget for embedding jobs. The queue backs off by 2^attempts seconds,
   // so the default of 3 covers only ~14s — shorter than any real provider
   // outage, which is the one thing these jobs need to survive. 8 attempts spans
