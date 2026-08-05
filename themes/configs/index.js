@@ -598,7 +598,10 @@ const themes = {
   mikuDay: limited("mikuDay", "Miku Day",
     "Hatsune Miku's birthday. Signature teal against night-concert navy, with penlight pinks and a stage-lit glow.",
     300000, "🎤",
-    { start: { month: 8, day: 31 }, end: { month: 9, day: 7 } },
+    [
+      { start: { month: 3, day: 9 },  end: { month: 3, day: 17 } },
+      { start: { month: 8, day: 31 }, end: { month: 9, day: 7 } },
+    ],
     mikuDayColors,
     {
       slots: {
@@ -672,7 +675,6 @@ const themes = {
   halloween: limited("halloween", "Halloween",
     "Pumpkin orange over a deep purple-black graveyard. Toxic green wins and a moonlit chill.",
     250000, "🎃",
-    // Year omitted — recurring annually. See the note on mikuDay above.
     { start: { month: 10, day: 1 }, end: { month: 10, day: 31 } },
     halloweenColors,
     {
@@ -1261,8 +1263,6 @@ const themes = {
     300000, 5, "🖥️", termColors,
     {
       slots: {
-        // No custom sprite sheet yet — falls back to classic default sprites
-        // until term.png lands in imgs/slots.
         reelBackground:      "rgba(0, 0, 0, 0.9)",
         frameColor:          "#33ff33",
         frameDarkColor:      "#22aa22",
@@ -1273,13 +1273,13 @@ const themes = {
         bannerBackgroundEnd: "#000000",
         motionBlurOverlay:   "rgba(0, 0, 0, 0.55)",
         paylineColors:       ["#33ff33", "#55ff55", "#22aa22", "#ff3333", "#116611"],
+        symbols: sprites("term", ["4PPL3", "0R4NG3", "L3M0N", "GR4P3S", "CH3RRY", "B3LL", "B4R", "S3V3N", "W1LD", "B0NUS"]),
       },
       roulette: {
         woodInner:       "#0a1a0a",
         woodMid:         "#051005",
         woodOuter:       "#000000",
         goldRim:         "#33ff33",
-        // Monochrome throughout; red is the documented exception for errors.
         pocketRed:       "#ff3333",
         pocketBlack:     "#001100",
         pocketGreen:     "#22aa22",
