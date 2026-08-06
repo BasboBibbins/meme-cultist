@@ -436,7 +436,7 @@ const themes = {
 
   july4: limited("july4", "July 4th",
     "Stars, stripes, and fireworks. A patriotic celebration in red, white, and blue.",
-    250000, "🎆",
+    400000, "🎆",
     { start: { month: 6, day: 28 }, end: { month: 7, day: 7 } },
     {
       background:  path.join(BACKGROUND_BASE, "july4.png"),
@@ -524,7 +524,7 @@ const themes = {
 
   precision: limited("precision", "Precision",
     "A tactical theme inspired by the Precision Roleplay DarkRP server. Near-black field with a sharp yellow-green reticle accent and cool silver text.",
-    100000, "🎯",
+    400000, "🎯",
     { start: { month: 6, day: 23 }, end: { month: 6, day: 30 } },
     precisionColors,
     {
@@ -599,7 +599,7 @@ const themes = {
 
   mikuDay: limited("mikuDay", "Miku Day",
     "Hatsune Miku's birthday. Signature teal against night-concert navy, with penlight pinks and a stage-lit glow.",
-    300000, "🎤",
+    393939, "🎤",
     [
       { start: { month: 3, day: 9 },  end: { month: 3, day: 17 } },
       { start: { month: 8, day: 31 }, end: { month: 9, day: 7 } },
@@ -676,7 +676,7 @@ const themes = {
 
   halloween: limited("halloween", "Halloween",
     "Pumpkin orange over a deep purple-black graveyard. Toxic green wins and a moonlit chill.",
-    250000, "🎃",
+    400000, "🎃",
     { start: { month: 10, day: 1 }, end: { month: 10, day: 31 } },
     halloweenColors,
     {
@@ -755,7 +755,7 @@ const themes = {
 
   neon: full("neon", "Neon Arcade",
     "A vibrant neon theme with glowing symbols.",
-    150000, 10, "🪩", neonColors,
+    200000, 14, "🪩", neonColors,
     {
       slots: {
         reelBackground:      "rgba(18, 8, 40, 0.75)",
@@ -828,7 +828,7 @@ const themes = {
 
   feudalJapan: full("feudalJapan", "Feudal Japan",
     "Traditional Japanese theme with feudal symbols.",
-    250000, 10, "🎋", feudalJapanColors,
+    500000, 10, "🎋", feudalJapanColors,
     {
       slots: {
         reelBackground:      "rgba(26, 0, 0, 0.75)",
@@ -901,7 +901,7 @@ const themes = {
 
   cosmic: full("cosmic", "Cosmic",
     "A extraterrestrial theme with cosmic symbols and a starry background.",
-    500000, 5, "🌌", cosmicColors,
+    500000, 10, "🌌", cosmicColors,
     {
       slots: {
         reelBackground:      "rgba(8, 12, 24, 0.75)",
@@ -973,7 +973,7 @@ const themes = {
 
   dessert: full("dessert", "Sweet Tooth",
     "A candy land of chocolate, bubblegum, and sweets.",
-    500000, 5, "🍰", dessertColors,
+    500000, 10, "🍰", dessertColors,
     {
       slots: {
         reelBackground:      "rgba(42, 16, 8, 0.75)",
@@ -1045,7 +1045,7 @@ const themes = {
 
   deepSea: full("deepSea", "Deep Sea",
     "Bioluminescent deep ocean with midnight blues, electric teal, and coral pink accents.",
-    500000, 5, "🪸", deepSeaColors,
+    500000, 10, "🪸", deepSeaColors,
     {
       slots: {
         reelBackground:      "rgba(6, 10, 32, 0.75)",
@@ -1117,7 +1117,7 @@ const themes = {
 
   y2k: full("y2k", "Y2K",
     "Blobject-era glossy futurism. Translucent aqua plastic panels, chrome orange frames, and lime/red accents.",
-    350000, 5, "💾", y2kColors,
+    500000, 10, "💾", y2kColors,
     {
       slots: {
         reelBackground:      "rgba(220, 242, 255, 0.88)",
@@ -1189,7 +1189,7 @@ const themes = {
 
   glass: full("glass", "Glass",
     "Liquid Glass design language. Frosted translucent panels, soft blue LED accents, and a bright azure glass background. Light, airy, and premium.",
-    350000, 5, "🪟", glassColors,
+    300000, 12, "🪟", glassColors,
     {
       slots: {
         reelBackground:      "rgba(228, 240, 252, 0.85)",
@@ -1261,7 +1261,7 @@ const themes = {
 
   term: full("term", "Term",
     "Terminal aesthetic. Black field, green phosphor glow, CRT scanlines. Welcome to the Matrix.",
-    300000, 5, "🖥️", termColors,
+    300000, 12, "🖥️", termColors,
     {
       slots: {
         reelBackground:      "rgba(0, 0, 0, 0.9)",
@@ -1333,7 +1333,7 @@ const themes = {
 
   bloons: full("bloons", "Bloons",
     "Warm jungle wood and tan tower-defense energy. Sandy paths, banana yellow accents, and a playful aesthetic.",
-    300000, 5, "🎈", bloonsColors,
+    500000, 10, "🎈", bloonsColors,
     {
       slots: {
         reelBackground:      "rgba(210, 184, 140, 0.85)",
@@ -1407,7 +1407,7 @@ const themes = {
 
   sunset: styled("sunset", "Sunset",
     "Warm gradient background with orange, pink, and purple hues. A vibrant, eye-catching design.",
-    50000, 20, "🌅",
+    100000, 35, "🌅",
     {
       background:  path.join(BACKGROUND_BASE, "sunset.png"),
       feltColor:   "rgba(26, 10, 46, 0.8)",
@@ -1440,7 +1440,7 @@ const themes = {
 
   autumn: styled("autumn", "Autumn",
     "Warm harvest palette of burnt orange, chestnut brown, and amber. A cozy seasonal look.",
-    50000, 20, "🍂",
+    100000, 35, "🍂",
     {
       background:  path.join(BACKGROUND_BASE, "autumn.png"),
       feltColor:   "rgba(58, 30, 10, 0.72)",
@@ -1474,7 +1474,7 @@ const themes = {
 
   marble: styled("marble", "Marble",
     "Pure opulence. White marble with gold veining on a light, luxurious surface.",
-    50000, 20, "🗿",
+    100000, 35, "🗿",
     {
       background:  path.join(BACKGROUND_BASE, "marble.png"),
       feltColor:   "rgba(230, 230, 230, 0.6)",
@@ -1511,7 +1511,7 @@ const themes = {
 
   storm: styled("storm", "Storm",
     "Dark roiling stormclouds with silver lightning accents. Moody and dramatic.",
-    50000, 20, "⛈️",
+    80000, 35, "⛈️",
     {
       background:  path.join(BACKGROUND_BASE, "storm.png"),
       feltColor:   "rgba(48, 52, 56, 0.8)",
@@ -1545,7 +1545,7 @@ const themes = {
 
   sakura: styled("sakura", "Sakura",
     "Soft cherry blossom petals in warm light. Pale pink with rose gold accents.",
-    50000, 20, "🌸",
+    80000, 35, "🌸",
     {
       background:  path.join(BACKGROUND_BASE, "sakura.png"),
       feltColor:   "rgba(255, 220, 230, 0.5)",
@@ -1582,7 +1582,7 @@ const themes = {
 
   coral: styled("coral", "Coral",
     "Warm desert canyon at golden hour. Terracotta and amber on a sun-baked surface.",
-    50000, 20, "🏜️",
+    80000, 35, "🏜️",
     {
       background:  path.join(BACKGROUND_BASE, "coral.png"),
       feltColor:   "rgba(180, 90, 60, 0.7)",
@@ -1616,7 +1616,7 @@ const themes = {
 
   bloodMoon: styled("bloodMoon", "Blood Moon",
     "A low red moon over a black horizon. Deep crimson with aged gold rims.",
-    50000, 20, "🌘", bloodMoonColors,
+    50000, 35, "🌘", bloodMoonColors,
     {
       slots: {
         reelBackground:      "rgba(28, 8, 10, 0.75)",
@@ -1637,7 +1637,7 @@ const themes = {
 
   midnight: colorway("midnight", "Midnight",
     "Deep navy and silver. A sleek, cooler-toned alternative to classic.",
-    10000, 60, "🌙",
+    10000, 40, "🌙",
     {
       feltColor:   "#000033",
       feltDark:    "#00001a",
@@ -1655,7 +1655,7 @@ const themes = {
 
   cherryPop: colorway("cherryPop", "Cherry Pop",
     "Rich rose and soft pink frames. Fun and retro.",
-    10000, 60, "🍒",
+    10000, 40, "🍒",
     {
       feltColor:   "#8b2252",
       feltDark:    "#6b1a3e",
@@ -1673,7 +1673,7 @@ const themes = {
 
   emerald: colorway("emerald", "Emerald",
     "Richer, deeper greens than Classic. A premium classic tier.",
-    7500, 60, "💚",
+    7500, 40, "💚",
     {
       feltColor:   "#004d00",
       feltDark:    "#003300",
@@ -1691,7 +1691,7 @@ const themes = {
 
   ocean: colorway("ocean", "Ocean",
     "Deep teal felt with warm coral accents and seafoam highlights.",
-    10000, 60, "🌊",
+    10000, 40, "🌊",
     {
       feltColor:   "#0a4f5c",
       feltDark:    "#063840",
@@ -1709,7 +1709,7 @@ const themes = {
 
   ember: colorway("ember", "Ember",
     "Deep charcoal felt with orange and amber frame colors.",
-    10000, 60, "🔥",
+    10000, 40, "🔥",
     {
       feltColor:   "#333333",
       feltDark:    "#1a1a1a",
@@ -1727,7 +1727,7 @@ const themes = {
 
   frost: colorway("frost", "Frost",
     "Icy steel-blue felt with pale silver frames.",
-    10000, 60, "❄️",
+    10000, 40, "❄️",
     {
       feltColor:   "#3a5a70",
       feltDark:    "#2a4050",
@@ -1745,7 +1745,7 @@ const themes = {
 
   royalPurple: colorway("royalPurple", "Royal Purple",
     "Deep purple felt with gold frames. A premium combination.",
-    10000, 60, "👑",
+    10000, 40, "👑",
     {
       feltColor:   "#4b0082",
       feltDark:    "#2e0054",
@@ -1763,7 +1763,7 @@ const themes = {
 
   mocha: colorway("mocha", "Mocha",
     "Rich espresso felt with creamy latte frames. Warm and smooth.",
-    10000, 60, "☕",
+    10000, 40, "☕",
     {
       feltColor:   "#2c1a0e",
       feltDark:    "#1a0f08",
