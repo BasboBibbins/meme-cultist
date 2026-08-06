@@ -76,8 +76,7 @@ function drawTick(ctx, x, y, size, color) {
   ctx.restore();
 }
 
-// Fill marks drawn, border weight marks picked, tick marks a hit — a theme can
-// land all three colors close together, so none of them carries a state alone.
+// Fill marks drawn, border weight picked, tick a hit — no state relies on color alone.
 function drawCell(ctx, number, state, colors) {
   const { x, y } = cellPosition(number);
   const picked = state === "picked" || state === "hit";

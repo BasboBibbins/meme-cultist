@@ -3,8 +3,7 @@ const KENO_DRAW_COUNT = 20;
 const KENO_MIN_SPOTS = 1;
 const KENO_MAX_SPOTS = 10;
 
-// "For 1" multipliers — payout replaces the stake. Every row's RTP is asserted
-// in test/unit/keno.test.js; re-run it after changing any entry.
+// "For 1" multipliers; every row's RTP is asserted in test/unit/keno.test.js.
 const PAYTABLE = Object.freeze({
   1:  Object.freeze([0, 3.8]),
   2:  Object.freeze([0, 1, 9.5]),

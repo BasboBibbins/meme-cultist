@@ -9,8 +9,9 @@
     "test:canvas": "jest test/canvas --",
     "test:llm": "node test/llm/runner.js",
     "preview:canvas": "node test/canvas/preview-all.js",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint": "eslint . --rulesdir eslint-rules --config lint-comments.config.js",
+    "lint:fix": "eslint . --fix --rulesdir eslint-rules --config lint-comments.config.js",
+    "lint:comments": "eslint . --rulesdir eslint-rules --no-eslintrc --parser-options=ecmaVersion:2021 --rule \"{'no-multiline-comments':'warn'}\""
   },
   "keywords": [],
   "author": "",
