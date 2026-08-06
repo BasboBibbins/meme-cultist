@@ -19,19 +19,19 @@ const BACKGROUND_BASE = path.join(__dirname, "..", "..", "assets", "imgs", "them
 
 // ── Helpers for defining themes with less boilerplate ─────────────────────────────
 function colorway(id, name, description, price, weight, emoji, colors, overrides) {
-  return { id, name, description, tier: "colorway", price, weight, emoji, game: null, colors, overrides: overrides || {} };
+  return { id, name, description, tier: "colorway", price, weight, emoji, game: null, colors, overrides: withKeno(colors, overrides) };
 }
 
 function styled(id, name, description, price, weight, emoji, colors, overrides) {
-  return { id, name, description, tier: "styled", price, weight, emoji, game: null, colors, overrides: overrides || {} };
+  return { id, name, description, tier: "styled", price, weight, emoji, game: null, colors, overrides: withKeno(colors, overrides) };
 }
 
 function full(id, name, description, price, weight, emoji, colors, overrides, game) {
-  return { id, name, description, tier: "full", price, weight, emoji, game: game || null, colors, overrides };
+  return { id, name, description, tier: "full", price, weight, emoji, game: game || null, colors, overrides: withKeno(colors, overrides) };
 }
 
 function limited(id, name, description, price, emoji, availability, colors, overrides) {
-  return { id, name, description, tier: "limited", price, weight: null, emoji, game: null, colors, overrides: overrides || {}, availability };
+  return { id, name, description, tier: "limited", price, weight: null, emoji, game: null, colors, overrides: withKeno(colors, overrides), availability };
 }
 
 function sprites(themeId, labels) {
@@ -45,6 +45,33 @@ function sprites(themeId, labels) {
 
 function poker(colors, overrides) {
   return { feltColor: colors.feltColor, tableGreen: colors.tableGreen, gold: colors.gold, goldDark: colors.goldDark, ...overrides };
+}
+
+// Derived per theme by the factories above rather than hand-written 40-odd
+// times. A theme that declares its own `keno` overrides still wins.
+function keno(colors) {
+  return {
+    gridBg:       colors.feltDark || colors.feltColor,
+    cellBg:       colors.tableGreen,
+    cellBorder:   colors.goldBronze || colors.goldDark,
+    cellText:     colors.textWhite,
+    pickedBorder: colors.gold,
+    pickedText:   colors.gold,
+    drawnFill:    colors.goldDark,
+    drawnText:    colors.textBlack || "#000000",
+    hitFill:      colors.textWin,
+    hitText:      colors.textBlack || "#000000",
+    hitGlyph:     colors.gold,
+    headerAccent: colors.textPrimary || colors.gold,
+  };
+}
+
+function withKeno(colors, overrides) {
+  const declared = overrides?.keno;
+  return {
+    ...(overrides || {}),
+    keno: declared ? { ...keno(colors), ...declared } : keno(colors),
+  };
 }
 
 // ── Theme color palettes (pre-declared so poker() can reuse them) ─────────────────

@@ -17,6 +17,7 @@ const SCRIPTS = [
   "preview-blackjack.js",
   "preview-craps.js",
   "preview-duel.js",
+  "preview-keno.js",
   "preview-poker.js",
   "preview-roulette.js",
   "preview-slots.js",

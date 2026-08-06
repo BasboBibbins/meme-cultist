@@ -1283,6 +1283,22 @@ function formatGameResultForLlm(row) {
     };
   }
 
+  if (row.game === "keno") {
+    return {
+      ...base,
+      spots: r.spots,
+      drawn: r.drawn,
+      matched: r.matched,
+      matches: r.matches,
+      bet: r.bet,
+      multiplier: r.multiplier,
+      payout: r.payout,
+      net: r.net,
+      outcome: r.outcome,
+      quick_pick: r.quick_pick,
+    };
+  }
+
   if (row.game === "rob") {
     return {
       ...base,

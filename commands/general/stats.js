@@ -34,7 +34,8 @@ async function getGameStats(userId) {
     "race.wins", "race.losses", "race.totalBet", "race.biggestWin", "race.biggestLoss", "race.biggestWinHorse", "race.biggestLossHorse", "race.profit",
     "craps.rolls", "craps.wins", "craps.losses", "craps.pushes", "craps.pointsHit", "craps.sevenOuts", "craps.totalBet", "craps.biggestWin", "craps.biggestLoss", "craps.profit",
     "duel.wins", "duel.losses", "duel.draws", "duel.totalBet", "duel.biggestWin", "duel.biggestLoss", "duel.profit",
-    "poker.wins", "poker.losses", "poker.royals", "poker.biggestWin", "poker.biggestLoss", "poker.profit"
+    "poker.wins", "poker.losses", "poker.royals", "poker.biggestWin", "poker.biggestLoss", "poker.profit",
+    "keno.wins", "keno.losses", "keno.pushes", "keno.totalBet", "keno.biggestWin", "keno.biggestLoss", "keno.profit"
   ];
 
   const results = await Promise.all(
@@ -58,6 +59,7 @@ function calcTotalGames(gameStats, gameName) {
   if (gameName === "blackjack") return wins + losses + (g.ties || 0);
   if (gameName === "slots") return wins + losses + (g.jackpots || 0);
   if (gameName === "duel") return wins + losses + (g.draws || 0);
+  if (gameName === "keno") return wins + losses + (g.pushes || 0);
   return wins + losses;
 }
 
@@ -161,6 +163,7 @@ async function generateStatsEmbed(page, interaction, user) {
       const cr = gameStats.craps || {};
       const du = gameStats.duel || {};
       const pk = gameStats.poker || {};
+      const kn = gameStats.keno || {};
 
       embed.setTitle(`${user.displayName }'s Game Stats`);
       embed.setFields(
@@ -247,6 +250,19 @@ async function generateStatsEmbed(page, interaction, user) {
             pk.biggestWin && `*Biggest Win:* **${pk.biggestWin.toLocaleString("en-US")}**`,
             pk.biggestLoss && `*Biggest Loss:* **${pk.biggestLoss.toLocaleString("en-US")}**`,
             `*Net Profit:* **${formatProfit(pk.profit || 0)}**`
+          ]), inline: true },
+        );
+      }
+      if (kn.wins || kn.losses || kn.pushes) {
+        embed.addFields(
+          { name: "Keno", value: buildDesc([
+            `*Games Played:* **${calcTotalGames(gameStats, "keno").toLocaleString("en-US")}**`,
+            `*Win Rate:* **${calcWinRate(gameStats, "keno")}%**`,
+            kn.pushes && `*Stake Returned:* **${kn.pushes.toLocaleString("en-US")}**`,
+            kn.totalBet && `*Total Bet:* **${kn.totalBet.toLocaleString("en-US")}**`,
+            kn.biggestWin && `*Biggest Win:* **${kn.biggestWin.toLocaleString("en-US")}**`,
+            kn.biggestLoss && `*Biggest Loss:* **${kn.biggestLoss.toLocaleString("en-US")}**`,
+            `*Net Profit:* **${formatProfit(kn.profit || 0)}**`
           ]), inline: true },
         );
       }

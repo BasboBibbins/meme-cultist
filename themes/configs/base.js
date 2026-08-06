@@ -151,6 +151,22 @@ module.exports = {
       resultBorder:     "#ffd700",
     },
 
+    // ── Keno ────────────────────────────────────────────────────
+    keno: {
+      gridBg:       "#0a3a1a",
+      cellBg:       "#1a6b35",
+      cellBorder:   "#8b6914",
+      cellText:     "#ffffff",
+      pickedBorder: "#ffd700",
+      pickedText:   "#ffd700",
+      drawnFill:    "#c8a830",
+      drawnText:    "#000000",
+      hitFill:      "#44ff44",
+      hitText:      "#000000",
+      hitGlyph:     "#ffd700",
+      headerAccent: "#ffd700",
+    },
+
     // ── Duel ────────────────────────────────────────────────────
     duel: {
       feltColor: "#0f4c25",

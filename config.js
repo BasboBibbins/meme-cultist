@@ -184,6 +184,12 @@ const config = {
   SLOTS_FULLSCREEN_CHANCE: 0.00004, // 1 in 25,000 paid spins, default 0.00004
   SLOTS_FULLSCREEN_MULTIPLIER: 500, // payout = bet * lines * multiplier
 
+  // Keno settings. Raising KENO_MAX_BET raises max exposure with it — the top
+  // multiplier is 10,000x. Spot ceiling lives in utils/keno.js with the paytable.
+  KENO_MIN_BET: 100,
+  KENO_MAX_BET: 100000,
+  KENO_DEFAULT_QUICK_PICK: 5,
+
   // Jackpot settings
   JACKPOT_SEED: 1000000,
   JACKPOT_CONTRIBUTION_RATE: 0.02,
