@@ -503,18 +503,18 @@ async function respondThemeAutocomplete(interaction, { onlyOwned = false } = {})
 
 // ── Game preview helpers (shared by /theme info and /shop preview) ─────
 
-const PREVIEW_GAMES = ["slots", "roulette", "poker", "blackjack", "craps", "duel"];
+const PREVIEW_GAMES = ["slots", "roulette", "poker", "blackjack", "craps", "keno", "duel"];
 const GAME_LABELS = {
   slots: "Slots", roulette: "Roulette", poker: "Poker",
-  blackjack: "Blackjack", craps: "Craps", duel: "Duel",
+  blackjack: "Blackjack", craps: "Craps", keno: "Keno", duel: "Duel",
 };
 const GAME_EMOJIS = {
   slots: "\u{1F3B0}", roulette: "\u{1F3B2}", poker: "\u{1F0CF}",
-  blackjack: "\u{1F0A1}", craps: "\u{1F3B2}", duel: "\u{2694}",
+  blackjack: "\u{1F0A1}", craps: "\u{1F3B2}", keno: "\u{1F522}", duel: "\u{2694}",
 };
 const GAME_FILES = {
   slots: "slots-result.png", roulette: "roulette.png", poker: "hand.png",
-  blackjack: "blackjack.png", craps: "craps.png", duel: "duel.png",
+  blackjack: "blackjack.png", craps: "craps.png", keno: "keno.png", duel: "duel.png",
 };
 
 const MAX_PREVIEW_CACHE = 50;
@@ -532,6 +532,7 @@ async function getPreviewAttachment(themeId, game, user = null, clientUser = nul
     const { pokerPreview } = require("./poker");
     const { blackjackPreview } = require("./blackjackCanvas");
     const { crapsPreview } = require("./crapsCanvas");
+    const { kenoPreview } = require("./kenoCanvas");
     const { duelPreview } = require("./duelCanvas");
     switch (game) {
       case "slots":     attachment = await slotsPreview(themeId); break;
@@ -539,6 +540,7 @@ async function getPreviewAttachment(themeId, game, user = null, clientUser = nul
       case "poker":     attachment = await pokerPreview(themeId, user); break;
       case "blackjack": attachment = await blackjackPreview(themeId, user, clientUser); break;
       case "craps":     attachment = await crapsPreview(themeId, user, clientUser); break;
+      case "keno":      attachment = await kenoPreview(themeId); break;
       case "duel":      attachment = await duelPreview(themeId, user, clientUser); break;
     }
   } catch (err) {
