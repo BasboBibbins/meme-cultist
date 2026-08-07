@@ -708,8 +708,6 @@ const themes = {
     halloweenColors,
     {
       slots: {
-        // No custom sprite sheet yet — falls back to classic default sprites
-        // until halloween.png lands in imgs/slots.
         reelBackground:      "rgba(16, 10, 22, 0.8)",
         frameColor:          "#ff7518",
         frameDarkColor:      "#cc5c12",
@@ -720,16 +718,15 @@ const themes = {
         bannerBackgroundEnd: "#0a0610",
         motionBlurOverlay:   "rgba(20, 12, 26, 0.5)",
         paylineColors:       ["#ff7518", "#7fff5c", "#a855f7", "#e8ded0", "#ff3b3b"],
+        symbols: sprites("halloween", ["Candy Corn", "Bat", "Skull", "Full Moon", "Jack-o-Lantern", "Potion", "Tombstone", "Black Cat", "Grim Reaper", "Haunted Mansion"]),
       },
       roulette: {
-        // Weathered coffin timber rather than the classic warm oak.
         woodInner:       "#3a2418",
         woodMid:         "#26160e",
         woodOuter:       "#150c07",
         goldRim:         "#ff7518",
         pocketRed:       "#a02010",
         pocketBlack:     "#0f0814",
-        // Moss, not the toxic win green — that stays reserved for wins.
         pocketGreen:     "#4a7c2a",
         winnerHighlight: "#7fff5c",
         textBlack:       "#0a0610",
