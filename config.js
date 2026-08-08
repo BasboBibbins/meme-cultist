@@ -47,7 +47,23 @@ const config = {
   CHATBOT_LOCAL: false,
   CONVO_MODEL: process.env.CONVO_MODEL || "deepseek-v4-flash",
   PAST_MESSAGES: 15,
-  MAX_API_MESSAGES: 25,
+  MAX_API_MESSAGES: 45,
+
+  // History window anchoring. A window that slides by one message every turn
+  // breaks the prompt cache immediately after the system message, so the oldest
+  // message is instead pinned and the window grows until it hits the ceiling —
+  // turning a miss every turn into a miss every (MAX - MIN) turns.
+  HISTORY_ANCHOR_ENABLED: true,
+  HISTORY_MIN_MESSAGES: 15,
+  HISTORY_MAX_MESSAGES: 30,
+  HISTORY_FETCH_LIMIT: 60,
+
+  // Custom emoji listed in the prompt roster.
+  EMOJI_BLOCK_CAP: 25,
+
+  // Replayed side-effect tool results are truncated: an uncapped image or KB
+  // payload can dominate the history window.
+  TOOL_RESULT_REPLAY_CHARS: 400,
   SUMMARY_INTERVAL: 25,
   FACTS_INTERVAL: 15,
   TOPIC_UPDATE_INTERVAL: 20,
@@ -56,8 +72,9 @@ const config = {
   FACT_TTL_DAYS: 30, // Days before facts expire (TTL)
   OOC_PREFIX: ">",
 
-  // AI model token limits
-  CHAT_MAX_PROMPT_TOKENS: 6000,
+  // AI model token limits. CHAT_MAX_PROMPT_TOKENS now covers the tool schema
+  // too (~3k tokens), which the estimator previously ignored entirely.
+  CHAT_MAX_PROMPT_TOKENS: 10000,
   SUMMARY_MAX_PROMPT_TOKENS: 4000,
   INCLUDE_CHANNEL_FACTS_IN_PROMPT: true,
   INCLUDE_USER_FACTS_IN_PROMPT: true,
@@ -86,7 +103,27 @@ const config = {
   KB_PREFLIGHT_ENABLED: true,
   KB_PREFLIGHT_MIN_SCORE: 0.25,
   KB_PREFLIGHT_MAX_ENTRIES: 2,
-  KB_PREFLIGHT_CONTENT_CHARS: 400,
+  // Display cap on the ambient block only — retrieval and lookup_kb return entries whole.
+  KB_PREFLIGHT_CONTENT_CHARS: 800,
+
+  // Threshold for the lexical fallback used by lookup_kb and /kb search when the
+  // embedding endpoint is unavailable. Looser than the pre-flight score above:
+  // that one gates unprompted injection, this one answers a lookup someone
+  // deliberately made, where a weak match beats an error.
+  KB_LEXICAL_FALLBACK_MIN_SCORE: 0.10,
+
+  // Per-tool call caps within a single turn, so one retrieval tool cannot spend
+  // the whole global depth budget re-phrasing the same question. The table itself
+  // lives in utils/openai-tools.js — it is keyed by tool name and only changes
+  // when the tools do. Disabling restores purely global depth limiting.
+  TOOL_BUDGETS_ENABLED: true,
+
+  // Retry budget for embedding jobs. The queue backs off by 2^attempts seconds,
+  // so the default of 3 covers only ~14s — shorter than any real provider
+  // outage, which is the one thing these jobs need to survive. 8 attempts spans
+  // roughly 8.5 minutes. Embedding is a background enhancement (FTS serves
+  // retrieval meanwhile), so a long tail costs nothing a user can feel.
+  EMBED_JOB_MAX_ATTEMPTS: 8,
 
   // Per-channel ring of recent image/link descriptions, kept in memory only so
   // image-only messages (which carry no text and are dropped from history)
@@ -148,6 +185,12 @@ const config = {
   SLOTS_FULLSCREEN_CHANCE: 0.00004, // 1 in 25,000 paid spins, default 0.00004
   SLOTS_FULLSCREEN_MULTIPLIER: 500, // payout = bet * lines * multiplier
 
+  // Keno settings. Raising KENO_MAX_BET raises max exposure with it — the top
+  // multiplier is 10,000x. Spot ceiling lives in utils/keno.js with the paytable.
+  KENO_MIN_BET: 100,
+  KENO_MAX_BET: 100000,
+  KENO_DEFAULT_QUICK_PICK: 5,
+
   // Jackpot settings
   JACKPOT_SEED: 1000000,
   JACKPOT_CONTRIBUTION_RATE: 0.02,
@@ -206,6 +249,25 @@ const config = {
   // LLM provider layer (utils/llm/)
   LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
   LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),
+
+  // Provider health ring. Disabling makes record() a no-op and
+  // isDegraded() always false, so every consumer falls back to prior behaviour.
+  PROVIDER_HEALTH_ENABLED: true,
+  PROVIDER_HEALTH_PROBE_ENABLED: true, // the periodic synthetic ping only
+  PROVIDER_HEALTH_RING_SIZE: 50,
+  // Below this many samples a provider is never reported degraded — two failures
+  // on a cold ring must not trip anything.
+  PROVIDER_HEALTH_MIN_SAMPLES: 10,
+  PROVIDER_DEGRADED_ERROR_RATE: 0.25,
+  PROVIDER_DEGRADED_P95_MS: 15000,
+  PROVIDER_PROBE_INTERVAL_MIN: 5,
+
+  // Embedding circuit breaker. Thresholds are inherited from the health
+  // ring above rather than duplicated. Disabling pins the breaker CLOSED, which
+  // is exactly the pre-breaker behaviour.
+  EMBED_BREAKER_ENABLED: true,
+  EMBED_BREAKER_COOLDOWN_MIN: 10, // OPEN → HALF_OPEN
+  EMBED_BREAKER_DRAIN_RATE_PER_SEC: 1, // replay rate for deferred jobs on close
   // Per-chunk inactivity watchdog for streaming completions. Lower than the
   // overall LLM timeout because once chunks are flowing, a 30s gap is already
   // pathological.

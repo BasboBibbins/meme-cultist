@@ -10,7 +10,7 @@
 // Incognito safety: the archive never indexed incognito users' messages (guard
 // lives in the archive write path), so compacted episodes are already clean.
 
-const { CONVO_MODEL, SUMMARY_INTERVAL, ARCHIVE_COMPACTION_THRESHOLD, CHATBOT_CHANNELS } = require("../config.js");
+const { CONVO_MODEL, SUMMARY_INTERVAL, ARCHIVE_COMPACTION_THRESHOLD, CHATBOT_CHANNELS, EMBED_JOB_MAX_ATTEMPTS } = require("../config.js");
 const logger = require("./logger");
 const llm = require("./llm");
 const messageArchive = require("./messageArchive");
@@ -101,6 +101,7 @@ async function compactChannel(channelId) {
     payload: { episodeIds: [episodeId] },
     run_at: Date.now(),
     priority: -1,
+    max_attempts: EMBED_JOB_MAX_ATTEMPTS,
   });
 
   // Delete compacted chunks

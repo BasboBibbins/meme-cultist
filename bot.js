@@ -9,11 +9,13 @@ const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
-const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX } = require("./config.js");
+const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
+const cacheDiag = require("./utils/cacheDiag");
+const { summarizeFailure } = require("./utils/toolErrors");
 const { describeImage } = require("./utils/llm");
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./utils/channels");
@@ -71,6 +73,17 @@ schedule.scheduleJob("0 */6 * * *", async () => { // every 6 h
   }
 });
 
+// Provider health probe. Self-gating: skips any provider that real traffic has
+// already exercised recently, and skips entirely under LOW_BUDGET_MODE.
+schedule.scheduleJob(`*/${PROVIDER_PROBE_INTERVAL_MIN} * * * *`, async () => {
+  try {
+    const { probeOnce } = require("./utils/llm/probe");
+    await probeOnce();
+  } catch (err) {
+    logger.error(`[health] Probe job failed: ${err.message}`);
+  }
+});
+
 const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM every day
   logger.debug(`Daily job started at ${moment().format("YYYY-MM-DD HH:mm:ss")}.`);
   await interest(client);
@@ -93,6 +106,7 @@ const dailyJob = schedule.scheduleJob("0 0 0 * * *", async () => { // 12:00 AM e
 client.slashcommands = new Collection();
 
 client.contextResetPoints = new Map();
+client.historyAnchors = new Map();
 client.rouletteGames = new Map();
 client.raceGames = new Map();
 client.crapsGames = new Map();
@@ -292,67 +306,19 @@ if (DELETE_SLASH) {
     const { REMINDER_DM_FALLBACK, REMINDER_MAX_GROUP_SIZE } = require("./config.js");
     const kbStore = require("./utils/kb");
     const llm = require("./utils/llm");
-    jobs.register("kb_embed", async (payload) => {
-      const { guildId, slug } = payload;
-      const entry = kbStore.getBySlug(guildId, slug);
-      if (!entry) {
-        logger.warn(`[KB Embed] Entry ${slug} not found in guild ${guildId}`);
-        return;
-      }
-      try {
-        const text = `${entry.title}\n${entry.content}`;
-        const { embedding } = await llm.embed({ text });
-        kbStore.setEmbedding(guildId, slug, embedding);
-        logger.log(`[KB Embed] Embedded "${slug}" (${embedding.length} dims)`);
-      } catch (err) {
-        logger.error(`[KB Embed] Failed for "${slug}": ${err.message}`);
-      }
-    });
-
     const messageArchive = require("./utils/messageArchive");
-    jobs.register("message_embed", async (payload) => {
-      const { channelId, chunkIds } = payload;
-      try {
-        const all = messageArchive.getUnembeddedForChannel(channelId, 100);
-        const unembedded = chunkIds && chunkIds.length > 0
-          ? all.filter(r => chunkIds.includes(r.id))
-          : all;
-        if (unembedded.length === 0) return;
-
-        const llm = require("./utils/llm");
-        for (const chunk of unembedded) {
-          try {
-            const { embedding } = await llm.embed({ text: chunk.content });
-            messageArchive.setEmbedding(chunk.id, embedding);
-          } catch (err) {
-            logger.error(`[MessageEmbed] Failed for chunk ${chunk.id}: ${err.message}`);
-          }
-        }
-        logger.log(`[MessageEmbed] Embedded ${unembedded.length} chunks for ${channelId}`);
-      } catch (err) {
-        logger.error(`[MessageEmbed] Batch failed for ${channelId}: ${err.message}`);
-      }
-    });
-
     const episodeStore = require("./utils/episodes");
-    jobs.register("episode_embed", async (payload) => {
-      const { episodeIds } = payload;
-      if (!episodeIds || episodeIds.length === 0) return;
-      const llm = require("./utils/llm");
-      const unembedded = episodeStore.getByIds(episodeIds);
-      if (unembedded.length === 0) return;
-      let embedded = 0;
-      for (const ep of unembedded) {
-        try {
-          const { embedding } = await llm.embed({ text: ep.summary });
-          episodeStore.setEmbedding(ep.id, embedding);
-          embedded += 1;
-        } catch (err) {
-          logger.error(`[EpisodeEmbed] Failed for episode ${ep.id}: ${err.message}`);
-        }
-      }
-      if (embedded > 0) logger.log(`[EpisodeEmbed] Embedded ${embedded} episodes`);
-    });
+    // Handlers live in utils/jobs/embedHandlers.js so their failure behaviour is
+    // testable — they were inline here when they silently swallowed errors, which
+    // is largely why that went unnoticed.
+    const { registerEmbedHandlers } = require("./utils/jobs/embedHandlers");
+    registerEmbedHandlers(jobs, { kbStore, llm, messageArchive, episodeStore });
+
+    // When the embed breaker closes, drain whatever piled up while it was open.
+    // Wired here rather than inside the breaker so that module stays unaware of
+    // the job queue.
+    const { embedBreaker } = require("./utils/llm/breaker");
+    embedBreaker.setOnClose(() => jobs.releaseDeferred(["kb_embed", "message_embed", "episode_embed"]));
 
     jobs.register("backfill_messages", async (payload) => {
       const { channelIds } = payload;
@@ -393,6 +359,7 @@ if (DELETE_SLASH) {
               kind: "message_embed",
               payload: { channelId, chunkIds: [] },
               run_at: Date.now(),
+              max_attempts: EMBED_JOB_MAX_ATTEMPTS,
             });
             logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed job.`);
           } else {
@@ -654,6 +621,8 @@ if (DELETE_SLASH) {
   client.on(Events.ThreadDelete, async (thread) => {
     logger.info(`Thread "${thread.name}" [${thread.id}] deleted in ${thread.guild.name}.`);
     client.contextResetPoints.delete(thread.id);
+    client.historyAnchors.delete(thread.id);
+    cacheDiag.forgetChannel(thread.id);
     if (isChatbotChannel(thread.parentId)) {
       await deleteThreadContext(thread);
     }
@@ -717,47 +686,65 @@ if (DELETE_SLASH) {
       }
     }
 
-    let extraContext = null;
-    const imageAttachment = message.attachments.find(a => a.contentType?.startsWith("image/"));
-    if (imageAttachment) {
-      message.channel.sendTyping().catch(() => {});
-      const displayName = message.member?.displayName || message.author.username;
-      const result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
-      if (result?.description) {
-        extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
-        recordPerception(client, message.channel.id, {
-          messageId: message.id,
-          authorId: message.author.id,
-          authorName: displayName,
-          kind: "image",
-          text: result.description,
-          at: message.createdTimestamp,
-        });
-      } else if (result?.error) {
-        extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user your vision failed and briefly mention why. Do NOT pretend to see the image.`;
-      }
-    } else {
-      const url = extractFirstUrl(message.content);
-      if (url) {
+    // Perception must never abort the turn: a failure here still has to reach
+    // handleBotMessage as [VISION/LINK UNAVAILABLE] so the bot explains itself
+    // instead of going silent. The finally also has to cover this block, or a
+    // throw would leak the user's chat-turn slot and lock them out.
+    try {
+      let extraContext = null;
+      const imageAttachment = message.attachments.find(a => a.contentType?.startsWith("image/"));
+      if (imageAttachment) {
         message.channel.sendTyping().catch(() => {});
-        const page = await fetchPageText(url);
-        if (page?.text) {
-          extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+        const displayName = message.member?.displayName || message.author.username;
+        let result;
+        try {
+          result = await describeImage({ imageUrl: imageAttachment.url, userHint: message.content || null });
+        } catch (err) {
+          const { code, reason } = summarizeFailure(err);
+          logger.error(`[Perception] describeImage threw (${code}): ${err.message}`);
+          result = { error: `vision is unavailable right now — ${reason}` };
+        }
+        if (result?.description) {
+          extraContext = `[Image you are currently looking at, shared by ${displayName}]\n${result.description}`;
           recordPerception(client, message.channel.id, {
             messageId: message.id,
             authorId: message.author.id,
-            authorName: message.member?.displayName || message.author.username,
-            kind: "link",
-            text: `${page.title ? `${page.title} — ` : ""}${page.text}`,
+            authorName: displayName,
+            kind: "image",
+            text: result.description,
             at: message.createdTimestamp,
           });
-        } else if (page?.error) {
-          extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly mention why. Do NOT pretend to have read it.`;
+        } else if (result?.error) {
+          extraContext = `[VISION UNAVAILABLE — ${displayName} shared an image but you cannot see it]\nReason: ${result.error}\nTell the user you couldn't see the image and briefly say why, in your own words. Do NOT pretend to see it, and do NOT quote error text, status codes, or service names.`;
+        }
+      } else {
+        const url = extractFirstUrl(message.content);
+        if (url) {
+          message.channel.sendTyping().catch(() => {});
+          let page;
+          try {
+            page = await fetchPageText(url);
+          } catch (err) {
+            const { code, reason } = summarizeFailure(err);
+            logger.error(`[Perception] fetchPageText threw (${code}): ${err.message}`);
+            page = { url, error: `the page could not be loaded — ${reason}` };
+          }
+          if (page?.text) {
+            extraContext = `[Webpage you are currently reading: ${page.url}]\n${page.title ? `Title: ${page.title}\n` : ""}${page.text}`;
+            recordPerception(client, message.channel.id, {
+              messageId: message.id,
+              authorId: message.author.id,
+              authorName: message.member?.displayName || message.author.username,
+              kind: "link",
+              text: `${page.title ? `${page.title} — ` : ""}${page.text}`,
+              at: message.createdTimestamp,
+            });
+          } else if (page?.error) {
+            extraContext = `[LINK UNAVAILABLE — ${page.url} could not be loaded]\nReason: ${page.error}\nTell the user you couldn't open the link and briefly say why, in your own words. Do NOT pretend to have read it, and do NOT quote error text, status codes, or service names.`;
+          }
         }
       }
-    }
 
-    try {
       if (isChatbotChannelResult && !APRIL_FOOLS_MODE) {
         await handleBotMessage(client, message, null, null, false, extraContext);
       } else if (isMentioned) {

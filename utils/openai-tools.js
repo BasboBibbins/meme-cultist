@@ -6,11 +6,13 @@ const { generateImage, embed } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
 const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
 const kbStore = require("./kb");
+const kbPreflight = require("./kb/preflight");
 const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE, KB_LEXICAL_FALLBACK_MIN_SCORE } = require("../config.js");
+const config = require("../config.js");
 const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
 const { parseWhen } = require("./reminders/parse");
@@ -18,9 +20,39 @@ const { validateToolArgs } = require("./schemas");
 const gameResults = require("./gameResults");
 const episodes = require("./episodes");
 const kbProposals = require("./kbProposals");
+const { CODES: TOOL_ERROR_CODES, normalizeToolError, decorateToolError } = require("./toolErrors");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry", "set_directive", "remove_directive"]);
+
+// Per-turn call caps, so one tool cannot eat the whole global depth budget.
+//
+// The three existing guards (tool description, in-turn dedup cache, final-slot
+// tool_choice=none) all miss the same case: four *genuinely different* queries to
+// one retrieval tool. The dedup cache keys on normalised args, so "jackpot
+// history" / "who won last week" / "biggest payout" / "recent wins" are four
+// distinct keys, four real calls, and the turn is over.
+//
+// Only retrieval tools are capped — they are the ones the model re-phrases and
+// retries. Cheap deterministic lookups (get_balance, get_jackpot, get_shop,
+// get_command_help) are exactly what it *should* feel free to call, and capping
+// them would be a regression. Side-effect tools have their own rate limits.
+const TOOL_BUDGETS = {
+  search_history: 2,
+  lookup_kb: 2,
+  recall_episode: 2,
+  web_search: 2,
+};
+
+// Read off the config object rather than a destructured constant so the switch
+// takes effect without a process restart.
+function budgetFor(fnName) {
+  if (config.TOOL_BUDGETS_ENABLED === false) return null;
+  // Global depth is already 2 in low-budget mode, so per-tool caps are
+  // unreachable — skip the bookkeeping rather than leave a dead branch.
+  if (config.LOW_BUDGET_MODE) return null;
+  return TOOL_BUDGETS[fnName] ?? null;
+}
 
 // SQLite FTS5 bm25 `rank` is negative (a stronger match is MORE negative). When
 // the best keyword hit sits above this floor (closer to 0 == weak) we re-rank the
@@ -86,7 +118,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_user_info",
-      description: "Get a Discord user's profile: display name, avatar URL, roles, and join date.",
+      description: "Get a Discord user's profile: display name, avatar URL, roles, and join date. Stored memory (user_facts, user_summary) is returned only when the user asked about is the person speaking; for anyone else those fields are omitted and memory_visibility is \"self_only\". When they are omitted, say you do not have that stored — do not infer or reconstruct what you know about that person from other context.",
       parameters: {
         type: "object",
         properties: {
@@ -562,7 +594,7 @@ async function handleGetUserInfo(args, message) {
 
   const userData = await usersDb.get(member.id);
 
-  return {
+  const info = {
     user_id: member.id,
     username: member.user.username,
     display_name: member.displayName,
@@ -576,10 +608,27 @@ async function handleGetUserInfo(args, message) {
     account_created: member.user.createdAt.toISOString(),
     balance: userData?.balance ?? 0,
     bank: userData?.bank ?? 0,
-    user_facts: userData?.chatbot?.facts || [],
-    user_summary: userData?.chatbot?.summaries ? userData.chatbot.summaries.slice(-1)[0] : null,
     chatbot_msg_count: userData?.chatbot?.messageCount || 0,
   };
+
+  // Stored memory is disclosed only to its subject. The keys are omitted rather
+  // than emptied because `user_facts: []` reads to the model as "this person has
+  // no stored facts" — a claim it will repeat. Absent keys assert nothing, and
+  // memory_visibility tells it why, so it says "I don't have that" instead of
+  // reconstructing an answer from channel context.
+  //
+  // Deliberately narrower than the multi-user fact block in the system prompt:
+  // that exists so the bot keeps present participants straight (identity
+  // anchoring), while this is a user-initiated query *about* someone else. Only
+  // the second is a disclosure. Do not "make them consistent".
+  if (member.id === message.author.id) {
+    info.user_facts = userData?.chatbot?.facts || [];
+    info.user_summary = userData?.chatbot?.summaries ? userData.chatbot.summaries.slice(-1)[0] : null;
+  } else {
+    info.memory_visibility = "self_only";
+  }
+
+  return info;
 }
 
 async function handleGetBotInfo(args, message, client) {
@@ -608,12 +657,20 @@ async function handleGetBotInfo(args, message, client) {
 async function handleGenerateImage(args, message, client, toolCtx) {
   if (!isChatbotChannel(message.channelId, message.channel?.parentId)) {
     const mentions = formatChatbotChannelMentions(client);
-    return { error: `Image generation is only available in chatbot channels: ${mentions}.` };
+    return {
+      ...normalizeToolError("generate_image", null, { code: TOOL_ERROR_CODES.NOT_PERMITTED }),
+      error: `Image generation is only available in chatbot channels: ${mentions}.`,
+    };
   }
-  if (!args?.prompt) return { error: "Missing required 'prompt' argument." };
+  if (!args?.prompt) {
+    return normalizeToolError("generate_image", "Missing required 'prompt' argument.", { code: TOOL_ERROR_CODES.INVALID_INPUT });
+  }
   const rateCheck = canGenerateImage(message.author.id);
   if (!rateCheck.allowed) {
-    return { error: rateCheck.reason };
+    return {
+      ...normalizeToolError("generate_image", null, { code: TOOL_ERROR_CODES.RATE_LIMITED }),
+      error: rateCheck.reason,
+    };
   }
   try {
     const { buffer, mimeType } = await generateImage({ prompt: args.prompt });
@@ -629,7 +686,7 @@ async function handleGenerateImage(args, message, client, toolCtx) {
     };
   } catch (err) {
     logger.error(`[generate_image] ${err.message}`);
-    return { error: `Image generation failed: ${err.message}` };
+    return normalizeToolError("generate_image", err);
   }
 }
 
@@ -712,6 +769,21 @@ async function handleSetReminder(args, message, client, toolCtx) {
   };
 }
 
+// Unlike search_history and recall_episode, the KB store has no lexical index of
+// its own — kbStore.search is cosine-similarity only. So an unavailable embedding
+// endpoint used to fail the whole lookup, even though the pre-flight scorer can
+// answer it locally off the same table. Fall back to that instead of erroring.
+function lexicalKbFallback(guildId, query, limit) {
+  const matches = kbPreflight.findRelevant(guildId, query, limit, KB_LEXICAL_FALLBACK_MIN_SCORE);
+  return matches.map((r, i) => ({
+    result_index: i + 1,
+    slug: r.slug,
+    title: r.title,
+    content: r.content,
+  }));
+}
+
+// Content is returned whole: /kb add bounds entries at 4000 chars, and replayed tool results are already capped, so the full payload only ever costs the turn that asked for it.
 async function handleLookupKb(args, message, client) {
   if (!args?.query) return { error: "Missing required 'query' argument." };
   const guild = message.guild;
@@ -728,14 +800,21 @@ async function handleLookupKb(args, message, client) {
         result_index: i + 1,
         slug: r.slug,
         title: r.title,
-        content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
+        content: r.content,
       })),
     };
-  } catch (err) {
-    logger.error(`[lookup_kb] ${err.message}`);
-    return { error: `Knowledge base lookup failed: ${err.message}` };
+  } catch (embedErr) {
+    logger.warn(`[lookup_kb] Semantic lookup failed, falling back to lexical: ${embedErr.message}`);
+    const results = lexicalKbFallback(guild.id, args.query, 3);
+    if (results.length === 0) {
+      return { results: [], message: "No matching knowledge base entries found." };
+    }
+    // The model is told the ranking is coarser so it weighs the hits accordingly;
+    // it is not told why, because provider state is not the user's business.
+    return { results, note: "Matched by keyword; ranking is approximate." };
   }
 }
+
 
 function buildFTSQuery(rawQuery) {
   const stopwords = new Set([
@@ -827,7 +906,7 @@ async function handleSearchHistory(args, message, client) {
     return out;
   } catch (err) {
     logger.error(`[search_history] ${err.message}`);
-    return { error: `Message history search failed: ${err.message}` };
+    return normalizeToolError("search_history", err);
   }
 }
 
@@ -906,7 +985,7 @@ async function handleRecallEpisode(args, message) {
     };
   } catch (err) {
     logger.error(`[recall_episode] ${err.message}`);
-    return { error: `Episode recall failed: ${err.message}` };
+    return normalizeToolError("recall_episode", err);
   }
 }
 
@@ -1003,7 +1082,7 @@ async function handleGetCommandHelp(args, message, client) {
     };
   } catch (err) {
     logger.error(`[get_command_help] ${err.message}`);
-    return { error: `Command help lookup failed: ${err.message}` };
+    return normalizeToolError("get_command_help", err);
   }
 }
 
@@ -1028,7 +1107,7 @@ async function handleGetJackpot(args, message, client) {
     return out;
   } catch (err) {
     logger.error(`[get_jackpot] ${err.message}`);
-    return { error: `Jackpot lookup failed: ${err.message}` };
+    return normalizeToolError("get_jackpot", err);
   }
 }
 
@@ -1058,7 +1137,7 @@ async function handleGetShop(args, message, client) {
     };
   } catch (err) {
     logger.error(`[get_shop] ${err.message}`);
-    return { error: `Shop lookup failed: ${err.message}` };
+    return normalizeToolError("get_shop", err);
   }
 }
 
@@ -1078,7 +1157,10 @@ async function handleWebSearch(args, message) {
       },
       signal: controller.signal,
     });
-    if (!res.ok) return { error: `Brave Search API returned HTTP ${res.status}.` };
+    if (!res.ok) {
+      logger.error(`[web_search] Brave Search API returned HTTP ${res.status}.`);
+      return normalizeToolError("web_search", { status: res.status });
+    }
     const data = await res.json();
     const results = (data.web?.results || []).map(r => ({
       title: r.title,
@@ -1088,9 +1170,10 @@ async function handleWebSearch(args, message) {
     if (results.length === 0) return { results: [], message: "No web results found." };
     return { results, query: args.query };
   } catch (err) {
-    const reason = err.name === "AbortError" ? "Search timed out after 10s." : err.message;
-    logger.error(`[web_search] ${reason}`);
-    return { error: `Web search failed: ${reason}` };
+    logger.error(`[web_search] ${err.name === "AbortError" ? "Search timed out after 10s." : err.message}`);
+    return normalizeToolError("web_search", err, {
+      code: err.name === "AbortError" ? TOOL_ERROR_CODES.TIMEOUT : undefined,
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -1098,7 +1181,10 @@ async function handleWebSearch(args, message) {
 
 async function handleFetchPage(args) {
   const result = await fetchPageText(args.url, 4000);
-  if (result.error) return { error: result.error };
+  if (result.error) {
+    logger.error(`[fetch_page] ${result.error}`);
+    return normalizeToolError("fetch_page", result.error);
+  }
   return { title: result.title, text: result.text, url: result.url };
 }
 
@@ -1198,6 +1284,22 @@ function formatGameResultForLlm(row) {
     };
   }
 
+  if (row.game === "keno") {
+    return {
+      ...base,
+      spots: r.spots,
+      drawn: r.drawn,
+      matched: r.matched,
+      matches: r.matches,
+      bet: r.bet,
+      multiplier: r.multiplier,
+      payout: r.payout,
+      net: r.net,
+      outcome: r.outcome,
+      quick_pick: r.quick_pick,
+    };
+  }
+
   if (row.game === "rob") {
     return {
       ...base,
@@ -1243,7 +1345,7 @@ async function handleGetGameResult(args, message) {
     return formatGameResultForLlm(row);
   } catch (err) {
     logger.error(`[get_game_result] ${err.message}`);
-    return { error: `Game result lookup failed: ${err.message}` };
+    return normalizeToolError("get_game_result", err);
   }
 }
 
@@ -1265,7 +1367,7 @@ async function handleGetRecentGameResults(args, message) {
     return { results: rows.map(formatGameResultForLlm) };
   } catch (err) {
     logger.error(`[get_recent_game_results] ${err.message}`);
-    return { error: `Game results lookup failed: ${err.message}` };
+    return normalizeToolError("get_recent_game_results", err);
   }
 }
 
@@ -1306,7 +1408,7 @@ async function handleProposeKbEntry(args, message, client) {
     };
   } catch (err) {
     logger.error(`[propose_kb_entry] ${err.message}`);
-    return { error: `Could not submit the proposal: ${err.message}` };
+    return normalizeToolError("propose_kb_entry", err);
   }
 }
 
@@ -1355,7 +1457,7 @@ async function handleSetDirective(args, message, client, toolCtx) {
     });
   } catch (err) {
     logger.error(`[set_directive] ${err.message}`);
-    return { error: `Could not store the instruction: ${err.message}` };
+    return normalizeToolError("set_directive", err);
   }
 }
 
@@ -1381,7 +1483,7 @@ async function handleRemoveDirective(args, message, client, toolCtx) {
     });
   } catch (err) {
     logger.error(`[remove_directive] ${err.message}`);
-    return { error: `Could not remove the instruction: ${err.message}` };
+    return normalizeToolError("remove_directive", err);
   }
 }
 
@@ -1432,9 +1534,23 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
   const argCheck = validateToolArgs(fnName, fnArgs);
   if (!argCheck.valid) {
     logger.warn(`[ToolCall] ${fnName} invalid_arguments: ${argCheck.errors}`);
-    return { error: "invalid_arguments", details: argCheck.errors };
+    // Kept as a bare sentinel: this means the MODEL passed bad arguments, so
+    // the right response is for it to retry with correct ones, not to explain a
+    // failure to the user.
+    return {
+      error: "invalid_arguments",
+      error_code: TOOL_ERROR_CODES.INVALID_INPUT,
+      tool: fnName,
+      retryable: true,
+      guidance: "You passed invalid arguments. Correct them and call the tool again — do not tell the user about this.",
+      details: argCheck.errors,
+    };
   }
 
+  // NOTE: the dedup cache and the per-tool budget below are deliberately ordered.
+  // A cache hit must be served *before* the budget check and must not increment
+  // the counter — it consumes no depth today, and charging it would set the two
+  // guards fighting each other.
   const cacheable = toolCtx?.queryCache && !SIDE_EFFECT_TOOLS.has(fnName);
   const cacheKey = cacheable ? `${fnName}:${normalizeArgs(fnArgs)}` : null;
   if (cacheable && toolCtx.queryCache.has(cacheKey)) {
@@ -1446,6 +1562,28 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     return cloned;
   }
 
+  // Counted here rather than beside the loop's `toolCallDepth++` because a single
+  // iteration can carry several tool calls — depth counts iterations, this counts
+  // calls. State lives on the per-turn toolCtx, so nothing persists between turns.
+  const budget = budgetFor(fnName);
+  if (budget !== null && toolCtx) {
+    if (!toolCtx.toolCounts) toolCtx.toolCounts = new Map();
+    const used = toolCtx.toolCounts.get(fnName) || 0;
+    if (used >= budget) {
+      logger.log(`[ToolCall] ${fnName} budget exhausted (${used}/${budget} this turn).`);
+      return {
+        error: "You have already used this tool as many times as allowed this turn.",
+        error_code: TOOL_ERROR_CODES.TOOL_BUDGET_EXHAUSTED,
+        tool: fnName,
+        retryable: false,
+        // Wording is the whole mitigation for the model treating this as a hard
+        // stop instead of a nudge to switch tools or answer from what it has.
+        guidance: "Answer from the results you already have, or use a different tool. Do not call this tool again this turn. Do not mention this limit to the user.",
+      };
+    }
+    toolCtx.toolCounts.set(fnName, used + 1);
+  }
+
   let result;
   try {
     const handler = TOOL_HANDLERS[fnName];
@@ -1454,9 +1592,12 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
     } else {
       result = await handler(fnArgs, message, client, toolCtx);
     }
+    result = decorateToolError(fnName, result);
   } catch (err) {
-    logger.error(`[ToolCall] Error in ${fnName}: ${err.message}`);
-    result = { error: err.message };
+    // Raw exception text is useless to the model and unsafe to show a user, so
+    // only the classified form crosses this boundary. The detail stays in logs.
+    logger.error(`[ToolCall] Error in ${fnName}: ${err.stack || err.message}`);
+    result = normalizeToolError(fnName, err);
   }
 
   if (cacheable) toolCtx.queryCache.set(cacheKey, result);
@@ -1465,4 +1606,4 @@ async function executeToolCall(toolCall, message, client, toolCtx = null) {
   return result;
 }
 
-module.exports = { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS };
+module.exports = { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS, TOOL_BUDGETS };

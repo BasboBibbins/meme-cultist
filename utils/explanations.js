@@ -1,4 +1,5 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET } = require("../config.js");
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK } = require("../config.js");
+const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
 
@@ -391,6 +392,38 @@ module.exports = {
             Pass / Don't Pass placements are rejected once a point is set — wait for the come-out roll.
             The shooter rotates on a seven-out (in join order), or voluntarily via the Pass Dice button.
             Craps contributes to the progressive jackpot at the same rate as other games.`
+  },
+  keno: {
+    name: "Keno",
+    description: `
+            Keno is a lottery-style draw. You pick between 1 and ${KENO_MAX_SPOTS} numbers ("spots") from a board of 1–${KENO_TOTAL_NUMBERS}, then the machine draws ${KENO_DRAW_COUNT} numbers at random. You are paid on how many of your picks appear in the draw.
+
+            **Picking numbers:**
+            • \`/keno play bet:100 numbers:3, 17, 29\` — play those exact numbers.
+            • \`/keno play bet:100 spots:8\` — let the bot quick-pick 8 numbers for you.
+            • \`/keno play bet:100\` — quick-picks ${KENO_DEFAULT_QUICK_PICK} numbers.
+
+            **Getting paid:**
+            Each payout is a multiplier that **replaces your stake**, so 1x is your money back and 0x is a loss. How many matches you need depends on how many numbers you picked — a 3-spot ticket pays on 2 matches, while a 10-spot ticket needs 4 before anything happens, but pays far more at the top end.
+
+            More spots does not mean better odds; it trades a lower chance of any payout for a much larger ceiling. Every spot count returns roughly the same amount over time, so pick the shape of risk you prefer.
+
+            Use \`/keno paytable\` to see every payout, or \`/keno paytable spots:10\` for one row with the odds of each match count.
+            `,
+    rules: `
+            1. Pick 1–${KENO_MAX_SPOTS} numbers between 1 and ${KENO_TOTAL_NUMBERS}. Numbers may be separated by commas or spaces, and cannot repeat.
+            2. ${KENO_DRAW_COUNT} of the ${KENO_TOTAL_NUMBERS} numbers are drawn at random, without replacement.
+            3. Your payout is looked up by (numbers picked, numbers matched) in the paytable.
+            4. Payouts replace your stake rather than adding to it: at 1x you break even, above 1x you profit.
+            5. Bets range from ${KENO_MIN_BET.toLocaleString("en-US")} to ${KENO_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}, and accept the same expressions as other games (\`half\`, \`max / 2\`, and so on).
+            6. Every round is independent — past draws tell you nothing about the next one.`,
+    example: `
+            \`/keno play bet:500 numbers:4, 11, 23, 37, 58\` — Play five chosen numbers for 500 ${CURRENCY_NAME}.
+            \`/keno play bet:max spots:10\` — Quick-pick ten numbers for your whole balance.
+            \`/keno paytable spots:5\` — Show payouts and odds for a five-spot ticket.`,
+    note: `
+            Rounds where you get exactly your stake back are tracked separately from wins and losses in \`/stats\`.
+            Keno does not contribute to the progressive jackpot.`
   },
   reminder: {
     name: "Reminders",

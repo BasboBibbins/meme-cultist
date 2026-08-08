@@ -12,7 +12,8 @@ module.exports = {
       content: "🧹 Context reset. The bot will ignore messages from before this point.",
       fetchReply: true,
     });
-    await updateChannelContext(interaction.channel, { resetPoint: reply.id });
+    await updateChannelContext(interaction.channel, { resetPoint: reply.id, historyAnchor: null });
     interaction.client.contextResetPoints.set(channelId, reply.id);
+    interaction.client.historyAnchors.delete(channelId);
   }
 };

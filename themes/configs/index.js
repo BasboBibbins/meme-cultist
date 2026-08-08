@@ -19,19 +19,19 @@ const BACKGROUND_BASE = path.join(__dirname, "..", "..", "assets", "imgs", "them
 
 // ── Helpers for defining themes with less boilerplate ─────────────────────────────
 function colorway(id, name, description, price, weight, emoji, colors, overrides) {
-  return { id, name, description, tier: "colorway", price, weight, emoji, game: null, colors, overrides: overrides || {} };
+  return { id, name, description, tier: "colorway", price, weight, emoji, game: null, colors, overrides: withKeno(colors, overrides) };
 }
 
 function styled(id, name, description, price, weight, emoji, colors, overrides) {
-  return { id, name, description, tier: "styled", price, weight, emoji, game: null, colors, overrides: overrides || {} };
+  return { id, name, description, tier: "styled", price, weight, emoji, game: null, colors, overrides: withKeno(colors, overrides) };
 }
 
 function full(id, name, description, price, weight, emoji, colors, overrides, game) {
-  return { id, name, description, tier: "full", price, weight, emoji, game: game || null, colors, overrides };
+  return { id, name, description, tier: "full", price, weight, emoji, game: game || null, colors, overrides: withKeno(colors, overrides) };
 }
 
 function limited(id, name, description, price, emoji, availability, colors, overrides) {
-  return { id, name, description, tier: "limited", price, weight: null, emoji, game: null, colors, overrides: overrides || {}, availability };
+  return { id, name, description, tier: "limited", price, weight: null, emoji, game: null, colors, overrides: withKeno(colors, overrides), availability };
 }
 
 function sprites(themeId, labels) {
@@ -45,6 +45,33 @@ function sprites(themeId, labels) {
 
 function poker(colors, overrides) {
   return { feltColor: colors.feltColor, tableGreen: colors.tableGreen, gold: colors.gold, goldDark: colors.goldDark, ...overrides };
+}
+
+// Derived per theme by the factories above rather than hand-written 40-odd
+// times. A theme that declares its own `keno` overrides still wins.
+function keno(colors) {
+  return {
+    gridBg:       colors.feltDark || colors.feltColor,
+    cellBg:       colors.tableGreen,
+    cellBorder:   colors.goldBronze || colors.goldDark,
+    cellText:     colors.textWhite,
+    pickedBorder: colors.gold,
+    pickedText:   colors.gold,
+    drawnFill:    colors.goldDark,
+    drawnText:    colors.textBlack || "#000000",
+    hitFill:      colors.textWin,
+    hitText:      colors.textBlack || "#000000",
+    hitGlyph:     colors.gold,
+    headerAccent: colors.textPrimary || colors.gold,
+  };
+}
+
+function withKeno(colors, overrides) {
+  const declared = overrides?.keno;
+  return {
+    ...(overrides || {}),
+    keno: declared ? { ...keno(colors), ...declared } : keno(colors),
+  };
 }
 
 // ── Theme color palettes (pre-declared so poker() can reuse them) ─────────────────
@@ -77,6 +104,7 @@ const neonColors = {
   textWin:     "#88ffaa",
   textLoss:    "#ff6688",
   textPrimary: "#c0c0c0",
+  embedColor:  0x1a0a2e,
 };
 
 const feudalJapanColors = {
@@ -91,6 +119,7 @@ const feudalJapanColors = {
   textWin:     "#44ff44",
   textLoss:    "#ff4444",
   textPrimary: "#ffd700",
+  embedColor:  0x4a0000,
 };
 
 const cosmicColors = {
@@ -170,6 +199,83 @@ const precisionColors = {
   textLoss:    "#d6603c",
   textPrimary: "#a8cc3a",
   embedColor:  0x0c0e0c,
+};
+const mikuDayColors = {
+  background:  path.join(BACKGROUND_BASE, "mikuDay.png"),
+  feltColor:   "rgba(10, 30, 42, 0.82)",
+  feltDark:    "#071e2a",
+  tableGreen:  "#0d3040",
+  gold:        "#39c5bb",
+  goldDark:    "#2a9d94",
+  goldBronze:  "#1d6f6a",
+  textWhite:   "#e8f6f7",
+  textBlack:   "#04161e",
+  textWin:     "#62e8d8",
+  textLoss:    "#ff6b9d",
+  textPrimary: "#39c5bb",
+  embedColor:  0x39c5bb,
+};
+const halloweenColors = {
+  background:  path.join(BACKGROUND_BASE, "halloween.png"),
+  feltColor:   "rgba(20, 12, 26, 0.85)",
+  feltDark:    "#0f0814",
+  tableGreen:  "#1e1229",
+  gold:        "#ff7518",
+  goldDark:    "#cc5c12",
+  goldBronze:  "#8f400c",
+  textWhite:   "#e8ded0",
+  textBlack:   "#0a0610",
+  textWin:     "#7fff5c",
+  textLoss:    "#ff3b3b",
+  textPrimary: "#ff7518",
+  embedColor:  0x140c1a,
+};
+const termColors = {
+  background:  path.join(BACKGROUND_BASE, "term.png"),
+  backgroundOverlayAlpha: 0.75,
+  feltColor:   "rgba(0, 0, 0, 0.9)",
+  feltDark:    "#000000",
+  tableGreen:  "#001100",
+  gold:        "#33ff33",
+  goldDark:    "#22aa22",
+  goldBronze:  "#116611",
+  textWhite:   "#33ff33",
+  textBlack:   "#001100",
+  textWin:     "#55ff55",
+  textLoss:    "#ff3333",
+  textPrimary: "#33ff33",
+  embedColor:  0x001100,
+};
+const bloonsColors = {
+  background:  path.join(BACKGROUND_BASE, "bloons.png"),
+  backgroundOverlayAlpha: 0.3,
+  feltColor:   "rgba(196, 164, 112, 0.55)",
+  feltDark:    "#8a6538",
+  tableGreen:  "#4a9058",
+  gold:        "#ffe135",
+  goldDark:    "#daa520",
+  goldBronze:  "#a67c00",
+  textWhite:   "#fff8e8",
+  textBlack:   "#3a2410",
+  textWin:     "#2f8f3f",
+  textLoss:    "#e64535",
+  textPrimary: "#ffe135",
+  embedColor:  0xc4a470,
+};
+const bloodMoonColors = {
+  background:  path.join(BACKGROUND_BASE, "bloodMoon.png"),
+  feltColor:   "rgba(28, 8, 10, 0.82)",
+  feltDark:    "#140406",
+  tableGreen:  "#241014",
+  gold:        "#d4a017",
+  goldDark:    "#9c7410",
+  goldBronze:  "#6e5209",
+  textWhite:   "#e6d5c8",
+  textBlack:   "#0a0203",
+  textWin:     "#7fc47a",
+  textLoss:    "#ff5a4a",
+  textPrimary: "#d4a017",
+  embedColor:  0x1c080a,
 };
 const glassColors = {
   background:  path.join(BACKGROUND_BASE, "glass.png"),
@@ -357,7 +463,7 @@ const themes = {
 
   july4: limited("july4", "July 4th",
     "Stars, stripes, and fireworks. A patriotic celebration in red, white, and blue.",
-    250000, "🎆",
+    400000, "🎆",
     { start: { month: 6, day: 28 }, end: { month: 7, day: 7 } },
     {
       background:  path.join(BACKGROUND_BASE, "july4.png"),
@@ -445,7 +551,7 @@ const themes = {
 
   precision: limited("precision", "Precision",
     "A tactical theme inspired by the Precision Roleplay DarkRP server. Near-black field with a sharp yellow-green reticle accent and cool silver text.",
-    100000, "🎯",
+    400000, "🎯",
     { start: { month: 6, day: 23 }, end: { month: 6, day: 30 } },
     precisionColors,
     {
@@ -518,11 +624,162 @@ const themes = {
     },
   ),
 
+  mikuDay: limited("mikuDay", "Miku Day",
+    "Hatsune Miku's birthday. Signature teal against night-concert navy, with penlight pinks and a stage-lit glow.",
+    393939, "🎤",
+    [
+      { start: { month: 3, day: 9 },  end: { month: 3, day: 17 } },
+      { start: { month: 8, day: 31 }, end: { month: 9, day: 7 } },
+    ],
+    mikuDayColors,
+    {
+      slots: {
+        reelBackground:      "rgba(8, 26, 36, 0.8)",
+        frameColor:          "#39c5bb",
+        frameDarkColor:      "#2a9d94",
+        frameBronze:         "#1d6f6a",
+        dividerColor:        "#0d3040",
+        highlightWin:        "rgba(57, 197, 187, 0.5)",
+        bannerBackground:    "#0a1e2a",
+        bannerBackgroundEnd: "#04121a",
+        motionBlurOverlay:   "rgba(10, 30, 42, 0.5)",
+        paylineColors:       ["#39c5bb", "#ff6b9d", "#62e8d8", "#ffd966", "#a78bfa"],
+        symbols:     sprites("mikuDay", ["Negi", "Headphones", "Crystal", "Cake", "Wagasa", "Crown", "Vocaloid 01", "Miku", "Wild", "Bonus"]),
+      },
+      roulette: {
+        woodInner:       "#123c4e",
+        woodMid:         "#0d2b38",
+        woodOuter:       "#081c26",
+        goldRim:         "#39c5bb",
+        pocketRed:       "#ff6b9d",
+        pocketBlack:     "#071e2a",
+        pocketGreen:     "#2a9d94",
+        winnerHighlight: "#62e8d8",
+        textBlack:       "#04161e",
+        textWhite:       "#e8f6f7",
+        feltInner:       "#0f3a4c",
+        feltMid:         "#0d3040",
+        feltOuter:       "#0a2432",
+        spokeColor:      "#39c5bb",
+        hubLight:        "#8ef0e6",
+        hubMid:          "#39c5bb",
+        hubDark:         "#1d6f6a",
+        hubStroke:       "#e8f6f7",
+        tableGreen:      "#0d3040",
+        zeroGreen:       "#2a9d94",
+        numberRed:       "#ff6b9d",
+        numberBlack:     "#071e2a",
+        betArea:         "#10384a",
+        betBorder:       "#39c5bb",
+        resultOverlay:   "rgba(6, 22, 32, 0.85)",
+        resultBorder:    "#39c5bb",
+      },
+      craps: {
+        feltInner:        "#0f3a4c",
+        feltMid:          "#0d3040",
+        feltOuter:        "#0a2432",
+        layoutLine:       "#39c5bb",
+        layoutLabel:      "#e8f6f7",
+        passLineColor:    "#1d6f6a",
+        dontPassColor:    "#7a2b48",
+        fieldColor:       "#123c4e",
+        comeColor:        "#10384a",
+        placeColor:       "#0f3a4c",
+        hardWaysColor:    "#ff6b9d",
+        propsColor:       "#123c4e",
+        bigSixEightColor: "#0f3a4c",
+        puckOff:          "#071e2a",
+        puckOn:           "#39c5bb",
+        puckText:         "#04161e",
+        diceFace:         "#e8f6f7",
+        diceDots:         "#04161e",
+        winnerHighlight:  "#62e8d8",
+        resultOverlay:    "rgba(6, 22, 32, 0.85)",
+        resultBorder:     "#39c5bb",
+      },
+      poker: poker(mikuDayColors),
+    },
+  ),
+
+  halloween: limited("halloween", "Halloween",
+    "Pumpkin orange over a deep purple-black graveyard. Toxic green wins and a moonlit chill.",
+    400000, "🎃",
+    { start: { month: 10, day: 1 }, end: { month: 10, day: 31 } },
+    halloweenColors,
+    {
+      slots: {
+        reelBackground:      "rgba(16, 10, 22, 0.8)",
+        frameColor:          "#ff7518",
+        frameDarkColor:      "#cc5c12",
+        frameBronze:         "#8f400c",
+        dividerColor:        "#1e1229",
+        highlightWin:        "rgba(127, 255, 92, 0.45)",
+        bannerBackground:    "#140c1a",
+        bannerBackgroundEnd: "#0a0610",
+        motionBlurOverlay:   "rgba(20, 12, 26, 0.5)",
+        paylineColors:       ["#ff7518", "#7fff5c", "#a855f7", "#e8ded0", "#ff3b3b"],
+        symbols: sprites("halloween", ["Candy Corn", "Bat", "Skull", "Full Moon", "Jack-o-Lantern", "Potion", "Tombstone", "Black Cat", "Grim Reaper", "Haunted Mansion"]),
+      },
+      roulette: {
+        woodInner:       "#3a2418",
+        woodMid:         "#26160e",
+        woodOuter:       "#150c07",
+        goldRim:         "#ff7518",
+        pocketRed:       "#a02010",
+        pocketBlack:     "#0f0814",
+        pocketGreen:     "#4a7c2a",
+        winnerHighlight: "#7fff5c",
+        textBlack:       "#0a0610",
+        textWhite:       "#e8ded0",
+        feltInner:       "#241634",
+        feltMid:         "#1e1229",
+        feltOuter:       "#160d1e",
+        spokeColor:      "#ff7518",
+        hubLight:        "#ffb066",
+        hubMid:          "#ff7518",
+        hubDark:         "#8f400c",
+        hubStroke:       "#e8ded0",
+        tableGreen:      "#1e1229",
+        zeroGreen:       "#4a7c2a",
+        numberRed:       "#a02010",
+        numberBlack:     "#0f0814",
+        betArea:         "#28183a",
+        betBorder:       "#ff7518",
+        resultOverlay:   "rgba(12, 7, 18, 0.85)",
+        resultBorder:    "#ff7518",
+      },
+      craps: {
+        feltInner:        "#241634",
+        feltMid:          "#1e1229",
+        feltOuter:        "#160d1e",
+        layoutLine:       "#ff7518",
+        layoutLabel:      "#e8ded0",
+        passLineColor:    "#4a7c2a",
+        dontPassColor:    "#5a1a1a",
+        fieldColor:       "#3a2448",
+        comeColor:        "#28183a",
+        placeColor:       "#241634",
+        hardWaysColor:    "#a02010",
+        propsColor:       "#3a2418",
+        bigSixEightColor: "#241634",
+        puckOff:          "#0f0814",
+        puckOn:           "#ff7518",
+        puckText:         "#0a0610",
+        diceFace:         "#e8ded0",
+        diceDots:         "#0a0610",
+        winnerHighlight:  "#7fff5c",
+        resultOverlay:    "rgba(12, 7, 18, 0.85)",
+        resultBorder:     "#ff7518",
+      },
+      poker: poker(halloweenColors),
+    },
+  ),
+
   // ── Full themes (custom sprites + colors for all games) ─────────────────────────
 
   neon: full("neon", "Neon Arcade",
     "A vibrant neon theme with glowing symbols.",
-    150000, 10, "🪩", neonColors,
+    200000, 14, "🪩", neonColors,
     {
       slots: {
         reelBackground:      "rgba(18, 8, 40, 0.75)",
@@ -595,7 +852,7 @@ const themes = {
 
   feudalJapan: full("feudalJapan", "Feudal Japan",
     "Traditional Japanese theme with feudal symbols.",
-    250000, 10, "🎋", feudalJapanColors,
+    500000, 10, "🎋", feudalJapanColors,
     {
       slots: {
         reelBackground:      "rgba(26, 0, 0, 0.75)",
@@ -668,7 +925,7 @@ const themes = {
 
   cosmic: full("cosmic", "Cosmic",
     "A extraterrestrial theme with cosmic symbols and a starry background.",
-    500000, 5, "🌌", cosmicColors,
+    500000, 10, "🌌", cosmicColors,
     {
       slots: {
         reelBackground:      "rgba(8, 12, 24, 0.75)",
@@ -740,7 +997,7 @@ const themes = {
 
   dessert: full("dessert", "Sweet Tooth",
     "A candy land of chocolate, bubblegum, and sweets.",
-    500000, 5, "🍰", dessertColors,
+    500000, 10, "🍰", dessertColors,
     {
       slots: {
         reelBackground:      "rgba(42, 16, 8, 0.75)",
@@ -812,7 +1069,7 @@ const themes = {
 
   deepSea: full("deepSea", "Deep Sea",
     "Bioluminescent deep ocean with midnight blues, electric teal, and coral pink accents.",
-    500000, 5, "🪸", deepSeaColors,
+    500000, 10, "🪸", deepSeaColors,
     {
       slots: {
         reelBackground:      "rgba(6, 10, 32, 0.75)",
@@ -884,7 +1141,7 @@ const themes = {
 
   y2k: full("y2k", "Y2K",
     "Blobject-era glossy futurism. Translucent aqua plastic panels, chrome orange frames, and lime/red accents.",
-    350000, 5, "💾", y2kColors,
+    500000, 10, "💾", y2kColors,
     {
       slots: {
         reelBackground:      "rgba(220, 242, 255, 0.88)",
@@ -956,11 +1213,9 @@ const themes = {
 
   glass: full("glass", "Glass",
     "Liquid Glass design language. Frosted translucent panels, soft blue LED accents, and a bright azure glass background. Light, airy, and premium.",
-    350000, 5, "🪟", glassColors,
+    300000, 12, "🪟", glassColors,
     {
       slots: {
-        // No custom sprite sheet yet — slots falls back to classic default
-        // sprites under this palette until glass.png lands in imgs/slots.
         reelBackground:      "rgba(228, 240, 252, 0.85)",
         frameColor:          "#4f8fd6",
         frameDarkColor:      "#3a6ca8",
@@ -971,6 +1226,7 @@ const themes = {
         bannerBackgroundEnd: "#cfe0f2",
         motionBlurOverlay:   "rgba(228, 238, 250, 0.5)",
         paylineColors:       ["#4f8fd6", "#1f9e6a", "#d9534f", "#7fb3e8", "#2a5080"],
+        symbols: sprites("glass", ["Apple", "Orange", "Lemon", "Grapes", "Cherry", "Bell", "Bar", "Seven", "Wild", "Bonus"]),
       },
       roulette: {
         woodInner:       "#7fb0d8",
@@ -1027,11 +1283,155 @@ const themes = {
     },
   ),
 
+  term: full("term", "Term",
+    "Terminal aesthetic. Black field, green phosphor glow, CRT scanlines. Welcome to the Matrix.",
+    300000, 12, "🖥️", termColors,
+    {
+      slots: {
+        reelBackground:      "rgba(0, 0, 0, 0.9)",
+        frameColor:          "#33ff33",
+        frameDarkColor:      "#22aa22",
+        frameBronze:         "#116611",
+        dividerColor:        "#001100",
+        highlightWin:        "rgba(85, 255, 85, 0.4)",
+        bannerBackground:    "#001100",
+        bannerBackgroundEnd: "#000000",
+        motionBlurOverlay:   "rgba(0, 0, 0, 0.55)",
+        paylineColors:       ["#33ff33", "#55ff55", "#22aa22", "#ff3333", "#116611"],
+        symbols: sprites("term", ["4PPL3", "0R4NG3", "L3M0N", "GR4P3S", "CH3RRY", "B3LL", "B4R", "S3V3N", "W1LD", "B0NUS"]),
+      },
+      roulette: {
+        woodInner:       "#0a1a0a",
+        woodMid:         "#051005",
+        woodOuter:       "#000000",
+        goldRim:         "#33ff33",
+        pocketRed:       "#ff3333",
+        pocketBlack:     "#001100",
+        pocketGreen:     "#22aa22",
+        winnerHighlight: "#55ff55",
+        textBlack:       "#001100",
+        textWhite:       "#33ff33",
+        feltInner:       "#001a00",
+        feltMid:         "#001100",
+        feltOuter:       "#000800",
+        spokeColor:      "#33ff33",
+        hubLight:        "#88ff88",
+        hubMid:          "#33ff33",
+        hubDark:         "#116611",
+        hubStroke:       "#55ff55",
+        tableGreen:      "#001100",
+        zeroGreen:       "#22aa22",
+        numberRed:       "#ff3333",
+        numberBlack:     "#001100",
+        betArea:         "#001a00",
+        betBorder:       "#33ff33",
+        resultOverlay:   "rgba(0, 8, 0, 0.88)",
+        resultBorder:    "#33ff33",
+      },
+      craps: {
+        feltInner:        "#001a00",
+        feltMid:          "#001100",
+        feltOuter:        "#000800",
+        layoutLine:       "#33ff33",
+        layoutLabel:      "#33ff33",
+        passLineColor:    "#116611",
+        dontPassColor:    "#5a1010",
+        fieldColor:       "#0a1a0a",
+        comeColor:        "#001a00",
+        placeColor:       "#001100",
+        hardWaysColor:    "#ff3333",
+        propsColor:       "#0a1a0a",
+        bigSixEightColor: "#001100",
+        puckOff:          "#001100",
+        puckOn:           "#33ff33",
+        puckText:         "#001100",
+        diceFace:         "#33ff33",
+        diceDots:         "#001100",
+        winnerHighlight:  "#55ff55",
+        resultOverlay:    "rgba(0, 8, 0, 0.88)",
+        resultBorder:     "#33ff33",
+      },
+      poker: poker(termColors),
+    },
+  ),
+
+  bloons: full("bloons", "Bloons",
+    "Warm jungle wood and tan tower-defense energy. Sandy paths, banana yellow accents, and a playful aesthetic.",
+    500000, 10, "🎈", bloonsColors,
+    {
+      slots: {
+        reelBackground:      "rgba(210, 184, 140, 0.85)",
+        frameColor:          "#ffe135",
+        frameDarkColor:      "#daa520",
+        frameBronze:         "#a67c00",
+        dividerColor:        "#6b4d28",
+        highlightWin:        "rgba(255, 225, 53, 0.35)",
+        bannerBackground:    "#8a6538",
+        bannerBackgroundEnd: "#6b4d28",
+        motionBlurOverlay:   "rgba(196, 164, 112, 0.45)",
+        paylineColors:       ["#e64535", "#4a9058", "#4aa8d8", "#ffe135", "#ff8844"],
+        symbols: sprites("bloons", ["Red Bloon", "Blue Bloon", "Green Bloon", "Lead Bloon", "Zebra Bloon", "MOAB", "BFB", "ZOMG", "Wild", "Benjamin"]),
+      },
+      roulette: {
+        woodInner:       "#a67c48",
+        woodMid:         "#8a6538",
+        woodOuter:       "#6b4d28",
+        goldRim:         "#ffe135",
+        pocketRed:       "#e64535",
+        pocketBlack:     "#2e4a30",
+        pocketGreen:     "#4a9058",
+        winnerHighlight: "#ffe135",
+        textBlack:       "#3a2410",
+        textWhite:       "#fff8e8",
+        feltInner:       "#c4a470",
+        feltMid:         "#b0925e",
+        feltOuter:       "#8a6538",
+        spokeColor:      "#ffe135",
+        hubLight:        "#fff3a0",
+        hubMid:          "#ffe135",
+        hubDark:         "#daa520",
+        hubStroke:       "#fff8e8",
+        tableGreen:      "#4a9058",
+        zeroGreen:       "#4a9058",
+        numberRed:       "#e64535",
+        numberBlack:     "#2e4a30",
+        betArea:         "#c4a470",
+        betBorder:       "#ffe135",
+        resultOverlay:   "rgba(58, 36, 16, 0.82)",
+        resultBorder:    "#ffe135",
+      },
+      craps: {
+        feltInner:        "#c4a470",
+        feltMid:          "#b0925e",
+        feltOuter:        "#8a6538",
+        layoutLine:       "#ffe135",
+        layoutLabel:      "#fff8e8",
+        passLineColor:    "#4a9058",
+        dontPassColor:    "#c0392b",
+        fieldColor:       "#dcc396",
+        comeColor:        "#c4a470",
+        placeColor:       "#b0925e",
+        hardWaysColor:    "#e64535",
+        propsColor:       "#4aa8d8",
+        bigSixEightColor: "#b0925e",
+        puckOff:          "#6b4d28",
+        puckOn:           "#ffe135",
+        puckText:         "#3a2410",
+        diceFace:         "#fff8e8",
+        diceDots:         "#3a2410",
+        winnerHighlight:  "#5fd35f",
+        resultOverlay:    "rgba(58, 36, 16, 0.82)",
+        resultBorder:     "#ffe135",
+      },
+      poker: poker(bloonsColors),
+    },
+  ),
+
   // ── Styled themes (palette swap + background image, default sprites) ────────────
 
   sunset: styled("sunset", "Sunset",
     "Warm gradient background with orange, pink, and purple hues. A vibrant, eye-catching design.",
-    50000, 20, "🌅",
+    100000, 35, "🌅",
     {
       background:  path.join(BACKGROUND_BASE, "sunset.png"),
       feltColor:   "rgba(26, 10, 46, 0.8)",
@@ -1064,7 +1464,7 @@ const themes = {
 
   autumn: styled("autumn", "Autumn",
     "Warm harvest palette of burnt orange, chestnut brown, and amber. A cozy seasonal look.",
-    50000, 20, "🍂",
+    100000, 35, "🍂",
     {
       background:  path.join(BACKGROUND_BASE, "autumn.png"),
       feltColor:   "rgba(58, 30, 10, 0.72)",
@@ -1098,7 +1498,7 @@ const themes = {
 
   marble: styled("marble", "Marble",
     "Pure opulence. White marble with gold veining on a light, luxurious surface.",
-    50000, 20, "🗿",
+    100000, 35, "🗿",
     {
       background:  path.join(BACKGROUND_BASE, "marble.png"),
       feltColor:   "rgba(230, 230, 230, 0.6)",
@@ -1135,7 +1535,7 @@ const themes = {
 
   storm: styled("storm", "Storm",
     "Dark roiling stormclouds with silver lightning accents. Moody and dramatic.",
-    50000, 20, "⛈️",
+    80000, 35, "⛈️",
     {
       background:  path.join(BACKGROUND_BASE, "storm.png"),
       feltColor:   "rgba(48, 52, 56, 0.8)",
@@ -1169,7 +1569,7 @@ const themes = {
 
   sakura: styled("sakura", "Sakura",
     "Soft cherry blossom petals in warm light. Pale pink with rose gold accents.",
-    50000, 20, "🌸",
+    80000, 35, "🌸",
     {
       background:  path.join(BACKGROUND_BASE, "sakura.png"),
       feltColor:   "rgba(255, 220, 230, 0.5)",
@@ -1206,7 +1606,7 @@ const themes = {
 
   coral: styled("coral", "Coral",
     "Warm desert canyon at golden hour. Terracotta and amber on a sun-baked surface.",
-    50000, 20, "🏜️",
+    80000, 35, "🏜️",
     {
       background:  path.join(BACKGROUND_BASE, "coral.png"),
       feltColor:   "rgba(180, 90, 60, 0.7)",
@@ -1238,11 +1638,30 @@ const themes = {
     },
   ),
 
+  bloodMoon: styled("bloodMoon", "Blood Moon",
+    "A low red moon over a black horizon. Deep crimson with aged gold rims.",
+    50000, 35, "🌘", bloodMoonColors,
+    {
+      slots: {
+        reelBackground:      "rgba(28, 8, 10, 0.75)",
+        frameColor:          "#d4a017",
+        frameDarkColor:      "#9c7410",
+        frameBronze:         "#6e5209",
+        dividerColor:        "#241014",
+        highlightWin:        "rgba(212, 160, 23, 0.5)",
+        bannerBackground:    "#1c080a",
+        bannerBackgroundEnd: "#0e0405",
+        motionBlurOverlay:   "rgba(28, 8, 10, 0.5)",
+        paylineColors:       ["#d4a017", "#ff5a4a", "#7fc47a", "#e6d5c8", "#8b1a1a"],
+      },
+    },
+  ),
+
   // ── Colorway themes (palette only, all games) ───────────────────
 
   midnight: colorway("midnight", "Midnight",
     "Deep navy and silver. A sleek, cooler-toned alternative to classic.",
-    10000, 60, "🌙",
+    10000, 40, "🌙",
     {
       feltColor:   "#000033",
       feltDark:    "#00001a",
@@ -1260,7 +1679,7 @@ const themes = {
 
   cherryPop: colorway("cherryPop", "Cherry Pop",
     "Rich rose and soft pink frames. Fun and retro.",
-    10000, 60, "🍒",
+    10000, 40, "🍒",
     {
       feltColor:   "#8b2252",
       feltDark:    "#6b1a3e",
@@ -1278,7 +1697,7 @@ const themes = {
 
   emerald: colorway("emerald", "Emerald",
     "Richer, deeper greens than Classic. A premium classic tier.",
-    7500, 60, "💚",
+    7500, 40, "💚",
     {
       feltColor:   "#004d00",
       feltDark:    "#003300",
@@ -1296,7 +1715,7 @@ const themes = {
 
   ocean: colorway("ocean", "Ocean",
     "Deep teal felt with warm coral accents and seafoam highlights.",
-    10000, 60, "🌊",
+    10000, 40, "🌊",
     {
       feltColor:   "#0a4f5c",
       feltDark:    "#063840",
@@ -1314,7 +1733,7 @@ const themes = {
 
   ember: colorway("ember", "Ember",
     "Deep charcoal felt with orange and amber frame colors.",
-    10000, 60, "🔥",
+    10000, 40, "🔥",
     {
       feltColor:   "#333333",
       feltDark:    "#1a1a1a",
@@ -1332,7 +1751,7 @@ const themes = {
 
   frost: colorway("frost", "Frost",
     "Icy steel-blue felt with pale silver frames.",
-    10000, 60, "❄️",
+    10000, 40, "❄️",
     {
       feltColor:   "#3a5a70",
       feltDark:    "#2a4050",
@@ -1350,7 +1769,7 @@ const themes = {
 
   royalPurple: colorway("royalPurple", "Royal Purple",
     "Deep purple felt with gold frames. A premium combination.",
-    10000, 60, "👑",
+    10000, 40, "👑",
     {
       feltColor:   "#4b0082",
       feltDark:    "#2e0054",
@@ -1368,7 +1787,7 @@ const themes = {
 
   mocha: colorway("mocha", "Mocha",
     "Rich espresso felt with creamy latte frames. Warm and smooth.",
-    10000, 60, "☕",
+    10000, 40, "☕",
     {
       feltColor:   "#2c1a0e",
       feltDark:    "#1a0f08",

@@ -92,7 +92,7 @@ async function run() {
     }
   });
 
-  await testAsync("lookup_kb: content truncated to 500 chars", async () => {
+  await testAsync("lookup_kb: long content is returned whole", async () => {
     const originalEmbed = require("../../utils/llm/adapters/cloudflare").embedText;
     const originalSearch = require("../../utils/kb").search;
     try {
@@ -105,8 +105,7 @@ async function run() {
         { guild: { id: "g1" } },
         {}
       );
-      assert.ok(result.results[0].content.endsWith("..."));
-      assert.ok(result.results[0].content.length <= 503); // 500 + "..."
+      assert.strictEqual(result.results[0].content, "a".repeat(1000));
     } finally {
       require("../../utils/llm/adapters/cloudflare").embedText = originalEmbed;
       require("../../utils/kb").search = originalSearch;

@@ -5,6 +5,7 @@
 const { GoogleGenAI } = require("@google/genai");
 const logger = require("../../logger");
 const { isSafeUrl } = require("../../ssrf");
+const { summarizeFailure } = require("../../toolErrors");
 
 const VISION_MODEL = "gemini-2.5-flash";
 
@@ -29,7 +30,14 @@ async function describeImage({ imageUrl, userHint = null }) {
     logger.warn(`[Gemini] Blocked unsafe image URL: ${imageUrl} (${urlCheck.reason})`);
     return { error: `Image URL is not allowed: ${urlCheck.reason}` };
   }
-  const res = await fetch(imageUrl);
+  let res;
+  try {
+    res = await fetch(imageUrl);
+  } catch (err) {
+    const { code, retryable, reason } = summarizeFailure(err);
+    logger.error(`[Gemini] Could not download image (${code}): ${err.message}`);
+    return { error: `the image could not be downloaded — ${reason}`, error_code: code, retryable };
+  }
   if (res.url && res.url !== imageUrl) {
     const redirectCheck = isSafeUrl(res.url);
     if (!redirectCheck.safe) {
@@ -49,16 +57,25 @@ async function describeImage({ imageUrl, userHint = null }) {
     ? `A user has shared an image and asked: "${userHint}". Answer their question directly using the image as your source, and include any relevant context from the image that supports your answer.`
     : "Describe this image in 2-4 sentences. Note subjects, setting, mood, text, and anything unusual.";
 
-  const raw = await ai.models.generateContent({
-    model: VISION_MODEL,
-    contents: [{
-      role: "user",
-      parts: [
-        { text: promptText },
-        { inlineData: { mimeType, data: base64 } },
-      ],
-    }],
-  });
+  // Every other failure here returns { error }, and callers rely on that — a
+  // throw from the API would abort the whole message handler.
+  let raw;
+  try {
+    raw = await ai.models.generateContent({
+      model: VISION_MODEL,
+      contents: [{
+        role: "user",
+        parts: [
+          { text: promptText },
+          { inlineData: { mimeType, data: base64 } },
+        ],
+      }],
+    });
+  } catch (err) {
+    const { code, retryable, reason } = summarizeFailure(err);
+    logger.error(`[Gemini] describeImage failed (${code}): ${err.message}`);
+    return { error: `vision is unavailable right now — ${reason}`, error_code: code, retryable };
+  }
 
   const text =
         raw?.text ??

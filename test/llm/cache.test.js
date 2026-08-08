@@ -1,7 +1,7 @@
 // Cache optimization edge-case coverage for assembleSystemPrompt + buildFactsBlock behavior.
 
 const assert = require("assert");
-const { assembleSystemPrompt } = require("../../utils/openai-system-prompts");
+const { assembleSystemPrompt, assembleTurnContext } = require("../../utils/openai-system-prompts");
 
 let passed = 0;
 let failed = 0;
@@ -19,149 +19,134 @@ function test(name, fn) {
 
 function run() {
   // --- assembleSystemPrompt: canonical ordering ---
-  test("canonical order: all 9 sections present", () => {
-    const result = assembleSystemPrompt({
-      variantPrefix: "[VARIANT]",
-      topic: "[TOPIC]",
-      channelFactsBlock: "[CHANNEL_FACTS]",
-      channelSummaryBlock: "[CHANNEL_SUMMARY]",
-      userSummaryBlock: "[USER_SUMMARY]",
-      userFactsBlock: "[USER_FACTS]",
-      toolBlock: "[TOOLS]",
-      perceptionBlock: "[PERCEPTION]",
-      dynamicTail: "[TAIL]",
-    });
-    const parts = result.split("\n\n");
+  const ALL_SYSTEM_PARTS = {
+    variantPrefix: "[VARIANT]",
+    identityRulesBlock: "[IDENTITY]",
+    discordFormattingBlock: "[FORMATTING]",
+    turnContextLegendBlock: "[LEGEND]",
+    toolBlock: "[TOOLS]",
+    emojiBlock: "[EMOJI]",
+    directivesBlock: "[DIRECTIVES]",
+    topicBlock: "[TOPIC]",
+    channelSummaryBlock: "[CHANNEL_SUMMARY]",
+    participantsBlock: "[PARTICIPANTS]",
+  };
+
+  test("canonical order: all 10 system sections present", () => {
+    const parts = assembleSystemPrompt(ALL_SYSTEM_PARTS).split("\n\n");
     assert.deepStrictEqual(parts, [
       "[VARIANT]",
-      "[TOPIC]",
-      "[CHANNEL_FACTS]",
-      "[CHANNEL_SUMMARY]",
-      "[USER_SUMMARY]",
-      "[USER_FACTS]",
+      "[IDENTITY]",
+      "[FORMATTING]",
+      "[LEGEND]",
       "[TOOLS]",
-      "[PERCEPTION]",
-      "[TAIL]",
+      "[EMOJI]",
+      "[DIRECTIVES]",
+      "[TOPIC]",
+      "[CHANNEL_SUMMARY]",
+      "[PARTICIPANTS]",
     ]);
-  });
-
-  test("canonical order: dynamic tail is always last", () => {
-    const result = assembleSystemPrompt({
-      variantPrefix: "[VARIANT]",
-      dynamicTail: "Current time: 2026-05-14",
-    });
-    assert.ok(result.startsWith("[VARIANT]"), "Should start with variant");
-    assert.ok(result.endsWith("Current time: 2026-05-14"), "Should end with dynamic tail");
   });
 
   test("canonical order: omits falsy sections", () => {
     const result = assembleSystemPrompt({
       variantPrefix: "[VARIANT]",
-      topic: null,
-      channelFactsBlock: "",
+      topicBlock: null,
+      directivesBlock: "",
       channelSummaryBlock: "[SUMMARY]",
-      dynamicTail: "[TAIL]",
+      participantsBlock: "[PARTICIPANTS]",
     });
-    const parts = result.split("\n\n");
-    assert.deepStrictEqual(parts, ["[VARIANT]", "[SUMMARY]", "[TAIL]"]);
+    assert.deepStrictEqual(result.split("\n\n"), ["[VARIANT]", "[SUMMARY]", "[PARTICIPANTS]"]);
   });
 
   test("canonical order: static behavioral rules at position 0", () => {
     const result = assembleSystemPrompt({
       variantPrefix: "Static rules here",
-      dynamicTail: "Dynamic tail here",
+      participantsBlock: "Participants here",
     });
-    const lines = result.split("\n\n");
-    assert.strictEqual(lines[0], "Static rules here");
+    assert.strictEqual(result.split("\n\n")[0], "Static rules here");
   });
 
-  test("canonical order: topic before facts", () => {
-    const result = assembleSystemPrompt({
-      variantPrefix: "V",
-      topic: "TOPIC",
-      channelFactsBlock: "FACTS",
-    });
-    const idxTopic = result.indexOf("TOPIC");
-    const idxFacts = result.indexOf("FACTS");
-    assert.ok(idxTopic < idxFacts, "Topic should appear before channel facts");
+  test("canonical order: static blocks precede every mutable one", () => {
+    const result = assembleSystemPrompt(ALL_SYSTEM_PARTS);
+    const idx = marker => result.indexOf(marker);
+    assert.ok(idx("[IDENTITY]") < idx("[DIRECTIVES]"), "Identity before directives");
+    assert.ok(idx("[TOOLS]") < idx("[DIRECTIVES]"), "Tools before directives");
+    assert.ok(idx("[TOOLS]") < idx("[TOPIC]"), "Tools before topic");
+    assert.ok(idx("[DIRECTIVES]") < idx("[TOPIC]"), "Directives before topic");
+    assert.ok(idx("[TOPIC]") < idx("[CHANNEL_SUMMARY]"), "Topic before channel summary");
+    assert.ok(idx("[CHANNEL_SUMMARY]") < idx("[PARTICIPANTS]"), "Channel summary before participants");
   });
 
-  test("canonical order: channel summary before user summary", () => {
+  test("canonical order: turn-scoped blocks never enter the system prompt", () => {
     const result = assembleSystemPrompt({
-      channelSummaryBlock: "CHANNEL_SUMMARY",
-      userSummaryBlock: "USER_SUMMARY",
+      ...ALL_SYSTEM_PARTS,
+      channelFactsBlock: "[CHANNEL_FACTS]",
+      userFactsBlock: "[USER_FACTS]",
+      userSummaryBlock: "[USER_SUMMARY]",
+      kbContextBlock: "[KB]",
+      perceptionBlock: "[PERCEPTION]",
+      nowBlock: "[NOW]",
+      dynamicTail: "[TAIL]",
     });
-    const idxChannel = result.indexOf("CHANNEL_SUMMARY");
-    const idxUser = result.indexOf("USER_SUMMARY");
-    assert.ok(idxChannel < idxUser, "Channel summary should appear before user summary");
+    for (const marker of ["[CHANNEL_FACTS]", "[USER_FACTS]", "[USER_SUMMARY]", "[KB]", "[PERCEPTION]", "[NOW]", "[TAIL]"]) {
+      assert.ok(!result.includes(marker), `${marker} must not appear in the system prompt`);
+    }
   });
 
-  test("canonical order: user facts after user summary", () => {
-    const result = assembleSystemPrompt({
-      userSummaryBlock: "USER_SUMMARY",
-      userFactsBlock: "USER_FACTS",
-    });
-    const idxSummary = result.indexOf("USER_SUMMARY");
-    const idxFacts = result.indexOf("USER_FACTS");
-    assert.ok(idxSummary < idxFacts, "User summary should appear before user facts");
+  // --- assembleTurnContext ---
+  test("turn context: canonical order with the user line last", () => {
+    const parts = assembleTurnContext({
+      channelFactsBlock: "[CHANNEL_FACTS]",
+      userSummaryBlock: "[USER_SUMMARY]",
+      userFactsBlock: "[USER_FACTS]",
+      kbContextBlock: "[KB]",
+      perceptionBlock: "[PERCEPTION_CAPS]",
+      perceptionPayload: "[PERCEPTION]",
+      turnModeBlock: "[TURN_MODE]",
+      replyBlock: "[REPLY_TO]",
+      nowBlock: "[NOW]",
+      userLine: "[USER_LINE]",
+    }).split("\n\n");
+    assert.deepStrictEqual(parts, [
+      "[CHANNEL_FACTS]",
+      "[USER_SUMMARY]",
+      "[USER_FACTS]",
+      "[KB]",
+      "[PERCEPTION_CAPS]",
+      "[PERCEPTION]",
+      "[TURN_MODE]",
+      "[REPLY_TO]",
+      "[NOW]",
+      "[USER_LINE]",
+    ]);
   });
 
-  test("canonical order: tool block before dynamic tail", () => {
-    const result = assembleSystemPrompt({
-      toolBlock: "TOOLS",
-      dynamicTail: "TAIL",
-    });
-    const idxTools = result.indexOf("TOOLS");
-    const idxTail = result.indexOf("TAIL");
-    assert.ok(idxTools < idxTail, "Tools should appear before dynamic tail");
-  });
-
-  test("canonical order: perception block between tools and tail", () => {
-    const result = assembleSystemPrompt({
-      toolBlock: "TOOLS",
-      perceptionBlock: "PERCEPTION",
-      dynamicTail: "TAIL",
-    });
-    const idxTools = result.indexOf("TOOLS");
-    const idxPerception = result.indexOf("PERCEPTION");
-    const idxTail = result.indexOf("TAIL");
-    assert.ok(idxTools < idxPerception, "Tools before perception");
-    assert.ok(idxPerception < idxTail, "Perception before tail");
+  test("turn context: user line stays last when everything else is absent", () => {
+    assert.strictEqual(assembleTurnContext({ userLine: "[USER_LINE]" }), "[USER_LINE]");
   });
 
   // --- Section isolation for cache stability ---
-  test("isolation: adding a new fact does not shift earlier sections", () => {
-    const base = assembleSystemPrompt({
-      variantPrefix: "RULES",
-      topic: "TOPIC",
-      dynamicTail: "TAIL",
-    });
-    const withFact = assembleSystemPrompt({
-      variantPrefix: "RULES",
-      topic: "TOPIC",
-      channelFactsBlock: "NEW_FACT",
-      dynamicTail: "TAIL",
-    });
-    const basePrefix = base.slice(0, base.indexOf("TAIL"));
-    const withPrefix = withFact.slice(0, withFact.indexOf("TAIL"));
-    // The prefix up to (but not including) the dynamic tail should differ only after topic
-    assert.ok(withFact.includes("NEW_FACT"));
-    assert.ok(base.includes("RULES"));
-    assert.ok(withFact.includes("RULES"));
+  test("isolation: a changed topic preserves the prefix through the tool block", () => {
+    const a = assembleSystemPrompt({ ...ALL_SYSTEM_PARTS, topicBlock: "[TOPIC A]" });
+    const b = assembleSystemPrompt({ ...ALL_SYSTEM_PARTS, topicBlock: "[TOPIC B]" });
+    const shared = a.slice(0, a.indexOf("[TOPIC A]"));
+    assert.ok(b.startsWith(shared), "Prefix before the topic must be byte-identical");
+    assert.ok(shared.includes("[TOOLS]"), "Tool block must sit inside the shared prefix");
+    assert.ok(shared.includes("[DIRECTIVES]"), "Directives must sit inside the shared prefix");
   });
 
-  test("isolation: dynamic tail changes do not affect static prefix", () => {
-    const base = assembleSystemPrompt({
-      variantPrefix: "RULES",
-      dynamicTail: "Current time: 12:00",
-    });
-    const changed = assembleSystemPrompt({
-      variantPrefix: "RULES",
-      dynamicTail: "Current time: 12:01",
-    });
-    const baseStatic = base.slice(0, base.indexOf("Current time"));
-    const changedStatic = changed.slice(0, changed.indexOf("Current time"));
-    assert.strictEqual(baseStatic, changedStatic, "Static prefix should be identical");
+  test("isolation: turn context changes leave the system prompt untouched", () => {
+    const base = assembleSystemPrompt(ALL_SYSTEM_PARTS);
+    assembleTurnContext({ nowBlock: "Current time: 12:00", userLine: "hi" });
+    assembleTurnContext({ nowBlock: "Current time: 12:01", userLine: "bye" });
+    assert.strictEqual(assembleSystemPrompt(ALL_SYSTEM_PARTS), base, "System prompt must be identical");
+  });
+
+  test("isolation: adding a fact cannot shift any system section", () => {
+    const base = assembleSystemPrompt(ALL_SYSTEM_PARTS);
+    const withFact = assembleSystemPrompt({ ...ALL_SYSTEM_PARTS, channelFactsBlock: "NEW_FACT" });
+    assert.strictEqual(withFact, base, "Facts live in the turn context, not the system prompt");
   });
 
   // --- buildFactsBlock key-sorting (behavioral test via exported helpers) ---

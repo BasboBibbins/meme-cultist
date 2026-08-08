@@ -141,12 +141,15 @@ async function getEquipped(userId) {
 // ── Availability helpers (limited themes) ─────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-function isThemeAvailable(availability, date = new Date()) {
-  if (!availability) return false;
-  const { start, end } = availability;
+function normalizeAvailability(availability) {
+  if (!availability) return [];
+  const ranges = Array.isArray(availability) ? availability : [availability];
+  return ranges.filter(r => r && r.start && r.end);
+}
+
+function resolveRange(range, date) {
+  const { start, end } = range;
   const y = date.getUTCFullYear();
-  const m = date.getUTCMonth() + 1;
-  const d = date.getUTCDate();
 
   const startYear = start.year ?? y;
   const endYear = end.year ?? (start.year ? end.year ?? start.year : y);
@@ -154,63 +157,73 @@ function isThemeAvailable(availability, date = new Date()) {
   const startMonth = start.month;
   const startDay = start.day ?? 1;
   const endMonth = end.month;
-  const endDay = end.day ?? new Date(endYear, endMonth, 0).getUTCDate();
+  const endDay = end.day ?? new Date(Date.UTC(endYear, endMonth, 0)).getUTCDate();
 
-  const startMs = Date.UTC(startYear, startMonth - 1, startDay);
-  const endMs = Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-  const nowMs = Date.UTC(y, m - 1, d);
+  return {
+    startMs: Date.UTC(startYear, startMonth - 1, startDay),
+    endMs:   Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999),
+    endYear,
+    endMonth,
+    endDay,
+    endYearPinned: end.year != null,
+  };
+}
 
+function todayMs(date) {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function isRangeActive(resolved, nowMs) {
   // Year-wrap: e.g. Dec 20 → Jan 5
-  if (startMs > endMs) {
-    return nowMs >= startMs || nowMs <= endMs;
+  if (resolved.startMs > resolved.endMs) {
+    return nowMs >= resolved.startMs || nowMs <= resolved.endMs;
   }
-  return nowMs >= startMs && nowMs <= endMs;
+  return nowMs >= resolved.startMs && nowMs <= resolved.endMs;
 }
 
-// Unix epoch (seconds) at which the current in-season window closes.  Mirrors
-// the end-of-window math in isThemeAvailable so the "available until" deadline
-// lines up exactly with when purchasing stops being allowed.
+function isThemeAvailable(availability, date = new Date()) {
+  const nowMs = todayMs(date);
+  return normalizeAvailability(availability)
+    .some(range => isRangeActive(resolveRange(range, date), nowMs));
+}
+
+// Unix epoch (seconds) at which the currently open window closes, or null when
+// no window is open.  Mirrors the end-of-window math in isThemeAvailable so the
+// "available until" deadline lines up exactly with when purchasing stops being
+// allowed.  With overlapping ranges the latest close wins, so the deadline never
+// understates how long the theme is actually buyable.
 function availabilityEndEpoch(availability, date = new Date()) {
-  if (!availability) return null;
-  const { start, end } = availability;
-  const y = date.getUTCFullYear();
-  const m = date.getUTCMonth() + 1;
-  const d = date.getUTCDate();
+  const nowMs = todayMs(date);
+  let latest = null;
 
-  const startYear = start.year ?? y;
-  const endYear = end.year ?? (start.year ? end.year ?? start.year : y);
+  for (const range of normalizeAvailability(availability)) {
+    const r = resolveRange(range, date);
+    if (!isRangeActive(r, nowMs)) continue;
 
-  const startMonth = start.month;
-  const startDay = start.day ?? 1;
-  const endMonth = end.month;
-  const endDay = end.day ?? new Date(endYear, endMonth, 0).getUTCDate();
-
-  const startMs = Date.UTC(startYear, startMonth - 1, startDay);
-  let endMs = Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999);
-  const nowMs = Date.UTC(y, m - 1, d);
-
-  // Year-wrap (yearly themes, e.g. Dec 20 → Jan 5): while still in the December
-  // head of the window, the window actually closes next January.
-  if (startMs > endMs && !end.year && nowMs >= startMs) {
-    endMs = Date.UTC(endYear + 1, endMonth - 1, endDay, 23, 59, 59, 999);
+    let endMs = r.endMs;
+    // Year-wrap (recurring themes, e.g. Dec 20 → Jan 5): while still in the
+    // December head of the window, the window actually closes next January.
+    if (r.startMs > r.endMs && !r.endYearPinned && nowMs >= r.startMs) {
+      endMs = Date.UTC(r.endYear + 1, r.endMonth - 1, r.endDay, 23, 59, 59, 999);
+    }
+    if (latest === null || endMs > latest) latest = endMs;
   }
 
-  return Math.floor(endMs / 1000);
+  return latest === null ? null : Math.floor(latest / 1000);
 }
 
-// Whether a limited theme is tied to a specific year (a one-time event that
-// will not come back) versus a recurring yearly window.
+// Whether a limited theme is tied to specific years (a one-time event that will
+// not come back) versus having a recurring window.  A single recurring range is
+// enough to bring the theme back, so this only holds when *every* range is
+// year-pinned.
 function isOneTimeAvailability(availability) {
-  if (!availability) return false;
-  return availability.start.year != null || availability.end.year != null;
+  const ranges = normalizeAvailability(availability);
+  if (!ranges.length) return false;
+  return ranges.every(r => r.start.year != null || r.end.year != null);
 }
 
-function formatAvailability(availability) {
-  if (!availability) return "";
-  const { start, end } = availability;
-  const hasYear = start.year != null || end.year != null;
-  const hasDay = start.day != null && end.day != null;
-  const isYearly = !hasYear;
+function formatRange(range) {
+  const { start, end } = range;
 
   const fmtStart = start.day
     ? `${MONTHS[start.month - 1]} ${start.day}`
@@ -219,19 +232,26 @@ function formatAvailability(availability) {
     ? `${MONTHS[end.month - 1]} ${end.day}`
     : MONTHS[end.month - 1];
 
-  let str;
-  if (fmtStart === fmtEnd) {
-    str = fmtStart;
-  } else {
-    str = `${fmtStart} - ${fmtEnd}`;
-  }
+  let str = fmtStart === fmtEnd ? fmtStart : `${fmtStart} - ${fmtEnd}`;
 
-  if (hasYear) {
-    const yr = end.year || start.year;
-    str += `, ${yr}`;
-  } else if (isYearly) {
-    str += " (yearly)";
-  }
+  const yr = end.year ?? start.year;
+  if (yr != null) str += `, ${yr}`;
+
+  return str;
+}
+
+function formatAvailability(availability) {
+  const ranges = normalizeAvailability(availability);
+  if (!ranges.length) return "";
+
+  const sorted = ranges.slice().sort((a, b) =>
+    (a.start.month - b.start.month) || ((a.start.day ?? 1) - (b.start.day ?? 1))
+  );
+
+  let str = sorted.map(formatRange).join(", ");
+
+  const anyYear = ranges.some(r => r.start.year != null || r.end.year != null);
+  if (!anyYear) str += " (yearly)";
 
   return str;
 }
@@ -483,18 +503,18 @@ async function respondThemeAutocomplete(interaction, { onlyOwned = false } = {})
 
 // ── Game preview helpers (shared by /theme info and /shop preview) ─────
 
-const PREVIEW_GAMES = ["slots", "roulette", "poker", "blackjack", "craps", "duel"];
+const PREVIEW_GAMES = ["slots", "roulette", "poker", "blackjack", "craps", "keno", "duel"];
 const GAME_LABELS = {
   slots: "Slots", roulette: "Roulette", poker: "Poker",
-  blackjack: "Blackjack", craps: "Craps", duel: "Duel",
+  blackjack: "Blackjack", craps: "Craps", keno: "Keno", duel: "Duel",
 };
 const GAME_EMOJIS = {
   slots: "\u{1F3B0}", roulette: "\u{1F3B2}", poker: "\u{1F0CF}",
-  blackjack: "\u{1F0A1}", craps: "\u{1F3B2}", duel: "\u{2694}",
+  blackjack: "\u{1F0A1}", craps: "\u{1F3B2}", keno: "\u{1F522}", duel: "\u{2694}",
 };
 const GAME_FILES = {
   slots: "slots-result.png", roulette: "roulette.png", poker: "hand.png",
-  blackjack: "blackjack.png", craps: "craps.png", duel: "duel.png",
+  blackjack: "blackjack.png", craps: "craps.png", keno: "keno.png", duel: "duel.png",
 };
 
 const MAX_PREVIEW_CACHE = 50;
@@ -512,6 +532,7 @@ async function getPreviewAttachment(themeId, game, user = null, clientUser = nul
     const { pokerPreview } = require("./poker");
     const { blackjackPreview } = require("./blackjackCanvas");
     const { crapsPreview } = require("./crapsCanvas");
+    const { kenoPreview } = require("./kenoCanvas");
     const { duelPreview } = require("./duelCanvas");
     switch (game) {
       case "slots":     attachment = await slotsPreview(themeId); break;
@@ -519,6 +540,7 @@ async function getPreviewAttachment(themeId, game, user = null, clientUser = nul
       case "poker":     attachment = await pokerPreview(themeId, user); break;
       case "blackjack": attachment = await blackjackPreview(themeId, user, clientUser); break;
       case "craps":     attachment = await crapsPreview(themeId, user, clientUser); break;
+      case "keno":      attachment = await kenoPreview(themeId); break;
       case "duel":      attachment = await duelPreview(themeId, user, clientUser); break;
     }
   } catch (err) {
@@ -554,6 +576,7 @@ module.exports = {
   formatAvailability,
   availabilityEndEpoch,
   isOneTimeAvailability,
+  normalizeAvailability,
   getAllItems,
   getItemById,
   getPurchasableItems,

@@ -34,7 +34,8 @@ async function getGameStats(userId) {
     "race.wins", "race.losses", "race.totalBet", "race.biggestWin", "race.biggestLoss", "race.biggestWinHorse", "race.biggestLossHorse", "race.profit",
     "craps.rolls", "craps.wins", "craps.losses", "craps.pushes", "craps.pointsHit", "craps.sevenOuts", "craps.totalBet", "craps.biggestWin", "craps.biggestLoss", "craps.profit",
     "duel.wins", "duel.losses", "duel.draws", "duel.totalBet", "duel.biggestWin", "duel.biggestLoss", "duel.profit",
-    "poker.wins", "poker.losses", "poker.royals", "poker.biggestWin", "poker.biggestLoss", "poker.profit"
+    "poker.wins", "poker.losses", "poker.royals", "poker.biggestWin", "poker.biggestLoss", "poker.profit",
+    "keno.wins", "keno.losses", "keno.pushes", "keno.totalBet", "keno.biggestWin", "keno.biggestLoss", "keno.profit"
   ];
 
   const results = await Promise.all(
@@ -58,6 +59,7 @@ function calcTotalGames(gameStats, gameName) {
   if (gameName === "blackjack") return wins + losses + (g.ties || 0);
   if (gameName === "slots") return wins + losses + (g.jackpots || 0);
   if (gameName === "duel") return wins + losses + (g.draws || 0);
+  if (gameName === "keno") return wins + losses + (g.pushes || 0);
   return wins + losses;
 }
 
@@ -161,6 +163,7 @@ async function generateStatsEmbed(page, interaction, user) {
       const cr = gameStats.craps || {};
       const du = gameStats.duel || {};
       const pk = gameStats.poker || {};
+      const kn = gameStats.keno || {};
 
       embed.setTitle(`${user.displayName }'s Game Stats`);
       embed.setFields(
@@ -250,11 +253,41 @@ async function generateStatsEmbed(page, interaction, user) {
           ]), inline: true },
         );
       }
+      if (kn.wins || kn.losses || kn.pushes) {
+        embed.addFields(
+          { name: "Keno", value: buildDesc([
+            `*Games Played:* **${calcTotalGames(gameStats, "keno").toLocaleString("en-US")}**`,
+            `*Win Rate:* **${calcWinRate(gameStats, "keno")}%**`,
+            kn.pushes && `*Stake Returned:* **${kn.pushes.toLocaleString("en-US")}**`,
+            kn.totalBet && `*Total Bet:* **${kn.totalBet.toLocaleString("en-US")}**`,
+            kn.biggestWin && `*Biggest Win:* **${kn.biggestWin.toLocaleString("en-US")}**`,
+            kn.biggestLoss && `*Biggest Loss:* **${kn.biggestLoss.toLocaleString("en-US")}**`,
+            `*Net Profit:* **${formatProfit(kn.profit || 0)}**`
+          ]), inline: true },
+        );
+      }
       break;
     }
     case 5: {
       embed.setTitle(`${user.displayName}'s Chatbot Stats`);
       const chatbotData = await getUserChatbotData(user.id);
+      const isSelf = user.id === interaction.user.id;
+
+      // The summary and fact list are the most personal material the memory
+      // pipeline stores, and this embed is public in the channel it was run in.
+      // Only the subject sees them; the message count stays visible because it
+      // is a count, not content.
+      if (!isSelf) {
+        embed.setFields(
+          { name: "Messages sent to chatbot", value: `${(chatbotData.messageCount ?? 0).toLocaleString("en-US")}`, inline: true },
+          { name: "Personal Summary", value: "*Private \u2014 only this user can view their own chatbot memory.*", inline: false },
+          { name: "Known Facts", value: "*Private \u2014 only this user can view their own chatbot memory.*", inline: false },
+          { name: "\u200b", value: "\u200b", inline: false },
+          { name: "View your own info by using the command", value: "`/whatdoyouknow`", inline: true },
+        );
+        break;
+      }
+
       const latestUserSummary = chatbotData.summaries.length > 0
         ? chatbotData.summaries[chatbotData.summaries.length - 1].context
         : "No summary generated yet. Keep chatting!";
@@ -314,26 +347,41 @@ module.exports = {
     const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
 
     if (interaction.options.getBoolean("export")) {
+      const isSelfExport = user.id === interaction.user.id;
+
+      // The dump is the whole DB row, so exporting someone else hands over their
+      // chatbot facts and summaries verbatim. Strip that block for third parties;
+      // the rest (balance, bank, cooldowns, game stats) is already public via
+      // /balance and /leaderboard. The labels below describe the *subject* — they
+      // previously named the caller while carrying another user's data.
+      let dbEntry = dbUser || {};
+      if (!isSelfExport && dbEntry.chatbot) {
+        dbEntry = { ...dbEntry, chatbot: "omitted — chatbot memory is private to its owner" };
+      }
+
       const dump = {
         exportedAt: new Date().toISOString(),
-        userId: interaction.user.id,
-        username: interaction.user.tag,
-        dbEntry: dbUser || {}
+        exportedBy: interaction.user.tag,
+        userId: user.id,
+        username: user.tag,
+        dbEntry
       };
       const buffer = Buffer.from(JSON.stringify(dump, null, 2), "utf-8");
-      const filename = `dataexport-${interaction.user.id}-${todayStamp()}.json`;
+      const filename = `dataexport-${user.id}-${todayStamp()}.json`;
       const attachment = new AttachmentBuilder(buffer).setName(filename);
 
       const dm = await sendDM(interaction.user, {
-        content: "Here is your data exported in JSON format.",
+        content: isSelfExport
+          ? "Here is your data exported in JSON format."
+          : `Here is ${user.tag}'s public data exported in JSON format. Their chatbot memory is private and was not included.`,
         files: [attachment],
       });
       if (dm) {
-        logger.log(`[ExportData] ${interaction.user.tag} data exported to JSON. DM sent successfully.`);
-        await interaction.followUp({ content: "Check your DMs — I sent you a JSON file with your stats.", ephemeral: true });
+        logger.log(`[ExportData] ${interaction.user.tag} exported data for ${user.tag}. DM sent successfully.`);
+        await interaction.followUp({ content: "Check your DMs — I sent you a JSON file with the stats.", ephemeral: true });
       } else {
         logger.warn(`[ExportData] DM failed or disabled for ${interaction.user.tag}. Falling back to ephemeral reply.`);
-        await interaction.followUp({ content: "Here is your data exported in JSON format.", files: [attachment], ephemeral: true });
+        await interaction.followUp({ content: "Here is the data exported in JSON format.", files: [attachment], ephemeral: true });
       }
     }
 

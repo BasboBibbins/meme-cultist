@@ -64,6 +64,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
         ["Craps", "craps"],
         ["Duel", "duel"],
         ["Poker", "poker"],
+        ["Keno", "keno"],
         ["Beg", "begs"],
       ];
       for (const [label, key] of games) {
@@ -83,6 +84,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
         ["Craps", "craps"],
         ["Duel", "duel"],
         ["Poker", "poker"],
+        ["Keno", "keno"],
       ];
       for (const [label, key] of games) {
         const top = topBy(allUsers, u => u.value.stats?.[key]?.biggestWin);
@@ -108,6 +110,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
         ["Craps", "craps"],
         ["Duel", "duel"],
         ["Poker", "poker"],
+        ["Keno", "keno"],
         ["Beg", "begs"],
       ];
       for (const [label, key] of games) {

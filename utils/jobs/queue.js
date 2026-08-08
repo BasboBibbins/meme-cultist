@@ -65,7 +65,7 @@ function register(kind, handler) {
 function stats() {
   const db = openDb();
   const rows = db.prepare("SELECT status, COUNT(*) AS c FROM jobs GROUP BY status").all();
-  const out = { pending: 0, running: 0, done: 0, failed: 0 };
+  const out = { pending: 0, running: 0, done: 0, failed: 0, deferred: 0 };
   for (const r of rows) out[r.status] = r.c;
   return out;
 }
@@ -74,6 +74,41 @@ function reapStaleRunning() {
   const db = openDb();
   const info = db.prepare("UPDATE jobs SET status='pending', updated_at=? WHERE status='running'").run(Date.now());
   if (info.changes > 0) logger.warn(`[Jobs] Startup reaper requeued ${info.changes} job(s) stuck in 'running'.`);
+  // Deferred jobs are waiting on a provider, not on time. A restart re-tests that
+  // assumption anyway (breakers start CLOSED), so nothing should stay deferred
+  // across one.
+  const revived = db.prepare("UPDATE jobs SET status='pending', run_at=?, updated_at=? WHERE status='deferred'").run(Date.now(), Date.now());
+  if (revived.changes > 0) logger.log(`[Jobs] Startup reaper requeued ${revived.changes} deferred job(s).`);
+}
+
+// A deferred job is postponed, not attempted: `attempts` is deliberately rolled
+// back so waiting out an outage cannot consume the retry budget that exists for
+// genuine failures.
+function defer(id, reason) {
+  const db = openDb();
+  db.prepare("UPDATE jobs SET status='deferred', attempts=MAX(attempts-1, 0), last_error=?, updated_at=? WHERE id=?")
+    .run(String(reason).slice(0, 1000), Date.now(), id);
+}
+
+// Called when a breaker closes. Staggered rather than released at once: the
+// embedding lane is capped at roughly one request per second, and a backlog
+// arriving as a single burst would re-trip the breaker it was waiting on.
+function releaseDeferred(kinds = []) {
+  const db = openDb();
+  const perSec = config.EMBED_BREAKER_DRAIN_RATE_PER_SEC || 1;
+  const filter = kinds.length > 0 ? `AND kind IN (${kinds.map(() => "?").join(",")})` : "";
+  const rows = db.prepare(`SELECT id FROM jobs WHERE status='deferred' ${filter} ORDER BY id ASC`).all(...kinds);
+  if (rows.length === 0) return 0;
+  const stmt = db.prepare("UPDATE jobs SET status='pending', run_at=?, updated_at=? WHERE id=?");
+  const now = Date.now();
+  rows.forEach((row, i) => stmt.run(now + Math.floor(i / perSec) * 1000, now, row.id));
+  logger.log(`[Jobs] Released ${rows.length} deferred job(s) over ~${Math.ceil(rows.length / perSec)}s.`);
+  return rows.length;
+}
+
+function countDeferred() {
+  const db = openDb();
+  return db.prepare("SELECT COUNT(*) AS c FROM jobs WHERE status='deferred'").get().c;
 }
 
 async function runJob(row) {
@@ -93,6 +128,14 @@ async function runJob(row) {
   } catch (err) {
     const db = openDb();
     const msg = err?.message?.slice(0, 1000) || String(err).slice(0, 1000);
+    // An open breaker means the call was never made. Treating that as a failure
+    // would spend the retry budget waiting out an outage and then mark the job
+    // permanently failed for a reason unrelated to the job itself.
+    if (err?.breakerOpen) {
+      defer(row.id, msg);
+      logger.debug(`[Jobs] Job ${row.id} (${row.kind}) deferred — breaker open.`);
+      return;
+    }
     if (row.attempts >= row.max_attempts) {
       db.prepare("UPDATE jobs SET status='failed', last_error=?, updated_at=? WHERE id=?").run(msg, Date.now(), row.id);
       logger.error(`[Jobs] Job ${row.id} (${row.kind}) permanently failed after ${row.attempts} attempts: ${msg}`);
@@ -184,4 +227,4 @@ function cancel(id, ownerPredicate = null) {
   return info.changes > 0;
 }
 
-module.exports = { enqueue, register, start, stop, stats, tickOnce, list, cancel };
+module.exports = { enqueue, register, start, stop, stats, tickOnce, list, cancel, defer, releaseDeferred, countDeferred };

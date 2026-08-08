@@ -145,6 +145,15 @@ async function getDefaultDB(user) {
         "profit": 0,
         "totalBet": 0,
       },
+      "keno": {
+        "wins": 0,
+        "losses": 0,
+        "pushes": 0,
+        "biggestWin": 0,
+        "biggestLoss": 0,
+        "totalBet": 0,
+        "profit": 0,
+      },
       "begs": {
         "wins": 0,
         "losses": 0,
@@ -192,6 +201,10 @@ async function getDefaultDB(user) {
     },
     "craps": {
       "lastBet": "",
+    },
+    "keno": {
+      "lastBet": "",
+      "lastSpots": [],
     },
   };
 }

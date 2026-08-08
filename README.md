@@ -27,6 +27,7 @@ The currency is **koku**. You've got a wallet and a bank (earns daily interest a
 - **Slots** — canvas-rendered with animated GIFs, themed symbols, free daily spins, near-misses, a full-screen mega win (~1 in 25,000), and a progressive jackpot on 3× WILD.
 - **Craps** — multi-player street craps, canvas-rendered felt table, animated dice, pass/come/field/place/hardways/prop bets.
 - **Roulette** — multi-player, full table of bet types, button-driven with an idle timeout.
+- **Keno** — lottery-style draw. Pick 1–10 spots from 1–80 (or quick-pick), canvas-rendered board, per-spot paytable with a 10,000× top prize.
 - **Horse Racing** — win/place/show bets, button-driven betting panel, guild-wide horse stats and a hall of fame on the leaderboard.
 - **Duel** — Rock-Paper-Scissors wagers against another user, with escrow, rematch flow, and DM notifications.
 - **Coin Flip** — exactly what it sounds like.
@@ -144,6 +145,8 @@ Bet amounts support expressions everywhere: `all`, `half`, `quarter`, `50*2`, `m
 | `/slots paytable` | View payouts |
 | `/craps` | Join or start a craps table |
 | `/roulette` | Start a roulette session |
+| `/keno play` | Pick numbers and bet on the draw (omit `numbers` to quick-pick) |
+| `/keno paytable` | View keno payouts and odds |
 | `/race start` | Open a race betting panel |
 | `/race bet` | Place a bet directly (power-user fast path) |
 | `/duel` | Challenge someone to an RPS wager |
@@ -238,6 +241,7 @@ meme-cultist/
 │   ├── crapsCanvas.js        # Craps felt table renderer
 │   ├── duelCanvas.js         # Duel clash screen renderer
 │   ├── slotsCanvas.js        # Slots renderer
+│   ├── kenoCanvas.js         # Keno board renderer
 │   ├── lock.js / userlock.js # Per-key / per-user async mutexes
 │   ├── bank.js               # Interest, deposit, withdraw
 │   ├── betparse.js           # Bet expression parser
