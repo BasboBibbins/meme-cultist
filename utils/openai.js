@@ -2431,7 +2431,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
       let toolBlock = "[Tools] Use your tools silently whenever the user's request matches one. Never mention tools or functions by name unless the user asks about your capabilities.\n" +
         "- generate_image: you CANNOT produce images yourself, so always call it. Never claim you made an image without calling it. The result is attached to your reply automatically — never type \"[Attached: image file]\", markup, or any placeholder for it.\n" +
         "- search_history: call at most once per turn with a single comprehensive query, then synthesize from the results. Do NOT retry with re-phrasings.\n" +
-        "- lookup_kb: if a [KnowledgeBase] block is present in this turn, answer from it directly; only call lookup_kb for a topic that block does not cover.\n" +
+        "- lookup_kb: if a [KnowledgeBase] block is present in this turn, answer from it directly; only call lookup_kb for a topic that block does not cover, or for an entry the block marks as truncated.\n" +
         "- web_search returns title + URL + snippet; use fetch_page on a chosen URL to read the full page.\n" +
         "- set_directive when a user tells you how to behave from now on, then confirm briefly; remove_directive when they cancel such a rule.\n" +
         "Citations: when your reply uses a search_history result, embed [[cite:msg:N]] (N = that result's result_index) immediately after the relevant claim. When using a lookup_kb result, embed [[cite:kb:slug]] (slug from the result). Each citation token may appear at most once — duplicates are stripped.\n" +

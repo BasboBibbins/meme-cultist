@@ -67,17 +67,17 @@ describe("findRelevant", () => {
     expect(matches.length).toBeLessThanOrEqual(1);
   });
 
-  test("truncates long content", () => {
+  test("returns long content whole, leaving truncation to the caller", () => {
+    const content = "streak ".repeat(400);
     store.listForGuild.mockReturnValue([{
       slug: "long",
       title: "Streak Handbook",
       tags: "economy",
-      content: "streak ".repeat(400),
+      content,
     }]);
     kbPreflight.invalidate();
     const [match] = kbPreflight.findRelevant("g1", "tell me about the streak handbook", 1);
-    expect(match.content.endsWith("...")).toBe(true);
-    expect(match.content.length).toBeLessThan(500);
+    expect(match.content).toBe(content);
   });
 
   test("returns nothing on empty input or empty knowledge base", () => {
@@ -120,5 +120,35 @@ describe("buildKbContextBlock", () => {
     expect(block).toContain("[KnowledgeBase]");
     expect(block).toContain("[[kb:slots]] Slots");
     expect(block).toContain("lookup_kb");
+  });
+
+  test("leaves an entry under the cap untouched and unmarked", () => {
+    const content = "Spin the reels and match symbols across paylines.";
+    const block = kbPreflight.buildKbContextBlock([{ slug: "slots", title: "Slots", content }]);
+    expect(block).toContain(content);
+    expect(block).not.toContain("Entry truncated");
+  });
+
+  test("marks a clipped entry so the model knows to follow up", () => {
+    const content = `${"word ".repeat(400)}TAIL`;
+    const block = kbPreflight.buildKbContextBlock([{ slug: "long", title: "Streak Handbook", content }]);
+    expect(block).not.toContain("TAIL");
+    expect(block).toContain("Entry truncated");
+    expect(block).toContain("Call lookup_kb with query \"Streak Handbook\"");
+  });
+
+  test("clips on a paragraph boundary rather than mid-word", () => {
+    const first = "a".repeat(500);
+    const content = `${first}\n\n${"b".repeat(500)}`;
+    const block = kbPreflight.buildKbContextBlock([{ slug: "long", title: "Long", content }]);
+    expect(block).toContain(first);
+    expect(block).not.toContain("b".repeat(10));
+  });
+
+  test("never emits a mid-word cut when no boundary is available", () => {
+    const content = `${"supercalifragilistic ".repeat(80)}end`;
+    const block = kbPreflight.buildKbContextBlock([{ slug: "long", title: "Long", content }]);
+    const body = block.split("[[kb:long]] Long\n")[1].split("\n[Entry truncated")[0];
+    expect(body.endsWith("supercalifragilistic")).toBe(true);
   });
 });

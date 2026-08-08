@@ -120,14 +120,13 @@ function findRelevant(guildId, text, limit = KB_PREFLIGHT_MAX_ENTRIES, minScore 
   try {
     const index = getIndex(guildId);
     const scored = scoreDocs(index, tokenize(text));
-    const chars = KB_PREFLIGHT_CONTENT_CHARS || 400;
     return scored
       .filter(s => s.score >= (minScore ?? 0.25))
       .slice(0, limit)
       .map(s => ({
         slug: s.doc.slug,
         title: s.doc.title,
-        content: s.doc.content.length > chars ? `${s.doc.content.slice(0, chars)}...` : s.doc.content,
+        content: s.doc.content,
         score: s.score,
       }));
   } catch (err) {
@@ -136,10 +135,28 @@ function findRelevant(guildId, text, limit = KB_PREFLIGHT_MAX_ENTRIES, minScore 
   }
 }
 
+// The only KB path that truncates, because it is the only one that pays per turn.
+function clip(content, cap) {
+  if (typeof content !== "string" || content.length <= cap) return content;
+  const head = content.slice(0, cap);
+  const boundary = Math.max(head.lastIndexOf("\n\n"), head.lastIndexOf(". "));
+  const cut = boundary > cap / 2 ? head.slice(0, boundary + 1) : head.replace(/\s+\S*$/, "");
+  return cut.trimEnd();
+}
+
+// A silent cut reads as a complete entry, so a clipped one names its own follow-up.
+function renderMatch(match, cap) {
+  const clipped = clip(match.content, cap);
+  const header = `[[kb:${match.slug}]] ${match.title}`;
+  if (clipped === match.content) return `${header}\n${clipped}`;
+  return `${header}\n${clipped}\n[Entry truncated. Call lookup_kb with query "${match.title}" for the full text.]`;
+}
+
 function buildKbContextBlock(matches) {
   if (!Array.isArray(matches) || matches.length === 0) return "";
+  const cap = KB_PREFLIGHT_CONTENT_CHARS || 800;
   const body = matches
-    .map(m => `[[kb:${m.slug}]] ${m.title}\n${m.content}`)
+    .map(m => renderMatch(m, cap))
     .join("\n\n");
   return [
     "[KnowledgeBase]",

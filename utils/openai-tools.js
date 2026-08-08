@@ -779,10 +779,11 @@ function lexicalKbFallback(guildId, query, limit) {
     result_index: i + 1,
     slug: r.slug,
     title: r.title,
-    content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
+    content: r.content,
   }));
 }
 
+// Content is returned whole: /kb add bounds entries at 4000 chars, and replayed tool results are already capped, so the full payload only ever costs the turn that asked for it.
 async function handleLookupKb(args, message, client) {
   if (!args?.query) return { error: "Missing required 'query' argument." };
   const guild = message.guild;
@@ -799,7 +800,7 @@ async function handleLookupKb(args, message, client) {
         result_index: i + 1,
         slug: r.slug,
         title: r.title,
-        content: r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content,
+        content: r.content,
       })),
     };
   } catch (embedErr) {

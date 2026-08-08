@@ -121,14 +121,13 @@ describe("lookup_kb — embedding endpoint down", () => {
     expect(result.message).toMatch(/no matching/i);
   });
 
-  test("long lexical content is truncated the same way semantic results are", async () => {
+  test("long lexical content is returned whole, the same way semantic results are", async () => {
     mockFindRelevant.mockReturnValue([
       { slug: "long", title: "Long", content: "x".repeat(900), score: 0.5 },
     ]);
 
     const result = await callLookupKb();
 
-    expect(result.results[0].content).toHaveLength(503);
-    expect(result.results[0].content.endsWith("...")).toBe(true);
+    expect(result.results[0].content).toBe("x".repeat(900));
   });
 });

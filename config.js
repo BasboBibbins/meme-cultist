@@ -103,7 +103,8 @@ const config = {
   KB_PREFLIGHT_ENABLED: true,
   KB_PREFLIGHT_MIN_SCORE: 0.25,
   KB_PREFLIGHT_MAX_ENTRIES: 2,
-  KB_PREFLIGHT_CONTENT_CHARS: 400,
+  // Display cap on the ambient block only — retrieval and lookup_kb return entries whole.
+  KB_PREFLIGHT_CONTENT_CHARS: 800,
 
   // Threshold for the lexical fallback used by lookup_kb and /kb search when the
   // embedding endpoint is unavailable. Looser than the pre-flight score above:
