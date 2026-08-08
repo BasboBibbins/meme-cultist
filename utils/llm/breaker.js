@@ -146,7 +146,8 @@ const embedBreaker = createBreaker({
 // Thrown instead of returned as a sentinel: all six embed call sites already
 // wrap router.embed() in try/catch because it could always fail, so an exception
 // needs zero new branches where a sentinel would need six. The code makes the
-// §5.12 taxonomy produce the right user-facing sentence for free.
+// tool-error taxonomy in utils/toolErrors.js produce the right user-facing
+// sentence for free.
 function breakerOpenError(name) {
   const err = new Error(`${name} circuit breaker is open — upstream is unavailable.`);
   err.code = "BREAKER_OPEN";

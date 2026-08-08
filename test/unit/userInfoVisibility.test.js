@@ -1,4 +1,5 @@
-// Phase 1 of §6.1: stored chatbot memory is disclosed only to its subject.
+// Phase 1 of cross-user memory visibility: stored chatbot memory is disclosed
+// only to its subject.
 //
 // Drives the real executeToolCall path rather than the handler directly, so the
 // validation/dedup/decoration layers are exercised the same way the ReAct loop

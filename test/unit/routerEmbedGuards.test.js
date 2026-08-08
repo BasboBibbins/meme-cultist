@@ -1,5 +1,5 @@
-// Integration of the §7.4 health ring and §7.7 breaker at the one call site that
-// wires both: router.embed().
+// Integration of the provider health ring and the embedding circuit breaker at
+// the one call site that wires both: router.embed().
 //
 // The unit tests for health and breaker cover their logic in isolation; these
 // cover the wiring, which is where the subtle mistakes live — recording a cache

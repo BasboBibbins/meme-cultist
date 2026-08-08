@@ -249,7 +249,7 @@ const config = {
   LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),
   LLM_MAX_RETRIES: parseInt(process.env.LLM_MAX_RETRIES || "3", 10),
 
-  // Provider health ring (§7.4). Disabling makes record() a no-op and
+  // Provider health ring. Disabling makes record() a no-op and
   // isDegraded() always false, so every consumer falls back to prior behaviour.
   PROVIDER_HEALTH_ENABLED: true,
   PROVIDER_HEALTH_PROBE_ENABLED: true, // the periodic synthetic ping only
@@ -261,7 +261,7 @@ const config = {
   PROVIDER_DEGRADED_P95_MS: 15000,
   PROVIDER_PROBE_INTERVAL_MIN: 5,
 
-  // Embedding circuit breaker (§7.7). Thresholds are inherited from the health
+  // Embedding circuit breaker. Thresholds are inherited from the health
   // ring above rather than duplicated. Disabling pins the breaker CLOSED, which
   // is exactly the pre-breaker behaviour.
   EMBED_BREAKER_ENABLED: true,

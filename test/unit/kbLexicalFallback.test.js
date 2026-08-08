@@ -1,11 +1,11 @@
-// §7.7 prerequisite: lookup_kb degrades to lexical matching when the embedding
-// endpoint is unavailable.
+// Circuit-breaker prerequisite: lookup_kb degrades to lexical matching when the
+// embedding endpoint is unavailable.
 //
 // The KB store is cosine-similarity only — unlike search_history and
 // recall_episode it has no FTS index — so before this fallback existed a dead
-// embedding endpoint failed the lookup outright. The circuit breaker plan
-// assumes every retrieval path can serve without embeddings; these tests pin
-// that assumption for the one path where it was not true.
+// embedding endpoint failed the lookup outright. The breaker assumes every
+// retrieval path can serve without embeddings; these tests pin that assumption
+// for the one path where it was not true.
 
 const mockEmbed = jest.fn();
 const mockKbSearch = jest.fn();

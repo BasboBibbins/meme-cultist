@@ -1,4 +1,4 @@
-// §7.7 embedding circuit breaker.
+// Embedding circuit breaker.
 //
 // The breaker does not keep its own opinion about liveness — it defers to the
 // health ring for that. What it owns is the state machine: when to stop calling,

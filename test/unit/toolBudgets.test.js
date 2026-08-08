@@ -1,4 +1,4 @@
-// §5.8 item 4 — per-tool call budgets.
+// Per-tool call budgets.
 //
 // The three shipped guards (tool description, dedup cache, final-slot
 // tool_choice=none) all miss the same case: several *genuinely different* queries

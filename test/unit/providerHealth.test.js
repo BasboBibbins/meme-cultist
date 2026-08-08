@@ -1,7 +1,8 @@
-// §7.4 provider health ring.
+// Provider health ring.
 //
 // The thresholds matter less than the sample floor: a restart during a blip must
-// not mark every provider degraded at once, because §7.7's breaker acts on this.
+// not mark every provider degraded at once, because the embedding circuit
+// breaker acts on this.
 
 const config = require("../../config.js");
 
