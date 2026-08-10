@@ -8,7 +8,8 @@ const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
-const { trackStart, trackEnd } = require("./utils/musicPlayer");
+// Components V2 prototype. Revert by pointing this back at ./utils/musicPlayer.
+const { trackStart, trackEnd } = require("./utils/musicPlayerV2");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");

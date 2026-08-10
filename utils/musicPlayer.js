@@ -7,7 +7,7 @@ let msg = null;
 
 // Fallback when a track's duration is unknown, which bridged sources report as 0.
 const DEFAULT_COLLECTOR_MS = 600000;
-const PROGRESS_REFRESH_MS = 7000;
+const PROGRESS_REFRESH_MS = 1000;
 
 // getTimestamp() is null until playback resolves (bridged Spotify reaches PlayerStart first), and `current` is {label,value} in ms — not seconds.
 function remainingMs(queue, track) {
