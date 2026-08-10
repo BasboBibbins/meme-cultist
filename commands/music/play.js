@@ -2,7 +2,7 @@ const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageF
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
-const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, EQUALIZER_BANDS } = require("../../utils/musicStream");
+const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, enrichAppleMusicTracks, EQUALIZER_BANDS } = require("../../utils/musicStream");
 const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
@@ -78,6 +78,9 @@ module.exports = {
     }
 
     logger.debug(`[Play] "${song}" -> ${results?.tracks?.length ?? 0} track(s), playlist=${results?.playlist?.title ?? "none"}, extractor=${results?.extractor?.identifier ?? "none"}`);
+
+    // Apple Music reports every artist as "Apple Music"; resolving it before queueing also fixes the query the YouTube bridge builds.
+    await enrichAppleMusicTracks(results?.tracks);
 
     // Joining only once something is playable keeps the bot out of the channel on a failed lookup instead of sitting there silently.
     const connect = async () => {

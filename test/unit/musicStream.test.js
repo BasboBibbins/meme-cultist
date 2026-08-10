@@ -5,7 +5,13 @@ jest.mock("../../utils/logger", () => ({
 }));
 
 const { Equalizer, ChannelProcessor } = require("@discord-player/equalizer");
-const { isDrmProtected, shouldUseYtdlp, isYoutubePlaylist, formatDuration, EQUALIZER_BANDS } = require("../../utils/musicStream");
+jest.mock("axios", () => ({ get: jest.fn() }));
+const axios = require("axios");
+
+const {
+  isDrmProtected, shouldUseYtdlp, isYoutubePlaylist, formatDuration, EQUALIZER_BANDS,
+  appleTrackId, isAppleMusicTrack, enrichAppleMusicTrack,
+} = require("../../utils/musicStream");
 
 // The bands go straight to the channel processor, which multiplies every sample by bandMultipliers[i]; anything but a plain number yields NaN samples and a silent mix.
 describe("EQUALIZER_BANDS", () => {
@@ -35,6 +41,89 @@ describe("EQUALIZER_BANDS", () => {
   test("the old {band, gain} shape would have produced NaN", () => {
     const processor = new ChannelProcessor([{ band: 0, gain: 0.15 }, { band: 1, gain: 0.10 }]);
     expect(Number.isNaN(processor.processInt(1000))).toBe(true);
+  });
+});
+
+describe("appleTrackId", () => {
+  test("reads the ?i= track id, which is what a shared song link carries", () => {
+    expect(appleTrackId("https://music.apple.com/us/album/one-more-time/697194953?i=697195462")).toBe("697195462");
+    expect(appleTrackId("https://music.apple.com/gb/album/x/1?i=42&uo=4")).toBe("42");
+  });
+
+  test("falls back to a trailing path id for standalone song URLs", () => {
+    expect(appleTrackId("https://music.apple.com/us/song/one-more-time/697195462")).toBe("697195462");
+  });
+
+  test("returns null for non-Apple or id-less URLs", () => {
+    expect(appleTrackId("https://youtube.com/watch?v=abc")).toBe(null);
+    expect(appleTrackId("https://music.apple.com/us/artist/daft-punk")).toBe(null);
+    expect(appleTrackId(null)).toBe(null);
+  });
+});
+
+describe("isAppleMusicTrack", () => {
+  test("matches on extractor source or host", () => {
+    expect(isAppleMusicTrack({ raw: { source: "apple_music" }, url: "x" })).toBe(true);
+    expect(isAppleMusicTrack({ url: "https://music.apple.com/us/song/x/1" })).toBe(true);
+  });
+
+  test("does not claim other providers", () => {
+    expect(isAppleMusicTrack({ url: "https://soundcloud.com/a/b" })).toBe(false);
+    expect(isAppleMusicTrack({})).toBe(false);
+  });
+});
+
+describe("enrichAppleMusicTrack", () => {
+  const appleTrack = () => ({
+    raw: { source: "apple_music" },
+    url: "https://music.apple.com/us/album/one-more-time/697194953?i=697195462",
+    title: "One More Time",
+    author: "Apple Music",
+    thumbnail: "https://example.com/a/100x100bb.jpg",
+  });
+
+  beforeEach(() => axios.get.mockReset());
+
+  test("replaces the placeholder author with the real artist", async () => {
+    axios.get.mockResolvedValue({ data: { results: [{ wrapperType: "track", artistName: "Daft Punk", trackName: "One More Time" }] } });
+    const track = appleTrack();
+    expect(await enrichAppleMusicTrack(track)).toBe(true);
+    expect(track.author).toBe("Daft Punk");
+  });
+
+  test("upgrades the artwork to a larger square", async () => {
+    axios.get.mockResolvedValue({ data: { results: [{ wrapperType: "track", artistName: "Daft Punk", artworkUrl100: "https://example.com/a/100x100bb.jpg" }] } });
+    const track = appleTrack();
+    await enrichAppleMusicTrack(track);
+    expect(track.thumbnail).toBe("https://example.com/a/512x512bb.jpg");
+  });
+
+  // A failed lookup must leave the track playable rather than blanking its author.
+  test("leaves the track untouched when the lookup fails", async () => {
+    axios.get.mockRejectedValue(new Error("network down"));
+    const track = appleTrack();
+    expect(await enrichAppleMusicTrack(track)).toBe(false);
+    expect(track.author).toBe("Apple Music");
+  });
+
+  test("leaves the track untouched when the lookup returns nothing", async () => {
+    axios.get.mockResolvedValue({ data: { resultCount: 0, results: [] } });
+    const track = appleTrack();
+    expect(await enrichAppleMusicTrack(track)).toBe(false);
+    expect(track.author).toBe("Apple Music");
+  });
+
+  test("skips non-Apple tracks without calling the API", async () => {
+    const track = { url: "https://youtube.com/watch?v=abc", author: "Some Artist" };
+    expect(await enrichAppleMusicTrack(track)).toBe(false);
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+
+  // An Apple track that already names a real artist must not be overwritten.
+  test("skips a track whose author is already resolved", async () => {
+    const track = { ...appleTrack(), author: "Daft Punk" };
+    expect(await enrichAppleMusicTrack(track)).toBe(false);
+    expect(axios.get).not.toHaveBeenCalled();
   });
 });
 

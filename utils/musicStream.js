@@ -11,6 +11,7 @@ const { spawn, spawnSync } = require("child_process");
 const { constants } = require("youtube-dl-exec");
 const { Track, StreamType, QueryType } = require("discord-player");
 const { Equalizer } = require("@discord-player/equalizer");
+const axios = require("axios");
 const logger = require("./logger");
 
 const YTDLP = constants.YOUTUBE_DL_PATH;
@@ -188,6 +189,70 @@ async function afterStreamExtracted(stream, track, queue) {
   return { $fmt: StreamType.Raw, stream: remuxUrlToStream(stream, { pcm: true }) };
 }
 
+// The Apple Music extractor reads og: tags, where og:site_name is literally "Apple Music", so every author is that placeholder and the real artist is absent from the payload. The ?i= parameter is the iTunes track id, which Apple's public lookup API resolves without a key.
+const ITUNES_LOOKUP = "https://itunes.apple.com/lookup";
+const APPLE_PLACEHOLDER_AUTHOR = "apple music";
+const APPLE_ENRICH_LIMIT = 50;
+const APPLE_ENRICH_CONCURRENCY = 5;
+
+function isAppleMusicTrack(track) {
+  const source = track?.raw?.source || track?.source;
+  return source === "apple_music" || /music\.apple\.com/i.test(track?.url || "");
+}
+
+function appleTrackId(url) {
+  if (typeof url !== "string") return null;
+  const fromQuery = /[?&]i=(\d+)/.exec(url);
+  if (fromQuery) return fromQuery[1];
+  // Standalone song URLs carry the id as the last path segment instead.
+  const fromPath = /music\.apple\.com\/[^?#]*?\/(\d+)(?:[?#]|$)/.exec(url);
+  return fromPath ? fromPath[1] : null;
+}
+
+async function fetchItunesTrack(id) {
+  try {
+    const { data } = await axios.get(ITUNES_LOOKUP, { params: { id }, timeout: 8000 });
+    const result = data?.results?.find(r => r?.wrapperType === "track") || data?.results?.[0];
+    return result || null;
+  } catch (err) {
+    logger.warn(`[MusicStream] iTunes lookup failed for ${id}: ${err.message}`);
+    return null;
+  }
+}
+
+// Patched in place so the corrected author also reaches bridgeToYoutube, which searches "title author" — otherwise it looks up "<title> Apple Music".
+async function enrichAppleMusicTrack(track) {
+  if (!isAppleMusicTrack(track)) return false;
+  if (String(track.author || "").trim().toLowerCase() !== APPLE_PLACEHOLDER_AUTHOR) return false;
+
+  const id = appleTrackId(track.url);
+  if (!id) return false;
+
+  const info = await fetchItunesTrack(id);
+  if (!info?.artistName) return false;
+
+  track.author = info.artistName;
+  if (info.trackName) track.title = info.trackName;
+  if (info.artworkUrl100) track.thumbnail = info.artworkUrl100.replace(/\/\d+x\d+bb\./, "/512x512bb.");
+  logger.debug(`[MusicStream] Apple Music author resolved: "${track.title}" -> ${info.artistName}`);
+  return true;
+}
+
+async function enrichAppleMusicTracks(tracks, limit = APPLE_ENRICH_LIMIT) {
+  if (!Array.isArray(tracks) || tracks.length === 0) return 0;
+  const pending = tracks.filter(isAppleMusicTrack).slice(0, limit);
+  if (pending.length === 0) return 0;
+
+  let enriched = 0;
+  for (let i = 0; i < pending.length; i += APPLE_ENRICH_CONCURRENCY) {
+    const batch = pending.slice(i, i + APPLE_ENRICH_CONCURRENCY);
+    const done = await Promise.all(batch.map(t => enrichAppleMusicTrack(t).catch(() => false)));
+    enriched += done.filter(Boolean).length;
+  }
+  if (enriched > 0) logger.log(`[MusicStream] Resolved real artist for ${enriched} Apple Music track(s)`);
+  return enriched;
+}
+
 function isYoutubePlaylist(query) {
   return typeof query === "string" && /(?:youtube\.com|youtu\.be)/i.test(query) && /[?&]list=/i.test(query);
 }
@@ -241,4 +306,4 @@ function expandYoutubePlaylist(url, player, requestedBy, limit = PLAYLIST_LIMIT)
   return tracks;
 }
 
-module.exports = { EQUALIZER_BANDS, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };
+module.exports = { EQUALIZER_BANDS, enrichAppleMusicTracks, enrichAppleMusicTrack, appleTrackId, isAppleMusicTrack, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };
