@@ -6,7 +6,8 @@ const { testAsync, capability, getPlayer, results } = require("./harness");
 
 const TEXT_QUERY = "daft punk one more time";
 const YT_URL = "https://www.youtube.com/watch?v=FGBhQbmPwH8";
-const YT_PLAYLIST = "https://www.youtube.com/playlist?list=PLQOaFYSPeMBrp3ZNKMHhTsRIfDCzYvOgV";
+// A channel UU… uploads playlist: it cannot 404 while the channel exists, whereas a hand-picked id rots and reads as a failure.
+const YT_PLAYLIST = "https://www.youtube.com/playlist?list=UU_kRDKYrUlrbtrSiyu5Tflg";
 const SC_URL = "https://soundcloud.com/forss/flickermood";
 const SC_SET = "https://soundcloud.com/forss/sets/soulhack";
 const SP_URL = "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV";
@@ -40,12 +41,18 @@ async function run() {
     assert.ok(res.tracks.length > 0);
   });
 
-  await testAsync("YouTube playlist resolves to multiple tracks", async () => {
+  // Mirrors play.js: extractor first, then yt-dlp recovery — recording both shows which half carries playlists.
+  await testAsync("YouTube playlist yields multiple tracks", async () => {
     const player = await getPlayer();
     const res = await player.search(YT_PLAYLIST, { searchEngine: QueryType.AUTO });
-    const n = res?.tracks?.length ?? 0;
-    capability("search", "YouTube (playlist)", n > 1 ? "OK" : "FAIL", n > 1 ? `${n} tracks` : `${n} track(s) — playlist not expanded`);
-    assert.ok(n > 1, "playlist did not expand");
+    const viaExtractor = res?.tracks?.length ?? 0;
+    capability("search", "YouTube playlist (extractor)", viaExtractor > 1 ? "OK" : "FAIL", viaExtractor > 1 ? `${viaExtractor} tracks` : `${viaExtractor} — extractor cannot expand playlists`);
+
+    const { expandYoutubePlaylist } = require("../../utils/musicStream");
+    const viaYtdlp = viaExtractor > 1 ? [] : expandYoutubePlaylist(YT_PLAYLIST, player, null, 10);
+    const total = viaExtractor > 1 ? viaExtractor : viaYtdlp.length;
+    capability("search", "YouTube playlist (effective)", total > 1 ? "OK" : "FAIL", total > 1 ? `${total} tracks — "${res?.playlist?.title || "playlist"}"` : "no tracks from either path");
+    assert.ok(total > 1, "playlist produced no tracks by any path");
   });
 
   await testAsync("SoundCloud URL resolves", async () => {

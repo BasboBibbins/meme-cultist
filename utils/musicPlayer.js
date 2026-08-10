@@ -5,6 +5,25 @@ const { buildInfoEmbed } = require("./embeds");
 
 let msg = null;
 
+// Fallback when a track's duration is unknown, which bridged sources report as 0.
+const DEFAULT_COLLECTOR_MS = 600000;
+const PROGRESS_REFRESH_MS = 7000;
+
+// getTimestamp() is null until playback resolves (bridged Spotify reaches PlayerStart first), and `current` is {label,value} in ms — not seconds.
+function remainingMs(queue, track) {
+  const elapsed = queue.node.getTimestamp()?.current?.value ?? 0;
+  const total = Number(track?.durationMS) || 0;
+  const remaining = total - elapsed;
+  return remaining > 0 ? remaining : DEFAULT_COLLECTOR_MS;
+}
+
+// createProgressBar() also returns null before playback resolves.
+function progressBar(queue, track) {
+  if (track?.isStream) return "🔴 LIVE";
+  const bar = queue.node.createProgressBar();
+  return bar ? `🔘 ${bar} 🔘` : "";
+}
+
 module.exports = {
   currentTrack: null,
   trackStart: async (client, queue, track) => {
@@ -38,7 +57,7 @@ module.exports = {
       currentQueue[index] = track;
     });
 
-    const player = buildInfoEmbed(requestedBy, client, `${desc}\n\n${track.isStream ? "🔴 LIVE" : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`)
+    const player = buildInfoEmbed(requestedBy, client, `${desc}\n\n${progressBar(queue, track)}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`)
       .setTitle(`🎧 Now Playing${queue.channel ? ` in ${queue.channel.name}` : ""}`)
       .setAuthor({ name: `Requested by ${requestedBy.displayName}`, iconURL: requestedBy.displayAvatarURL({ dynamic: true }) })
       .setThumbnail(track.thumbnail);
@@ -53,12 +72,18 @@ module.exports = {
 
       if (!queue.node.isPlaying() || queue.node.isPaused() || track.isStream) return clearInterval(interval);
 
-      player.setDescription(`${desc}\n\n${track.isStream ? "🔴 LIVE" : `🔘 ${queue.node.createProgressBar()} 🔘`}${Object.keys(currentQueue).length > 0 ? `\n\nUp Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`);
-      await msg.edit({ embeds: [player], components: [row] });
-    }, 1000);
+      player.setDescription(`${desc}\n\n${progressBar(queue, track)}${Object.keys(currentQueue).length > 0 ? `\n\nUp Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`);
+      try {
+        await msg.edit({ embeds: [player], components: [row] });
+      } catch (err) {
+        logger.warn(`[Music] Progress update failed, stopping refresh: ${err.message}`);
+        clearInterval(interval);
+      }
+      // Discord allows roughly five edits per five seconds per channel; a 1s refresh guarantees 429s.
+    }, PROGRESS_REFRESH_MS);
 
     const filter = i => i.member.voice.channelId === queue.channel.id;
-    const collector = await msg.createMessageComponentCollector({ filter, time: (track.durationMS - queue.node.getTimestamp().current * 1000) });
+    const collector = await msg.createMessageComponentCollector({ filter, time: remainingMs(queue, track) });
 
     collector.on("collect", async i => {
       if (!filter) return await i.reply({ content: "Join the bot's channel to use these buttons!", flags: MessageFlags.Ephemeral });
@@ -133,5 +158,9 @@ module.exports = {
     }
 
     return result;
-  }
+  },
+
+  remainingMs,
+  progressBar,
+  DEFAULT_COLLECTOR_MS,
 };

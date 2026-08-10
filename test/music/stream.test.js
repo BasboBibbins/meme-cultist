@@ -13,7 +13,9 @@ async function streamFirstResult(area, name, query) {
   }
   const track = res.tracks[0];
   try {
-    const stream = await track.extractor.stream(track);
+    // Mirror production routing: YouTube uses the yt-dlp provider, everything else its own extractor.
+    const { beforeCreateStream } = require("../../utils/musicStream");
+    const stream = (await beforeCreateStream(track)) || await track.extractor.stream(track);
     if (!stream) {
       capability(area, name, "FAIL", "extractor.stream() returned nothing");
       return { bytes: 0 };
@@ -23,7 +25,8 @@ async function streamFirstResult(area, name, query) {
       capability(area, name, "OK", `resolved to a stream URL (${host})`);
       return { bytes: 1, url: stream };
     }
-    const bytes = await drain(stream);
+    // yt-dlp resolves formats before the first byte, so this needs more headroom than a direct HTTP stream.
+    const bytes = await drain(stream, { minBytes: 200000, timeoutMs: 45000 });
     capability(area, name, bytes > 0 ? "OK" : "FAIL", bytes > 0 ? `${bytes} bytes received` : "stream produced no data");
     return { bytes };
   } catch (err) {

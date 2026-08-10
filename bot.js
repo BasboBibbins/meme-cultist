@@ -23,21 +23,12 @@ const logger = require("./utils/logger");
 const schedule = require("node-schedule");
 const rateLimiter = require("./utils/ratelimiter");
 const { DefaultExtractors } = require("@discord-player/extractor");
-const playdl = require("play-dl");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
 const { handleProposalInteraction } = require("./utils/kbProposals");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (process.env.COOKIE) {
-  playdl.setToken({
-    youtube: {
-      cookie: process.env.COOKIE
-    }
-  });
-}
-
 const LOAD_SLASH = process.argv[2] === "load";
 const LOAD_DB = process.argv[2] === "dbinit";
 const DEBUG_MODE = process.argv[2] === "debug";
@@ -121,19 +112,7 @@ if (!fs.existsSync("./db/users.sqlite")) {
   process.exit(1);
 }
 
-const player = new Player(client, {
-  ytdlOptions: {
-    filter: "audioonly",
-    quality: "highestaudio",
-    highWaterMark: 1 << 25,
-    opusEncoded: true,
-    requestOptions: {
-      headers: {
-        cookie: process.env.COOKIE
-      }
-    }
-  }
-});
+const player = new Player(client);
 
 process.on("unhandledRejection", (reason, p) => {
   logger.error(`Unhandled Promise Rejection! Reason: ${reason}`);

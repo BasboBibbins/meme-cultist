@@ -3,7 +3,7 @@ const fs = require("fs");
 
 // Music integration runner — hits real provider endpoints, so it stays outside Jest and CI. Usage: node test/music/runner.js [suite]
 
-const ORDER = ["environment", "extractors", "search", "stream", "legacy"];
+const ORDER = ["environment", "extractors", "search", "stream", "provider"];
 
 // youtubei.js narrates parser mismatches for tracks it still returns fine; unfiltered they bury the results.
 function quietYoutubeiNoise() {

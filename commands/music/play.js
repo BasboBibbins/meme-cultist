@@ -2,7 +2,7 @@ const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageF
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
-const playdl = require("play-dl");
+const { beforeCreateStream, isYoutubePlaylist, expandYoutubePlaylist } = require("../../utils/musicStream");
 const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
@@ -56,12 +56,11 @@ module.exports = {
         channel: interaction.channel,
         requestedBy: interaction.user
       },
-      async onBeforeCreateStream(track, source, _queue) {
+      async onBeforeCreateStream(track, _source, _queue) {
         try {
-          const stream = await playdl.stream(track.url);
-          return stream.stream;
+          return await beforeCreateStream(track);
         } catch (error) {
-          logger.error("Error while creating stream with play-dl:", error);
+          logger.error(`[Play] Stream setup failed for "${track.title}": ${error.message}`);
           throw error;
         }
       }
@@ -88,6 +87,22 @@ module.exports = {
     }
 
     logger.debug(`[Play] "${song}" -> ${results?.tracks?.length ?? 0} track(s), playlist=${results?.playlist?.title ?? "none"}, extractor=${results?.extractor?.identifier ?? "none"}`);
+
+    // The extractor resolves a playlist title but none of its entries, so tracks are recovered from yt-dlp before this counts as a miss.
+    if ((!results || !results.tracks.length) && isYoutubePlaylist(song)) {
+      const recovered = expandYoutubePlaylist(song, player, interaction.user);
+      if (recovered.length) {
+        logger.log(`[Play] Recovered ${recovered.length} track(s) from playlist via yt-dlp`);
+        queue.addTrack(recovered);
+        embed.setTitle("Added playlist to queue!");
+        embed.setDescription(`**${recovered.length}** tracks queued.\nFirst up: [${recovered[0].title}](${recovered[0].url})`);
+        embed.setThumbnail(recovered[0].thumbnail || null);
+        await interaction.editReply({ embeds: [embed] });
+        if (!queue.isPlaying()) await queue.node.play();
+        await wait(10000);
+        return await interaction.deleteReply();
+      }
+    }
 
     if (!results || !results.tracks.length) {
       // Zero results is almost always a broken extractor rather than an obscure query.
