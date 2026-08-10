@@ -263,8 +263,22 @@ if (DELETE_SLASH) {
     if (CHATBOT_LOCAL) {
       logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`);
     }
-    await player.extractors.loadMulti(DefaultExtractors);
-    await player.extractors.register(YoutubeiExtractor, {});
+    // Registration failures are silent by default and surface much later as "no results found".
+    try {
+      await player.extractors.loadMulti(DefaultExtractors);
+    } catch (err) {
+      logger.error(`[Music] Failed to load default extractors: ${err.message}`);
+    }
+    try {
+      await player.extractors.register(YoutubeiExtractor, {});
+    } catch (err) {
+      logger.error(`[Music] Failed to register the YouTube extractor — search will return nothing: ${err.message}`);
+    }
+    const loadedExtractors = player.extractors.store.map(e => e.identifier);
+    logger.info(`[Music] ${loadedExtractors.length} extractor(s) active: ${loadedExtractors.join(", ") || "NONE"}`);
+    if (!loadedExtractors.some(id => id.includes("youtubei"))) {
+      logger.warn("[Music] No YouTube extractor is active — text searches will find nothing.");
+    }
     client.player = player;
     // Pre-warm slot image caches to eliminate cold-start latency on first spin
     try {

@@ -76,9 +76,23 @@ module.exports = {
       return await interaction.editReply({ embeds: [embed] });
     }
 
-    const results = await player.search(song, { requestedBy: interaction.user, searchEngine: QueryType.AUTO });
+    let results;
+    try {
+      results = await player.search(song, { requestedBy: interaction.user, searchEngine: QueryType.AUTO });
+    } catch (error) {
+      logger.error(`[Play] Search threw for "${song}": ${error.message}`);
+      logger.error(error.stack);
+      embed.setTitle("Search failed!");
+      embed.setDescription("Something went wrong searching for that. Please try again.");
+      return await interaction.editReply({ embeds: [embed] });
+    }
+
+    logger.debug(`[Play] "${song}" -> ${results?.tracks?.length ?? 0} track(s), playlist=${results?.playlist?.title ?? "none"}, extractor=${results?.extractor?.identifier ?? "none"}`);
 
     if (!results || !results.tracks.length) {
+      // Zero results is almost always a broken extractor rather than an obscure query.
+      const loaded = player.extractors.store.map(e => e.identifier).join(", ") || "NONE";
+      logger.warn(`[Play] No results for "${song}". Active extractors: ${loaded}`);
       embed.setTitle("No results found!");
       embed.setDescription(`No results found for "${song}".`);
       return await interaction.editReply({ embeds: [embed] });

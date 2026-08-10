@@ -51,5 +51,8 @@
   "devDependencies": {
     "eslint": "^8.57.1",
     "jest": "^30.4.2"
+  },
+  "overrides": {
+    "youtubei.js": "^17.2.0"
   }
 }
