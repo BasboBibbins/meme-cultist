@@ -112,6 +112,10 @@ const config = {
   // deliberately made, where a weak match beats an error.
   KB_LEXICAL_FALLBACK_MIN_SCORE: 0.10,
 
+  // Total chars of KB content one lookup_kb result set may carry. Entries are
+  // never cut; the lowest-ranked ones are dropped once the budget is spent.
+  KB_LOOKUP_TOTAL_CHARS: 8000,
+
   // Per-tool call caps within a single turn, so one retrieval tool cannot spend
   // the whole global depth budget re-phrasing the same question. The table itself
   // lives in utils/openai-tools.js — it is keyed by tool name and only changes
