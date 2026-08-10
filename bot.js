@@ -142,8 +142,17 @@ process.on("unhandledRejection", (reason, p) => {
   .on("uncaughtException", (err) => {
     logger.error(`Uncaught Exception: ${err}`);
     logger.error(err.stack);
-    process.exit(1);
   });
+
+async function notifyMusicFailure(queue, message) {
+  try {
+    const channel = queue?.metadata?.channel;
+    if (!channel?.send) return;
+    await channel.send({ embeds: [buildInfoEmbed(client.user, client, message).setColor(COLORS.error)] });
+  } catch (err) {
+    logger.warn(`[Music] Could not report failure to channel: ${err.message}`);
+  }
+}
 
 function shutdownJobs() {
   try { require("./utils/jobs").stop(); } catch (_) {}
@@ -606,6 +615,12 @@ if (DELETE_SLASH) {
   player.events.on(GuildQueueEvent.Error, async (queue, error) => {
     logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
     logger.error(error.stack);
+    await notifyMusicFailure(queue, "The queue hit an error and had to stop.");
+  });
+  player.events.on(GuildQueueEvent.PlayerError, async (queue, error, track) => {
+    logger.error(`Playback error in ${queue.guild.name}${track ? ` on "${track.title}"` : ""} - ${error.message}`);
+    logger.error(error.stack);
+    await notifyMusicFailure(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}. Skipping it.`);
   });
 
   // Chatbot events
