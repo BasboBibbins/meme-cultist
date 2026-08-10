@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const kbStore = require("../../utils/kb");
 const kbPreflight = require("../../utils/kb/preflight");
 const llm = require("../../utils/llm");
@@ -74,14 +74,14 @@ module.exports = {
 
   async execute(interaction) {
     if (!interaction.guildId) {
-      return interaction.reply({ content: "Knowledge base is only available in servers.", ephemeral: true });
+      return interaction.reply({ content: "Knowledge base is only available in servers.", flags: MessageFlags.Ephemeral });
     }
     const sub = interaction.options.getSubcommand();
     const guildId = interaction.guildId;
 
     if (sub === "add") {
       if (!isAdmin(interaction)) {
-        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], flags: MessageFlags.Ephemeral });
       }
       const slug = interaction.options.getString("slug").trim().toLowerCase();
       const title = interaction.options.getString("title").trim();
@@ -89,16 +89,16 @@ module.exports = {
       const tags = interaction.options.getString("tags")?.trim() || null;
 
       if (!SLUG_RE.test(slug)) {
-        return interaction.reply({ content: "Slug must be 1-64 lowercase characters: a-z, 0-9, hyphens.", ephemeral: true });
+        return interaction.reply({ content: "Slug must be 1-64 lowercase characters: a-z, 0-9, hyphens.", flags: MessageFlags.Ephemeral });
       }
       if (title.length === 0 || title.length > MAX_TITLE_LEN) {
-        return interaction.reply({ content: `Title must be 1-${MAX_TITLE_LEN} characters.`, ephemeral: true });
+        return interaction.reply({ content: `Title must be 1-${MAX_TITLE_LEN} characters.`, flags: MessageFlags.Ephemeral });
       }
       if (content.length === 0 || content.length > MAX_CONTENT_LEN) {
-        return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, ephemeral: true });
+        return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, flags: MessageFlags.Ephemeral });
       }
       if (kbStore.getBySlug(guildId, slug)) {
-        return interaction.reply({ content: `Entry **${slug}** already exists. Use \`\/kb edit\` to modify it.`, ephemeral: true });
+        return interaction.reply({ content: `Entry **${slug}** already exists. Use \`\/kb edit\` to modify it.`, flags: MessageFlags.Ephemeral });
       }
 
       const entry = await kbStore.create({ guildId, slug, title, content, tags, creatorId: interaction.user.id });
@@ -107,29 +107,29 @@ module.exports = {
 
       return interaction.reply({
         embeds: [buildSuccessEmbed(interaction.user, interaction.client, `**${entry.title}** (${entry.slug})`).setTitle("Knowledge Base Entry Added")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (sub === "edit") {
       if (!isAdmin(interaction)) {
-        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], flags: MessageFlags.Ephemeral });
       }
       const slug = interaction.options.getString("slug").trim().toLowerCase();
       const entry = kbStore.getBySlug(guildId, slug);
-      if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, ephemeral: true });
+      if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, flags: MessageFlags.Ephemeral });
 
       const title = interaction.options.getString("title")?.trim();
       const content = interaction.options.getString("content")?.trim();
       const tags = interaction.options.getString("tags")?.trim();
       if (title === undefined && content === undefined && tags === undefined) {
-        return interaction.reply({ content: "Pass at least one field to change.", ephemeral: true });
+        return interaction.reply({ content: "Pass at least one field to change.", flags: MessageFlags.Ephemeral });
       }
       if (title !== undefined && (title.length === 0 || title.length > MAX_TITLE_LEN)) {
-        return interaction.reply({ content: `Title must be 1-${MAX_TITLE_LEN} characters.`, ephemeral: true });
+        return interaction.reply({ content: `Title must be 1-${MAX_TITLE_LEN} characters.`, flags: MessageFlags.Ephemeral });
       }
       if (content !== undefined && (content.length === 0 || content.length > MAX_CONTENT_LEN)) {
-        return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, ephemeral: true });
+        return interaction.reply({ content: `Content must be 1-${MAX_CONTENT_LEN} characters.`, flags: MessageFlags.Ephemeral });
       }
 
       await kbStore.update({ guildId, slug, title, content, tags });
@@ -138,43 +138,43 @@ module.exports = {
 
       return interaction.reply({
         embeds: [buildSuccessEmbed(interaction.user, interaction.client, `**${entry.title}** (${slug})`).setTitle("Knowledge Base Entry Updated")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (sub === "delete") {
       if (!isAdmin(interaction)) {
-        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to manage the knowledge base.").setTitle("Permission Denied")], flags: MessageFlags.Ephemeral });
       }
       const slug = interaction.options.getString("slug").trim().toLowerCase();
       const entry = kbStore.getBySlug(guildId, slug);
-      if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, ephemeral: true });
+      if (!entry) return interaction.reply({ content: `No entry named **${slug}**.`, flags: MessageFlags.Ephemeral });
 
       kbStore.deleteBySlug(guildId, slug);
       kbPreflight.invalidate(guildId);
       logger.log(`[KB] ${interaction.user.tag} deleted "${slug}"`);
-      return interaction.reply({ content: `Deleted **${slug}**.`, ephemeral: true });
+      return interaction.reply({ content: `Deleted **${slug}**.`, flags: MessageFlags.Ephemeral });
     }
 
     if (sub === "list") {
       const all = kbStore.listForGuild(guildId);
       if (all.length === 0) {
-        return interaction.reply({ content: "No knowledge base entries yet. Admins can add them with `\/kb add`.", ephemeral: true });
+        return interaction.reply({ content: "No knowledge base entries yet. Admins can add them with `\/kb add`.", flags: MessageFlags.Ephemeral });
       }
       const lines = all.map(e => `**${e.slug}** — ${e.title}`);
       return interaction.reply({
         embeds: [buildInfoEmbed(interaction.user, interaction.client, lines.join("\n").slice(0, 4000))
           .setTitle(`Knowledge Base — ${interaction.guild.name}`)
           .setFooter({ text: `${all.length} entr${all.length === 1 ? "y" : "ies"}` })],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (sub === "search") {
       const query = interaction.options.getString("query").trim();
-      if (!query) return interaction.reply({ content: "Query cannot be empty.", ephemeral: true });
+      if (!query) return interaction.reply({ content: "Query cannot be empty.", flags: MessageFlags.Ephemeral });
 
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       // Semantic first, keyword second. The KB store has no lexical index of its
       // own, so without this an unavailable embedding endpoint turns every search
@@ -193,7 +193,7 @@ module.exports = {
 
       try {
         if (results.length === 0) {
-          return interaction.editReply({ content: "No matching knowledge base entries found.", ephemeral: true });
+          return interaction.editReply({ content: "No matching knowledge base entries found." });
         }
         const lines = results.map((r, i) => {
           const snippet = r.content.length > 200 ? r.content.slice(0, 200) + "..." : r.content;
@@ -206,11 +206,10 @@ module.exports = {
           embeds: [buildInfoEmbed(interaction.user, interaction.client, lines.join("\n\n").slice(0, 4000))
             .setTitle(`Search Results — "${query}"`)
             .setFooter({ text: footer })],
-          ephemeral: true,
         });
       } catch (err) {
         logger.error(`[KB search] ${err.message}`);
-        return interaction.editReply({ content: "Search failed. Please try again later.", ephemeral: true });
+        return interaction.editReply({ content: "Search failed. Please try again later." });
       }
     }
   },

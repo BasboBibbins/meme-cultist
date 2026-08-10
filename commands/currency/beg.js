@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
@@ -62,7 +62,7 @@ module.exports = {
 
     if (dbUser.balance > 0 || dbUser.bank > 0) {
       embed.setColor(COLORS.error).setDescription(`You already have ${CURRENCY_NAME}${dbUser.balance < 0 && dbUser.bank > 0 ? " in your bank" : ""}!`);
-      return await interaction.reply({ embeds: [embed], ephemeral: true });
+      return await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     if (chance > 75) {

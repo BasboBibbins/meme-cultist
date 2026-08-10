@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, DUEL_MIN_BET, DUEL_COOLDOWN } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
@@ -43,7 +43,7 @@ function makeSessionWarner() {
       return;
     }
     warned.add(i.user.id);
-    try { await i.reply({ content: message, ephemeral: true }); } catch (_) {}
+    try { await i.reply({ content: message, flags: MessageFlags.Ephemeral }); } catch (_) {}
   };
 }
 
@@ -83,29 +83,29 @@ module.exports = {
     // Validation
     if (opponent.bot) {
       errorEmbed.setDescription("You can't duel a bot!");
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
     if (opponent.id === challenger.id) {
       errorEmbed.setDescription("You can't duel yourself!");
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
     const bet = Number(await parseBet(betString, challenger.id));
     if (isNaN(bet)) {
       errorEmbed.setDescription("Invalid bet amount.");
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
     if (bet % 1 !== 0) {
       errorEmbed.setDescription(`You must bet a whole number of ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
     if (bet < 1) {
       errorEmbed.setDescription(`You must bet at least 1 ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
     if (DUEL_MIN_BET && bet < DUEL_MIN_BET) {
       errorEmbed.setDescription(`Minimum bet is ${DUEL_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
     const challengerBalance = await db.get(`${challenger.id}.balance`) || 0;
@@ -115,27 +115,27 @@ module.exports = {
 
     if (bet > challengerBalance) {
       errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
     // Opponent eligibility uses their combined wallet+bank — the wallet-only
     // check is still deferred until they actually click accept.
     if (bet > opponentTotal) {
       errorEmbed.setDescription(`${opponent.displayName} doesn't have enough ${CURRENCY_NAME} to be challenged for this wager!`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
     // Cooldown check
     const challengerCooldown = await db.get(`${challenger.id}.cooldowns.duel`) || 0;
     if (challengerCooldown > Date.now()) {
       errorEmbed.setDescription(`Duel cooldown active. You can duel again **<t:${Math.floor(challengerCooldown / 1000)}:R>**.`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
     // Create session
     const sessionKey = `${interaction.channelId}:${challenger.id}:${opponent.id}`;
     if (client.duelGames.has(sessionKey)) {
       errorEmbed.setDescription("You already have an active duel with this user!");
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
     // Escrow only the challenger's wager up front. The opponent's wallet is
@@ -149,7 +149,7 @@ module.exports = {
     });
     if (!escrowed) {
       errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
     client.duelGames.set(sessionKey, {
@@ -376,7 +376,7 @@ async function runRpsPhase({ session, challenger, opponent, bet, colors, msg, cl
     const choice = btn.customId.split("_").pop();
 
     if (choices.has(btn.user.id)) {
-      await btn.reply({ content: "You already chose!", ephemeral: true });
+      await btn.reply({ content: "You already chose!", flags: MessageFlags.Ephemeral });
       return;
     }
 

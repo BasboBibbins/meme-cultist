@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, AttachmentBuilder, MessageFlags } = require("discord.js");
 const { loadImage, createCanvas } = require("canvas");
 const logger = require("../../utils/logger");
 const path = require("path");
@@ -65,7 +65,7 @@ module.exports = {
       if (!image.contentType || !image.contentType.startsWith("image")) {
         return interaction.reply({
           content: "Please provide a valid image.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } else {
@@ -80,7 +80,7 @@ module.exports = {
     if (!imageResponse.body) {
       return interaction.reply({
         content: "Unable to download attachment.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 

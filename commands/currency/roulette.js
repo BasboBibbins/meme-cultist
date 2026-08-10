@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, ROULETTE_MIN_BET, ROULETTE_MAX_BET, ROULETTE_IDLE_TIMEOUT } = require("../../config.js");
 const { openBetModal, resolveBet } = require("../../utils/betModal");
@@ -61,7 +61,7 @@ module.exports = {
     const channelId = interaction.channelId;
 
     if (client.rouletteGames.has(channelId)) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A roulette game is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A roulette game is already running in this channel — click a bet button on the table to join.")], flags: MessageFlags.Ephemeral });
     }
 
     const dbUser = await db.get(user.id);
@@ -76,7 +76,7 @@ module.exports = {
     if (amountStr) {
       const check = await resolveBet(amountStr, user.id, { min: ROULETTE_MIN_BET, max: ROULETTE_MAX_BET, requireBalance: false });
       if (!check.ok) {
-        return interaction.reply({ embeds: [buildErrorEmbed(user, client, check.reason)], ephemeral: true });
+        return interaction.reply({ embeds: [buildErrorEmbed(user, client, check.reason)], flags: MessageFlags.Ephemeral });
       }
       initialExpression = amountStr.trim();
     }
@@ -233,20 +233,20 @@ function attachCollector(client, channel, message, state) {
       }
       if (i.customId === "roulette_spin") {
         if (i.user.id !== state.creatorId) {
-          return i.reply({ content: `Only **${state.creatorUsername}** (who started this game) can spin.`, ephemeral: true });
+          return i.reply({ content: `Only **${state.creatorUsername}** (who started this game) can spin.`, flags: MessageFlags.Ephemeral });
         }
         return handleSpin(i, state, client);
       }
       if (i.customId === "roulette_cancel") {
         if (i.user.id !== state.creatorId) {
-          return i.reply({ content: `Only **${state.creatorUsername}** (who started this game) can cancel.`, ephemeral: true });
+          return i.reply({ content: `Only **${state.creatorUsername}** (who started this game) can cancel.`, flags: MessageFlags.Ephemeral });
         }
         return endSession(client, channel, message, state, "cancelled", i);
       }
     } catch (err) {
       logger.error(`[roulette] handler error: ${err && err.stack || err}`);
       try {
-        if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong handling that action.", ephemeral: true });
+        if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong handling that action.", flags: MessageFlags.Ephemeral });
       } catch (_) { /* ignore */ }
     }
   });
@@ -262,7 +262,7 @@ function attachCollector(client, channel, message, state) {
 async function handleBetButton(buttonInt, state, betKey, client) {
   const def = BET_DEFINITIONS[betKey];
   if (!def) {
-    return buttonInt.reply({ content: "Unknown bet type.", ephemeral: true });
+    return buttonInt.reply({ content: "Unknown bet type.", flags: MessageFlags.Ephemeral });
   }
 
   const cachedExpression = state.userBetAmounts[buttonInt.user.id];
@@ -279,7 +279,7 @@ async function handleBetButton(buttonInt, state, betKey, client) {
       delete state.userBetAmounts[buttonInt.user.id];
       return buttonInt.reply({
         embeds: [buildErrorEmbed(buttonInt.user, client, `${resolved.reason} Click the bet button again to enter a new amount.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
     return handleAddBet(buttonInt, client, buttonInt.user, betKey, null, resolved.amount, state);
@@ -310,16 +310,16 @@ async function handleBetButton(buttonInt, state, betKey, client) {
     numberValue = parseInt(raw, 10);
     const check = validateBet("straight", numberValue);
     if (!check.allowed) {
-      return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, check.reason)], ephemeral: true });
+      return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, check.reason)], flags: MessageFlags.Ephemeral });
     }
   }
 
   const current = client.rouletteGames.get(state.channelId);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "This roulette game is no longer active.")], flags: MessageFlags.Ephemeral });
   }
   if (current.status !== "betting") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "The wheel is spinning — try again next round.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "The wheel is spinning — try again next round.")], flags: MessageFlags.Ephemeral });
   }
 
   current.userBetAmounts[submit.user.id] = expression;
@@ -340,7 +340,7 @@ async function handleChangeBet(buttonInt, state) {
 
   const current = client.rouletteGames.get(state.channelId);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "This roulette game is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, client, "This roulette game is no longer active.")], flags: MessageFlags.Ephemeral });
   }
   current.userBetAmounts[submit.user.id] = expression;
 
@@ -349,14 +349,14 @@ async function handleChangeBet(buttonInt, state) {
     .setColor(current.themeColors.embedColor || randomHexColor())
     .setDescription(`Your bet amount is now **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click any bet button to place it.`)
     .setTimestamp();
-  return submit.reply({ embeds: [embed], ephemeral: true });
+  return submit.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
 async function handleWipeBets(buttonInt, state) {
   const userId = buttonInt.user.id;
   const userBets = state.bets.filter(b => b.userId === userId);
   if (userBets.length === 0) {
-    return buttonInt.reply({ content: "You don't have any standing bets to wipe.", ephemeral: true });
+    return buttonInt.reply({ content: "You don't have any standing bets to wipe.", flags: MessageFlags.Ephemeral });
   }
 
   const refund = userBets.reduce((sum, b) => sum + b.amount, 0);
@@ -387,7 +387,7 @@ async function handleAddBet(interaction, client, user, betKey, numberValue, amou
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Insufficient funds in wallet!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Insufficient funds in wallet!")], flags: MessageFlags.Ephemeral });
   }
   await db.add(`${user.id}.stats.roulette.totalBet`, amount);
   await contributeToJackpot(amount);
@@ -430,10 +430,10 @@ async function handleAddBet(interaction, client, user, betKey, numberValue, amou
 
 async function handleSpin(i, state, client) {
   if (state.bets.length === 0) {
-    return i.reply({ content: "Place at least one bet before spinning.", ephemeral: true });
+    return i.reply({ content: "Place at least one bet before spinning.", flags: MessageFlags.Ephemeral });
   }
   if (state.status !== "betting") {
-    return i.reply({ content: "The wheel is already spinning.", ephemeral: true });
+    return i.reply({ content: "The wheel is already spinning.", flags: MessageFlags.Ephemeral });
   }
 
   const lockedBets = state.bets;
@@ -598,10 +598,10 @@ function attachPlayAgainCollector(client, message, prevState, prevBets) {
   });
   collector.on("collect", async (i) => {
     if (!eligibleUserIds.has(i.user.id)) {
-      return i.reply({ content: "Only players from the previous game can use Play Again.", ephemeral: true });
+      return i.reply({ content: "Only players from the previous game can use Play Again.", flags: MessageFlags.Ephemeral });
     }
     if (client.rouletteGames.has(prevState.channelId)) {
-      return i.reply({ content: "A roulette game is already running in this channel — join it directly.", ephemeral: true });
+      return i.reply({ content: "A roulette game is already running in this channel — join it directly.", flags: MessageFlags.Ephemeral });
     }
     collector.stop("used");
     try {

@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
+const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../database");
 const { CURRENCY_NAME } = require("../config.js");
 const { parseBet } = require("./betparse");
@@ -114,19 +114,19 @@ async function openBetModal(buttonInt, opts) {
   const amount = Number(await parseBet(amountStr, user.id));
 
   if (isNaN(amount) || amount % 1 !== 0) {
-    await submit.reply({ embeds: [buildErrorEmbed(user, client, `You must bet a valid whole-number amount of ${CURRENCY_NAME}.`)], ephemeral: true });
+    await submit.reply({ embeds: [buildErrorEmbed(user, client, `You must bet a valid whole-number amount of ${CURRENCY_NAME}.`)], flags: MessageFlags.Ephemeral });
     return null;
   }
   if (amount <= 0) {
-    await submit.reply({ embeds: [buildErrorEmbed(user, client, "Bet must be greater than zero.")], ephemeral: true });
+    await submit.reply({ embeds: [buildErrorEmbed(user, client, "Bet must be greater than zero.")], flags: MessageFlags.Ephemeral });
     return null;
   }
   if (min && amount < min) {
-    await submit.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least ${min.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    await submit.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least ${min.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     return null;
   }
   if (max && amount > max) {
-    await submit.reply({ embeds: [buildErrorEmbed(user, client, `You can bet at most ${max.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], ephemeral: true });
+    await submit.reply({ embeds: [buildErrorEmbed(user, client, `You can bet at most ${max.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     return null;
   }
 

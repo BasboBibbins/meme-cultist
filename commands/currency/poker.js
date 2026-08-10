@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require("discord.js");
 const wait = require("node:timers/promises").setTimeout;
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, PANEL_IDLE_TIMEOUT } = require("../../config.js");
@@ -141,7 +141,7 @@ async function openHubPanel(interaction, user, client) {
   if (existing && existing.status !== "ended") {
     return interaction.reply({
       embeds: [buildErrorEmbed(user, client, "You already have a poker table open in this channel. Use the buttons on your existing table.")],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -215,7 +215,7 @@ function attachSessionCollector(client, message, session, channel) {
     } catch (err) {
       logger.error(`[poker] collector error: ${err && err.stack || err}`);
       try {
-        if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong.", ephemeral: true });
+        if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong.", flags: MessageFlags.Ephemeral });
       } catch (_) {}
     }
   });
@@ -296,7 +296,7 @@ async function handlePaytableButton(buttonInt, session, client) {
   const themeId = await getEquippedTheme(session.userId);
   const themeColors = getThemeColors(themeId, "poker");
   const payload = await buildPaytablePayload(buttonInt.user, client, themeColors);
-  return buttonInt.reply({ ...payload, ephemeral: true });
+  return buttonInt.reply({ ...payload, flags: MessageFlags.Ephemeral });
 }
 
 async function handleChangeBet(buttonInt, session, client) {
@@ -311,7 +311,7 @@ async function handleChangeBet(buttonInt, session, client) {
 
   const current = client.pokerTables.get(session.key);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer active.")], flags: MessageFlags.Ephemeral });
   }
   current.lastBet = amount;
   current.lastBetExpression = expression;
@@ -322,7 +322,7 @@ async function handleChangeBet(buttonInt, session, client) {
       .setColor(0x0f4c25)
       .setDescription(`Default bet updated to **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click **Deal Again** to use it.`)
       .setTimestamp()],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -335,7 +335,7 @@ async function handleDeal(buttonInt, session, client, channel) {
       session.lastBetExpression = null;
       return buttonInt.reply({
         embeds: [buildErrorEmbed(user, client, `${resolved.reason} Click **Deal** again to enter a new bet.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
     return dealWithAmount(buttonInt, session, client, channel, user, resolved.amount, /* deferUpdate */ true);
@@ -355,11 +355,11 @@ async function handleDeal(buttonInt, session, client, channel) {
 async function dealWithAmount(interaction, session, client, channel, user, amount, deferUpdate) {
   const current = client.pokerTables.get(session.key);
   if (!current || current.status !== "waiting") {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer available.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your table is no longer available.")], flags: MessageFlags.Ephemeral });
   }
 
   if (amount % 1 !== 0) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], flags: MessageFlags.Ephemeral });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -369,7 +369,7 @@ async function dealWithAmount(interaction, session, client, channel, user, amoun
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
   }
   await contributeToJackpot(amount);
 
@@ -644,10 +644,10 @@ async function runHand(user, client, session, bet, message, channel) {
 async function dealOnExistingPanel(interaction, session, client, user, betExpression) {
   const bet = Number(await parseBet(betExpression, user.id));
   if (!Number.isFinite(bet) || bet < 1) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
   }
   if (bet % 1 !== 0) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], flags: MessageFlags.Ephemeral });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -657,7 +657,7 @@ async function dealOnExistingPanel(interaction, session, client, user, betExpres
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
   }
   await contributeToJackpot(bet);
 
@@ -671,7 +671,7 @@ async function dealOnExistingPanel(interaction, session, client, user, betExpres
   }
   await interaction.reply({
     content: `Dealing **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on your existing table…`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
   session.lastEphemeralInteraction = interaction;
 
@@ -732,7 +732,7 @@ module.exports = {
     if (existing && existing.status !== "ended") {
       return interaction.reply({
         embeds: [buildErrorEmbed(user, client, "A hand is already in progress on your panel. Wait for it to finish.")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -749,17 +749,17 @@ module.exports = {
     if (!Number.isFinite(bet) || bet < 1) {
       return interaction.reply({
         embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
     if (bet % 1 !== 0) {
       return interaction.reply({
         embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
     if (bet > (dbUser.balance ?? 0)) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferReply();

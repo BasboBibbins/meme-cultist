@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } = require("discord.js");
 const { CURRENCY_NAME } = require("../../config.js");
 const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require("../../utils/openai");
@@ -378,10 +378,10 @@ module.exports = {
       });
       if (dm) {
         logger.log(`[ExportData] ${interaction.user.tag} exported data for ${user.tag}. DM sent successfully.`);
-        await interaction.followUp({ content: "Check your DMs — I sent you a JSON file with the stats.", ephemeral: true });
+        await interaction.followUp({ content: "Check your DMs — I sent you a JSON file with the stats.", flags: MessageFlags.Ephemeral });
       } else {
         logger.warn(`[ExportData] DM failed or disabled for ${interaction.user.tag}. Falling back to ephemeral reply.`);
-        await interaction.followUp({ content: "Here is the data exported in JSON format.", files: [attachment], ephemeral: true });
+        await interaction.followUp({ content: "Here is the data exported in JSON format.", files: [attachment], flags: MessageFlags.Ephemeral });
       }
     }
 

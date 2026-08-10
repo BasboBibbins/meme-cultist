@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
@@ -17,7 +17,7 @@ module.exports = {
       options = options.split(" ");
     }
     const rng = Math.floor(Math.random() * options.length);
-    if (options.length < 2) return interaction.reply({content: "You need to provide at least two options!", ephemeral: true});
+    if (options.length < 2) return interaction.reply({content: "You need to provide at least two options!", flags: MessageFlags.Ephemeral});
     const prompt = [
       "I choose:",
       "I pick:",

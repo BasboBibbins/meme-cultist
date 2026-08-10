@@ -1,4 +1,4 @@
-const {SlashCommandBuilder, AttachmentBuilder} = require("discord.js");
+const {SlashCommandBuilder, AttachmentBuilder, MessageFlags } = require("discord.js");
 const Canvas = require("canvas");
 const { registerFont, loadImage, createCanvas } = require("canvas");
 const { wrapText } = require("../../utils/Canvas.js");
@@ -34,7 +34,7 @@ module.exports = {
 
     if (image) {
       if (!image.contentType || !image.contentType.startsWith("image")) {
-        return interaction.reply({content: "Please provide a valid image.", ephemeral: true});
+        return interaction.reply({content: "Please provide a valid image.", flags: MessageFlags.Ephemeral});
       }
     } else {
       image = {
@@ -46,7 +46,7 @@ module.exports = {
 
     const imageResponse = await fetch(image.url);
     if (!imageResponse.body) {
-      return interaction.reply({content: "Unable to download attachment.", ephemeral: true});
+      return interaction.reply({content: "Unable to download attachment.", flags: MessageFlags.Ephemeral});
     }
 
     await interaction.deferReply();
@@ -140,7 +140,7 @@ module.exports = {
         attachment = encodeGIF(gifFrames, { width: gifCanvas.width, height: gifCanvas.height, repeat: 0, filename: `${imageName}-memegen.gif`, maxBytes: 8e6 });
       } catch (err) {
         if (err.code === "GIF_TOO_LARGE") {
-          return interaction.editReply({content: "The generated GIF is too large to send.", ephemeral: true});
+          return interaction.editReply({content: "The generated GIF is too large to send."});
         }
         throw err;
       }

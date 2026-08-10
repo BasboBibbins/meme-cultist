@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
 const {
   RARITY, RARITY_ORDER, CATEGORY_LABELS,
   getOwnedItems, getEquipped, equipItem, getItemById,
@@ -50,7 +50,7 @@ module.exports = {
             .setColor(0xFFAA00)
             .setFooter(footer)
             .setTimestamp();
-          return interaction.reply({ embeds: [embed], ephemeral: true });
+          return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         const byCategory = {};
@@ -83,15 +83,15 @@ module.exports = {
           .setColor(0x5865F2)
           .setFooter(footer)
           .setTimestamp();
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       }
 
       // ── /inventory equip ────────────────────────────────────
       case "equip": {
         const itemId = interaction.options.getString("item");
         const result = await equipItem(user.id, itemId);
-        const { embed, ephemeral } = buildEquipResultEmbed({ result, itemId, user, footer });
-        return interaction.reply({ embeds: [embed], ephemeral });
+        const { embed, flags } = buildEquipResultEmbed({ result, itemId, user, footer });
+        return interaction.reply({ embeds: [embed], flags });
       }
     }
   },

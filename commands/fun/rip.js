@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { rip } = require("../../utils/welcome");
 
 module.exports = {
@@ -15,21 +15,21 @@ module.exports = {
         .setRequired(false)),
   async execute(interaction) {
     if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      await interaction.reply({ content: "You do not have permission to use this command!", ephemeral: true });
+      await interaction.reply({ content: "You do not have permission to use this command!", flags: MessageFlags.Ephemeral });
       return;
     }
     const user = interaction.options.getUser("user");
     const guildMember = await interaction.guild.members.fetch(user.id);
     const prompt = interaction.options.getString("prompt") || "you will never be forgotten";
     if (prompt > 250) {
-      await interaction.reply({ content: "The prompt cannot be longer than 250 characters!", ephemeral: true });
+      await interaction.reply({ content: "The prompt cannot be longer than 250 characters!", flags: MessageFlags.Ephemeral });
       return;
     }
     const message = await rip(interaction.client, guildMember, prompt);
     if (message) {
-      await interaction.reply({ content: `Done! [Check out the RIP message here.](${message.url})`, ephemeral: true });
+      await interaction.reply({ content: `Done! [Check out the RIP message here.](${message.url})`, flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ content: "Done! Check the RIP channel for the message!", ephemeral: true });
+      await interaction.reply({ content: "Done! Check the RIP channel for the message!", flags: MessageFlags.Ephemeral });
     }
   },
 };

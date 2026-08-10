@@ -1,4 +1,4 @@
-const {SlashCommandBuilder} = require("discord.js");
+const {SlashCommandBuilder, MessageFlags } = require("discord.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -12,7 +12,7 @@ module.exports = {
   async execute(interaction) {
     const user = interaction.options.getUser("user") || interaction.user;
     const avatar = user.displayAvatarURL({dynamic: true, size: 4096});
-    if (Buffer.byteLength(avatar) > 8e+6) return interaction.reply({content: "The avatar is too big to send! (8MB maximum)", ephemeral: true});
+    if (Buffer.byteLength(avatar) > 8e+6) return interaction.reply({content: "The avatar is too big to send! (8MB maximum)", flags: MessageFlags.Ephemeral});
     await interaction.reply({files: [avatar]});
   },
 };

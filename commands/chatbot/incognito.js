@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { db: usersDb } = require("../../database");
 const logger = require("../../utils/logger");
 const { getUserChatbotData } = require("../../utils/openai");
@@ -30,7 +30,7 @@ module.exports = {
       logger.debug(`User ${interaction.user.tag} has ${chatbot.incognitoMode ? "enabled" : "disabled"} GLOBAL incognito mode.`);
       await interaction.reply({
         content: `Global incognito mode is now ${chatbot.incognitoMode ? "enabled" : "disabled"}. The chatbot will ${chatbot.incognitoMode ? "no longer " : "now "}learn from your messages in any channel or thread.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -53,7 +53,7 @@ module.exports = {
     logger.debug(`User ${interaction.user.tag} has ${enabled ? "enabled" : "disabled"} incognito mode in channel ${channelId}.`);
     await interaction.reply({
       content: `Channel incognito mode is now ${enabled ? "enabled" : "disabled"} for **${interaction.channel.name}**. The chatbot will ${enabled ? "no longer " : "now "}learn from your messages here.${chatbot.incognitoMode ? " (Global incognito is also enabled, so user memory is fully disabled.)" : ""}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 };

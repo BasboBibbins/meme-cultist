@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { getUserSettings, toggleSetting } = require("../../utils/settings");
 const { buildInfoEmbed } = require("../../utils/embeds");
 
@@ -29,7 +29,7 @@ module.exports = {
       const result = await toggleSetting(user.id, key);
       const embed = buildInfoEmbed(user, interaction.client, `${result.meta.emoji} **${result.meta.label}** is now **${result.newValue ? "enabled" : "disabled"}**.`)
         .setAuthor({ name: `${user.displayName} | Settings`, iconURL: user.displayAvatarURL({ dynamic: true }) });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === "view") {
@@ -41,7 +41,7 @@ module.exports = {
       }
       const embed = buildInfoEmbed(user, interaction.client, description.trim() || "No settings configured.", 0x5865F2)
         .setAuthor({ name: `${user.displayName} | Settings`, iconURL: user.displayAvatarURL({ dynamic: true }) });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
   },
 };

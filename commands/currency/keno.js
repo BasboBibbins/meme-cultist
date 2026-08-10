@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const {
   CURRENCY_NAME, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK,
@@ -62,7 +62,7 @@ async function handlePlay(interaction) {
   if (numbersOption) {
     const parsed = parseSpots(numbersOption);
     if (parsed.error) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, parsed.error)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(user, client, parsed.error)], flags: MessageFlags.Ephemeral });
     }
     spots = parsed.spots;
   } else {
@@ -71,13 +71,13 @@ async function handlePlay(interaction) {
 
   const bet = await parseBet(betOption, user.id);
   if (isNaN(bet) || bet % 1 !== 0) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet a whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet a whole number of ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
   }
   if (bet < KENO_MIN_BET) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `The minimum keno bet is **${KENO_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `The minimum keno bet is **${KENO_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)], flags: MessageFlags.Ephemeral });
   }
   if (KENO_MAX_BET > 0 && bet > KENO_MAX_BET) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `The maximum keno bet is **${KENO_MAX_BET.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `The maximum keno bet is **${KENO_MAX_BET.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)], flags: MessageFlags.Ephemeral });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -90,7 +90,7 @@ async function handlePlay(interaction) {
     const balance = (await db.get(`${user.id}.balance`)) ?? 0;
     return interaction.reply({
       embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}! You need **${bet.toLocaleString("en-US")}** and have **${balance.toLocaleString("en-US")}**.`)],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -238,7 +238,7 @@ module.exports = {
       if (interaction.deferred || interaction.replied) {
         return interaction.editReply({ embeds: [embed], files: [] }).catch(() => {});
       }
-      return interaction.reply({ embeds: [embed], ephemeral: true }).catch(() => {});
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   },
 };

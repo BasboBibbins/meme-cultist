@@ -1,4 +1,4 @@
-const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+const { ButtonBuilder, ActionRowBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../utils/logger");
 const { buildInfoEmbed } = require("./embeds");
@@ -61,7 +61,7 @@ module.exports = {
     const collector = await msg.createMessageComponentCollector({ filter, time: (track.durationMS - queue.node.getTimestamp().current * 1000) });
 
     collector.on("collect", async i => {
-      if (!filter) return await i.reply({ content: "Join the bot's channel to use these buttons!", ephemeral: true });
+      if (!filter) return await i.reply({ content: "Join the bot's channel to use these buttons!", flags: MessageFlags.Ephemeral });
       logger.debug(`${i.member.user.displayName} pressed ${i.customId}`);
 
       if (i.customId === "pause") {
@@ -77,7 +77,7 @@ module.exports = {
       } else if (i.customId === "skip") {
         try {
           if (queue.node.isPaused()) {
-            return await i.reply({ content: "Unpause before trying to skip. Too lazy to fix this bug for now.", ephemeral: true });
+            return await i.reply({ content: "Unpause before trying to skip. Too lazy to fix this bug for now.", flags: MessageFlags.Ephemeral });
           }
           await queue.node.skip(); 
           if (msg) await msg.delete();

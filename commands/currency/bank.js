@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
@@ -45,7 +45,7 @@ module.exports = {
     const fetchedUser = await user.fetch();
     const accentColor = fetchedUser.hexAccentColor || randomHexColor();
         
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const embed = buildBaseEmbed(user, interaction.client)
       .setAuthor({ name: `${user.displayName}'s Bank`, iconURL: user.displayAvatarURL({ dynamic: true }) })

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
@@ -21,7 +21,7 @@ module.exports = {
       await addNewDBUser(user);
     }
     if (user.bot) {
-      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `**${user.displayName}** is a bot, and therefore cannot have a balance.`)], ephemeral: true });
+      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `**${user.displayName}** is a bot, and therefore cannot have a balance.`)], flags: MessageFlags.Ephemeral });
     }
 
     const fetchedUser = await user.fetch();

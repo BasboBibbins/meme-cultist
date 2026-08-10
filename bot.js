@@ -5,7 +5,7 @@ dotenv.config();
 const fs = require("fs");
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
-const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes } = require("discord.js");
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
@@ -492,7 +492,7 @@ if (DELETE_SLASH) {
       if (client.pendingKbEdits && client.pendingKbEdits.has(interaction.customId)) return;
       return interaction.reply({
         content: "That edit window has expired. Re-open the suggestion and use Edit again.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     }
     // interaction.member is null for DM interactions (e.g. owner-DM components),
@@ -512,12 +512,12 @@ if (DELETE_SLASH) {
         }
 
         if (TESTING_MODE && !interaction.member.roles.cache.has(TESTING_ROLE)){
-          await interaction.reply({content: `The new ${interaction.client.user.username} is currently in beta! Contact <@${OWNER_ID}> for access!`, ephemeral: true});
+          await interaction.reply({content: `The new ${interaction.client.user.username} is currently in beta! Contact <@${OWNER_ID}> for access!`, flags: MessageFlags.Ephemeral});
           return;
         }
 
         if (interaction.member.roles.cache.has(banned)){
-          await interaction.reply({content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`, ephemeral: true});
+          await interaction.reply({content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`, flags: MessageFlags.Ephemeral});
           return;
         }
             
@@ -561,7 +561,7 @@ if (DELETE_SLASH) {
           }
         } catch (error) {
           logger.error(error);
-          await interaction.reply({ content: "There was an error while executing this command!", ephemeral: true });
+          await interaction.reply({ content: "There was an error while executing this command!", flags: MessageFlags.Ephemeral });
         }
       });
     } else if (interaction.isAutocomplete()) {
@@ -673,7 +673,7 @@ if (DELETE_SLASH) {
       const rateCheck = rateLimiter.canMentionBot(message.author.id);
       if (!rateCheck.allowed) {
         const channelText = formatChatbotChannelMentions(client);
-        return message.reply({ content: `⏳ ${rateCheck.reason} You can chat with me unlimited times in ${channelText}.`, ephemeral: true });
+        return message.reply({ content: `⏳ ${rateCheck.reason} You can chat with me unlimited times in ${channelText}.`, flags: MessageFlags.Ephemeral });
       }
     }
 

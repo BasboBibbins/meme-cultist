@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { updateThreadContext, getThreadContext, getUserChatbotData } = require("../../utils/openai.js");
 const { buildErrorEmbed, buildInfoEmbed, COLORS } = require("../../utils/embeds");
 
@@ -126,7 +126,7 @@ module.exports = {
         await interaction.reply({
           embeds: [buildInfoEmbed(interaction.user, interaction.client, desc, COLORS.primary)
             .setAuthor({ name: "Current Chatbot Context", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
       case "set":
@@ -136,14 +136,14 @@ module.exports = {
           return await interaction.reply({
             embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only server administrators can modify channel context. Create a thread to customize the bot in your own space!")
               .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         if (interaction.channel.isThread() && interaction.channel.ownerId !== interaction.user.id && !interaction.member.permissions.has("ManageChannels")) {
           return await interaction.reply({
             embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only the thread owner or server administrators can modify thread context.")
               .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         const characteristicValue = interaction.options.getString("characteristics") ?? characteristics;
@@ -175,7 +175,7 @@ module.exports = {
         await interaction.reply({
           embeds: [buildInfoEmbed(interaction.user, interaction.client, desc, COLORS.info)
             .setAuthor({ name: "Chatbot Context Updated", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
       case "reset":
@@ -184,14 +184,14 @@ module.exports = {
           return await interaction.reply({
             embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only server administrators can reset channel context.")
               .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         if (interaction.channel.isThread() && interaction.channel.ownerId !== interaction.user.id && !interaction.member.permissions.has("ManageChannels")) {
           return await interaction.reply({
             embeds: [buildErrorEmbed(interaction.user, interaction.client, "Only the thread owner or server administrators can reset thread context.")
               .setAuthor({ name: "Permission Denied", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         const blankContext = {
@@ -212,7 +212,7 @@ module.exports = {
         await interaction.reply({
           embeds: [buildInfoEmbed(interaction.user, interaction.client, "Successfully reset chatbot context.", COLORS.info)
             .setAuthor({ name: "Chatbot Context Reset", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
       case "summary":
@@ -235,7 +235,7 @@ module.exports = {
           return await interaction.reply({
             embeds: [buildErrorEmbed(interaction.user, interaction.client, `No ${summaryScope} summaries found! Continue chatting with the bot and try again later.`)
               .setAuthor({ name: "No Summaries Found", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         const summaryFields = summarySlice.map((s, i) => {
@@ -249,7 +249,7 @@ module.exports = {
           embeds: [buildInfoEmbed(interaction.user, interaction.client, undefined, COLORS.info)
             .setAuthor({ name: `${summaryScope === "user" ? "User" : "Channel"} Summaries for "${summarySourceName}"${summaryPageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setFields(summaryFields)],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
       case "facts":
@@ -277,13 +277,13 @@ module.exports = {
           embeds: [buildInfoEmbed(interaction.user, interaction.client, undefined, COLORS.info)
             .setAuthor({ name: `${factsScope === "user" ? "User" : "Channel"} Facts for "${factsSourceName}"${pageLabel}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
             .setFields(pageFields.length > 0 ? pageFields : [{ name: "No facts found", value: "Continue chatting with the bot and try again later", inline: false }])],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
       default:
         await interaction.reply({
           content: "Invalid command",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
     }

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require("discord.js");
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
@@ -26,16 +26,16 @@ module.exports = {
     if (!userChannel) {
       embed.setTitle("You are not in a voice channel!");
       embed.setDescription("You must be in a voice channel to use this command.");
-      return await interaction.reply({ embeds: [embed], ephemeral: true });
+      return await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     if (botChannel && botChannel.id !== userChannel.id) {
       embed.setTitle("You are not in my voice channel!");
       embed.setDescription("You must be in my voice channel to use this command.");
-      return await interaction.reply({ embeds: [embed], ephemeral: true });
+      return await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const song = interaction.options.getString("song");
 
     const queue = player.nodes.create(interaction.guild, {
@@ -73,7 +73,7 @@ module.exports = {
       logger.error(error);
       embed.setTitle("Could not join voice channel!");
       embed.setDescription("Make sure I have permission to join and speak.");
-      return await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return await interaction.editReply({ embeds: [embed] });
     }
 
     const results = await player.search(song, { requestedBy: interaction.user, searchEngine: QueryType.AUTO });
@@ -81,7 +81,7 @@ module.exports = {
     if (!results || !results.tracks.length) {
       embed.setTitle("No results found!");
       embed.setDescription(`No results found for "${song}".`);
-      return await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return await interaction.editReply({ embeds: [embed] });
     }
 
     const isPlaylist = results.playlist && (results.playlist.type === "playlist" || results.playlist.type === "album");
@@ -93,7 +93,7 @@ module.exports = {
         embed.setTitle(`Added ${playlist.type} to queue!`);
         embed.setDescription(`[${playlist.title}](${playlist.url})\nBy **${playlist.author.name}** | ${playlist.tracks.length} songs`);
         embed.setThumbnail(playlist.thumbnail?.url || playlist.thumbnail);
-        await interaction.editReply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
 
         queue.addTrack(playlist.tracks); // ✅ Add array of tracks
       } else {
@@ -101,7 +101,7 @@ module.exports = {
         embed.setTitle("Added to queue!");
         embed.setDescription(`[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ""}`);
         embed.setThumbnail(track.thumbnail);
-        await interaction.editReply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
 
         queue.addTrack(track);
       }
@@ -120,7 +120,7 @@ module.exports = {
       if (!options.length) {
         embed.setTitle("No valid results found!");
         embed.setDescription(`No valid results were found for "${song}".`);
-        return await interaction.editReply({ embeds: [embed], ephemeral: true });
+        return await interaction.editReply({ embeds: [embed] });
       }
 
       embed.setTitle("Multiple results found!");
@@ -134,14 +134,14 @@ module.exports = {
           .addOptions(options)
       );
 
-      await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
+      await interaction.editReply({ embeds: [embed], components: [row] });
 
       const filter = i => i.customId === "search";
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
 
       collector.on("collect", async i => {
         if (i.user.id !== interaction.user.id) {
-          return await i.reply({ content: "You cannot use this menu.", ephemeral: true });
+          return await i.reply({ content: "You cannot use this menu.", flags: MessageFlags.Ephemeral });
         }
 
         const track = results.tracks[parseInt(i.values[0])];
@@ -163,7 +163,7 @@ module.exports = {
           collector.stop("error");
         }
 
-        await i.update({ embeds: [embed], components: [], ephemeral: true });
+        await i.update({ embeds: [embed], components: [] });
         collector.stop("success");
       });
 
@@ -171,7 +171,7 @@ module.exports = {
         logger.debug(`Play command collector ended. Collected ${collected.size} interactions. Reason: ${reason}`);
         if (reason === "time") {
           embed.setTitle("Request has timed out.").setDescription("Request has timed out. Please try again.");
-          await interaction.editReply({ embeds: [embed], components: [], ephemeral: true });
+          await interaction.editReply({ embeds: [embed], components: [] });
         }
         if (reason === "success") {
           await wait(10000);

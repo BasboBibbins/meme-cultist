@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
@@ -273,7 +273,7 @@ module.exports = {
     const description = interaction.options.getString("description");
     const typeLabels = { bug: "Bug Report", suggestion: "Feature Suggestion", general: "General Feedback" };
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const validation = await validateFeedback(type, description, interaction.user.displayName);
 

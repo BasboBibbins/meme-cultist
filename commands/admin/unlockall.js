@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { getAllItems, grantItem } = require("../../utils/inventory");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
@@ -18,7 +18,7 @@ module.exports = {
     const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
     const allowed = isOwner || (!ADMIN_COMMANDS_OWNER_ONLY && isAdmin);
     if (!allowed) {
-      await interaction.reply({ content: "You do not have permission to use this command.", ephemeral: true });
+      await interaction.reply({ content: "You do not have permission to use this command.", flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -35,7 +35,7 @@ module.exports = {
         .setAuthor({ name: "Unlock All Items", iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })] });
     } catch (error) {
       logger.error(`Error executing /unlockall: ${error}`);
-      return interaction.reply({ embeds: [buildErrorEmbed(admin, interaction.client, `An error occurred while unlocking items for ${targetUser.username}.`)], ephemeral: true });
+      return interaction.reply({ embeds: [buildErrorEmbed(admin, interaction.client, `An error occurred while unlocking items for ${targetUser.username}.`)], flags: MessageFlags.Ephemeral });
     }
   },
 };
