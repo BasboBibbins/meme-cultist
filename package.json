@@ -8,6 +8,7 @@
     "test:unit": "jest test/unit",
     "test:canvas": "jest test/canvas --",
     "test:llm": "node test/llm/runner.js",
+    "test:music": "node test/music/runner.js",
     "preview:canvas": "node test/canvas/preview-all.js",
     "lint": "eslint . --rulesdir eslint-rules --config lint-comments.config.js",
     "lint:fix": "eslint . --fix --rulesdir eslint-rules --config lint-comments.config.js",
