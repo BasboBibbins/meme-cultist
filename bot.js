@@ -2,12 +2,10 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const { REST } = require("@discordjs/rest");
-const { Routes } = require("discord-api-types/v9");
 const fs = require("fs");
 const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
-const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js");
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
