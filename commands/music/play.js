@@ -2,7 +2,7 @@ const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageF
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
-const { beforeCreateStream, isYoutubePlaylist, expandYoutubePlaylist } = require("../../utils/musicStream");
+const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, EQUALIZER_BANDS } = require("../../utils/musicStream");
 const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
@@ -47,11 +47,7 @@ module.exports = {
       leaveOnEmptyCooldown: 300000,
       skipOnNoStream: true,
       repeatMode: 0,
-      equalizer: [
-        { band: 0, gain: 0.15 },
-        { band: 1, gain: 0.10 },
-        { band: 2, gain: 0.05 }
-      ],
+      equalizer: EQUALIZER_BANDS,
       metadata: {
         channel: interaction.channel,
         requestedBy: interaction.user
@@ -63,17 +59,12 @@ module.exports = {
           logger.error(`[Play] Stream setup failed for "${track.title}": ${error.message}`);
           throw error;
         }
+      },
+      // The queue must be forwarded — the DRM fallback reaches the player through it.
+      async onStreamExtracted(stream, track, queue) {
+        return afterStreamExtracted(stream, track, queue);
       }
     });
-
-    try {
-      if (!queue.connection) await queue.connect(userChannel);
-    } catch (error) {
-      logger.error(error);
-      embed.setTitle("Could not join voice channel!");
-      embed.setDescription("Make sure I have permission to join and speak.");
-      return await interaction.editReply({ embeds: [embed] });
-    }
 
     let results;
     try {
@@ -88,11 +79,27 @@ module.exports = {
 
     logger.debug(`[Play] "${song}" -> ${results?.tracks?.length ?? 0} track(s), playlist=${results?.playlist?.title ?? "none"}, extractor=${results?.extractor?.identifier ?? "none"}`);
 
+    // Joining only once something is playable keeps the bot out of the channel on a failed lookup instead of sitting there silently.
+    const connect = async () => {
+      if (queue.connection) return true;
+      try {
+        await queue.connect(userChannel);
+        return true;
+      } catch (error) {
+        logger.error(`[Play] Could not join voice channel: ${error.message}`);
+        embed.setTitle("Could not join voice channel!");
+        embed.setDescription("Make sure I have permission to join and speak.");
+        await interaction.editReply({ embeds: [embed] });
+        return false;
+      }
+    };
+
     // The extractor resolves a playlist title but none of its entries, so tracks are recovered from yt-dlp before this counts as a miss.
     if ((!results || !results.tracks.length) && isYoutubePlaylist(song)) {
       const recovered = expandYoutubePlaylist(song, player, interaction.user);
       if (recovered.length) {
         logger.log(`[Play] Recovered ${recovered.length} track(s) from playlist via yt-dlp`);
+        if (!await connect()) return;
         queue.addTrack(recovered);
         embed.setTitle("Added playlist to queue!");
         embed.setDescription(`**${recovered.length}** tracks queued.\nFirst up: [${recovered[0].title}](${recovered[0].url})`);
@@ -112,6 +119,8 @@ module.exports = {
       embed.setDescription(`No results found for "${song}".`);
       return await interaction.editReply({ embeds: [embed] });
     }
+
+    if (!await connect()) return;
 
     const isPlaylist = results.playlist && (results.playlist.type === "playlist" || results.playlist.type === "album");
 

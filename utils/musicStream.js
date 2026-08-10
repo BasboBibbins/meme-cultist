@@ -9,12 +9,17 @@
 
 const { spawn, spawnSync } = require("child_process");
 const { constants } = require("youtube-dl-exec");
-const { Track } = require("discord-player");
+const { Track, StreamType, QueryType } = require("discord-player");
+const { Equalizer } = require("@discord-player/equalizer");
 const logger = require("./logger");
 
 const YTDLP = constants.YOUTUBE_DL_PATH;
 const FORMAT = "bestaudio";
 const PLAYLIST_LIMIT = 50;
+
+// A flat numeric array indexed by band, NOT {band, gain} objects: the channel processor multiplies each sample by bandMultipliers[i], so an object there makes every sample NaN and the mix silent while still "playing".
+const BASS_LIFT = [0.15, 0.10, 0.05];
+const EQUALIZER_BANDS = Array.from({ length: Equalizer.BAND_COUNT }, (_, i) => BASS_LIFT[i] ?? 0);
 
 // yt-dlp handles far more than YouTube, but every other provider in use streams
 // correctly through its own extractor, so it is scoped to the one that does not.
@@ -40,14 +45,16 @@ function createYtdlpStream(url) {
     child.stdout.destroy(err);
   });
 
+  // Teardown kills yt-dlp mid-write, so its "unable to write data" complaint is our own doing and must not read as a playback failure.
+  let tornDown = false;
   child.on("close", code => {
-    if (code !== 0 && stderr.trim()) {
-      logger.error(`[MusicStream] yt-dlp exited ${code} for ${url}: ${stderr.trim().slice(0, 300)}`);
-    }
+    if (tornDown || code === 0 || !stderr.trim()) return;
+    logger.error(`[MusicStream] yt-dlp exited ${code} for ${url}: ${stderr.trim().slice(0, 300)}`);
   });
 
   // Killing the child on stream teardown stops a skipped track leaking a process.
   child.stdout.on("close", () => {
+    tornDown = true;
     if (!child.killed) child.kill("SIGKILL");
   });
 
@@ -60,6 +67,125 @@ async function beforeCreateStream(track) {
   if (!shouldUseYtdlp(track?.url)) return null;
   logger.debug(`[MusicStream] Streaming via yt-dlp: ${track.title}`);
   return createYtdlpStream(track.url);
+}
+
+// discord-player unshifts "-ss" ahead of "-i" for URL-string sources, which corrupts AAC/HLS decoding — and SoundCloud and Spotify both return HLS. Remuxing to a Node stream avoids that path entirely.
+//
+// Raw PCM rather than Opus: re-encoding already-lossy AAC adds a generation of loss before Discord's own encoder runs, whereas decoding once to PCM leaves exactly one lossy step.
+function remuxUrlToStream(url, { pcm = true } = {}) {
+  const encode = pcm
+    ? ["-ar", "48000", "-ac", "2", "-f", "s16le"]
+    : ["-c:a", "libopus", "-b:a", "192k", "-f", "webm"];
+
+  const child = spawn("ffmpeg", [
+    "-reconnect", "1",
+    "-reconnect_streamed", "1",
+    "-reconnect_delay_max", "5",
+    "-i", url,
+    "-vn",
+    ...encode,
+    "-loglevel", "error",
+    "pipe:1",
+  ], { stdio: ["ignore", "pipe", "pipe"] });
+
+  let stderr = "";
+  child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+  child.on("error", err => {
+    logger.error(`[MusicStream] ffmpeg remux failed to spawn: ${err.message}`);
+    child.stdout.destroy(err);
+  });
+  // As with yt-dlp, teardown makes ffmpeg complain about a failed write — our own kill, not a playback failure.
+  let tornDown = false;
+  child.on("close", code => {
+    if (tornDown || code === 0 || !stderr.trim()) return;
+    logger.error(`[MusicStream] ffmpeg remux exited ${code}: ${stderr.trim().slice(0, 300)}`);
+  });
+  child.stdout.on("close", () => {
+    tornDown = true;
+    if (!child.killed) child.kill("SIGKILL");
+  });
+
+  return child.stdout;
+}
+
+// Marks "this source can never play" as distinct from a transient stream error, so the caller can say why instead of retrying into the same wall.
+class UnplayableTrackError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UnplayableTrackError";
+    this.unplayable = true;
+  }
+}
+
+// discord-player rewraps a thrown stream error in its own NoResultError, so a custom property never reaches the handler; the reason is recorded here and claimed once.
+const unplayableReasons = new Map();
+
+function noteUnplayable(track, reason) {
+  if (!track?.id) return;
+  if (unplayableReasons.size > 50) unplayableReasons.clear();
+  unplayableReasons.set(track.id, reason);
+}
+
+function takeUnplayableReason(track) {
+  const reason = track?.id ? unplayableReasons.get(track.id) : null;
+  if (reason) unplayableReasons.delete(track.id);
+  return reason || null;
+}
+
+// SoundCloud serves major-label audio as FairPlay-encrypted HLS (/cbcs/ path, skd:// key nobody can fetch); ffmpeg decodes noise and yt-dlp refuses it outright. Spotify and Apple inherit this by bridging through SoundCloud.
+function isDrmProtected(url) {
+  return /\/cbcs\//i.test(url) || /skd:\/\//i.test(url);
+}
+
+// Nothing can decrypt that stream, so re-bridge to YouTube. No exact-match requirement: the first result for title+artist is the best available answer, and a near match beats refusing to play.
+async function bridgeToYoutube(track, queue) {
+  const player = queue?.player || queue;
+  if (typeof player?.search !== "function" || !track?.title) return null;
+
+  const withArtist = [track.title, track.author].filter(Boolean).join(" ");
+  const attempts = [
+    [withArtist, QueryType.YOUTUBE_SEARCH],
+    [withArtist, QueryType.AUTO],
+    [track.title, QueryType.YOUTUBE_SEARCH],
+  ];
+
+  for (const [query, searchEngine] of attempts) {
+    try {
+      const found = await player.search(query, { searchEngine });
+      const url = found?.tracks?.[0]?.url;
+      if (url) return url;
+    } catch (err) {
+      logger.warn(`[MusicStream] YouTube bridge attempt failed for "${query}": ${err.message}`);
+    }
+  }
+  return null;
+}
+
+// Tagged {$fmt, stream}, not a bare Readable: with skipFFmpeg set, discord-player only takes its demuxable fast path for a tagged object and otherwise hands a bare Readable to a second ffmpeg that must guess the format.
+async function afterStreamExtracted(stream, track, queue) {
+  if (typeof stream !== "string" || !/^https?:\/\//.test(stream)) return stream;
+
+  if (isDrmProtected(stream)) {
+    const youtubeUrl = await bridgeToYoutube(track, queue);
+    if (youtubeUrl) {
+      logger.log(`[MusicStream] "${track?.title}" is DRM-protected at source; playing the YouTube match instead.`);
+      return createYtdlpStream(youtubeUrl);
+    }
+    // Returning the URL anyway means ffmpeg decodes noise and the track "plays" for a fraction of a second; failing loudly lets the caller say why.
+    const reason = `**${track?.title || "That track"}** is DRM-protected at its source, and no playable alternative was found.`;
+    noteUnplayable(track, reason);
+    throw new UnplayableTrackError(reason);
+  }
+
+  // Raw PCM only survives the demuxable fast path: an active /filter routes the stream through a second ffmpeg with no input-format hint, which cannot identify headerless PCM.
+  const ffmpegFilters = queue?.filters?.ffmpeg?.args?.length ?? 0;
+  if (ffmpegFilters > 0) {
+    logger.debug(`[MusicStream] Remuxing to opus for "${track?.title}" (ffmpeg filters active)`);
+    return { $fmt: StreamType.WebmOpus, stream: remuxUrlToStream(stream, { pcm: false }) };
+  }
+
+  logger.debug(`[MusicStream] Remuxing to PCM for "${track?.title}"`);
+  return { $fmt: StreamType.Raw, stream: remuxUrlToStream(stream, { pcm: true }) };
 }
 
 function isYoutubePlaylist(query) {
@@ -115,4 +241,4 @@ function expandYoutubePlaylist(url, player, requestedBy, limit = PLAYLIST_LIMIT)
   return tracks;
 }
 
-module.exports = { beforeCreateStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };
+module.exports = { EQUALIZER_BANDS, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };

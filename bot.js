@@ -26,6 +26,7 @@ const { DefaultExtractors } = require("@discord-player/extractor");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
 const { handleProposalInteraction } = require("./utils/kbProposals");
+const { takeUnplayableReason } = require("./utils/musicStream");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -605,12 +606,49 @@ if (DELETE_SLASH) {
     logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
     await queue.player.destroy();
   });
+  // skipOnNoStream turns a failed stream into a silent skip, which is why a
+  // broken track looked like "started and immediately ended" with empty logs.
+  player.events.on(GuildQueueEvent.PlayerSkip, async (queue, track, reason, description) => {
+    logger.warn(`[Music] Skipped "${track?.title}" — ${reason || "no reason given"}${description ? `: ${description}` : ""}`);
+    // ERR_NO_STREAM always emits PlayerError immediately after, which reports it.
+    if (reason === "ERR_NO_STREAM") return;
+    await notifyMusicFailure(queue, `Couldn't play **${track?.title || "that track"}** — skipping it.`);
+  });
+
+  // WillPlayTrack BLOCKS: discord-player awaits `done` before playing and only self-resolves when no listener exists, so omitting it stalls every track forever.
+  player.events.on(GuildQueueEvent.WillPlayTrack, async (queue, track, _config, done) => {
+    try {
+      logger.debug(`[Music] About to play "${track?.title}" (${track?.source || "unknown source"}) — ${track?.url}`);
+    } finally {
+      done();
+    }
+  });
+
+  player.events.on(GuildQueueEvent.EmptyQueue, async (queue) => {
+    logger.debug(`[Music] Queue emptied in ${queue.guild?.name}`);
+  });
+
+  // Attaching this flips discord-player's hasDebugger flag, which makes it format
+  // its whole internal narration — so it is only wired when actually debugging.
+  if (DEBUG_MODE) {
+    player.events.on(GuildQueueEvent.Debug, (_queue, message) => logger.debug(`[Music/dp] ${message}`));
+    player.on("debug", message => logger.debug(`[Music/player] ${message}`));
+  }
+
   player.events.on(GuildQueueEvent.Error, async (queue, error) => {
     logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
     logger.error(error.stack);
     await notifyMusicFailure(queue, "The queue hit an error and had to stop.");
   });
   player.events.on(GuildQueueEvent.PlayerError, async (queue, error, track) => {
+    // A track that can never play is reported verbatim — "skipping it" would hide the reason, and the bot should not sit in a channel with nothing to play.
+    const unplayable = takeUnplayableReason(track);
+    if (unplayable) {
+      logger.warn(`[Music] Unplayable track in ${queue.guild?.name}: ${unplayable}`);
+      await notifyMusicFailure(queue, `${unplayable}\nTry searching for it by name instead.`);
+      if (queue.tracks.size === 0) queue.delete();
+      return;
+    }
     logger.error(`Playback error in ${queue.guild.name}${track ? ` on "${track.title}"` : ""} - ${error.message}`);
     logger.error(error.stack);
     await notifyMusicFailure(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}. Skipping it.`);
