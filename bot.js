@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const fs = require("fs");
-const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
+const { Player, GuildQueueEvent, TrackSkipReason, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
@@ -607,13 +607,11 @@ if (DELETE_SLASH) {
     logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
     await queue.player.destroy();
   });
-  // skipOnNoStream turns a failed stream into a silent skip, which is why a
-  // broken track looked like "started and immediately ended" with empty logs.
+  // Logs only. Every reason but NoStream is a deliberate action (manual skip, jump, seek), and NoStream is reported by PlayerError immediately after.
   player.events.on(GuildQueueEvent.PlayerSkip, async (queue, track, reason, description) => {
-    logger.warn(`[Music] Skipped "${track?.title}" — ${reason || "no reason given"}${description ? `: ${description}` : ""}`);
-    // ERR_NO_STREAM always emits PlayerError immediately after, which reports it.
-    if (reason === "ERR_NO_STREAM") return;
-    await notifyMusicFailure(queue, `Couldn't play **${track?.title || "that track"}** — skipping it.`);
+    const line = `[Music] Skipped "${track?.title}" — ${reason || "no reason given"}${description ? `: ${description}` : ""}`;
+    if (reason === TrackSkipReason.NoStream) logger.warn(line);
+    else logger.debug(line);
   });
 
   // WillPlayTrack BLOCKS: discord-player awaits `done` before playing and only self-resolves when no listener exists, so omitting it stalls every track forever.

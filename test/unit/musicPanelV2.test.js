@@ -4,7 +4,7 @@ jest.mock("../../utils/logger", () => ({
   log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), info: jest.fn(),
 }));
 
-const { MessageFlags } = require("discord.js");
+const { MessageFlags, ButtonStyle } = require("discord.js");
 const { buildNowPlayingV2, isUsableUrl } = require("../../utils/musicPanelV2");
 
 const TRACK = {
@@ -16,9 +16,10 @@ const TRACK = {
   isStream: false,
 };
 
-const queueWith = ({ next = null, bar = "▬▬🔘▬▬", channelName = "General" } = {}) => ({
+const queueWith = ({ next = null, bar = "▬▬🔘▬▬", channelName = "General", filters = [] } = {}) => ({
   channel: channelName ? { name: channelName } : null,
   tracks: { at: () => next },
+  filters: { ffmpeg: { getFiltersEnabled: () => filters } },
   node: { createProgressBar: () => bar, getTimestamp: () => ({ current: { value: 1000 } }) },
 });
 
@@ -32,6 +33,13 @@ const build = (overrides = {}) => buildNowPlayingV2({
 
 const json = payload => payload.components[0].toJSON();
 const textOf = payload => JSON.stringify(json(payload));
+
+// The heading lives in the first text display, whether or not it sits in a section.
+const headingOf = payload => {
+  const first = json(payload).components[0];
+  const text = first.type === 9 ? first.components[0].content : first.content;
+  return text.split("\n")[0];
+};
 
 describe("buildNowPlayingV2", () => {
   test("returns a container carrying the Components V2 flag", () => {
@@ -84,7 +92,7 @@ describe("buildNowPlayingV2", () => {
 
   test("keeps the control ids the collector listens for", () => {
     const row = json(build()).components.find(c => c.type === 1);
-    expect(row.components.map(b => b.custom_id)).toEqual(["pause", "skip", "stop"]);
+    expect(row.components.map(b => b.custom_id)).toEqual(["pause", "skip", "loop", "stop"]);
   });
 
   test("carries the requester and version the embed footer used to", () => {
@@ -105,6 +113,85 @@ describe("buildNowPlayingV2", () => {
   test("labels a live stream instead of drawing a progress bar", () => {
     const payload = build({ track: { ...TRACK, isStream: true } });
     expect(textOf(payload)).toContain("LIVE");
+  });
+});
+
+describe("loop control", () => {
+  const controlsOf = payload => json(payload).components.find(c => c.type === 1).components;
+  const loopButton = payload => controlsOf(payload).find(b => b.custom_id === "loop");
+
+  test("adds a loop control alongside the existing ones", () => {
+    expect(controlsOf(build()).map(b => b.custom_id)).toEqual(["pause", "skip", "loop", "stop"]);
+  });
+
+  test("reads as off by default", () => {
+    const button = loopButton(build());
+    expect(button.label).toBe("Loop");
+    expect(button.style).toBe(ButtonStyle.Secondary);
+  });
+
+  // Label alone is ambiguous at a glance, so the style carries the state too.
+  test("switches label and style when looping", () => {
+    const button = loopButton(build({ looping: true }));
+    expect(button.label).toBe("Looping");
+    expect(button.style).toBe(ButtonStyle.Success);
+  });
+
+  // Asserted on the heading alone: the loop button carries a 🔁 emoji, so searching the whole payload would match either way.
+  test("marks the heading so the state is visible without reading the button", () => {
+    expect(headingOf(build({ looping: true }))).toContain("🔁");
+    expect(headingOf(build({ looping: false }))).not.toContain("🔁");
+  });
+
+  test("shows loop state while paused too", () => {
+    const body = textOf(build({ looping: true, paused: true }));
+    expect(body).toContain("Song Paused");
+    expect(body).toContain("🔁");
+  });
+
+  // Looping repeats the current track without consuming the queue, so Up Next must keep showing what follows once the loop is switched off.
+  test("still shows Up Next while looping", () => {
+    const next = { title: "Aerodynamic", url: "https://y", author: "Daft Punk" };
+    expect(textOf(build({ queue: queueWith({ next }), looping: true }))).toContain("Aerodynamic");
+  });
+});
+
+describe("active filters", () => {
+  test("lists every enabled ffmpeg filter", () => {
+    const body = textOf(build({ queue: queueWith({ filters: ["bassboost", "nightcore"] }) }));
+    expect(body).toContain("Filters:");
+    expect(body).toContain("bassboost");
+    expect(body).toContain("nightcore");
+  });
+
+  test("omits the line entirely when nothing is enabled", () => {
+    expect(textOf(build({ queue: queueWith({ filters: [] }) }))).not.toContain("Filters:");
+  });
+
+  // The panel must not break on a queue shape lacking the filters API.
+  test("degrades quietly when the filters API is absent", () => {
+    const queue = queueWith();
+    delete queue.filters;
+    expect(() => build({ queue })).not.toThrow();
+    expect(textOf(build({ queue }))).not.toContain("Filters:");
+  });
+
+  test("ignores non-string entries rather than rendering them", () => {
+    const body = textOf(build({ queue: queueWith({ filters: ["bassboost", null, "", 7] }) }));
+    expect(body).toContain("bassboost");
+    expect(body).not.toContain("null");
+  });
+
+  test("survives a filters accessor that throws", () => {
+    const queue = queueWith();
+    queue.filters = { ffmpeg: { getFiltersEnabled: () => { throw new Error("not ready"); } } };
+    expect(() => build({ queue })).not.toThrow();
+  });
+
+  test("still lists filters while paused", () => {
+    const body = textOf(build({ queue: queueWith({ filters: ["vaporwave"] }), paused: true }));
+    expect(body).toContain("vaporwave");
+    expect(body).toContain("Song Paused");
   });
 });
 

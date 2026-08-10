@@ -17,7 +17,7 @@ function isUsableUrl(url) {
   return typeof url === "string" && /^https?:\/\//i.test(url);
 }
 
-function buildControls(paused) {
+function buildControls(paused, looping = false) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("pause")
@@ -30,6 +30,12 @@ function buildControls(paused) {
       .setStyle(ButtonStyle.Secondary)
       .setEmoji("⏭️")
       .setDisabled(paused),
+    // Success styling is the "on" indicator; the label alone reads ambiguously.
+    new ButtonBuilder()
+      .setCustomId("loop")
+      .setLabel(looping ? "Looping" : "Loop")
+      .setStyle(looping ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setEmoji("🔁"),
     new ButtonBuilder()
       .setCustomId("stop")
       .setLabel("Stop")
@@ -38,10 +44,22 @@ function buildControls(paused) {
   );
 }
 
-function headingFor(queue, paused) {
-  if (paused) return "## ⏸️ Song Paused";
+// Only the ffmpeg filters /filter toggles: the equalizer bands are always on and not a user choice, so listing them would read as a filter nobody enabled.
+function activeFilters(queue) {
+  try {
+    const enabled = queue?.filters?.ffmpeg?.getFiltersEnabled?.();
+    if (!Array.isArray(enabled)) return [];
+    return enabled.filter(f => typeof f === "string" && f.length > 0);
+  } catch (_) {
+    return [];
+  }
+}
+
+function headingFor(queue, paused, looping) {
+  const loop = looping ? " 🔁" : "";
+  if (paused) return `## ⏸️ Song Paused${loop}`;
   const where = queue?.channel?.name ? ` in ${queue.channel.name}` : "";
-  return `## 🎧 Now Playing${where}`;
+  return `## 🎧 Now Playing${where}${loop}`;
 }
 
 function trackLines(track) {
@@ -49,12 +67,12 @@ function trackLines(track) {
   return `[${track?.title ?? "Unknown track"}](${track?.url ?? ""})\nBy **${track?.author ?? "Unknown"}**${views}`;
 }
 
-function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false }) {
+function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false }) {
   const container = new ContainerBuilder().setAccentColor(ACCENT);
 
   const header = new SectionBuilder()
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${headingFor(queue, paused)}\n${trackLines(track)}`),
+      new TextDisplayBuilder().setContent(`${headingFor(queue, paused, looping)}\n${trackLines(track)}`),
     );
   // A section accessory is required; without usable art the section cannot be used.
   if (isUsableUrl(track?.thumbnail)) {
@@ -62,7 +80,7 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false }
     container.addSectionComponents(header);
   } else {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${headingFor(queue, paused)}\n${trackLines(track)}`),
+      new TextDisplayBuilder().setContent(`${headingFor(queue, paused, looping)}\n${trackLines(track)}`),
     );
   }
 
@@ -70,6 +88,13 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false }
   if (bar) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bar));
+  }
+
+  const filters = activeFilters(queue);
+  if (filters.length > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`🎛️ **Filters:** ${filters.map(f => `\`${f}\``).join(", ")}`),
+    );
   }
 
   const upNext = queue?.tracks?.at?.(0) || null;
@@ -80,7 +105,7 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false }
     );
   }
 
-  container.addActionRowComponents(buildControls(paused));
+  container.addActionRowComponents(buildControls(paused, looping));
 
   // Replaces the embed's author line and footer, which V2 has no equivalent for.
   const credit = [
@@ -95,4 +120,4 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false }
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-module.exports = { buildNowPlayingV2, buildControls, isUsableUrl, ACCENT };
+module.exports = { buildNowPlayingV2, buildControls, isUsableUrl, activeFilters, ACCENT };
