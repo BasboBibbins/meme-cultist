@@ -395,7 +395,7 @@ module.exports = {
         }
         row.components[1].setDisabled(false);
         collector.resetTimer();
-        i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
+        i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
       } else if (i.customId === "next") {
         if (page >= 5) return;
         page++;
@@ -404,7 +404,7 @@ module.exports = {
         }
         row.components[0].setDisabled(false);
         collector.resetTimer();
-        i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row], fetchReply: true});
+        i.editReply({embeds: [await generateStatsEmbed(page, interaction, user)], components: [row]});
       }
     });
 

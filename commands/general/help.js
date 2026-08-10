@@ -63,7 +63,8 @@ module.exports = {
             }))
         );
             
-      const msg = await interaction.reply({embeds: [embed], components: [row], fetchReply: true, flags: MessageFlags.Ephemeral});
+      await interaction.reply({embeds: [embed], components: [row], flags: MessageFlags.Ephemeral});
+      const msg = await interaction.fetchReply();
       const filter = (i) => i.customId === "explanations" && i.user.id === interaction.user.id;
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
       collector.on("collect", async (i) => {

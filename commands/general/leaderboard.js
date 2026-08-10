@@ -235,7 +235,7 @@ module.exports = {
         row.components[0].setDisabled(false);
       }
       collector.resetTimer();
-      i.editReply({ embeds: [await generateLeaderboardEmbed(page, interaction, allUsers)], components: [row], fetchReply: true });
+      i.editReply({ embeds: [await generateLeaderboardEmbed(page, interaction, allUsers)], components: [row] });
     });
 
     collector.on("end", (collect, reason) => {
