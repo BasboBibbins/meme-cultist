@@ -11,7 +11,7 @@ const logger = require("./logger");
 const { withLock } = require("./lock");
 const { buildErrorEmbed } = require("./embeds");
 const { remainingMs, queueString, progressBar } = require("./musicPlayer");
-const { buildNowPlayingV2 } = require("./musicPanelV2");
+const { buildNowPlayingV2, resolveMusicColors } = require("./musicPanelV2");
 const { isLooping, toggleLoop, restoreLoop, togglePause, skipTrack, stopPlayback } = require("./musicControls");
 
 let msg = null;
@@ -184,8 +184,11 @@ module.exports = {
 
   trackStart: async (client, queue, track) => {
     const requestedBy = queue.metadata.requestedBy;
+    // Resolved once per track: the panel wears the requester's equipped theme, and
+    // a DB read per refresh tick would be gratuitous.
+    const colors = await resolveMusicColors(requestedBy?.id);
     const renderFor = panelTrack => (paused = false, opts = {}) =>
-      buildNowPlayingV2({ track: panelTrack, queue, requestedBy, client, paused, looping: isLooping(queue), ...opts });
+      buildNowPlayingV2({ track: panelTrack, queue, requestedBy, client, colors, paused, looping: isLooping(queue), ...opts });
 
     // TRACK repeat replays via PlayerFinish -> PlayerStart, so a looping song re-enters here each cycle; reuse the panel instead of posting one per repeat, and restart the refresh and collector the last cycle stopped.
     if (msg != null) {

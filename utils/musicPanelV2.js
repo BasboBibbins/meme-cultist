@@ -1,5 +1,7 @@
-// Components V2 rendering of the now-playing panel. Pure: takes state, returns a
-// message payload, sends nothing — so it is unit-testable without a voice connection.
+// Components V2 rendering of the now-playing panel. buildNowPlayingV2 is pure:
+// takes state, returns a message payload, sends nothing — so it is unit-testable
+// without a voice connection. resolveMusicColors is the one async member here,
+// kept alongside because it exists only to feed the renderer.
 //
 // A Components V2 message cannot carry embeds or content, so everything the embed
 // supplied through setAuthor/setFooter/setTimestamp has to be rendered as text.
@@ -11,8 +13,17 @@ const {
 } = require("discord.js");
 const PACKAGE_VERSION = require("../package.json").version;
 const { progressBar } = require("./musicPlayer");
+const { getThemeColors } = require("../themes/resolver");
+const logger = require("./logger");
 
-const ACCENT = 0x5865F2;
+// Classic's embedColor, the same fallback literal every game command carries.
+const DEFAULT_ACCENT = 0x0f4c25;
+const DEFAULT_DANGER = 0xff4444;
+
+// A container's accent stripe is the only colour surface a V2 message has, so the
+// three things worth encoding there take it in order of urgency: the confirm step
+// while it is up, then paused, then whose song this is.
+const PAUSED_DESATURATION = 0.65;
 
 // Extractor-supplied metadata is untrusted: a title carrying "](" would retarget
 // the link it is interpolated into, and an unbounded one would push the container
@@ -22,6 +33,44 @@ const MAX_AUTHOR = 60;
 
 function isUsableUrl(url) {
   return typeof url === "string" && /^https?:\/\//i.test(url);
+}
+
+function toInt(value, fallback) {
+  if (Number.isInteger(value)) return value;
+  const parsed = parseInt(String(value).replace(/^#/, ""), 16);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+// Pauses drain the colour rather than darkening it: a dark theme's accent would
+// dim to invisible against Discord's own background, but a grey one still reads.
+function desaturate(color, amount) {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  const grey = Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const mix = c => Math.round(c + (grey - c) * amount);
+  return (mix(r) << 16) | (mix(g) << 8) | mix(b);
+}
+
+function accentFor(colors, { paused = false, confirmStop = false } = {}) {
+  if (confirmStop) return toInt(colors?.textLoss, DEFAULT_DANGER);
+  const base = toInt(colors?.embedColor, DEFAULT_ACCENT);
+  return paused ? desaturate(base, PAUSED_DESATURATION) : base;
+}
+
+// The panel wears the requester's equipped theme, so the stripe says whose song
+// this is before the credit line does. Never lets a theme lookup break playback.
+async function resolveMusicColors(userId) {
+  try {
+    if (!userId) return getThemeColors("classic", "music");
+    // Required lazily: themes/manager opens the user database, and rendering a
+    // panel must not drag a SQLite connection in behind it.
+    const { getEquippedTheme } = require("../themes/manager");
+    return getThemeColors(await getEquippedTheme(userId), "music");
+  } catch (err) {
+    logger.warn(`[MusicV2] Theme lookup failed for ${userId}, falling back to classic: ${err.message}`);
+    return getThemeColors("classic", "music");
+  }
 }
 
 function safeText(value, max) {
@@ -120,8 +169,8 @@ function trackLines(track) {
 }
 
 // controls:false renders the same panel without buttons, for surfaces with no collector behind them (/np).
-function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true, confirmStop = false }) {
-  const container = new ContainerBuilder().setAccentColor(ACCENT);
+function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true, confirmStop = false, colors = null }) {
+  const container = new ContainerBuilder().setAccentColor(accentFor(colors, { paused, confirmStop: confirmStop && controls }));
 
   const headerText = `${headingFor(queue, paused, looping)}\n${trackLines(track)}`;
   // A section accessory is required; without usable art the section cannot be used.
@@ -186,4 +235,8 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-module.exports = { buildNowPlayingV2, buildControls, isUsableUrl, activeFilters, safeText, safeUrl, queueCount, ACCENT };
+module.exports = {
+  buildNowPlayingV2, buildControls, isUsableUrl, activeFilters,
+  safeText, safeUrl, queueCount, accentFor, desaturate, resolveMusicColors,
+  DEFAULT_ACCENT, DEFAULT_DANGER,
+};

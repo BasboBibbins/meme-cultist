@@ -5,7 +5,11 @@ jest.mock("../../utils/logger", () => ({
 }));
 
 const { MessageFlags, ButtonStyle } = require("discord.js");
-const { buildNowPlayingV2, isUsableUrl, safeText, safeUrl, queueCount } = require("../../utils/musicPanelV2");
+const {
+  buildNowPlayingV2, isUsableUrl, safeText, safeUrl, queueCount,
+  accentFor, desaturate, DEFAULT_ACCENT, DEFAULT_DANGER,
+} = require("../../utils/musicPanelV2");
+const { getThemeColors } = require("../../themes/resolver");
 
 const TRACK = {
   title: "One More Time",
@@ -334,6 +338,82 @@ describe("stop confirmation", () => {
     const queue = queueWith();
     queue.tracks = { at: () => null, size: 999999 };
     controlsOf(build({ queue, confirmStop: true })).forEach(b => expect(b.label.length).toBeLessThanOrEqual(80));
+  });
+});
+
+// A V2 container has exactly one colour surface, so the stripe carries the panel's
+// only colour-coded information: whose song it is, and what state it is in.
+describe("accent colour", () => {
+  const accentOf = payload => json(payload).accent_color;
+  const CLASSIC = getThemeColors("classic", "music");
+
+  test("wears the requester's equipped theme rather than Discord blurple", () => {
+    const neon = getThemeColors("neon", "music");
+    expect(accentOf(build({ colors: neon }))).toBe(neon.embedColor);
+    expect(accentOf(build({ colors: neon }))).not.toBe(0x5865F2);
+  });
+
+  test("falls back to classic when no theme was resolved", () => {
+    expect(accentOf(build())).toBe(DEFAULT_ACCENT);
+    expect(DEFAULT_ACCENT).toBe(CLASSIC.embedColor);
+  });
+
+  // The song is the same song, just held — same hue, drained rather than dimmed,
+  // so a dark theme's stripe does not vanish against Discord's background.
+  test("drains the colour when paused instead of changing it", () => {
+    const playing = accentOf(build({ colors: CLASSIC }));
+    const paused = accentOf(build({ colors: CLASSIC, paused: true }));
+    expect(paused).not.toBe(playing);
+    expect(paused).toBe(desaturate(playing, 0.65));
+  });
+
+  test("desaturation moves toward grey, never toward black", () => {
+    const drained = desaturate(0x0f4c25, 0.65);
+    const lum = c => 0.2126 * ((c >> 16) & 0xff) + 0.7152 * ((c >> 8) & 0xff) + 0.0722 * (c & 0xff);
+    expect(Math.round(lum(drained))).toBe(Math.round(lum(0x0f4c25)));
+  });
+
+  test("hands the stripe to the theme's own loss colour while confirming a stop", () => {
+    const payload = build({ colors: CLASSIC, confirmStop: true });
+    expect(accentOf(payload)).toBe(0xff4444);
+    expect(accentOf(payload)).not.toBe(CLASSIC.embedColor);
+  });
+
+  test("lets the confirm colour win over paused", () => {
+    expect(accentFor(CLASSIC, { paused: true, confirmStop: true })).toBe(0xff4444);
+  });
+
+  // /np renders with controls:false and therefore never shows a confirm row.
+  test("never shows the danger stripe on a panel with no controls", () => {
+    expect(accentOf(build({ colors: CLASSIC, controls: false, confirmStop: true }))).toBe(CLASSIC.embedColor);
+  });
+
+  test("accepts a hex string loss colour as readily as an integer", () => {
+    expect(accentFor({ textLoss: "#c85a3a" }, { confirmStop: true })).toBe(0xc85a3a);
+    expect(accentFor({ textLoss: 0xc85a3a }, { confirmStop: true })).toBe(0xc85a3a);
+  });
+
+  test("falls back rather than throwing on a palette missing its keys", () => {
+    expect(accentFor(null, {})).toBe(DEFAULT_ACCENT);
+    expect(accentFor({}, { confirmStop: true })).toBe(DEFAULT_DANGER);
+    expect(accentFor({ embedColor: "not a colour" }, {})).toBe(DEFAULT_ACCENT);
+  });
+
+  // Discord rejects an accent outside 24-bit range, so every shipped theme has to
+  // survive all three states.
+  test("every registered theme resolves to a valid colour in all three states", () => {
+    const { themes } = require("../../themes/configs");
+    const ids = Object.keys(themes);
+    expect(ids.length).toBeGreaterThan(10);
+    ids.forEach(id => {
+      const colors = getThemeColors(id, "music");
+      [{}, { paused: true }, { confirmStop: true }].forEach(state => {
+        const accent = accentFor(colors, state);
+        expect(Number.isInteger(accent)).toBe(true);
+        expect(accent).toBeGreaterThanOrEqual(0);
+        expect(accent).toBeLessThanOrEqual(0xffffff);
+      });
+    });
   });
 });
 
