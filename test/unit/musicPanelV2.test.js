@@ -5,7 +5,7 @@ jest.mock("../../utils/logger", () => ({
 }));
 
 const { MessageFlags, ButtonStyle } = require("discord.js");
-const { buildNowPlayingV2, isUsableUrl } = require("../../utils/musicPanelV2");
+const { buildNowPlayingV2, isUsableUrl, safeText, safeUrl, queueCount } = require("../../utils/musicPanelV2");
 
 const TRACK = {
   title: "One More Time",
@@ -219,5 +219,134 @@ describe("isUsableUrl", () => {
     expect(isUsableUrl("attachment://a.jpg")).toBe(false);
     expect(isUsableUrl("")).toBe(false);
     expect(isUsableUrl(null)).toBe(false);
+  });
+});
+
+// Titles and URLs come from external extractors, so they are untrusted input that
+// lands inside markdown link syntax.
+describe("hostile track metadata", () => {
+  // Assertions run against the raw content, not the JSON dump, so a backslash
+  // escape reads as one character rather than two.
+  const headerTextOf = payload => {
+    const first = json(payload).components[0];
+    return first.type === 9 ? first.components[0].content : first.content;
+  };
+  const upNextTextOf = payload =>
+    json(payload).components.find(c => c.type === 10 && c.content.startsWith("**Up Next:**")).content;
+
+  test("escapes brackets so a title cannot retarget its own link", () => {
+    const header = headerTextOf(build({ track: { ...TRACK, title: "Free Robux](https://evil.example)" } }));
+    expect(header).not.toContain("Robux](https://evil.example)");
+    expect(header).toContain("Robux\\](https://evil.example)");
+    expect(header).toContain("](https://youtube.com/watch?v=x)");
+  });
+
+  test("escapes markdown so a title cannot restyle the panel", () => {
+    expect(headerTextOf(build({ track: { ...TRACK, title: "**LOUD** _song_" } }))).toContain("\\*\\*LOUD\\*\\*");
+  });
+
+  test("percent-encodes parentheses so a url cannot terminate the link early", () => {
+    const body = textOf(build({ track: { ...TRACK, url: "https://x.example/a(b)c" } }));
+    expect(body).toContain("https://x.example/a%28b%29c");
+  });
+
+  test("truncates a very long title instead of blowing the message budget", () => {
+    const body = textOf(build({ track: { ...TRACK, title: "z".repeat(600) } }));
+    expect(body).toContain("…");
+    expect(body).not.toContain("z".repeat(200));
+  });
+
+  test("collapses newlines in a title rather than breaking the layout", () => {
+    expect(safeText("one\ntwo   three", 80)).toBe("one two three");
+  });
+
+  // The old `[title](${url ?? ""})` produced a literal "[title]()" for bridged
+  // tracks that report no url.
+  test("renders bold text, not an empty link, when the url is missing", () => {
+    const body = textOf(build({ track: { ...TRACK, url: null } }));
+    expect(body).not.toContain("]()");
+    expect(body).toContain("**One More Time**");
+  });
+
+  test("applies the same protection to the Up Next line", () => {
+    const next = { title: "Bad](https://evil.example)", url: null, author: "**x**" };
+    const line = upNextTextOf(build({ queue: queueWith({ next }) }));
+    expect(line).not.toContain("Bad](https://evil.example)");
+    expect(line).toContain("Bad\\](https://evil.example)");
+    expect(line).not.toContain("]()");
+    expect(line).toContain("\\*\\*x\\*\\*");
+  });
+
+  test("safeUrl rejects anything that is not http(s)", () => {
+    expect(safeUrl("javascript:alert(1)")).toBeNull();
+    expect(safeUrl(null)).toBeNull();
+    expect(safeUrl("https://ok.example/a")).toBe("https://ok.example/a");
+  });
+});
+
+// Stop abandons a queue anyone in the channel helped build, and there is no undo.
+describe("stop confirmation", () => {
+  const controlsOf = payload => json(payload).components.find(c => c.type === 1).components;
+
+  test("swaps the whole row so no other control sits beside the kill button", () => {
+    const ids = controlsOf(build({ confirmStop: true })).map(b => b.custom_id);
+    expect(ids).toEqual(["stop_confirm", "stop_cancel"]);
+  });
+
+  test("states the stakes and that the action is final", () => {
+    const body = textOf(build({ confirmStop: true }));
+    expect(body).toContain("Kill the whole thing?");
+    expect(body).toContain("no undo");
+  });
+
+  test("counts the queued tracks that die with it", () => {
+    const queue = queueWith();
+    queue.tracks = { at: () => null, size: 12 };
+    const payload = build({ queue, confirmStop: true });
+    expect(textOf(payload)).toContain("12 queued tracks");
+    expect(controlsOf(payload)[0].label).toBe("Kill it (12 queued)");
+  });
+
+  test("stays singular for one queued track", () => {
+    const queue = queueWith();
+    queue.tracks = { at: () => null, size: 1 };
+    expect(textOf(build({ queue, confirmStop: true }))).toContain("1 queued track die");
+  });
+
+  test("drops the count when nothing is queued behind it", () => {
+    const payload = build({ confirmStop: true });
+    expect(textOf(payload)).not.toContain("queued track");
+    expect(controlsOf(payload)[0].label).toBe("Kill it");
+  });
+
+  test("is off by default", () => {
+    expect(controlsOf(build()).map(b => b.custom_id)).toEqual(["pause", "skip", "loop", "stop"]);
+    expect(textOf(build())).not.toContain("no undo");
+  });
+
+  test("never renders on a panel with no collector behind it", () => {
+    const types = json(build({ controls: false, confirmStop: true })).components.map(c => c.type);
+    expect(types).not.toContain(1);
+    expect(textOf(build({ controls: false, confirmStop: true }))).not.toContain("no undo");
+  });
+
+  test("keeps the button label inside Discord's 80-character cap", () => {
+    const queue = queueWith();
+    queue.tracks = { at: () => null, size: 999999 };
+    controlsOf(build({ queue, confirmStop: true })).forEach(b => expect(b.label.length).toBeLessThanOrEqual(80));
+  });
+});
+
+describe("queueCount", () => {
+  test("reads the track store however it reports its length", () => {
+    expect(queueCount({ tracks: { size: 4 } })).toBe(4);
+    expect(queueCount({ tracks: { data: [1, 2] } })).toBe(2);
+    expect(queueCount({ tracks: [1, 2, 3] })).toBe(3);
+  });
+
+  test("returns zero for a queue shape that reports nothing", () => {
+    expect(queueCount({ tracks: { at: () => null } })).toBe(0);
+    expect(queueCount({})).toBe(0);
+    expect(queueCount(null)).toBe(0);
   });
 });

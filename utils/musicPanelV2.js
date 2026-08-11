@@ -7,17 +7,68 @@
 const {
   ContainerBuilder, SectionBuilder, TextDisplayBuilder, SeparatorBuilder,
   ThumbnailBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
+  escapeMarkdown,
 } = require("discord.js");
 const PACKAGE_VERSION = require("../package.json").version;
 const { progressBar } = require("./musicPlayer");
 
 const ACCENT = 0x5865F2;
 
+// Extractor-supplied metadata is untrusted: a title carrying "](" would retarget
+// the link it is interpolated into, and an unbounded one would push the container
+// past Discord's 4000-character ceiling.
+const MAX_TITLE = 120;
+const MAX_AUTHOR = 60;
+
 function isUsableUrl(url) {
   return typeof url === "string" && /^https?:\/\//i.test(url);
 }
 
-function buildControls(paused, looping = false) {
+function safeText(value, max) {
+  const raw = typeof value === "string" ? value : "";
+  const flat = raw.replace(/\s+/g, " ").trim();
+  if (!flat) return "";
+  const cut = flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+  return escapeMarkdown(cut).replace(/[[\]]/g, "\\$&");
+}
+
+// Parentheses and whitespace terminate a markdown link target early, and
+// encodeURIComponent leaves parentheses alone.
+function safeUrl(url) {
+  if (!isUsableUrl(url)) return null;
+  return url.replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\s/g, "%20");
+}
+
+function trackLink(title, url, fallback) {
+  const text = safeText(title, MAX_TITLE) || fallback;
+  const href = safeUrl(url);
+  return href ? `[${text}](${href})` : `**${text}**`;
+}
+
+function queueCount(queue) {
+  const tracks = queue?.tracks;
+  const size = tracks?.size ?? tracks?.data?.length ?? tracks?.length;
+  return Number.isInteger(size) && size > 0 ? size : 0;
+}
+
+function buildControls(paused, looping = false, { confirmStop = false, pending = 0 } = {}) {
+  // Stop abandons a queue anyone in the channel helped build, so the confirm step
+  // replaces the whole row: no other control should be one thumb-slip away from it.
+  if (confirmStop) {
+    return new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("stop_confirm")
+        .setLabel(pending > 0 ? `Kill it (${pending} queued)` : "Kill it")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("💀"),
+      new ButtonBuilder()
+        .setCustomId("stop_cancel")
+        .setLabel("Nah")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("↩️"),
+    );
+  }
+
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("pause")
@@ -58,31 +109,30 @@ function activeFilters(queue) {
 function headingFor(queue, paused, looping) {
   const loop = looping ? " 🔁" : "";
   if (paused) return `## ⏸️ Song Paused${loop}`;
-  const where = queue?.channel?.name ? ` in ${queue.channel.name}` : "";
+  const where = queue?.channel?.name ? ` in ${safeText(queue.channel.name, 60)}` : "";
   return `## 🎧 Now Playing${where}${loop}`;
 }
 
 function trackLines(track) {
   const views = track?.views > 0 ? ` | **${track.views.toLocaleString("en-US")}** views` : "";
-  return `[${track?.title ?? "Unknown track"}](${track?.url ?? ""})\nBy **${track?.author ?? "Unknown"}**${views}`;
+  const author = safeText(track?.author, MAX_AUTHOR) || "Unknown";
+  return `${trackLink(track?.title, track?.url, "Unknown track")}\nBy **${author}**${views}`;
 }
 
 // controls:false renders the same panel without buttons, for surfaces with no collector behind them (/np).
-function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true }) {
+function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true, confirmStop = false }) {
   const container = new ContainerBuilder().setAccentColor(ACCENT);
 
-  const header = new SectionBuilder()
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${headingFor(queue, paused, looping)}\n${trackLines(track)}`),
-    );
+  const headerText = `${headingFor(queue, paused, looping)}\n${trackLines(track)}`;
   // A section accessory is required; without usable art the section cannot be used.
   if (isUsableUrl(track?.thumbnail)) {
-    header.setThumbnailAccessory(new ThumbnailBuilder().setURL(track.thumbnail));
-    container.addSectionComponents(header);
-  } else {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`${headingFor(queue, paused, looping)}\n${trackLines(track)}`),
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText))
+        .setThumbnailAccessory(new ThumbnailBuilder().setURL(track.thumbnail)),
     );
+  } else {
+    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
   }
 
   const bar = progressBar(queue, track);
@@ -94,7 +144,7 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, 
   const filters = activeFilters(queue);
   if (filters.length > 0) {
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`🎛️ **Filters:** ${filters.map(f => `\`${f}\``).join(", ")}`),
+      new TextDisplayBuilder().setContent(`🎛️ **Filters:** ${filters.map(f => `\`${safeText(f, 24)}\``).join(", ")}`),
     );
   }
 
@@ -102,16 +152,31 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, 
   if (upNext) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`**Up Next:** [${upNext.title}](${upNext.url})\nBy **${upNext.author}**`),
+      new TextDisplayBuilder().setContent(
+        `**Up Next:** ${trackLink(upNext.title, upNext.url, "Unknown track")}\nBy **${safeText(upNext.author, MAX_AUTHOR) || "Unknown"}**`,
+      ),
     );
   }
 
-  if (controls) container.addActionRowComponents(buildControls(paused, looping));
+  if (controls) {
+    const pending = queueCount(queue);
+    if (confirmStop) {
+      container.addSeparatorComponents(new SeparatorBuilder());
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          pending > 0
+            ? `⚠️ **Kill the whole thing?** ${pending} queued track${pending === 1 ? "" : "s"} die with it. There is no undo.`
+            : "⚠️ **Kill the whole thing?** There is no undo.",
+        ),
+      );
+    }
+    container.addActionRowComponents(buildControls(paused, looping, { confirmStop, pending }));
+  }
 
   // Replaces the embed's author line and footer, which V2 has no equivalent for.
   const credit = [
-    requestedBy?.displayName ? `Requested by ${requestedBy.displayName}` : null,
-    client?.user?.username ? `${client.user.username} | Version ${PACKAGE_VERSION}` : null,
+    requestedBy?.displayName ? `Requested by ${safeText(requestedBy.displayName, 40)}` : null,
+    client?.user?.username ? `${safeText(client.user.username, 40)} | Version ${PACKAGE_VERSION}` : null,
   ].filter(Boolean).join(" · ");
   if (credit) {
     container.addSeparatorComponents(new SeparatorBuilder());
@@ -121,4 +186,4 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, 
   return { components: [container], flags: MessageFlags.IsComponentsV2 };
 }
 
-module.exports = { buildNowPlayingV2, buildControls, isUsableUrl, activeFilters, ACCENT };
+module.exports = { buildNowPlayingV2, buildControls, isUsableUrl, activeFilters, safeText, safeUrl, queueCount, ACCENT };

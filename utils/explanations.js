@@ -234,7 +234,9 @@ module.exports = {
             • \`/skip\` — jump to the next song in the queue
             • \`/loop\` — repeat the current song until you turn it off; the queue is kept and resumes afterwards
             • \`/np\` — show what is playing without touching the panel
-            • \`/stop\` — stop playback and clear the queue`,
+            • \`/stop\` — stop playback and clear the queue
+
+            You have to be in the bot's voice channel to use the panel buttons or any of these commands. The panel's Stop button asks you to confirm before it kills the queue, since there is no undo.`,
     example: `
             \`/play https://www.youtube.com/watch?v=dQw4w9WgXcQ\`
             \`/play never gonna give you up\`
