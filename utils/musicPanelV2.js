@@ -67,7 +67,8 @@ function trackLines(track) {
   return `[${track?.title ?? "Unknown track"}](${track?.url ?? ""})\nBy **${track?.author ?? "Unknown"}**${views}`;
 }
 
-function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false }) {
+// controls:false renders the same panel without buttons, for surfaces with no collector behind them (/np).
+function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true }) {
   const container = new ContainerBuilder().setAccentColor(ACCENT);
 
   const header = new SectionBuilder()
@@ -105,7 +106,7 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, 
     );
   }
 
-  container.addActionRowComponents(buildControls(paused, looping));
+  if (controls) container.addActionRowComponents(buildControls(paused, looping));
 
   // Replaces the embed's author line and footer, which V2 has no equivalent for.
   const credit = [

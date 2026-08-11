@@ -156,6 +156,23 @@ describe("loop control", () => {
   });
 });
 
+// /np reuses this renderer but has no collector, so buttons there would look interactive and do nothing.
+describe("controls: false", () => {
+  test("omits the action row entirely", () => {
+    const types = json(build({ controls: false })).components.map(c => c.type);
+    expect(types).not.toContain(1);
+  });
+
+  test("keeps everything else the panel shows", () => {
+    const next = { title: "Aerodynamic", url: "https://y", author: "Daft Punk" };
+    const body = textOf(build({ controls: false, looping: true, queue: queueWith({ next, filters: ["bassboost"] }) }));
+    expect(body).toContain("One More Time");
+    expect(body).toContain("Aerodynamic");
+    expect(body).toContain("bassboost");
+    expect(headingOf(build({ controls: false, looping: true }))).toContain("🔁");
+  });
+});
+
 describe("active filters", () => {
   test("lists every enabled ffmpeg filter", () => {
     const body = textOf(build({ queue: queueWith({ filters: ["bassboost", "nightcore"] }) }));

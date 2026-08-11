@@ -8,17 +8,14 @@
 
 const wait = require("util").promisify(setTimeout);
 const { MessageFlags } = require("discord.js");
-const { QueueRepeatMode } = require("discord-player");
 const logger = require("./logger");
 const { remainingMs, queueString } = require("./musicPlayer");
 const { buildNowPlayingV2 } = require("./musicPanelV2");
+const { isLooping, toggleLoop, restoreLoop, togglePause, skipTrack, stopPlayback } = require("./musicControls");
 
 let msg = null;
 let msgTrackUrl = null;
 let progressTimer = null;
-
-// Loop intent held apart from queue.repeatMode, because skip has to switch the queue out of TRACK repeat briefly in order to advance at all.
-let loopIntent = false;
 
 const PROGRESS_REFRESH_MS = 1000;
 const PAUSED_COLLECTOR_MS = 300000;
@@ -48,10 +45,10 @@ module.exports = {
   trackStart: async (client, queue, track) => {
     // TRACK repeat replays via PlayerFinish -> PlayerStart, so a looping song re-enters here each cycle; reuse the panel instead of posting one per repeat, and restart the refresh the last cycle stopped.
     if (msg != null) {
-      if (loopIntent && msgTrackUrl === track.url) {
+      if (isLooping(queue) && msgTrackUrl === track.url) {
         const requestedBy = queue.metadata.requestedBy;
         startProgressTimer(queue, track, () =>
-          buildNowPlayingV2({ track, queue, requestedBy, client, paused: false, looping: loopIntent }));
+          buildNowPlayingV2({ track, queue, requestedBy, client, paused: false, looping: true }));
       }
       return;
     }
@@ -61,12 +58,10 @@ module.exports = {
     module.exports.currentTrack = track;
 
     // Skip clears repeat to get past the current track; reapply it for the new one.
-    if (loopIntent && queue.repeatMode !== QueueRepeatMode.TRACK) {
-      queue.setRepeatMode(QueueRepeatMode.TRACK);
-    }
+    restoreLoop(queue);
 
     const render = (paused = false) =>
-      buildNowPlayingV2({ track, queue, requestedBy, client, paused, looping: loopIntent });
+      buildNowPlayingV2({ track, queue, requestedBy, client, paused, looping: isLooping(queue) });
 
     msg = await channel.send(render(false));
     msgTrackUrl = track.url;
@@ -81,25 +76,18 @@ module.exports = {
 
       try {
         if (i.customId === "pause") {
-          if (queue.node.isPaused()) await queue.node.resume();
-          else await queue.node.pause();
+          const paused = await togglePause(queue);
           await collector.resetTimer({ time: PAUSED_COLLECTOR_MS });
-          return await i.update(render(queue.node.isPaused()));
+          return await i.update(render(paused));
         }
 
         if (i.customId === "loop") {
-          loopIntent = !loopIntent;
-          // TRACK repeats the current song and leaves queue.tracks untouched, so the queue survives and resumes in order once this is switched off.
-          queue.setRepeatMode(loopIntent ? QueueRepeatMode.TRACK : QueueRepeatMode.OFF);
-          logger.debug(`[MusicV2] Loop ${loopIntent ? "enabled" : "disabled"} for "${track.title}"`);
+          toggleLoop(queue);
           return await i.update(render(queue.node.isPaused()));
         }
 
         if (i.customId === "skip") {
-          if (queue.node.isPaused()) await queue.node.resume();
-          // skip() ends the track through the same path that honours TRACK repeat, so leaving it on replays this song instead of advancing; trackStart reapplies it for the next track.
-          if (queue.repeatMode === QueueRepeatMode.TRACK) queue.setRepeatMode(QueueRepeatMode.OFF);
-          await queue.node.skip();
+          await skipTrack(queue);
           if (msg) await msg.delete().catch(() => {});
           msg = null;
           msgTrackUrl = null;
@@ -107,9 +95,7 @@ module.exports = {
         }
 
         if (i.customId === "stop") {
-          loopIntent = false;
-          queue.setRepeatMode(QueueRepeatMode.OFF);
-          await queue.node.stop();
+          await stopPlayback(queue);
           if (msg) await msg.delete().catch(() => {});
           return collector.stop();
         }
@@ -138,7 +124,7 @@ module.exports = {
 
   // Keeps the panel alive across a loop cycle; clearing it would post a fresh one.
   trackEnd: async (client, queue, track) => {
-    if (loopIntent && msgTrackUrl === track?.url) return;
+    if (isLooping(queue) && msgTrackUrl === track?.url) return;
     msg = null;
     msgTrackUrl = null;
     module.exports.currentTrack = null;

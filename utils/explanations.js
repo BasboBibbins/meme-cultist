@@ -227,7 +227,14 @@ module.exports = {
             The queue can be shuffled by using \`/queue shuffle\`. You can also clear the queue by using \`/queue clear\`.
 
             Filters can also be applied to the music. You can see the list of filters by using \`/filter\`.
-            You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.`,
+            You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.
+
+            Playback controls have slash commands as well as buttons on the now playing panel:
+            • \`/pause\` and \`/resume\` — hold and continue the current song
+            • \`/skip\` — jump to the next song in the queue
+            • \`/loop\` — repeat the current song until you turn it off; the queue is kept and resumes afterwards
+            • \`/np\` — show what is playing without touching the panel
+            • \`/stop\` — stop playback and clear the queue`,
     example: `
             \`/play https://www.youtube.com/watch?v=dQw4w9WgXcQ\`
             \`/play never gonna give you up\`
@@ -237,6 +244,7 @@ module.exports = {
             The bot will leave your voice channel after the queue is empty. You can also make it leave by pressing the stop button.
             Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.
             Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.
+            While a song is looping, \`/skip\` still moves to the next song in the queue and the loop carries over to it. Turn the loop off to let the queue play through normally.
             For age-restricted YouTube videos, the bot owner can configure cookies in a \`.cookies\` file.`,
   },
   shop: {
