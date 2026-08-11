@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, ROB_COOLDOWN } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { recordGameResult } = require("../../utils/gameResults");
@@ -38,7 +38,7 @@ module.exports = {
 
     const amount = Math.floor(Math.random() * dbUser.balance) + 1;
     const chance = Math.floor(Math.random() * 100) + 1;
-    const cooldown = 60000 * 5;
+    const cooldown = ROB_COOLDOWN;
 
     const robCooldown = await db.get(`${user.id}.cooldowns.rob`);
     if (robCooldown > Date.now()) {

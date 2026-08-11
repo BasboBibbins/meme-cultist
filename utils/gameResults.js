@@ -26,6 +26,7 @@ function openDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_gr_lookup ON game_results(user_id, channel_id, played_at);
     CREATE INDEX IF NOT EXISTS idx_gr_channel ON game_results(channel_id, played_at);
+    CREATE INDEX IF NOT EXISTS idx_gr_guild ON game_results(guild_id, user_id, played_at);
   `);
   logger.log("[GameResults] Opened db/game_results.sqlite (WAL)");
   return _db;
@@ -67,12 +68,15 @@ function getLatestGameResult({ channelId, userId, game = null }) {
   }
 }
 
-function getRecentGameResults({ channelId, userId = null, game = null, limit = 5 }) {
+function getRecentGameResults({ channelId = null, guildId = null, userId = null, game = null, limit = 5 }) {
+  if (!channelId && !guildId) return [];
   try {
     const db = openDb();
     const safeLimit = Math.min(Math.max(limit || 5, 1), 20);
-    const conditions = ["channel_id = ?"];
-    const params = [channelId];
+    const conditions = [];
+    const params = [];
+    if (channelId) { conditions.push("channel_id = ?"); params.push(channelId); }
+    if (guildId) { conditions.push("guild_id = ?"); params.push(guildId); }
     if (userId) { conditions.push("user_id = ?"); params.push(userId); }
     if (game) { conditions.push("game = ?"); params.push(game); }
     params.push(safeLimit);
@@ -86,4 +90,4 @@ function getRecentGameResults({ channelId, userId = null, game = null, limit = 5
   }
 }
 
-module.exports = { recordGameResult, getLatestGameResult, getRecentGameResults };
+module.exports = { PRUNE_DAYS, recordGameResult, getLatestGameResult, getRecentGameResults };

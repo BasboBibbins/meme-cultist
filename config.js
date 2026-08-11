@@ -201,6 +201,18 @@ const config = {
   JACKPOT_MIN_BET: 1000,
   JACKPOT_INTEREST_RATE_PERCENT: 2,
 
+  // Cooldown durations in ms. /help reads these, so editing here also fixes the docs.
+  DAILY_COOLDOWN: 8.64e7,
+  WEEKLY_COOLDOWN: 6.048e8,
+  ROB_COOLDOWN: 300000,
+
+  // Transfers at or above this many koku require a button confirmation.
+  GIVE_CONFIRM_THRESHOLD: 10000,
+  GIVE_CONFIRM_TIMEOUT: 30000,
+
+  // How many past game results /history shows. The store caps any request at 20.
+  HISTORY_RESULT_LIMIT: 10,
+
   // Legacy commands list
   LEGACY_COMMANDS: [
     "help",

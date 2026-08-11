@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, DAILY_COOLDOWN } = require("../../config.js");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed, buildSuccessEmbed } = require("../../utils/embeds");
@@ -17,7 +17,7 @@ module.exports = {
       await addNewDBUser(user);
     }
 
-    const cooldown = 8.64e+7;
+    const cooldown = DAILY_COOLDOWN;
     const db_currentStreak = `${user.id}.stats.dailies.currentStreak`;
     const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
 
