@@ -28,7 +28,7 @@ async function resolveAccent(userId) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("history")
-    .setDescription(`Show your last ${HISTORY_RESULT_LIMIT} game results.`),
+    .setDescription(`Show your last ${HISTORY_RESULT_LIMIT} game results from anywhere in this server.`),
   async execute(interaction) {
     const user = interaction.user;
     if (!interaction.guildId) {
@@ -38,7 +38,7 @@ module.exports = {
       const rows = getRecentGameResults({ guildId: interaction.guildId, userId: user.id, limit: HISTORY_RESULT_LIMIT });
       const accent = await resolveAccent(user.id);
       if (rows.length === 0) {
-        const emptyEmbed = buildInfoEmbed(user, interaction.client, `No game results recorded yet. Play something and check back — results are kept for ${PRUNE_DAYS} days.`, accent)
+        const emptyEmbed = buildInfoEmbed(user, interaction.client, `Nothing here yet. Play a round of \`/slots\`, \`/blackjack\` or \`/keno\` and it will show up here. Results stick around for ${PRUNE_DAYS} days.`, accent)
           .setAuthor({ name: `${user.displayName}'s Game History`, iconURL: user.displayAvatarURL({ dynamic: true }) });
         return await interaction.reply({ embeds: [emptyEmbed] });
       }
@@ -52,14 +52,14 @@ module.exports = {
         : newestSec === oldestSec ? `<t:${newestSec}:R>`
           : `<t:${newestSec}:R> back to <t:${oldestSec}:R>`;
       const spanNote = span
-        ? `*Newest first, ${when}. Server-wide, pruned after ${PRUNE_DAYS} days.*`
-        : `*Server-wide. Results older than ${PRUNE_DAYS} days are pruned.*`;
+        ? `*Newest first, ${when}. Anywhere in this server; results older than ${PRUNE_DAYS} days are deleted.*`
+        : `*Anywhere in this server; results older than ${PRUNE_DAYS} days are deleted.*`;
       const embed = buildInfoEmbed(user, interaction.client, `${lines}\n\n${spanNote}`, accent)
         .setAuthor({ name: `${user.displayName}'s Last ${rows.length} Results`, iconURL: user.displayAvatarURL({ dynamic: true }) })
         .addFields(
           { name: "Net", value: `**${formatSigned(totals.net)}** ${CURRENCY_NAME}`, inline: true },
           { name: "Wagered", value: `${totals.wagered.toLocaleString("en-US")} ${CURRENCY_NAME}`, inline: true },
-          { name: "Record", value: `${totals.wins}W / ${totals.losses}L`, inline: true },
+          { name: "Record", value: totals.pushes > 0 ? `${totals.wins}W / ${totals.losses}L / ${totals.pushes}P` : `${totals.wins}W / ${totals.losses}L`, inline: true },
         );
       await interaction.reply({ embeds: [embed] });
     } catch (err) {

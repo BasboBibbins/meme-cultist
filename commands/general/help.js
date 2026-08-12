@@ -76,7 +76,7 @@ module.exports = {
           interaction.client,
           `**Explanation:** ${explanation.description}\n\n${explanation.rules ? `**Rules:** ${explanation.rules}\n\n` : ""}${explanation.example ? `**Example:** ${explanation.example}\n\n` : ""}${explanation.note ? `**Note:** ${explanation.note}\n\n` : ""}`
         ).setAuthor({ name: explanation.name, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
-        if (explanation.limits) embed.addFields({ name: "Bet Limits", value: explanation.limits, inline: true });
+        if (explanation.limits) embed.addFields({ name: "Limits", value: explanation.limits, inline: true });
         if (explanation.cooldown) embed.addFields({ name: "Cooldown", value: explanation.cooldown, inline: true });
         await i.editReply({embeds: [embed]});
       });
