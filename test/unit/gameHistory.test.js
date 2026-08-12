@@ -1,5 +1,5 @@
 const { summarizeGameResult, formatHistoryLine, formatSigned, summarizeHistory, historySpan } = require("../../utils/gameHistory");
-const { formatDuration } = require("../../utils/time");
+const { formatDuration, formatInterval } = require("../../utils/time");
 
 const at = 1754870400000;
 
@@ -114,18 +114,20 @@ describe("historySpan", () => {
 });
 
 describe("summarizeHistory", () => {
-  test("totals net, wagered, and the win/loss record", () => {
+  // Pushes are counted so the W/L/P line adds up to the number of rows shown.
+  test("totals net, wagered, and the full record", () => {
     const totals = summarizeHistory([
       row("flip", { bet: 100, net: 100 }),
       row("flip", { bet: 100, net: -100 }),
       row("keno", { bet: 200, net: 0 }),
       row("rob", { outcome: "fail", net: 0 }),
     ]);
-    expect(totals).toEqual({ net: 0, wagered: 400, wins: 1, losses: 1 });
+    expect(totals).toEqual({ net: 0, wagered: 400, wins: 1, losses: 1, pushes: 2 });
+    expect(totals.wins + totals.losses + totals.pushes).toBe(4);
   });
 
   test("handles an empty history", () => {
-    expect(summarizeHistory([])).toEqual({ net: 0, wagered: 0, wins: 0, losses: 0 });
+    expect(summarizeHistory([])).toEqual({ net: 0, wagered: 0, wins: 0, losses: 0, pushes: 0 });
   });
 });
 
@@ -141,5 +143,18 @@ describe("formatDuration", () => {
     expect(formatDuration(0)).toBe("0 seconds");
     expect(formatDuration(-500)).toBe("0 seconds");
     expect(formatDuration(undefined)).toBe("0 seconds");
+  });
+});
+
+describe("formatInterval", () => {
+  test("drops the count so an 'every X' sentence reads as English", () => {
+    expect(formatInterval(8.64e7)).toBe("day");
+    expect(formatInterval(6.048e8)).toBe("7 days");
+    expect(formatInterval(300000)).toBe("5 minutes");
+    expect(formatInterval(3600000)).toBe("hour");
+  });
+
+  test("leaves multi-unit durations alone", () => {
+    expect(formatInterval(3660000)).toBe("1 hour 1 minute");
   });
 });

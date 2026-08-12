@@ -126,8 +126,9 @@ function summarizeHistory(rows) {
     acc.wagered += s.wagered ?? 0;
     if (s.outcome === "win") acc.wins += 1;
     else if (s.outcome === "loss") acc.losses += 1;
+    else acc.pushes += 1;
     return acc;
-  }, { net: 0, wagered: 0, wins: 0, losses: 0 });
+  }, { net: 0, wagered: 0, wins: 0, losses: 0, pushes: 0 });
 }
 
 module.exports = { GAME_LABELS, summarizeGameResult, formatHistoryLine, formatSigned, summarizeHistory, historySpan };
