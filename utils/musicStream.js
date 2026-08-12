@@ -19,12 +19,18 @@ const YTDLP = constants.YOUTUBE_DL_PATH;
 const FORMAT = "bestaudio";
 const PLAYLIST_LIMIT = 50;
 
+// YouTube's `n` challenge has to be solved in JavaScript, and yt-dlp only enables deno
+// by default. With no runtime it degrades to storyboard-only formats — and once a cookie
+// jar makes requests authenticated that degradation hits EVERY video, not just the
+// age-restricted ones cookies were added for. Pointed at this process's own binary
+// rather than bare "node" so it resolves regardless of the spawned process's PATH.
+const JS_RUNTIME = ["--js-runtimes", `node:${process.execPath}`];
+
 // Two ways a cookie jar misfires, both resolved once here rather than per track.
 // A path that does not exist is ignored silently by yt-dlp, which then reports the
 // ordinary age-gate error, so a typo looks identical to having configured nothing.
-// A jar that parses but holds no cookies is worse: YouTube answers 403 for EVERY
-// video, not just age-restricted ones, and the error never mentions cookies. Passing
-// no --cookies at all is strictly better than passing an empty one.
+// An empty jar is worse: YouTube answers 403 for every video and the error never
+// mentions cookies, so passing no --cookies beats passing an empty one.
 function resolveCookieArgs() {
   if (!YTDLP_COOKIES) return [];
 
@@ -61,6 +67,7 @@ function createYtdlpStream(url) {
     "--quiet",
     "--no-warnings",
     "--no-playlist",
+    ...JS_RUNTIME,
     ...cookieArgs,
     url,
   ], { stdio: ["ignore", "pipe", "pipe"] });
@@ -301,6 +308,7 @@ function expandYoutubePlaylist(url, player, requestedBy, limit = PLAYLIST_LIMIT)
     "--flat-playlist", "--dump-single-json",
     "--playlist-end", String(limit),
     "--no-warnings",
+    ...JS_RUNTIME,
     ...cookieArgs,
     url,
   ], { encoding: "utf8", timeout: 120000, maxBuffer: 1e8 });
