@@ -1,4 +1,4 @@
-const { summarizeGameResult, formatHistoryLine, formatSigned, summarizeHistory } = require("../../utils/gameHistory");
+const { summarizeGameResult, formatHistoryLine, formatSigned, summarizeHistory, historySpan } = require("../../utils/gameHistory");
 const { formatDuration } = require("../../utils/time");
 
 const at = 1754870400000;
@@ -52,17 +52,64 @@ describe("formatSigned", () => {
 });
 
 describe("formatHistoryLine", () => {
-  test("renders a Discord relative timestamp, never a locale string", () => {
+  test("names the game, the net, and the detail", () => {
     const line = formatHistoryLine(row("keno", { bet: 100, spots: [1, 2, 3], matches: 2, net: 50 }));
-    expect(line).toContain(`<t:${Math.floor(at / 1000)}:R>`);
     expect(line).toContain("Keno");
     expect(line).toContain("2/3 hit");
     expect(line).toContain("+50");
   });
 
+  test("carries no per-row timestamp — the list is newest-first and the span is stated once", () => {
+    const line = formatHistoryLine(row("keno", { bet: 100, spots: [1, 2, 3], matches: 2, net: 50 }));
+    expect(line).not.toMatch(/<t:\d+:[A-Za-z]>/);
+  });
+
   test("omits the wager segment when there is no stake", () => {
     const line = formatHistoryLine(row("rob", { victim_id: "42", outcome: "success", amount: 900, net: 900 }));
     expect(line).not.toContain("bet");
+  });
+
+  test("omits the wager on a total loss, where it only repeats the net", () => {
+    expect(formatHistoryLine(row("keno", { bet: 500, spots: [1, 2], matches: 0, net: -500 }))).not.toContain("bet");
+    expect(formatHistoryLine(row("keno", { bet: 500, spots: [1, 2], matches: 1, net: -100 }))).toContain("bet 500");
+  });
+
+  test("drops details that only restate the icon and the sign", () => {
+    expect(formatHistoryLine(row("flip", { bet: 10, net: 10 }))).toBe("🟢 **Coinflip** **+10** · bet 10");
+    expect(formatHistoryLine(row("blackjack", { total_bet: 10, net: -10, outcome: "loss" }))).not.toContain("loss");
+    expect(formatHistoryLine(row("blackjack", { total_bet: 10, net: 0, outcome: "push" }))).toContain("push");
+  });
+
+  test("shows the other duellist, whichever side the viewer was on", () => {
+    const base = { challenger_id: "AAA", opponent_id: "BBB", bet: 10 };
+    const asChallenger = { game: "duel", user_id: "AAA", played_at: at, result: { ...base, net: 10 } };
+    const asOpponent = { game: "duel", user_id: "BBB", played_at: at, result: { ...base, net: -10 } };
+    expect(formatHistoryLine(asChallenger)).toContain("<@BBB>");
+    expect(formatHistoryLine(asOpponent)).toContain("<@AAA>");
+  });
+
+  test("clips a long detail so one result cannot blow out the row", () => {
+    const longName = "A Horse With A Preposterously Long Name Indeed";
+    const line = formatHistoryLine(row("race", { bets: [{ amount: 1 }], net: 5, finish_order: [{ place: 1, name: longName }] }));
+    expect(line).toContain("…");
+    expect(line).not.toContain(longName);
+  });
+
+  test("stays inside a mobile column for a typical result", () => {
+    const line = formatHistoryLine(row("roulette", { total_wagered: 1200, net: -1200, winning_number: 17, color: "black" }));
+    expect(line.replace(/\*\*/g, "").length).toBeLessThanOrEqual(38);
+  });
+});
+
+describe("historySpan", () => {
+  test("returns the oldest and newest timestamps", () => {
+    const rows = [row("flip", { bet: 1, net: 1 }), { game: "flip", played_at: at - 5000, result: { bet: 1, net: 1 } }];
+    expect(historySpan(rows)).toEqual({ oldest: at - 5000, newest: at });
+  });
+
+  test("returns null when there is nothing to span", () => {
+    expect(historySpan([])).toBeNull();
+    expect(historySpan(null)).toBeNull();
   });
 });
 

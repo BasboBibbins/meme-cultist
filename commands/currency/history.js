@@ -3,7 +3,7 @@ const { CURRENCY_NAME, HISTORY_RESULT_LIMIT } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed, buildInfoEmbed } = require("../../utils/embeds");
 const { PRUNE_DAYS, getRecentGameResults } = require("../../utils/gameResults");
-const { formatHistoryLine, formatSigned, summarizeHistory } = require("../../utils/gameHistory");
+const { formatHistoryLine, formatSigned, summarizeHistory, historySpan } = require("../../utils/gameHistory");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getThemeColors } = require("../../themes/resolver");
 
@@ -44,9 +44,17 @@ module.exports = {
       }
 
       const totals = summarizeHistory(rows);
+      const span = historySpan(rows);
       const lines = rows.map(formatHistoryLine).join("\n");
-      const scopeNote = `*Server-wide. Results older than ${PRUNE_DAYS} days are pruned.*`;
-      const embed = buildInfoEmbed(user, interaction.client, `${lines}\n\n${scopeNote}`, accent)
+      const newestSec = span && Math.floor(span.newest / 1000);
+      const oldestSec = span && Math.floor(span.oldest / 1000);
+      const when = !span ? ""
+        : newestSec === oldestSec ? `<t:${newestSec}:R>`
+          : `<t:${newestSec}:R> back to <t:${oldestSec}:R>`;
+      const spanNote = span
+        ? `*Newest first, ${when}. Server-wide, pruned after ${PRUNE_DAYS} days.*`
+        : `*Server-wide. Results older than ${PRUNE_DAYS} days are pruned.*`;
+      const embed = buildInfoEmbed(user, interaction.client, `${lines}\n\n${spanNote}`, accent)
         .setAuthor({ name: `${user.displayName}'s Last ${rows.length} Results`, iconURL: user.displayAvatarURL({ dynamic: true }) })
         .addFields(
           { name: "Net", value: `**${formatSigned(totals.net)}** ${CURRENCY_NAME}`, inline: true },
