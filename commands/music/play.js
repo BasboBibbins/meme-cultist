@@ -2,7 +2,7 @@ const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageF
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
-const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, enrichAppleMusicTracks, EQUALIZER_BANDS } = require("../../utils/musicStream");
+const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, enrichAppleMusicTracks } = require("../../utils/musicStream");
 const { buildInfoEmbed } = require("../../utils/embeds");
 
 module.exports = {
@@ -38,8 +38,13 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const song = interaction.options.getString("song");
 
+    // No equalizer: discord-player's `equalizer` option reaches EqualizerStream as
+    // `bandMultiplier`, which expects {band, gain}[] and silently discards a flat
+    // numeric array — so the bass lift that lived here never applied, while the
+    // transform still ran 15 biquad bands over every sample and blocked the audio
+    // frame clock. Re-adding one needs the object form AND a fix for the processor
+    // being built with channelCount 1 over an interleaved stereo stream.
     const queue = player.nodes.create(interaction.guild, {
-      initialVolume: 100,
       leaveOnEnd: true,
       leaveOnEndCooldown: 60000,
       leaveOnStop: true,
@@ -47,7 +52,6 @@ module.exports = {
       leaveOnEmptyCooldown: 300000,
       skipOnNoStream: true,
       repeatMode: 0,
-      equalizer: EQUALIZER_BANDS,
       metadata: {
         channel: interaction.channel,
         requestedBy: interaction.user

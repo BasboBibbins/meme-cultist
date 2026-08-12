@@ -14,6 +14,7 @@ const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
 const cacheDiag = require("./utils/cacheDiag");
+const loopLag = require("./utils/loopLag");
 const { summarizeFailure } = require("./utils/toolErrors");
 const { describeImage } = require("./utils/llm");
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext");
@@ -632,6 +633,7 @@ if (DELETE_SLASH) {
   if (DEBUG_MODE) {
     player.events.on(GuildQueueEvent.Debug, (_queue, message) => logger.debug(`[Music/dp] ${message}`));
     player.on("debug", message => logger.debug(`[Music/player] ${message}`));
+    loopLag.start(() => player.nodes.cache.some(queue => queue.node.isPlaying()));
   }
 
   player.events.on(GuildQueueEvent.Error, async (queue, error) => {
