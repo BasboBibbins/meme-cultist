@@ -4,45 +4,13 @@ jest.mock("../../utils/logger", () => ({
   log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), info: jest.fn(),
 }));
 
-const { Equalizer, ChannelProcessor } = require("@discord-player/equalizer");
 jest.mock("axios", () => ({ get: jest.fn() }));
 const axios = require("axios");
 
 const {
-  isDrmProtected, shouldUseYtdlp, isYoutubePlaylist, formatDuration, EQUALIZER_BANDS,
+  isDrmProtected, shouldUseYtdlp, isYoutubePlaylist, formatDuration,
   appleTrackId, isAppleMusicTrack, enrichAppleMusicTrack,
 } = require("../../utils/musicStream");
-
-// The bands go straight to the channel processor, which multiplies every sample by bandMultipliers[i]; anything but a plain number yields NaN samples and a silent mix.
-describe("EQUALIZER_BANDS", () => {
-  test("covers every band the processor indexes", () => {
-    expect(EQUALIZER_BANDS).toHaveLength(Equalizer.BAND_COUNT);
-  });
-
-  test("is a flat array of finite numbers, not {band, gain} objects", () => {
-    for (const value of EQUALIZER_BANDS) {
-      expect(typeof value).toBe("number");
-      expect(Number.isFinite(value)).toBe(true);
-    }
-  });
-
-  test("keeps the intended bass lift on the low bands", () => {
-    expect(EQUALIZER_BANDS.slice(0, 3)).toEqual([0.15, 0.10, 0.05]);
-    expect(EQUALIZER_BANDS.slice(3).every(v => v === 0)).toBe(true);
-  });
-
-  test("produces real samples rather than NaN", () => {
-    const processor = new ChannelProcessor(EQUALIZER_BANDS);
-    for (const sample of [1000, 2000, -1500, 500]) {
-      expect(Number.isNaN(processor.processInt(sample))).toBe(false);
-    }
-  });
-
-  test("the old {band, gain} shape would have produced NaN", () => {
-    const processor = new ChannelProcessor([{ band: 0, gain: 0.15 }, { band: 1, gain: 0.10 }]);
-    expect(Number.isNaN(processor.processInt(1000))).toBe(true);
-  });
-});
 
 describe("appleTrackId", () => {
   test("reads the ?i= track id, which is what a shared song link carries", () => {

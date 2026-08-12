@@ -10,17 +10,12 @@
 const { spawn, spawnSync } = require("child_process");
 const { constants } = require("youtube-dl-exec");
 const { Track, StreamType, QueryType } = require("discord-player");
-const { Equalizer } = require("@discord-player/equalizer");
 const axios = require("axios");
 const logger = require("./logger");
 
 const YTDLP = constants.YOUTUBE_DL_PATH;
 const FORMAT = "bestaudio";
 const PLAYLIST_LIMIT = 50;
-
-// A flat numeric array indexed by band, NOT {band, gain} objects: the channel processor multiplies each sample by bandMultipliers[i], so an object there makes every sample NaN and the mix silent while still "playing".
-const BASS_LIFT = [0.15, 0.10, 0.05];
-const EQUALIZER_BANDS = Array.from({ length: Equalizer.BAND_COUNT }, (_, i) => BASS_LIFT[i] ?? 0);
 
 // yt-dlp handles far more than YouTube, but every other provider in use streams
 // correctly through its own extractor, so it is scoped to the one that does not.
@@ -306,4 +301,4 @@ function expandYoutubePlaylist(url, player, requestedBy, limit = PLAYLIST_LIMIT)
   return tracks;
 }
 
-module.exports = { EQUALIZER_BANDS, enrichAppleMusicTracks, enrichAppleMusicTrack, appleTrackId, isAppleMusicTrack, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };
+module.exports = { enrichAppleMusicTracks, enrichAppleMusicTrack, appleTrackId, isAppleMusicTrack, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };
