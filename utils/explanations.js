@@ -1,6 +1,6 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS } = require("../config.js");
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT } = require("../config.js");
 const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
-const { formatDuration } = require("./time");
+const { formatInterval } = require("./time");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
 
@@ -32,12 +32,14 @@ module.exports = {
   history: {
     name: "Game History",
     description: `
-            \`/history\` shows your last 10 game results from anywhere in the server — every casino game plus \`/rob\` and \`/duel\`.
+            \`/history\` shows your last ${HISTORY_RESULT_LIMIT} game results from anywhere in this server — every casino game plus \`/rob\` and \`/duel\`.
 
-            Each line shows the game, what you netted, what you wagered, a short detail about how it went, and when it happened. The totals underneath cover only the results shown, not your lifetime record — use \`/stats\` for that.
+            Each line shows the game, what you won or lost, what you staked, and a short note on how it went. Newest is first, and the line underneath gives the time range the results cover.
+
+            The totals cover only the results shown, not your lifetime record — use \`/stats\` for that. A stake is only listed when it tells you something the net does not: on a total loss the two are the same number.
             `,
     note: `
-            Results are pruned after 30 days, so an old session will drop off even if you have played nothing since.`
+            Results are deleted after 30 days, so an old session will drop off even if you have played nothing since.`
   },
   dailyweekly: {
     name: "Dailies and Weeklies",
@@ -54,7 +56,7 @@ module.exports = {
             `,
     note: `
             Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`,
-    cooldown: `\`/daily\` every **${formatDuration(DAILY_COOLDOWN)}**\n\`/weekly\` every **${formatDuration(WEEKLY_COOLDOWN)}**`
+    cooldown: `\`/daily\` every **${formatInterval(DAILY_COOLDOWN)}**\n\`/weekly\` every **${formatInterval(WEEKLY_COOLDOWN)}**`
   },
   blackjack: {
     name: "Blackjack",
@@ -106,7 +108,7 @@ module.exports = {
             4. Landing 3+ scatter icons triggers the Free Spin Bonus.
             5. Triple 7s wins the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required, free spins eligible).
             6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`,
-    cooldown: `${SLOTS_DAILY_FREE_SPINS} free spins every **${formatDuration(SLOTS_DAILY_COOLDOWN)}**`,
+    cooldown: `${SLOTS_DAILY_FREE_SPINS} free spins every **${formatInterval(SLOTS_DAILY_COOLDOWN)}**`,
     limits: `Jackpot eligibility: **${JACKPOT_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME} per line`
   },
   poker: {
@@ -235,7 +237,7 @@ module.exports = {
             You can't duel yourself or a bot. Only one active duel per challenger/opponent pair per channel at a time.
             The opponent's bank is checked at challenge time so the challenger sees up front whether the opponent could ever cover the wager.
             DM notifications go to the opponent on challenge and to the loser on resolution.`,
-    cooldown: `One duel every **${formatDuration(DUEL_COOLDOWN)}**`,
+    cooldown: `One duel every **${formatInterval(DUEL_COOLDOWN)}**`,
     limits: `Minimum bet: **${DUEL_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME}\nNo maximum bet`
   },
   music: {
