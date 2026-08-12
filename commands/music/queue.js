@@ -3,6 +3,7 @@ const wait = require("util").promisify(setTimeout);
 const { queueString } = require("../../utils/musicPlayer");
 const logger = require("../../utils/logger");
 const { buildInfoEmbed } = require("../../utils/embeds");
+const { resolveMusicContext } = require("../../utils/musicGuards");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,27 +25,13 @@ module.exports = {
         .setDescription("View the queue.")
     ),
   async execute(interaction) {
-    const player = interaction.client.player;
     const embed = buildInfoEmbed(interaction.user, interaction.client);
 
-    if (!interaction.member.voice.channelId) {
-      embed.setTitle("You are not in a voice channel!");
-      embed.setDescription("You must be in a voice channel to use this command.");
-      return await interaction.reply({embeds: [embed], flags: MessageFlags.Ephemeral});
-    }
-    if (interaction.guild.members.me.voice.channelId && interaction.member.voice.channelId !== interaction.guild.members.me.voice.channelId) {
-      embed.setTitle("You are not in my voice channel!");
-      embed.setDescription("You must be in my voice channel to use this command.");
-      return await interaction.reply({embeds: [embed], flags: MessageFlags.Ephemeral});
-    } 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const queue = player.nodes.get(interaction.guild.id);
-    if (!queue) {
-      embed.setTitle("No queue found!");
-      embed.setDescription("There is no queue to use this command on.");
-      return await interaction.editReply({embeds: [embed]});
-    }
-    const tracks = queue.tracks; 
+    const { queue, failed } = await resolveMusicContext(interaction, { requireTrack: false });
+    if (failed) return;
+
+    const tracks = queue.tracks;
     const subcommand = interaction.options.getSubcommand();
     switch (subcommand) {
       case "clear":

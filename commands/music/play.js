@@ -4,6 +4,7 @@ const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
 const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, enrichAppleMusicTracks } = require("../../utils/musicStream");
 const { buildInfoEmbed } = require("../../utils/embeds");
+const { resolveMusicContext } = require("../../utils/musicGuards");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,30 +21,14 @@ module.exports = {
 
     const embed = buildInfoEmbed(interaction.user, interaction.client);
 
-    const userChannel = interaction.member.voice.channel;
-    const botChannel = interaction.guild.members.me.voice.channel;
-
-    if (!userChannel) {
-      embed.setTitle("You are not in a voice channel!");
-      embed.setDescription("You must be in a voice channel to use this command.");
-      return await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
-    }
-
-    if (botChannel && botChannel.id !== userChannel.id) {
-      embed.setTitle("You are not in my voice channel!");
-      embed.setDescription("You must be in my voice channel to use this command.");
-      return await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
-    }
+    // requireQueue is off: /play is the command that creates the queue every other music command requires.
+    const { voiceChannel: userChannel, failed } = await resolveMusicContext(interaction, { requireQueue: false });
+    if (failed) return;
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const song = interaction.options.getString("song");
 
-    // No equalizer: discord-player's `equalizer` option reaches EqualizerStream as
-    // `bandMultiplier`, which expects {band, gain}[] and silently discards a flat
-    // numeric array — so the bass lift that lived here never applied, while the
-    // transform still ran 15 biquad bands over every sample and blocked the audio
-    // frame clock. Re-adding one needs the object form AND a fix for the processor
-    // being built with channelCount 1 over an interleaved stereo stream.
+    // No equalizer: the option lands on EqualizerStream as `bandMultiplier`, which wants {band, gain}[] and silently discards a flat array, so the bass lift here never applied while its transform still ran 15 biquad bands per sample against the audio frame clock. Re-adding one needs the object form AND a fix for the processor being built with channelCount 1 over interleaved stereo.
     const queue = player.nodes.create(interaction.guild, {
       leaveOnEnd: true,
       leaveOnEndCooldown: 60000,
