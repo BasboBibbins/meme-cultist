@@ -258,13 +258,31 @@ async function run() {
   });
 
   // --- get_game_result ---
-  await testAsync("get_game_result: no channel returns error", async () => {
+  await testAsync("get_game_result: no guild and no channel returns error", async () => {
     const result = await tools.executeToolCall(
       { function: { name: "get_game_result", arguments: "{}" } },
-      { author: { id: "u1" } }, // no channelId
+      { author: { id: "u1" } }, // neither guildId nor channelId
       {}
     );
-    assert.ok(result.error.includes("channel"));
+    assert.ok(result.error.includes("Could not determine"));
+  });
+
+  await testAsync("get_game_result: a guild message scopes server-wide, not to the channel", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getLatestGameResult;
+    let capturedArgs;
+    try {
+      gr.getLatestGameResult = (args) => { capturedArgs = args; return null; };
+      await tools.executeToolCall(
+        { function: { name: "get_game_result", arguments: "{}" } },
+        { channelId: "c1", guildId: "g1", author: { id: "u1" } },
+        {}
+      );
+      assert.strictEqual(capturedArgs.guildId, "g1");
+      assert.strictEqual(capturedArgs.channelId, undefined);
+    } finally {
+      gr.getLatestGameResult = original;
+    }
   });
 
   await testAsync("get_game_result: no stored result returns note", async () => {
@@ -334,7 +352,7 @@ async function run() {
         {}
       );
       assert.strictEqual(capturedArgs.game, "poker");
-      assert.strictEqual(capturedArgs.channelId, "c1");
+      assert.strictEqual(capturedArgs.channelId, "c1"); // DM fallback: no guild to scope to
     } finally {
       gr.getLatestGameResult = original;
     }
@@ -380,13 +398,31 @@ async function run() {
   });
 
   // --- get_recent_game_results ---
-  await testAsync("get_recent_game_results: no channel returns error", async () => {
+  await testAsync("get_recent_game_results: no guild and no channel returns error", async () => {
     const result = await tools.executeToolCall(
       { function: { name: "get_recent_game_results", arguments: "{}" } },
-      {}, // no channelId
+      {}, // neither guildId nor channelId
       {}
     );
-    assert.ok(result.error.includes("channel"));
+    assert.ok(result.error.includes("Could not determine"));
+  });
+
+  await testAsync("get_recent_game_results: a guild message scopes server-wide", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getRecentGameResults;
+    let capturedArgs;
+    try {
+      gr.getRecentGameResults = (args) => { capturedArgs = args; return []; };
+      await tools.executeToolCall(
+        { function: { name: "get_recent_game_results", arguments: "{}" } },
+        { channelId: "c1", guildId: "g1" },
+        {}
+      );
+      assert.strictEqual(capturedArgs.guildId, "g1");
+      assert.strictEqual(capturedArgs.channelId, undefined);
+    } finally {
+      gr.getRecentGameResults = original;
+    }
   });
 
   await testAsync("get_recent_game_results: empty store returns note", async () => {
@@ -487,11 +523,29 @@ async function run() {
 
   await testAsync("get_recent_game_results: invalid game enum rejected by schema", async () => {
     const result = await tools.executeToolCall(
-      { function: { name: "get_recent_game_results", arguments: '{"game":"keno"}' } },
+      { function: { name: "get_recent_game_results", arguments: '{"game":"baccarat"}' } },
       { channelId: "c1" },
       {}
     );
     assert.strictEqual(result.error, "invalid_arguments");
+  });
+
+  await testAsync("get_recent_game_results: keno enum accepted by schema", async () => {
+    const gr = require("../../utils/gameResults");
+    const original = gr.getRecentGameResults;
+    let capturedGame;
+    try {
+      gr.getRecentGameResults = ({ game }) => { capturedGame = game; return []; };
+      const result = await tools.executeToolCall(
+        { function: { name: "get_recent_game_results", arguments: '{"game":"keno"}' } },
+        { channelId: "c1" },
+        {}
+      );
+      assert.strictEqual(result.error, undefined);
+      assert.strictEqual(capturedGame, "keno");
+    } finally {
+      gr.getRecentGameResults = original;
+    }
   });
 
   // --- get_game_result: flip ---

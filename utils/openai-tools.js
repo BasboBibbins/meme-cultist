@@ -279,7 +279,8 @@ const TOOLS = [
     function: {
       name: "get_game_result",
       description:
-        "Get the most recent game result for a user in this channel. Returns structured data about their last play — grid, cards, dice, payout, bet — that is not visible in the embed or canvas image. " +
+        "Get the most recent game result for a user anywhere in this server. Returns structured data about their last play — grid, cards, dice, payout, bet — that is not visible in the embed or canvas image. " +
+        "Games are played in other channels, so a result you did not see in this conversation is normal and this is how you look it up. " +
         "Call this when a user says things like 'did you see my win?', 'look what I just hit', 'check out my hand', 'how'd I do?', or makes any reference to a game they just played.",
       parameters: {
         type: "object",
@@ -287,7 +288,7 @@ const TOOLS = [
           user_id: { type: "string", description: "Discord user ID or username to look up (optional — defaults to the user who sent this message)" },
           game: {
             type: "string",
-            enum: ["slots", "blackjack", "roulette", "craps", "race", "poker"],
+            enum: ["slots", "blackjack", "roulette", "craps", "race", "poker", "keno", "flip", "rob", "duel"],
             description: "Filter to a specific game (optional — omit to return the most recent result regardless of game type)"
           }
         },
@@ -300,15 +301,15 @@ const TOOLS = [
     function: {
       name: "get_recent_game_results",
       description:
-        "Get recent game results for a user (or the whole channel). " +
+        "Get recent game results for a user (or the whole server). Covers every channel games are played in, not just this one. " +
         "Use for 'what have I been hitting lately', 'how have I been doing in slots', 'show me my last few hands', or similar multi-result queries.",
       parameters: {
         type: "object",
         properties: {
-          user_id: { type: "string", description: "Discord user ID or username to filter to (optional — omit for channel-wide results)" },
+          user_id: { type: "string", description: "Discord user ID or username to filter to (optional — omit for server-wide results)" },
           game: {
             type: "string",
-            enum: ["slots", "blackjack", "roulette", "craps", "race", "poker"],
+            enum: ["slots", "blackjack", "roulette", "craps", "race", "poker", "keno", "flip", "rob", "duel"],
             description: "Filter to a specific game (optional)"
           },
           limit: { type: "integer", description: "Number of results to return (default 5, max 10)" }
@@ -1195,6 +1196,13 @@ async function handleFetchPage(args) {
   return { title: result.title, text: result.text, url: result.url };
 }
 
+// Games are played outside the chatbot channels, so a channel-scoped lookup finds nothing.
+function resultScope(message) {
+  if (message.guildId) return { guildId: message.guildId };
+  if (message.channelId) return { channelId: message.channelId };
+  return null;
+}
+
 function formatGameResultForLlm(row) {
   const ts = `<t:${Math.floor(row.played_at / 1000)}:R>`;
   const r = row.result;
@@ -1336,8 +1344,8 @@ function formatGameResultForLlm(row) {
 
 async function handleGetGameResult(args, message) {
   try {
-    const channelId = message.channelId;
-    if (!channelId) return { error: "Could not determine channel." };
+    const scope = resultScope(message);
+    if (!scope) return { error: "Could not determine where to look for results." };
 
     let userId = message.author?.id;
     if (args.user_id) {
@@ -1346,8 +1354,8 @@ async function handleGetGameResult(args, message) {
     }
     if (!userId) return { error: "Could not resolve user." };
 
-    const row = gameResults.getLatestGameResult({ channelId, userId, game: args.game || null });
-    if (!row) return { note: "No recent game results found for this user in this channel." };
+    const row = gameResults.getLatestGameResult({ ...scope, userId, game: args.game || null });
+    if (!row) return { note: "No recent game results found for this user." };
 
     return formatGameResultForLlm(row);
   } catch (err) {
@@ -1358,8 +1366,8 @@ async function handleGetGameResult(args, message) {
 
 async function handleGetRecentGameResults(args, message) {
   try {
-    const channelId = message.channelId;
-    if (!channelId) return { error: "Could not determine channel." };
+    const scope = resultScope(message);
+    if (!scope) return { error: "Could not determine where to look for results." };
 
     let userId = null;
     if (args.user_id) {
@@ -1368,7 +1376,7 @@ async function handleGetRecentGameResults(args, message) {
     }
 
     const limit = Math.min(Math.max(args.limit || 5, 1), 10);
-    const rows = gameResults.getRecentGameResults({ channelId, userId, game: args.game || null, limit });
+    const rows = gameResults.getRecentGameResults({ ...scope, userId, game: args.game || null, limit });
     if (rows.length === 0) return { note: "No recent game results found.", results: [] };
 
     return { results: rows.map(formatGameResultForLlm) };
