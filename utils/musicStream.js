@@ -7,15 +7,46 @@
 // selects a format that returns HTTP 403 on download even though the URL
 // resolves, which is a silent failure mode that costs hours to find.
 
+const fs = require("fs");
 const { spawn, spawnSync } = require("child_process");
 const { constants } = require("youtube-dl-exec");
 const { Track, StreamType, QueryType } = require("discord-player");
 const axios = require("axios");
+const { YTDLP_COOKIES } = require("../config.js");
 const logger = require("./logger");
 
 const YTDLP = constants.YOUTUBE_DL_PATH;
 const FORMAT = "bestaudio";
 const PLAYLIST_LIMIT = 50;
+
+// Two ways a cookie jar misfires, both resolved once here rather than per track.
+// A path that does not exist is ignored silently by yt-dlp, which then reports the
+// ordinary age-gate error, so a typo looks identical to having configured nothing.
+// A jar that parses but holds no cookies is worse: YouTube answers 403 for EVERY
+// video, not just age-restricted ones, and the error never mentions cookies. Passing
+// no --cookies at all is strictly better than passing an empty one.
+function resolveCookieArgs() {
+  if (!YTDLP_COOKIES) return [];
+
+  if (!fs.existsSync(YTDLP_COOKIES)) {
+    logger.warn(`[MusicStream] YTDLP_COOKIES points at "${YTDLP_COOKIES}", which does not exist — age-restricted videos will fail.`);
+    return [];
+  }
+
+  const entries = fs.readFileSync(YTDLP_COOKIES, "utf8")
+    .split("\n")
+    .filter(line => line.trim() && !line.trim().startsWith("#"));
+
+  if (!entries.length) {
+    logger.warn(`[MusicStream] YTDLP_COOKIES at "${YTDLP_COOKIES}" contains no cookies — ignoring it, since an empty jar makes every download fail with a 403.`);
+    return [];
+  }
+
+  logger.log(`[MusicStream] Using yt-dlp cookies from ${YTDLP_COOKIES} (${entries.length} entries)`);
+  return ["--cookies", YTDLP_COOKIES];
+}
+
+const cookieArgs = resolveCookieArgs();
 
 // yt-dlp handles far more than YouTube, but every other provider in use streams
 // correctly through its own extractor, so it is scoped to the one that does not.
@@ -30,6 +61,7 @@ function createYtdlpStream(url) {
     "--quiet",
     "--no-warnings",
     "--no-playlist",
+    ...cookieArgs,
     url,
   ], { stdio: ["ignore", "pipe", "pipe"] });
 
@@ -269,6 +301,7 @@ function expandYoutubePlaylist(url, player, requestedBy, limit = PLAYLIST_LIMIT)
     "--flat-playlist", "--dump-single-json",
     "--playlist-end", String(limit),
     "--no-warnings",
+    ...cookieArgs,
     url,
   ], { encoding: "utf8", timeout: 120000, maxBuffer: 1e8 });
 
