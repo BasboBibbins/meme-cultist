@@ -12,7 +12,7 @@ const {
   escapeMarkdown,
 } = require("discord.js");
 const PACKAGE_VERSION = require("../package.json").version;
-const { progressBar } = require("./musicPlayer");
+const { progressBar } = require("./musicFormat");
 const { getThemeColors } = require("../themes/resolver");
 const logger = require("./logger");
 

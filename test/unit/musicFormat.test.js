@@ -1,10 +1,6 @@
 // Regression cover for the now-playing panel timing math: both helpers read discord-player state that is null until playback resolves.
 
-jest.mock("../../utils/logger", () => ({
-  log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(), info: jest.fn(),
-}));
-
-const { remainingMs, progressBar, DEFAULT_COLLECTOR_MS } = require("../../utils/musicPlayer");
+const { remainingMs, progressBar, DEFAULT_COLLECTOR_MS } = require("../../utils/musicFormat");
 
 const queueWith = (timestamp, bar = "===---") => ({
   node: { getTimestamp: () => timestamp, createProgressBar: () => bar },

@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const wait = require("util").promisify(setTimeout);
-const { queueString } = require("../../utils/musicPlayer");
+const { queueString } = require("../../utils/musicFormat");
 const logger = require("../../utils/logger");
 const { buildInfoEmbed } = require("../../utils/embeds");
 const { resolveMusicContext } = require("../../utils/musicGuards");
