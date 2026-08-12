@@ -14,6 +14,7 @@ function openDb() {
   _db.pragma("journal_mode = WAL");
   _db.pragma("synchronous = NORMAL");
   _db.pragma("busy_timeout = 5000");
+  // idx_gr_guild_recent is not redundant with idx_gr_guild: one guild owns nearly every row, so an unfiltered guild query sorts the whole table without played_at leading.
   _db.exec(`
     CREATE TABLE IF NOT EXISTS game_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,6 +28,7 @@ function openDb() {
     CREATE INDEX IF NOT EXISTS idx_gr_lookup ON game_results(user_id, channel_id, played_at);
     CREATE INDEX IF NOT EXISTS idx_gr_channel ON game_results(channel_id, played_at);
     CREATE INDEX IF NOT EXISTS idx_gr_guild ON game_results(guild_id, user_id, played_at);
+    CREATE INDEX IF NOT EXISTS idx_gr_guild_recent ON game_results(guild_id, played_at);
   `);
   logger.log("[GameResults] Opened db/game_results.sqlite (WAL)");
   return _db;
@@ -54,18 +56,10 @@ function recordGameResult({ guildId, channelId, userId, game, result }) {
   }
 }
 
-function getLatestGameResult({ channelId, userId, game = null }) {
-  try {
-    const db = openDb();
-    const row = game
-      ? db.prepare("SELECT * FROM game_results WHERE user_id = ? AND channel_id = ? AND game = ? ORDER BY played_at DESC LIMIT 1").get(userId, channelId, game)
-      : db.prepare("SELECT * FROM game_results WHERE user_id = ? AND channel_id = ? ORDER BY played_at DESC LIMIT 1").get(userId, channelId);
-    if (!row) return null;
-    return { id: row.id, game: row.game, played_at: row.played_at, result: JSON.parse(row.result_json) };
-  } catch (err) {
-    logger.warn(`[GameResults] getLatest failed: ${err.message}`);
-    return null;
-  }
+function getLatestGameResult({ channelId = null, guildId = null, userId, game = null }) {
+  if (!userId || (!channelId && !guildId)) return null;
+  const [row] = getRecentGameResults({ channelId, guildId, userId, game, limit: 1 });
+  return row || null;
 }
 
 function getRecentGameResults({ channelId = null, guildId = null, userId = null, game = null, limit = 5 }) {

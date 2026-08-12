@@ -3,7 +3,7 @@
     "type": "object",
     "properties": {
         "user_id": { "type": "string" },
-        "game": { "type": "string", "enum": ["slots", "blackjack", "roulette", "craps", "race", "poker", "flip", "rob", "duel"] },
+        "game": { "type": "string", "enum": ["slots", "blackjack", "roulette", "craps", "race", "poker", "keno", "flip", "rob", "duel"] },
         "limit": { "type": "integer", "minimum": 1, "maximum": 10 }
     },
     "additionalProperties": false
