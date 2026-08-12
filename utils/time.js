@@ -25,6 +25,10 @@ module.exports = {
     }
     return parts.join(" ");
   },
+  // "every 1 day" is not English; "every day" is. Only for the "every X" construction.
+  formatInterval: function (ms) {
+    return module.exports.formatDuration(ms).replace(/^1 (\w+)$/, "$1");
+  },
   todayStamp: function () {
     const d = new Date();
     const yyyy = d.getUTCFullYear();
