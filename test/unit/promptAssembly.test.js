@@ -40,9 +40,9 @@ describe("assembleSystemPrompt", () => {
       "[TOOLS]",
       "[EMOJI]",
       "[DIRECTIVES]",
-      "[TOPIC]",
-      "[CHANNEL_SUMMARY]",
       "[PARTICIPANTS]",
+      "[CHANNEL_SUMMARY]",
+      "[TOPIC]",
     ]);
   });
 
@@ -59,13 +59,27 @@ describe("assembleSystemPrompt", () => {
 
   // The whole point of the ordering: a topic refresh must not invalidate the
   // static blocks above it.
-  test("a changed topic leaves the prefix through the tool block intact", () => {
+  test("a changed topic leaves every other block intact", () => {
     const a = assembleSystemPrompt({ ...ALL_SYSTEM_PARTS, topicBlock: "[TOPIC A]" });
     const b = assembleSystemPrompt({ ...ALL_SYSTEM_PARTS, topicBlock: "[TOPIC B]" });
     const sharedPrefix = a.slice(0, a.indexOf("[TOPIC A]"));
     expect(b.startsWith(sharedPrefix)).toBe(true);
     expect(sharedPrefix).toContain("[TOOLS]");
     expect(sharedPrefix).toContain("[DIRECTIVES]");
+    expect(sharedPrefix).toContain("[PARTICIPANTS]");
+    expect(sharedPrefix).toContain("[CHANNEL_SUMMARY]");
+  });
+
+  // Mention turns drop both, so keeping them last is what lets the two share a prefix.
+  test("dropping topic and summary preserves the prefix a mention turn shares", () => {
+    const ambient = assembleSystemPrompt(ALL_SYSTEM_PARTS);
+    const mention = assembleSystemPrompt({
+      ...ALL_SYSTEM_PARTS,
+      topicBlock: undefined,
+      channelSummaryBlock: undefined,
+    });
+    expect(ambient.startsWith(mention)).toBe(true);
+    expect(mention).toContain("[PARTICIPANTS]");
   });
 
   test("no volatile turn-scoped block can reach the system prompt", () => {

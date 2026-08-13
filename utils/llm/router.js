@@ -19,8 +19,10 @@ const { classifyToolError } = require("../toolErrors");
 // In-memory per-variant cache stats. Populated by chat() when callers pass
 // args.variant. Exposed via getCacheStats() for a future /admin command.
 const _cacheStats = new Map();
-function recordCacheStats(variant, usage) {
-  if (!variant || !usage) return;
+// A stream aborting before its usage chunk still made a call worth counting.
+function recordCacheStats(variant, usage, model) {
+  if (!variant) return;
+  usage = usage || {};
   const hit = usage.prompt_cache_hit_tokens || 0;
   const miss = usage.prompt_cache_miss_tokens || 0;
   const entry = _cacheStats.get(variant) || { hit: 0, miss: 0, calls: 0, completion: 0, cost: 0 };
@@ -28,7 +30,7 @@ function recordCacheStats(variant, usage) {
   entry.miss += miss;
   entry.calls += 1;
   entry.completion += usage.completion_tokens || 0;
-  entry.cost += Number(estimateCost({ usage }));
+  entry.cost += Number(estimateCost({ usage }, model));
   _cacheStats.set(variant, entry);
   const ratio = ((entry.hit / Math.max(1, entry.hit + entry.miss)) || 0).toFixed(2);
   logger.debug(`[cache] variant=${variant} hit=${hit} miss=${miss} cum_ratio=${ratio} calls=${entry.calls}`);
@@ -74,10 +76,10 @@ async function chat(args) {
     baseDelay: args.baseDelay,
     provider: "deepseek",
   });
-  if (args.variant) recordCacheStats(args.variant, out.usage);
+  if (args.variant) recordCacheStats(args.variant, out.usage, args.model);
   return {
     result: out.result,
-    usage: { ...out.usage, cost_usd: estimateCost({ usage: out.usage }) },
+    usage: { ...out.usage, cost_usd: estimateCost({ usage: out.usage }, args.model) },
     latency_ms,
     raw: out.raw,
   };
@@ -189,7 +191,7 @@ async function* chatStream(args) {
     const total = Date.now() - start;
     const ttfb = firstChunkAt !== null ? firstChunkAt - start : null;
     logger.debug(`[llm] ${label} stream done chunks=${chunks} ttfb_ms=${ttfb ?? "n/a"} total_ms=${total}`);
-    if (args.variant) recordCacheStats(args.variant, usage);
+    if (args.variant) recordCacheStats(args.variant, usage, args.model);
     if (!streamHealthRecorded) health.record("deepseek", { ok: true, latency_ms: total });
   }
 }

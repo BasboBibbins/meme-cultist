@@ -21,6 +21,7 @@ const {
   MAX_FACTS_IN_PROMPT,
   FACT_CONFIDENCE_THRESHOLD,
   LOW_BUDGET_MODE,
+  CRITIQUE_ENABLED,
   CRITIQUE_MODEL,
   STREAMING_ENABLED,
   BRAVE_API_KEY,
@@ -522,12 +523,42 @@ async function compressFacts(facts, scope = "channel", subjectId = null) {
   }
 }
 
-// Self-critique trigger: fires only when a reply contains content that could
-// hallucinate a verifiable fact — numbers, currency, balance/rank claims, or
-// relative-time phrases. Keeps the cost bounded; most replies skip critique.
-const _critiqueTriggerRe = /(\d|\bkoku\b|\bbalance\b|\brank\b|\brichest\b|\bleaderboard\b|\bposition\b|\btoday\b|\btomorrow\b|\byesterday\b|\bin \d+ (?:second|minute|hour|day|week|month|year)s?\b|\bat \d{1,2}:\d{2}\b|\$|%)/i;
-function shouldCritique(text) {
+// The reviewer only checks claims against tool output, so a turn without any has nothing to verify.
+const GROUNDING_TOOLS = new Set([
+  "get_balance",
+  "get_leaderboard",
+  "get_user_stats",
+  "get_user_info",
+  "get_game_result",
+  "get_recent_game_results",
+  "get_jackpot",
+  "get_shop",
+  "set_reminder",
+]);
+
+const _claimNoun = "koku|balance|bank|rank|richest|leaderboard|position|cooldown|streak|jackpot|payout|winnings";
+// A bare digit matched nearly every reply, so a number now only counts when it
+// sits next to the thing it would be claiming about.
+const _critiqueTriggerRe = new RegExp(
+  [
+    `\\d[\\d,.]*\\s*(?:${_claimNoun})`,
+    `(?:${_claimNoun})[^.!?\\n]{0,40}?\\d`,
+    "\\d[\\d,.]*\\s*(?:koku|%)",
+    "\\$\\s*\\d",
+    "\\bin \\d+ (?:second|minute|hour|day|week|month|year)s?\\b",
+    "\\bat \\d{1,2}:\\d{2}\\b",
+  ].join("|"),
+  "i",
+);
+
+function groundingResults(toolResults) {
+  if (!Array.isArray(toolResults)) return [];
+  return toolResults.filter(r => GROUNDING_TOOLS.has(r?.tool) && !isReportableFailure(r?.result));
+}
+
+function shouldCritique(text, toolResults) {
   if (!text || typeof text !== "string") return false;
+  if (groundingResults(toolResults).length === 0) return false;
   return _critiqueTriggerRe.test(text);
 }
 
@@ -568,16 +599,30 @@ async function explainToolFailure(originalMessages, failures, speakerName) {
   return null;
 }
 
-async function runCritique(originalMessages, candidateResponse) {
+function buildCritiqueEvidence(toolResults) {
+  const lines = groundingResults(toolResults).map(r => {
+    const payload = typeof r.result === "string" ? r.result : JSON.stringify(r.result);
+    return `${r.tool} -> ${(payload || "").slice(0, TOOL_RESULT_REPLAY_CHARS)}`;
+  });
+  return lines.length > 0 ? `[Tool Results]\n${lines.join("\n")}` : "";
+}
+
+async function runCritique(originalMessages, candidateResponse, toolResults) {
   // Returns { ok: boolean, fix?: string }. Fails open on any error.
   try {
+    // Replaying the whole chat payload cost as much as the reply being reviewed.
+    const lastUser = [...originalMessages].reverse().find(m => m.role === "user");
+    const evidence = [
+      buildCritiqueEvidence(toolResults),
+      lastUser?.content ? `[User turn]\n${lastUser.content}` : "",
+      `[Candidate reply to review]\n${candidateResponse}`,
+    ].filter(Boolean).join("\n\n");
     const res = await chatWithSchema({
       schemaName: "critique",
       model: CRITIQUE_MODEL,
       messages: [
         { role: "system", content: "You are a strict reviewer checking ONLY for fabricated user-specific claims — things like invented balance amounts, fake leaderboard positions, or asserted cooldown times that contradict the tool results or conversation. Do NOT flag general knowledge — those do not require grounding in the conversation. Output ONLY JSON. Schema: {\"ok\": true} when no user-specific facts are fabricated, or {\"ok\": false, \"fix\": \"<short corrective note for the original responder>\"} when they are. No prose outside the JSON." },
-        ...originalMessages,
-        { role: "user", content: `[Candidate reply to review]\n${candidateResponse}` },
+        { role: "user", content: evidence },
       ],
       max_tokens: 512,
       temperature: 0,
@@ -1718,14 +1763,19 @@ async function generateUserFacts(userId, userMessages) {
   const chatbotData = await getUserChatbotData(userId);
   const { facts: existingFacts, summaries } = chatbotData;
   const latestSummary = summaries.length > 0 ? summaries[summaries.length - 1].context : null;
-  const lines = [
+  // A variable second system message used to sit here, pushing the instructions out of cache reach.
+  const systemPrompt = [
+    "You extract permanent facts about a user and write them to memory.",
     "You are an assistant that extracts structured facts about a specific user from their conversation summaries.",
     "- Focus on permanent personal attributes: personality traits, hobbies, opinions, preferences, communication style",
     "- Avoid temporary or channel-specific context; focus on who the user is as a person",
     "- Avoid duplicates or vague facts; normalize key names",
     "- Respond with ONLY valid JSON matching the schema: {\"facts\": [{\"key\":\"...\",\"value\":\"...\",\"confidence\":\"high|low\"}]}.",
+  ].join("\n");
+  const lines = [
     latestSummary && `[Latest User Profile Summary]\n${latestSummary}`,
     existingFacts.length > 0 && `[Previously Known Facts About This User — update or keep]\n${existingFacts.map(f => `${f.key}=${f.value}`).join("\n")}`,
+    userMessages.length > 0 && `[User's Recent Messages]\n${userMessages.map(m => `${m.member.displayName}: ${m.content}`).join("\n")}`,
     "[New or Updated Facts About This User]"
   ];
   const prompt = lines.filter(Boolean).join("\n");
@@ -1733,8 +1783,7 @@ async function generateUserFacts(userId, userMessages) {
     schemaName: "fact-extraction",
     model: CONVO_MODEL,
     messages: [
-      { role: "system", content: "You extract permanent facts about a user and write them to memory." },
-      ...userMessages.length > 0 ? [{ role: "system", content: `User's recent messages:\n${userMessages.map(m => `${m.member.displayName}: ${m.content}`).join("\n")}` }] : [],
+      { role: "system", content: systemPrompt },
       { role: "user", content: prompt },
     ],
     max_tokens: 1024,
@@ -1768,27 +1817,32 @@ async function generateUserFacts(userId, userMessages) {
   logger.debug(`Prompt tokens: ${res.usage.prompt_tokens} | Completion tokens: ${res.usage.completion_tokens}`);
 }
 
+const TOPIC_SAMPLE_MESSAGES = 5;
+
 async function generateTopic(channel, messages) {
   const context = await getThreadContext(channel);
   const existingTopic = context.topic ? context.topic.trim() : "";
   const recentContent = messages
-    ?.slice(0, 5)
+    ?.slice(0, TOPIC_SAMPLE_MESSAGES)
     .map(m => m.content || m)
     .filter(Boolean)
     .join("\n") || "";
 
-  const lines = [
-    existingTopic
-      ? `Current channel topic:\n${existingTopic}\n\nRecent messages:\n${recentContent}\n\nDecide whether the conversation topic has shifted significantly from the current topic. If it has, write a new concise topic (1-3 sentences). If it has NOT changed significantly, respond with exactly: NO_CHANGE`
-      : `Summarize the message below into a short topic paragraph (1-3 sentences).\nMessage:\n${recentContent}`,
+  // Instructions sit in the system message so the static prefix clears DeepSeek's 64-token cache floor.
+  const systemPrompt = [
+    "You are an AI assistant responsible for organizing and summarizing discussions. When updating a topic, only do so if the subject matter has genuinely shifted.",
     "The topic should be concise and informative. Focus on the main idea. Be clear and natural. Do not mention the messages or that you are an AI assistant.",
-  ];
-  const prompt = lines.filter(Boolean).join("\n");
+    "When given a current topic, decide whether the conversation has shifted significantly from it. If it has, write a new concise topic (1-3 sentences). If it has NOT changed significantly, respond with exactly: NO_CHANGE",
+    "When given no current topic, summarize the messages into a short topic paragraph (1-3 sentences).",
+  ].join("\n");
+  const prompt = existingTopic
+    ? `Current channel topic:\n${existingTopic}\n\nRecent messages:\n${recentContent}`
+    : `Recent messages:\n${recentContent}`;
   logger.debug(`Generating topic based off the following prompt: \x1b[31m${prompt}`);
   const res = await llm.chat({
     model: CONVO_MODEL,
     messages: [
-      { role: "system", content: "You are an AI assistant responsible for organizing and summarizing discussions. When updating a topic, only do so if the subject matter has genuinely shifted." },
+      { role: "system", content: systemPrompt },
       { role: "user", content: prompt },
     ],
     max_tokens: 512,
@@ -2144,7 +2198,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         if (topic.trim() === "") {
           if (validMessages.length > 0) {
             const updatedContext = {
-              topic: await generateTopic(targetChannel, validMessages.slice(0, PAST_MESSAGES))
+              topic: await generateTopic(targetChannel, validMessages.slice(0, TOPIC_SAMPLE_MESSAGES))
             };
             await updateThreadContext(targetChannel, updatedContext);
           }
@@ -2220,7 +2274,7 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
         if (!topic || topic.trim() === "") {
           if (validMessages.length > 0) {
-            const generatedTopic = await generateTopic(targetChannel, validMessages.slice(0, PAST_MESSAGES));
+            const generatedTopic = await generateTopic(targetChannel, validMessages.slice(0, TOPIC_SAMPLE_MESSAGES));
             await updateThreadContext(targetChannel, { topic: generatedTopic });
             channelContext.topic = generatedTopic; // update local ref
           }
@@ -2928,11 +2982,11 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
 
     // Self-critique gate: runs in the background after the message is sent.
     // If the critique finds an issue, it edits the already-posted message.
-    if (response && !LOW_BUDGET_MODE && shouldCritique(response)) {
+    if (response && CRITIQUE_ENABLED && !LOW_BUDGET_MODE && shouldCritique(response, toolResultsAccumulator)) {
       (async () => {
         logger.debug(`[Critique] Triggered for reply preview="${response.substring(0, 80)}..."`);
         try {
-          const verdict = await runCritique(messages, response);
+          const verdict = await runCritique(messages, response, toolResultsAccumulator);
           if (!verdict.ok && verdict.fix) {
             logger.warn(`[Critique] Reply needs revision: ${verdict.fix.substring(0, 200)}`);
             const revision = await llm.chat({
@@ -3071,5 +3125,6 @@ module.exports = {
   buildFactsBlock, buildCueTokens, scoreFacts, recordPerception, getRecentPerception,
   perceptionConfidence, pruneDanglingToolMessages, DIRECTIVE_KEYWORDS,
   migrateUserFactSubjects,
-  buildEmojiIndex, buildEmojiBlock, buildMemberIndex, repairDiscordFormatting
+  buildEmojiIndex, buildEmojiBlock, buildMemberIndex, repairDiscordFormatting,
+  shouldCritique, buildCritiqueEvidence, GROUNDING_TOOLS
 };

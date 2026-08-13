@@ -321,7 +321,9 @@ const config = {
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
-  CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
+  CRITIQUE_ENABLED: !/^(0|false|no|off)$/i.test(process.env.CRITIQUE_ENABLED || ""),
+  // A temperature-0 schema check: a reasoning model only buys its own cache namespace.
+  CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || process.env.CONVO_MODEL || "deepseek-v4-flash",
   BOOKMARK_EMOJI: process.env.BOOKMARK_EMOJI || "📌",
   STREAMING_ENABLED: /^(1|true|yes|on)$/i.test(process.env.STREAMING_ENABLED || ""),
 
