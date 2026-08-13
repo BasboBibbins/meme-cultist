@@ -87,7 +87,18 @@ function safeMathEval(expr) {
   return result;
 }
 
+// parseBet returns NaN on bad input, and NaN fails every bounds comparison, so bounds alone let it through.
+function validateTransferAmount(amount, balance) {
+  if (typeof amount !== "number" || isNaN(amount)) return { ok: false, reason: "not_a_number" };
+  if (!isFinite(amount)) return { ok: false, reason: "not_a_number" };
+  if (amount % 1 !== 0) return { ok: false, reason: "not_whole" };
+  if (amount < 1) return { ok: false, reason: "below_minimum" };
+  if (amount > (Number(balance) || 0)) return { ok: false, reason: "insufficient" };
+  return { ok: true };
+}
+
 module.exports = {
+  validateTransferAmount,
   parseBet: async function (bet, id) {
     const dbUser = await db.get(id);
     const balance = dbUser.balance;

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
@@ -26,16 +26,16 @@ module.exports = {
     const errorEmbed = buildErrorEmbed(interaction.user, interaction.client);
 
     if (isNaN(bet)) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`)], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip a number of ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     }
     if (bet % 1 !== 0) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip a whole number of ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     }
     if (bet < 1) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`)], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You must flip at least 1 ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     }
     if (bet > await db.get(`${interaction.user.id}.balance`)) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`)], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
     }
 
     const chance = Math.floor(Math.random() * 100) + 1;

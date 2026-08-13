@@ -1,7 +1,15 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK } = require("../config.js");
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT } = require("../config.js");
 const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
+const { formatInterval } = require("./time");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
+
+// A max of 0 means uncapped in config.js, so it must not print as "0 koku".
+function betRange(min, max) {
+  const floor = `Minimum bet: **${min.toLocaleString("en-US")}** ${CURRENCY_NAME}`;
+  const ceiling = max > 0 ? `Maximum bet: **${max.toLocaleString("en-US")}** ${CURRENCY_NAME}` : "No maximum bet";
+  return `${floor}\n${ceiling}`;
+}
 
 module.exports = {
   currency: {
@@ -21,6 +29,18 @@ module.exports = {
             You can also beg for ${CURRENCY_NAME} using \`/beg\` when you're broke. There's a 25% chance of receiving a small amount.
             `
   },
+  history: {
+    name: "Game History",
+    description: `
+            \`/history\` shows your last ${HISTORY_RESULT_LIMIT} game results from anywhere in this server — every casino game plus \`/rob\` and \`/duel\`.
+
+            Each line shows the game, what you won or lost, what you staked, and a short note on how it went. Newest is first, and the line underneath gives the time range the results cover.
+
+            The totals cover only the results shown, not your lifetime record — use \`/stats\` for that. A stake is only listed when it tells you something the net does not: on a total loss the two are the same number.
+            `,
+    note: `
+            Results are deleted after 30 days, so an old session will drop off even if you have played nothing since.`
+  },
   dailyweekly: {
     name: "Dailies and Weeklies",
     description: `
@@ -35,7 +55,8 @@ module.exports = {
             Weeklies are worth a random amount of ${CURRENCY_NAME} between 500 and 1000. There are no streak bonuses for weeklies.
             `,
     note: `
-            Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`
+            Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`,
+    cooldown: `\`/daily\` every **${formatInterval(DAILY_COOLDOWN)}**\n\`/weekly\` every **${formatInterval(WEEKLY_COOLDOWN)}**`
   },
   blackjack: {
     name: "Blackjack",
@@ -86,7 +107,9 @@ module.exports = {
             3. Wild icons count as any symbol on an active payline.
             4. Landing 3+ scatter icons triggers the Free Spin Bonus.
             5. Triple 7s wins the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required, free spins eligible).
-            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`
+            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`,
+    cooldown: `${SLOTS_DAILY_FREE_SPINS} free spins every **${formatInterval(SLOTS_DAILY_COOLDOWN)}**`,
+    limits: `Jackpot eligibility: **${JACKPOT_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME} per line`
   },
   poker: {
     name: "Poker",
@@ -106,7 +129,8 @@ module.exports = {
             4. If you take too long to make a decision, you will be timed out and lose your bet.
             5. Since the probability of getting a good hand is low, the payouts are high. Try small bets at first to get a feel for the game.
             6. The chance of getting a royal flush is 1 in 649,740. It wins the progressive jackpot! Minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} required. Bets below minimum receive a reduced 50x payout.
-            7. Every bet contributes 2% to the progressive jackpot pool.`
+            7. Every bet contributes 2% to the progressive jackpot pool.`,
+    limits: `Jackpot eligibility: **${JACKPOT_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME} minimum bet`
   },
   roulette: {
     name: "Roulette",
@@ -142,7 +166,8 @@ module.exports = {
     note: `
             Multiple players can bet on the same game. All bets are pooled and resolved when the wheel spins.
             The betting timer is configured by the server admin. The game creator can spin early using the "Spin Now" button.
-            Winnings are sent via DM to keep the channel clean. Check your DMs after the game ends!`
+            Winnings are sent via DM to keep the channel clean. Check your DMs after the game ends!`,
+    limits: betRange(ROULETTE_MIN_BET, ROULETTE_MAX_BET)
   },
   race: {
     name: "Horse Racing",
@@ -182,7 +207,8 @@ module.exports = {
             Only one race per channel at a time. Each player can only bet once per race.
             The winner is pre-determined when the race starts, but the animation shows all horses racing.
             Higher form ratings mean higher probability of winning but lower odds.
-            Min/max bet amounts are configured by the server admin.`
+            Min/max bet amounts are configured by the server admin.`,
+    limits: betRange(RACE_MIN_BET, RACE_MAX_BET)
   },
   duel: {
     name: "Duel",
@@ -210,7 +236,9 @@ module.exports = {
     note: `
             You can't duel yourself or a bot. Only one active duel per challenger/opponent pair per channel at a time.
             The opponent's bank is checked at challenge time so the challenger sees up front whether the opponent could ever cover the wager.
-            DM notifications go to the opponent on challenge and to the loser on resolution.`
+            DM notifications go to the opponent on challenge and to the loser on resolution.`,
+    cooldown: `One duel every **${formatInterval(DUEL_COOLDOWN)}**`,
+    limits: `Minimum bet: **${DUEL_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME}\nNo maximum bet`
   },
   music: {
     name: "Music",
@@ -227,7 +255,16 @@ module.exports = {
             The queue can be shuffled by using \`/queue shuffle\`. You can also clear the queue by using \`/queue clear\`.
 
             Filters can also be applied to the music. You can see the list of filters by using \`/filter\`.
-            You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.`,
+            You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.
+
+            Playback controls have slash commands as well as buttons on the now playing panel:
+            • \`/pause\` and \`/resume\` — hold and continue the current song
+            • \`/skip\` — jump to the next song in the queue
+            • \`/loop\` — repeat the current song until you turn it off; the queue is kept and resumes afterwards
+            • \`/np\` — show what is playing without touching the panel
+            • \`/stop\` — stop playback and clear the queue
+
+            You have to be in the bot's voice channel to use the panel buttons or any of these commands. The panel's Stop button asks you to confirm before it kills the queue, since there is no undo.`,
     example: `
             \`/play https://www.youtube.com/watch?v=dQw4w9WgXcQ\`
             \`/play never gonna give you up\`
@@ -237,6 +274,7 @@ module.exports = {
             The bot will leave your voice channel after the queue is empty. You can also make it leave by pressing the stop button.
             Spotify and Apple Music links play their YouTube equivalent. The song may not sound exactly the same, but it will be the same song.
             Filters are applied to the entire queue. When the queue is cleared, the filters will also be cleared.
+            While a song is looping, \`/skip\` still moves to the next song in the queue and the loop carries over to it. Turn the loop off to let the queue play through normally.
             For age-restricted YouTube videos, the bot owner can configure cookies in a \`.cookies\` file.`,
   },
   shop: {
@@ -301,7 +339,8 @@ module.exports = {
             Use \`/jackpot\` to check the current jackpot amount and last winner.
             `,
     note: `
-            The jackpot starts at 1,000,000 ${CURRENCY_NAME} if it ever resets. A minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} is required for full jackpot eligibility — per line on slots, flat on poker.`
+            The jackpot starts at 1,000,000 ${CURRENCY_NAME} if it ever resets. A minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} is required for full jackpot eligibility — per line on slots, flat on poker.`,
+    limits: `Qualifying bet: **${JACKPOT_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME} (per line on slots, flat on poker)`
   },
   chatbot: {
     name: "Chatbot",
@@ -391,7 +430,8 @@ module.exports = {
     note: `
             Pass / Don't Pass placements are rejected once a point is set — wait for the come-out roll.
             The shooter rotates on a seven-out (in join order), or voluntarily via the Pass Dice button.
-            Craps contributes to the progressive jackpot at the same rate as other games.`
+            Craps contributes to the progressive jackpot at the same rate as other games.`,
+    limits: betRange(CRAPS_MIN_BET, CRAPS_MAX_BET)
   },
   keno: {
     name: "Keno",
@@ -423,7 +463,8 @@ module.exports = {
             \`/keno paytable spots:5\` — Show payouts and odds for a five-spot ticket.`,
     note: `
             Rounds where you get exactly your stake back are tracked separately from wins and losses in \`/stats\`.
-            Keno does not contribute to the progressive jackpot.`
+            Keno does not contribute to the progressive jackpot.`,
+    limits: betRange(KENO_MIN_BET, KENO_MAX_BET)
   },
   reminder: {
     name: "Reminders",

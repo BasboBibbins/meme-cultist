@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { buildInfoEmbed } = require("../../utils/embeds");
+const { resolveMusicContext } = require("../../utils/musicGuards");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -50,25 +51,23 @@ module.exports = {
     );
   },
   async execute(interaction) {
-    const filter = interaction.options.getString("filter");
-    const queue = interaction.client.player.nodes.get(interaction.guild.id);
+    const { queue, failed } = await resolveMusicContext(interaction, { requireTrack: false });
+    if (failed) return;
 
+    const filter = interaction.options.getString("filter");
     const embed = buildInfoEmbed(interaction.user, interaction.client);
 
-    if (!queue) {
-      embed.setDescription("There is no music playing!");
-    } else {
-      if (filter === "clear") {
-        const enabled = queue.filters.ffmpeg.getFiltersEnabled();
-        for (let i = 0; i < enabled.length; i++) {
-          await queue.filters.ffmpeg.toggle([enabled[i]]);
-        }
-        embed.setDescription("🎶 All filters have been cleared");
-      } else {
-        await queue.filters.ffmpeg.toggle([filter]); // TODO: fix bot skipping song when filter is enabled
-        embed.setDescription(`🎶 The **${filter}** filter has been ${queue.filters.ffmpeg.isEnabled(filter) ? "enabled" : "disabled"}`);
+    if (filter === "clear") {
+      const enabled = queue.filters.ffmpeg.getFiltersEnabled();
+      for (let i = 0; i < enabled.length; i++) {
+        await queue.filters.ffmpeg.toggle([enabled[i]]);
       }
+      embed.setDescription("🎶 All filters have been cleared");
+    } else {
+      await queue.filters.ffmpeg.toggle([filter]); // TODO: fix bot skipping song when filter is enabled
+      embed.setDescription(`🎶 The **${filter}** filter has been ${queue.filters.ffmpeg.isEnabled(filter) ? "enabled" : "disabled"}`);
     }
+
     return await interaction.reply({ embeds: [embed] });
-  } 
+  }
 };

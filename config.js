@@ -112,6 +112,10 @@ const config = {
   // deliberately made, where a weak match beats an error.
   KB_LEXICAL_FALLBACK_MIN_SCORE: 0.10,
 
+  // Total chars of KB content one lookup_kb result set may carry. Entries are
+  // never cut; the lowest-ranked ones are dropped once the budget is spent.
+  KB_LOOKUP_TOTAL_CHARS: 8000,
+
   // Per-tool call caps within a single turn, so one retrieval tool cannot spend
   // the whole global depth budget re-phrasing the same question. The table itself
   // lives in utils/openai-tools.js — it is keyed by tool name and only changes
@@ -197,6 +201,18 @@ const config = {
   JACKPOT_MIN_BET: 1000,
   JACKPOT_INTEREST_RATE_PERCENT: 2,
 
+  // Cooldown durations in ms. /help reads these, so editing here also fixes the docs.
+  DAILY_COOLDOWN: 8.64e7,
+  WEEKLY_COOLDOWN: 6.048e8,
+  ROB_COOLDOWN: 300000,
+
+  // Transfers at or above this many koku require a button confirmation.
+  GIVE_CONFIRM_THRESHOLD: 10000,
+  GIVE_CONFIRM_TIMEOUT: 30000,
+
+  // How many past game results /history shows. The store caps any request at 20.
+  HISTORY_RESULT_LIMIT: 10,
+
   // Legacy commands list
   LEGACY_COMMANDS: [
     "help",
@@ -245,6 +261,11 @@ const config = {
 
   // Brave Search API (used by the web_search tool in utils/openai-tools.js)
   BRAVE_API_KEY: process.env.BRAVE_API_KEY || "",
+
+  // Path to a Netscape-format cookie jar passed to yt-dlp as --cookies, which is what
+  // gets age-restricted YouTube videos to play. A cookie string will not work; yt-dlp
+  // wants a file. Empty means no cookies and age-gated tracks fail with a chat message.
+  YTDLP_COOKIES: process.env.YTDLP_COOKIES || "",
 
   // LLM provider layer (utils/llm/)
   LLM_DEFAULT_TIMEOUT_MS: parseInt(process.env.LLM_DEFAULT_TIMEOUT_MS || "60000", 10),

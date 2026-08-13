@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
@@ -64,7 +64,7 @@ module.exports = {
     if (!allowed) {
       return await interaction.reply({
         embeds: [buildErrorEmbed(interaction.user, interaction.client, "You do not have permission to use this command.")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -76,7 +76,7 @@ module.exports = {
         logger.log(`LLM cache stats reset by ${interaction.user.username} (${interaction.user.id}).`, "info");
         return await interaction.reply({
           embeds: [buildSuccessEmbed(interaction.user, interaction.client, "LLM cache statistics reset.")],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -86,7 +86,7 @@ module.exports = {
         if (active.length === 0) {
           return await interaction.reply({
             embeds: [buildInfoEmbed(interaction.user, interaction.client, "No provider calls recorded yet.")],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         const sections = active.map(formatHealthRow);
@@ -94,7 +94,7 @@ module.exports = {
         return await interaction.reply({
           embeds: [buildInfoEmbed(interaction.user, interaction.client, sections.join("\n\n"))
             .setTitle("Provider Health")],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -103,7 +103,7 @@ module.exports = {
       if (variants.length === 0) {
         return await interaction.reply({
           embeds: [buildInfoEmbed(interaction.user, interaction.client, "No LLM calls recorded yet.")],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -128,13 +128,13 @@ module.exports = {
 
       return await interaction.reply({
         embeds: [buildInfoEmbed(interaction.user, interaction.client, description)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (err) {
       logger.error(`llmstats failed: ${err}`);
       return await interaction.reply({
         embeds: [buildErrorEmbed(interaction.user, interaction.client, "Could not read LLM statistics.")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const Booru = require("booru");
 const logger = require("../../utils/logger");
 const { buildInfoEmbed } = require("../../utils/embeds");
@@ -66,7 +66,7 @@ module.exports = {
     const booru = interaction.options.getSubcommand();
     const isNSFW = ["e6", "hh", "db", "kc", "gb", "r34", "xb", "dp", "rb"].includes(booru);
 
-    if (isNSFW && !interaction.channel.nsfw) return interaction.reply({content: "This command can only be used in NSFW channels.", ephemeral: true});
+    if (isNSFW && !interaction.channel.nsfw) return interaction.reply({content: "This command can only be used in NSFW channels.", flags: MessageFlags.Ephemeral});
 
     const content = interaction.options.getString("tags");
     const defaultTags = isNSFW ? ["rating:explicit"] : ["rating:safe"];
@@ -75,7 +75,7 @@ module.exports = {
 
     await Booru.search(booru, tags, {limit: 1, random: true})
       .then(result => {
-        if (!result.length) return interaction.reply({content: "No results found for ``"+tags.join(", ")+"``.", ephemeral: true});
+        if (!result.length) return interaction.reply({content: "No results found for ``"+tags.join(", ")+"``.", flags: MessageFlags.Ephemeral});
         for (const post of result) { 
           const getFavicon = (url) => {
             const favicon = url.match(/^(?:https?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:\/\n?]+)/img);
@@ -99,7 +99,7 @@ module.exports = {
       })
       .catch(err => {
         logger.error(err);
-        interaction.reply({content: "An error occurred while searching for images.", ephemeral: true});
+        interaction.reply({content: "An error occurred while searching for images.", flags: MessageFlags.Ephemeral});
       }
       );
   }

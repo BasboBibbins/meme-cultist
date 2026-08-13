@@ -2,12 +2,10 @@
 const dotenv = require("dotenv");
 dotenv.config();
 
-const { REST } = require("@discordjs/rest");
-const { Routes } = require("discord-api-types/v9");
 const fs = require("fs");
-const { Player, GuildQueueEvent, useMainPlayer } = require("discord-player");
+const { Player, GuildQueueEvent, TrackSkipReason, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
-const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials } = require("discord.js");
+const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
 const { trackStart, trackEnd } = require("./utils/musicPlayer");
@@ -15,6 +13,7 @@ const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
 const cacheDiag = require("./utils/cacheDiag");
+const loopLag = require("./utils/loopLag");
 const { summarizeFailure } = require("./utils/toolErrors");
 const { describeImage } = require("./utils/llm");
 const { extractFirstUrl, fetchPageText } = require("./utils/urlContext");
@@ -25,21 +24,13 @@ const logger = require("./utils/logger");
 const schedule = require("node-schedule");
 const rateLimiter = require("./utils/ratelimiter");
 const { DefaultExtractors } = require("@discord-player/extractor");
-const playdl = require("play-dl");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
 const { handleProposalInteraction } = require("./utils/kbProposals");
+const { takeUnplayableReason } = require("./utils/musicStream");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-if (process.env.COOKIE) {
-  playdl.setToken({
-    youtube: {
-      cookie: process.env.COOKIE
-    }
-  });
-}
-
 const LOAD_SLASH = process.argv[2] === "load";
 const LOAD_DB = process.argv[2] === "dbinit";
 const DEBUG_MODE = process.argv[2] === "debug";
@@ -123,19 +114,7 @@ if (!fs.existsSync("./db/users.sqlite")) {
   process.exit(1);
 }
 
-const player = new Player(client, {
-  ytdlOptions: {
-    filter: "audioonly",
-    quality: "highestaudio",
-    highWaterMark: 1 << 25,
-    opusEncoded: true,
-    requestOptions: {
-      headers: {
-        cookie: process.env.COOKIE
-      }
-    }
-  }
-});
+const player = new Player(client);
 
 process.on("unhandledRejection", (reason, p) => {
   logger.error(`Unhandled Promise Rejection! Reason: ${reason}`);
@@ -144,8 +123,17 @@ process.on("unhandledRejection", (reason, p) => {
   .on("uncaughtException", (err) => {
     logger.error(`Uncaught Exception: ${err}`);
     logger.error(err.stack);
-    process.exit(1);
   });
+
+async function notifyMusicFailure(queue, message) {
+  try {
+    const channel = queue?.metadata?.channel;
+    if (!channel?.send) return;
+    await channel.send({ embeds: [buildInfoEmbed(client.user, client, message).setColor(COLORS.error)] });
+  } catch (err) {
+    logger.warn(`[Music] Could not report failure to channel: ${err.message}`);
+  }
+}
 
 function shutdownJobs() {
   try { require("./utils/jobs").stop(); } catch (_) {}
@@ -256,8 +244,22 @@ if (DELETE_SLASH) {
     if (CHATBOT_LOCAL) {
       logger.debug(`Local model is ${CHATBOT_LOCAL ? "\x1b[32mON\x1b[0m" : "\x1b[31mOFF\x1b[0m"}`);
     }
-    await player.extractors.loadMulti(DefaultExtractors);
-    await player.extractors.register(YoutubeiExtractor, {});
+    // Registration failures are silent by default and surface much later as "no results found".
+    try {
+      await player.extractors.loadMulti(DefaultExtractors);
+    } catch (err) {
+      logger.error(`[Music] Failed to load default extractors: ${err.message}`);
+    }
+    try {
+      await player.extractors.register(YoutubeiExtractor, {});
+    } catch (err) {
+      logger.error(`[Music] Failed to register the YouTube extractor — search will return nothing: ${err.message}`);
+    }
+    const loadedExtractors = player.extractors.store.map(e => e.identifier);
+    logger.info(`[Music] ${loadedExtractors.length} extractor(s) active: ${loadedExtractors.join(", ") || "NONE"}`);
+    if (!loadedExtractors.some(id => id.includes("youtubei"))) {
+      logger.warn("[Music] No YouTube extractor is active — text searches will find nothing.");
+    }
     client.player = player;
     // Pre-warm slot image caches to eliminate cold-start latency on first spin
     try {
@@ -494,7 +496,7 @@ if (DELETE_SLASH) {
       if (client.pendingKbEdits && client.pendingKbEdits.has(interaction.customId)) return;
       return interaction.reply({
         content: "That edit window has expired. Re-open the suggestion and use Edit again.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       }).catch(() => {});
     }
     // interaction.member is null for DM interactions (e.g. owner-DM components),
@@ -514,12 +516,12 @@ if (DELETE_SLASH) {
         }
 
         if (TESTING_MODE && !interaction.member.roles.cache.has(TESTING_ROLE)){
-          await interaction.reply({content: `The new ${interaction.client.user.username} is currently in beta! Contact <@${OWNER_ID}> for access!`, ephemeral: true});
+          await interaction.reply({content: `The new ${interaction.client.user.username} is currently in beta! Contact <@${OWNER_ID}> for access!`, flags: MessageFlags.Ephemeral});
           return;
         }
 
         if (interaction.member.roles.cache.has(banned)){
-          await interaction.reply({content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`, ephemeral: true});
+          await interaction.reply({content: `You are banned from using ${interaction.client.user.username}. If you believe this is a mistake, contact <@${OWNER_ID}> or an admin in ${interaction.guild.name}.`, flags: MessageFlags.Ephemeral});
           return;
         }
             
@@ -563,7 +565,7 @@ if (DELETE_SLASH) {
           }
         } catch (error) {
           logger.error(error);
-          await interaction.reply({ content: "There was an error while executing this command!", ephemeral: true });
+          await interaction.reply({ content: "There was an error while executing this command!", flags: MessageFlags.Ephemeral });
         }
       });
     } else if (interaction.isAutocomplete()) {
@@ -605,9 +607,51 @@ if (DELETE_SLASH) {
     logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
     await queue.player.destroy();
   });
+  // Logs only. Every reason but NoStream is a deliberate action (manual skip, jump, seek), and NoStream is reported by PlayerError immediately after.
+  player.events.on(GuildQueueEvent.PlayerSkip, async (queue, track, reason, description) => {
+    const line = `[Music] Skipped "${track?.title}" — ${reason || "no reason given"}${description ? `: ${description}` : ""}`;
+    if (reason === TrackSkipReason.NoStream) logger.warn(line);
+    else logger.debug(line);
+  });
+
+  // WillPlayTrack BLOCKS: discord-player awaits `done` before playing and only self-resolves when no listener exists, so omitting it stalls every track forever.
+  player.events.on(GuildQueueEvent.WillPlayTrack, async (queue, track, _config, done) => {
+    try {
+      logger.debug(`[Music] About to play "${track?.title}" (${track?.source || "unknown source"}) — ${track?.url}`);
+    } finally {
+      done();
+    }
+  });
+
+  player.events.on(GuildQueueEvent.EmptyQueue, async (queue) => {
+    logger.debug(`[Music] Queue emptied in ${queue.guild?.name}`);
+  });
+
+  // Attaching this flips discord-player's hasDebugger flag, which makes it format
+  // its whole internal narration — so it is only wired when actually debugging.
+  if (DEBUG_MODE) {
+    player.events.on(GuildQueueEvent.Debug, (_queue, message) => logger.debug(`[Music/dp] ${message}`));
+    player.on("debug", message => logger.debug(`[Music/player] ${message}`));
+    loopLag.start(() => player.nodes.cache.some(queue => queue.node.isPlaying()));
+  }
+
   player.events.on(GuildQueueEvent.Error, async (queue, error) => {
     logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
     logger.error(error.stack);
+    await notifyMusicFailure(queue, "The queue hit an error and had to stop.");
+  });
+  player.events.on(GuildQueueEvent.PlayerError, async (queue, error, track) => {
+    // A track that can never play is reported verbatim — "skipping it" would hide the reason, and the bot should not sit in a channel with nothing to play.
+    const unplayable = takeUnplayableReason(track);
+    if (unplayable) {
+      logger.warn(`[Music] Unplayable track in ${queue.guild?.name}: ${unplayable}`);
+      await notifyMusicFailure(queue, `${unplayable}\nTry searching for it by name instead.`);
+      if (queue.tracks.size === 0) queue.delete();
+      return;
+    }
+    logger.error(`Playback error in ${queue.guild.name}${track ? ` on "${track.title}"` : ""} - ${error.message}`);
+    logger.error(error.stack);
+    await notifyMusicFailure(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}. Skipping it.`);
   });
 
   // Chatbot events
@@ -675,7 +719,7 @@ if (DELETE_SLASH) {
       const rateCheck = rateLimiter.canMentionBot(message.author.id);
       if (!rateCheck.allowed) {
         const channelText = formatChatbotChannelMentions(client);
-        return message.reply({ content: `⏳ ${rateCheck.reason} You can chat with me unlimited times in ${channelText}.`, ephemeral: true });
+        return message.reply({ content: `⏳ ${rateCheck.reason} You can chat with me unlimited times in ${channelText}.`, flags: MessageFlags.Ephemeral });
       }
     }
 

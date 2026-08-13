@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, AttachmentBuilder, MessageFlags } = require("discord.js");
 const { getUserChatbotData } = require("../../utils/openai");
 const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
@@ -10,7 +10,7 @@ module.exports = {
     .setDescription("DM yourself a JSON dump of everything the chatbot has stored about you."),
 
   async execute(interaction) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const data = await getUserChatbotData(interaction.user.id);
     const dump = {

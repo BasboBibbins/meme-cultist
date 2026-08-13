@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, CRAPS_MIN_BET, CRAPS_MAX_BET, CRAPS_ROUND_TIMEOUT, CRAPS_ANIMATION_HOLD_MS } = require("../../config.js");
 const { openBetModal, resolveBet } = require("../../utils/betModal");
@@ -38,7 +38,7 @@ module.exports = {
 async function sendEphemeral(state, interaction, embed) {
   const uid = interaction.user.id;
   state?.lastEphemeralByUser?.[uid]?.deleteReply().catch(() => {});
-  await interaction.reply({ embeds: [embed], ephemeral: true });
+  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   if (state) state.lastEphemeralByUser[uid] = interaction;
 }
 
@@ -69,7 +69,7 @@ async function handlePlay(interaction) {
 
   const existing = client.crapsGames.get(channelId);
   if (existing) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A craps session is already running in this channel — click a bet button on the table to join.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A craps session is already running in this channel — click a bet button on the table to join.")], flags: MessageFlags.Ephemeral });
   }
 
   const dbUser = await db.get(user.id);
@@ -255,7 +255,7 @@ function attachCollector(client, channel, message, state) {
     } catch (err) {
       logger.error(`[craps] handler error: ${err && err.stack || err}`);
       try {
-        if (!i.replied && !i.deferred) await i.reply({ embeds: [buildErrorEmbed(i.user, client, "Something went wrong handling that action.")], ephemeral: true });
+        if (!i.replied && !i.deferred) await i.reply({ embeds: [buildErrorEmbed(i.user, client, "Something went wrong handling that action.")], flags: MessageFlags.Ephemeral });
       } catch (_) { /* ignore */ }
     }
   });

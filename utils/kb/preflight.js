@@ -135,34 +135,53 @@ function findRelevant(guildId, text, limit = KB_PREFLIGHT_MAX_ENTRIES, minScore 
   }
 }
 
-// The only KB path that truncates, because it is the only one that pays per turn.
+// Cap on what a clean break may cost: one long unbroken token (URL, base64) would otherwise collapse the entry to nothing.
+const MIN_CLIP_RATIO = 0.5;
+
+// The only KB path into the prompt that truncates; /kb search cuts for display separately.
 function clip(content, cap) {
-  if (typeof content !== "string" || content.length <= cap) return content;
+  if (typeof content !== "string") return null;
+  if (content.length <= cap) return { text: content, truncated: false };
+
   const head = content.slice(0, cap);
-  const boundary = Math.max(head.lastIndexOf("\n\n"), head.lastIndexOf(". "));
-  const cut = boundary > cap / 2 ? head.slice(0, boundary + 1) : head.replace(/\s+\S*$/, "");
-  return cut.trimEnd();
+  const floor = cap * MIN_CLIP_RATIO;
+  const boundary = Math.max(head.lastIndexOf("\n\n"), head.lastIndexOf("\r\n\r\n"), head.lastIndexOf(". "));
+
+  let cut;
+  if (boundary > floor) {
+    cut = head.slice(0, boundary + 1);
+  } else {
+    const word = head.replace(/\s+\S*$/, "");
+    cut = word.length > floor ? word : head;
+  }
+  // A hard cut can split a surrogate pair and hand the provider invalid UTF-16.
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+
+  // Overflowing on trailing whitespace alone loses nothing, and a partial marker there sends the model after text it already has.
+  const text = cut.trimEnd();
+  return { text, truncated: text.length < content.trimEnd().length };
 }
 
 // A silent cut reads as a complete entry, so a clipped one names its own follow-up.
 function renderMatch(match, cap) {
   const clipped = clip(match.content, cap);
+  if (!clipped) return null;
   const header = `[[kb:${match.slug}]] ${match.title}`;
-  if (clipped === match.content) return `${header}\n${clipped}`;
-  return `${header}\n${clipped}\n[Entry truncated. Call lookup_kb with query "${match.title}" for the full text.]`;
+  if (!clipped.truncated) return `${header}\n${clipped.text}`;
+  const safeTitle = String(match.title).replace(/["[\]]/g, "").trim();
+  return `${header}\n${clipped.text}\n[Only the start of this entry is shown. Call lookup_kb with query "${safeTitle}" for the rest.]`;
 }
 
 function buildKbContextBlock(matches) {
   if (!Array.isArray(matches) || matches.length === 0) return "";
-  const cap = KB_PREFLIGHT_CONTENT_CHARS || 800;
-  const body = matches
-    .map(m => renderMatch(m, cap))
-    .join("\n\n");
+  const cap = KB_PREFLIGHT_CONTENT_CHARS ?? 800;
+  const rendered = matches.map(m => renderMatch(m, cap)).filter(Boolean);
+  if (rendered.length === 0) return "";
   return [
     "[KnowledgeBase]",
-    "Curated server knowledge that matches what is being discussed right now. Treat it as already retrieved — use it directly instead of calling lookup_kb, and cite it with [[cite:kb:slug]] when you rely on it.",
-    body,
+    "Curated server knowledge that matches what is being discussed right now. Treat it as already retrieved — answer from it directly and cite it with [[cite:kb:slug]] when you rely on it. Call lookup_kb only for a topic it does not cover, or for an entry shown here as a partial.",
+    rendered.join("\n\n"),
   ].join("\n");
 }
 
-module.exports = { findRelevant, buildKbContextBlock, invalidate, tokenize, scoreDocs, buildIndex };
+module.exports = { findRelevant, buildKbContextBlock, clip, invalidate, tokenize, scoreDocs, buildIndex };

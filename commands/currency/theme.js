@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const { getThemeList } = require("../../themes/configs");
 const { getOwnedThemes, getEquippedTheme } = require("../../themes/manager");
 const {
@@ -54,8 +54,8 @@ module.exports = {
       case "set": {
         const themeId = interaction.options.getString("theme_name");
         const result = await equipItem(user.id, themeId);
-        const { embed, ephemeral } = buildEquipResultEmbed({ result, itemId: themeId, user, footer });
-        return interaction.reply({ embeds: [embed], ephemeral });
+        const { embed, flags } = buildEquipResultEmbed({ result, itemId: themeId, user, footer });
+        return interaction.reply({ embeds: [embed], flags });
       }
 
       // ── /theme list ─────────────────────────────────────────
@@ -98,7 +98,7 @@ module.exports = {
           .setDescription(desc.trim())
           .setColor(COLORS.blurple)
           .setFooter(footer);
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       }
 
       // ── /theme info (with game preview pagination) ──────────
@@ -109,13 +109,13 @@ module.exports = {
         if (!item) {
           return interaction.reply({
             embeds: [buildErrorEmbed(user, interaction.client, `Unknown theme \`${themeId}\`.`).setFooter(footer)],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
 
         const isOwned = await ownsItem(user.id, themeId);
         const embed = buildThemeInfoEmbed({ item, isOwned, footer });
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const attachments = {};
         for (const game of PREVIEW_GAMES) {

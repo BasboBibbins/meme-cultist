@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require("discord.js");
 const { OWNER_ID } = require("../../config.js");
 const explanations = require("../../utils/explanations");
 const logger = require("../../utils/logger");
@@ -63,7 +63,8 @@ module.exports = {
             }))
         );
             
-      const msg = await interaction.reply({embeds: [embed], components: [row], fetchReply: true, ephemeral: true});
+      await interaction.reply({embeds: [embed], components: [row], flags: MessageFlags.Ephemeral});
+      const msg = await interaction.fetchReply();
       const filter = (i) => i.customId === "explanations" && i.user.id === interaction.user.id;
       const collector = msg.createMessageComponentCollector({ filter, time: 60000 });
       collector.on("collect", async (i) => {
@@ -75,6 +76,8 @@ module.exports = {
           interaction.client,
           `**Explanation:** ${explanation.description}\n\n${explanation.rules ? `**Rules:** ${explanation.rules}\n\n` : ""}${explanation.example ? `**Example:** ${explanation.example}\n\n` : ""}${explanation.note ? `**Note:** ${explanation.note}\n\n` : ""}`
         ).setAuthor({ name: explanation.name, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) });
+        if (explanation.limits) embed.addFields({ name: "Limits", value: explanation.limits, inline: true });
+        if (explanation.cooldown) embed.addFields({ name: "Cooldown", value: explanation.cooldown, inline: true });
         await i.editReply({embeds: [embed]});
       });
       collector.on("end", async (collected, reason) => {
@@ -88,7 +91,7 @@ module.exports = {
     const command = interaction.client.slashcommands.get(commandName);
     console.log(command);
     if (!command) {
-      await interaction.reply({content: `No command found with name \`${commandName}\``, ephemeral: true});
+      await interaction.reply({content: `No command found with name \`${commandName}\``, flags: MessageFlags.Ephemeral});
       return;
     }
     const embed = buildInfoEmbed(
@@ -98,6 +101,6 @@ module.exports = {
     )
       .setAuthor({ name: `/${command.data.name}`, iconURL: interaction.client.user.displayAvatarURL({ dynamic: true }) })
       .addFields(command.data.options.map(option => ({ name: option.name, value: option.description, inline: true })));
-    await interaction.reply({embeds: [embed], ephemeral: true});
+    await interaction.reply({embeds: [embed], flags: MessageFlags.Ephemeral});
   },
 };

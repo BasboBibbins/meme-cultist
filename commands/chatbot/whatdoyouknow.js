@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { getUserChatbotData, getThreadContext } = require("../../utils/openai");
 const { buildInfoEmbed } = require("../../utils/embeds");
 const { MAX_FACTS_IN_PROMPT } = require("../../config.js");
@@ -59,7 +59,7 @@ module.exports = {
           value: (lastSummary.context || "").slice(0, 1024) || "_(empty)_",
         });
       }
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     const data = await getUserChatbotData(interaction.user.id);
@@ -86,6 +86,6 @@ module.exports = {
         value: (lastSummary.context || "").slice(0, 1024) || "_(empty)_",
       });
     }
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },
 };

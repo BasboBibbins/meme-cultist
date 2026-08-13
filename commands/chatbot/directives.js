@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { getThreadContext, updateThreadContext } = require("../../utils/openai");
 const { mergeDirectives, removeDirective } = require("../../utils/directives");
 const { buildErrorEmbed, buildSuccessEmbed, buildInfoEmbed } = require("../../utils/embeds");
@@ -51,7 +51,7 @@ module.exports = {
         : existing.map(d => `• \`${d.id}\` ${d.text}`).join("\n"))
         .setTitle(`Standing instructions — #${interaction.channel.name}`)
         .setFooter({ text: `${existing.length}/${MAX_DIRECTIVES || 10} stored` });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     }
 
     // Standing instructions bind the bot for everyone in the channel, so
@@ -59,7 +59,7 @@ module.exports = {
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
       return interaction.reply({
         embeds: [buildErrorEmbed(interaction.user, interaction.client, "You need Manage Channels to change standing instructions. You can still ask the bot directly in chat.")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -83,7 +83,7 @@ module.exports = {
         if (!result) {
           return interaction.reply({
             embeds: [buildErrorEmbed(interaction.user, interaction.client, "That instruction was too short to store.")],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
 
@@ -96,7 +96,7 @@ module.exports = {
           embeds: [buildSuccessEmbed(interaction.user, interaction.client, wasNew
             ? `Standing instruction added.${dropped}`
             : "I already had that instruction — refreshed it.")],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -113,20 +113,20 @@ module.exports = {
       if (!removed) {
         return interaction.reply({
           embeds: [buildErrorEmbed(interaction.user, interaction.client, "No matching standing instruction in this channel.")],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
       logger.log(`[Directives] ${interaction.user.tag} removed "${removed.text}" from ${interaction.channel.id}`);
       return interaction.reply({
         embeds: [buildSuccessEmbed(interaction.user, interaction.client, `Removed: ${removed.text}`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (err) {
       logger.error(`[Directives] ${sub} failed: ${err.message}`);
       return interaction.reply({
         embeds: [buildErrorEmbed(interaction.user, interaction.client, "Something went wrong updating the standing instructions.")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },

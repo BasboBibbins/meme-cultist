@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, WEEKLY_COOLDOWN } = require("../../config.js");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed, buildSuccessEmbed } = require("../../utils/embeds");
@@ -18,7 +18,7 @@ module.exports = {
       await addNewDBUser(user);
     }
     
-    const cooldown = 6.048e+8; // 7 days
+    const cooldown = WEEKLY_COOLDOWN;
     
     if (dbUser.cooldowns.weekly > Date.now()) {
       return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `You have already claimed your weekly ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.weekly)}**.`)] });

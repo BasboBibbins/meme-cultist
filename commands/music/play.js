@@ -1,9 +1,10 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags } = require("discord.js");
 const { QueryType, useMainPlayer } = require("discord-player");
 const wait = require("util").promisify(setTimeout);
 const logger = require("../../utils/logger");
-const playdl = require("play-dl");
+const { beforeCreateStream, afterStreamExtracted, isYoutubePlaylist, expandYoutubePlaylist, enrichAppleMusicTracks } = require("../../utils/musicStream");
 const { buildInfoEmbed } = require("../../utils/embeds");
+const { resolveMusicContext } = require("../../utils/musicGuards");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,26 +21,15 @@ module.exports = {
 
     const embed = buildInfoEmbed(interaction.user, interaction.client);
 
-    const userChannel = interaction.member.voice.channel;
-    const botChannel = interaction.guild.members.me.voice.channel;
+    // requireQueue is off: /play is the command that creates the queue every other music command requires.
+    const { voiceChannel: userChannel, failed } = await resolveMusicContext(interaction, { requireQueue: false });
+    if (failed) return;
 
-    if (!userChannel) {
-      embed.setTitle("You are not in a voice channel!");
-      embed.setDescription("You must be in a voice channel to use this command.");
-      return await interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-
-    if (botChannel && botChannel.id !== userChannel.id) {
-      embed.setTitle("You are not in my voice channel!");
-      embed.setDescription("You must be in my voice channel to use this command.");
-      return await interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const song = interaction.options.getString("song");
 
+    // No equalizer: the option lands on EqualizerStream as `bandMultiplier`, which wants {band, gain}[] and silently discards a flat array, so the bass lift here never applied while its transform still ran 15 biquad bands per sample against the audio frame clock. Re-adding one needs the object form AND a fix for the processor being built with channelCount 1 over interleaved stereo.
     const queue = player.nodes.create(interaction.guild, {
-      initialVolume: 100,
       leaveOnEnd: true,
       leaveOnEndCooldown: 60000,
       leaveOnStop: true,
@@ -47,42 +37,82 @@ module.exports = {
       leaveOnEmptyCooldown: 300000,
       skipOnNoStream: true,
       repeatMode: 0,
-      equalizer: [
-        { band: 0, gain: 0.15 },
-        { band: 1, gain: 0.10 },
-        { band: 2, gain: 0.05 }
-      ],
       metadata: {
         channel: interaction.channel,
         requestedBy: interaction.user
       },
-      async onBeforeCreateStream(track, source, _queue) {
+      async onBeforeCreateStream(track, _source, _queue) {
         try {
-          const stream = await playdl.stream(track.url);
-          return stream.stream;
+          return await beforeCreateStream(track);
         } catch (error) {
-          logger.error("Error while creating stream with play-dl:", error);
+          logger.error(`[Play] Stream setup failed for "${track.title}": ${error.message}`);
           throw error;
         }
+      },
+      // The queue must be forwarded — the DRM fallback reaches the player through it.
+      async onStreamExtracted(stream, track, queue) {
+        return afterStreamExtracted(stream, track, queue);
       }
     });
 
+    let results;
     try {
-      if (!queue.connection) await queue.connect(userChannel);
+      results = await player.search(song, { requestedBy: interaction.user, searchEngine: QueryType.AUTO });
     } catch (error) {
-      logger.error(error);
-      embed.setTitle("Could not join voice channel!");
-      embed.setDescription("Make sure I have permission to join and speak.");
-      return await interaction.editReply({ embeds: [embed], ephemeral: true });
+      logger.error(`[Play] Search threw for "${song}": ${error.message}`);
+      logger.error(error.stack);
+      embed.setTitle("Search failed!");
+      embed.setDescription("Something went wrong searching for that. Please try again.");
+      return await interaction.editReply({ embeds: [embed] });
     }
 
-    const results = await player.search(song, { requestedBy: interaction.user, searchEngine: QueryType.AUTO });
+    logger.debug(`[Play] "${song}" -> ${results?.tracks?.length ?? 0} track(s), playlist=${results?.playlist?.title ?? "none"}, extractor=${results?.extractor?.identifier ?? "none"}`);
+
+    // Apple Music reports every artist as "Apple Music"; resolving it before queueing also fixes the query the YouTube bridge builds.
+    await enrichAppleMusicTracks(results?.tracks);
+
+    // Joining only once something is playable keeps the bot out of the channel on a failed lookup instead of sitting there silently.
+    const connect = async () => {
+      if (queue.connection) return true;
+      try {
+        await queue.connect(userChannel);
+        return true;
+      } catch (error) {
+        logger.error(`[Play] Could not join voice channel: ${error.message}`);
+        embed.setTitle("Could not join voice channel!");
+        embed.setDescription("Make sure I have permission to join and speak.");
+        await interaction.editReply({ embeds: [embed] });
+        return false;
+      }
+    };
+
+    // The extractor resolves a playlist title but none of its entries, so tracks are recovered from yt-dlp before this counts as a miss.
+    if ((!results || !results.tracks.length) && isYoutubePlaylist(song)) {
+      const recovered = expandYoutubePlaylist(song, player, interaction.user);
+      if (recovered.length) {
+        logger.log(`[Play] Recovered ${recovered.length} track(s) from playlist via yt-dlp`);
+        if (!await connect()) return;
+        queue.addTrack(recovered);
+        embed.setTitle("Added playlist to queue!");
+        embed.setDescription(`**${recovered.length}** tracks queued.\nFirst up: [${recovered[0].title}](${recovered[0].url})`);
+        embed.setThumbnail(recovered[0].thumbnail || null);
+        await interaction.editReply({ embeds: [embed] });
+        if (!queue.isPlaying()) await queue.node.play();
+        await wait(10000);
+        return await interaction.deleteReply();
+      }
+    }
 
     if (!results || !results.tracks.length) {
+      // Zero results is almost always a broken extractor rather than an obscure query.
+      const loaded = player.extractors.store.map(e => e.identifier).join(", ") || "NONE";
+      logger.warn(`[Play] No results for "${song}". Active extractors: ${loaded}`);
       embed.setTitle("No results found!");
       embed.setDescription(`No results found for "${song}".`);
-      return await interaction.editReply({ embeds: [embed], ephemeral: true });
+      return await interaction.editReply({ embeds: [embed] });
     }
+
+    if (!await connect()) return;
 
     const isPlaylist = results.playlist && (results.playlist.type === "playlist" || results.playlist.type === "album");
 
@@ -93,7 +123,7 @@ module.exports = {
         embed.setTitle(`Added ${playlist.type} to queue!`);
         embed.setDescription(`[${playlist.title}](${playlist.url})\nBy **${playlist.author.name}** | ${playlist.tracks.length} songs`);
         embed.setThumbnail(playlist.thumbnail?.url || playlist.thumbnail);
-        await interaction.editReply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
 
         queue.addTrack(playlist.tracks); // ✅ Add array of tracks
       } else {
@@ -101,7 +131,7 @@ module.exports = {
         embed.setTitle("Added to queue!");
         embed.setDescription(`[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ""}`);
         embed.setThumbnail(track.thumbnail);
-        await interaction.editReply({ embeds: [embed], ephemeral: true });
+        await interaction.editReply({ embeds: [embed] });
 
         queue.addTrack(track);
       }
@@ -120,7 +150,7 @@ module.exports = {
       if (!options.length) {
         embed.setTitle("No valid results found!");
         embed.setDescription(`No valid results were found for "${song}".`);
-        return await interaction.editReply({ embeds: [embed], ephemeral: true });
+        return await interaction.editReply({ embeds: [embed] });
       }
 
       embed.setTitle("Multiple results found!");
@@ -134,14 +164,14 @@ module.exports = {
           .addOptions(options)
       );
 
-      await interaction.editReply({ embeds: [embed], components: [row], ephemeral: true });
+      await interaction.editReply({ embeds: [embed], components: [row] });
 
       const filter = i => i.customId === "search";
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
 
       collector.on("collect", async i => {
         if (i.user.id !== interaction.user.id) {
-          return await i.reply({ content: "You cannot use this menu.", ephemeral: true });
+          return await i.reply({ content: "You cannot use this menu.", flags: MessageFlags.Ephemeral });
         }
 
         const track = results.tracks[parseInt(i.values[0])];
@@ -163,7 +193,7 @@ module.exports = {
           collector.stop("error");
         }
 
-        await i.update({ embeds: [embed], components: [], ephemeral: true });
+        await i.update({ embeds: [embed], components: [] });
         collector.stop("success");
       });
 
@@ -171,7 +201,7 @@ module.exports = {
         logger.debug(`Play command collector ended. Collected ${collected.size} interactions. Reason: ${reason}`);
         if (reason === "time") {
           embed.setTitle("Request has timed out.").setDescription("Request has timed out. Please try again.");
-          await interaction.editReply({ embeds: [embed], components: [], ephemeral: true });
+          await interaction.editReply({ embeds: [embed], components: [] });
         }
         if (reason === "success") {
           await wait(10000);

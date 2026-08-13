@@ -1,8 +1,9 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const wait = require("util").promisify(setTimeout);
-const { queueString } = require("../../utils/musicPlayer");
+const { queueString } = require("../../utils/musicFormat");
 const logger = require("../../utils/logger");
 const { buildInfoEmbed } = require("../../utils/embeds");
+const { resolveMusicContext } = require("../../utils/musicGuards");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,27 +25,13 @@ module.exports = {
         .setDescription("View the queue.")
     ),
   async execute(interaction) {
-    const player = interaction.client.player;
     const embed = buildInfoEmbed(interaction.user, interaction.client);
 
-    if (!interaction.member.voice.channelId) {
-      embed.setTitle("You are not in a voice channel!");
-      embed.setDescription("You must be in a voice channel to use this command.");
-      return await interaction.reply({embeds: [embed], ephemeral: true});
-    }
-    if (interaction.guild.members.me.voice.channelId && interaction.member.voice.channelId !== interaction.guild.members.me.voice.channelId) {
-      embed.setTitle("You are not in my voice channel!");
-      embed.setDescription("You must be in my voice channel to use this command.");
-      return await interaction.reply({embeds: [embed], ephemeral: true});
-    } 
-    await interaction.deferReply({ ephemeral: true });
-    const queue = player.nodes.get(interaction.guild.id);
-    if (!queue) {
-      embed.setTitle("No queue found!");
-      embed.setDescription("There is no queue to use this command on.");
-      return await interaction.editReply({embeds: [embed], ephemeral: true});
-    }
-    const tracks = queue.tracks; 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const { queue, failed } = await resolveMusicContext(interaction, { requireTrack: false });
+    if (failed) return;
+
+    const tracks = queue.tracks;
     const subcommand = interaction.options.getSubcommand();
     switch (subcommand) {
       case "clear":
@@ -61,7 +48,7 @@ module.exports = {
               .setLabel("Cancel")
               .setStyle(ButtonStyle.Secondary),
           );
-        await interaction.editReply({embeds: [embed], components: [row], ephemeral: true});
+        await interaction.editReply({embeds: [embed], components: [row]});
         const filter = (i) => i.customId === "clearQueue" || i.customId === "cancel";
         const collector = interaction.channel.createMessageComponentCollector({ filter, time: 30000 });
         collector.on("collect", async (i) => {
@@ -104,7 +91,7 @@ module.exports = {
               .setLabel("Cancel")
               .setStyle(ButtonStyle.Secondary),
           );
-        await interaction.editReply({embeds: [embed], components: [row2], ephemeral: true});
+        await interaction.editReply({embeds: [embed], components: [row2]});
         const filter2 = (i) => i.customId === "shuffleQueue" || i.customId === "cancel";
         const collector2 = interaction.channel.createMessageComponentCollector({ filter: filter2, time: 30000 });
         collector2.on("collect", async (i) => {
@@ -142,7 +129,7 @@ module.exports = {
       case "view":
         embed.setTitle("Current queue:");
         embed.setDescription(`${queueString(tracks)}`);
-        await interaction.editReply({embeds: [embed], ephemeral: true});
+        await interaction.editReply({embeds: [embed]});
         await wait(30000).then(() => interaction.deleteReply());
         break;
       default: "view";

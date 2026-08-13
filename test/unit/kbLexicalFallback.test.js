@@ -68,6 +68,60 @@ describe("lookup_kb — embedding endpoint healthy", () => {
     // No approximation note when the ranking is genuinely semantic.
     expect(result.note).toBeUndefined();
   });
+
+  // /kb edit clears the row's embedding and kbStore.search skips those rows, so an empty semantic result is not proof the entry is gone.
+  test("falls through to lexical when semantic search returns nothing", async () => {
+    mockEmbed.mockResolvedValue({ embedding: [0.1, 0.2] });
+    mockKbSearch.mockReturnValue([]);
+    mockFindRelevant.mockReturnValue([
+      { slug: "just-edited", title: "Just Edited", content: "Body.", score: 0.4 },
+    ]);
+
+    const result = await callLookupKb();
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].slug).toBe("just-edited");
+    expect(result.note).toMatch(/approximate/);
+  });
+
+  test("reports a genuine miss when neither path matches", async () => {
+    mockEmbed.mockResolvedValue({ embedding: [0.1, 0.2] });
+    mockKbSearch.mockReturnValue([]);
+    mockFindRelevant.mockReturnValue([]);
+
+    const result = await callLookupKb();
+
+    expect(result.results).toEqual([]);
+    expect(result.message).toMatch(/no matching/i);
+  });
+
+  test("drops trailing results once the payload budget is spent", async () => {
+    const { KB_LOOKUP_TOTAL_CHARS } = require("../../config.js");
+    mockEmbed.mockResolvedValue({ embedding: [0.1, 0.2] });
+    mockKbSearch.mockReturnValue([
+      { slug: "a", title: "A", content: "a".repeat(KB_LOOKUP_TOTAL_CHARS - 100) },
+      { slug: "b", title: "B", content: "b".repeat(4000) },
+      { slug: "c", title: "C", content: "c".repeat(4000) },
+    ]);
+
+    const result = await callLookupKb();
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].slug).toBe("a");
+  });
+
+  test("always returns the top result even when it alone exceeds the budget", async () => {
+    const { KB_LOOKUP_TOTAL_CHARS } = require("../../config.js");
+    mockEmbed.mockResolvedValue({ embedding: [0.1, 0.2] });
+    mockKbSearch.mockReturnValue([
+      { slug: "huge", title: "Huge", content: "h".repeat(KB_LOOKUP_TOTAL_CHARS + 1000) },
+    ]);
+
+    const result = await callLookupKb();
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].content).toHaveLength(KB_LOOKUP_TOTAL_CHARS + 1000);
+  });
 });
 
 describe("lookup_kb — embedding endpoint down", () => {

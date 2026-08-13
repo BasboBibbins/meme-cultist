@@ -1,6 +1,6 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, ROB_COOLDOWN } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { recordGameResult } = require("../../utils/gameResults");
@@ -27,22 +27,22 @@ module.exports = {
     }
         
     if (victim.bot) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription("You can't rob a bot!")], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription("You can't rob a bot!")], flags: MessageFlags.Ephemeral });
     }
     if (victim.id === user.id) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription("You can't rob yourself!")], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription("You can't rob yourself!")], flags: MessageFlags.Ephemeral });
     }
     if (dbUser.balance < 1) {
-      return await interaction.reply({ embeds: [errorEmbed.setDescription(`This user doesn't have any ${CURRENCY_NAME} to rob!`)], ephemeral: true });
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`This user doesn't have any ${CURRENCY_NAME} to rob!`)], flags: MessageFlags.Ephemeral });
     }
 
     const amount = Math.floor(Math.random() * dbUser.balance) + 1;
     const chance = Math.floor(Math.random() * 100) + 1;
-    const cooldown = 60000 * 5;
+    const cooldown = ROB_COOLDOWN;
 
     const robCooldown = await db.get(`${user.id}.cooldowns.rob`);
     if (robCooldown > Date.now()) {
-      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `Rob cooldown active. You can rob again **<t:${Math.floor(robCooldown / 1000)}:R>**.`)], ephemeral: true });
+      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `Rob cooldown active. You can rob again **<t:${Math.floor(robCooldown / 1000)}:R>**.`)], flags: MessageFlags.Ephemeral });
     }
 
     const embed = buildBaseEmbed(user, interaction.client)

@@ -8,10 +8,10 @@ module.exports = {
 
   async execute(interaction) {
     const channelId = interaction.channel.id;
-    const reply = await interaction.reply({
+    await interaction.reply({
       content: "🧹 Context reset. The bot will ignore messages from before this point.",
-      fetchReply: true,
     });
+    const reply = await interaction.fetchReply();
     await updateChannelContext(interaction.channel, { resetPoint: reply.id, historyAnchor: null });
     interaction.client.contextResetPoints.set(channelId, reply.id);
     interaction.client.historyAnchors.delete(channelId);

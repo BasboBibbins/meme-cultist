@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, AttachmentBuilder } = require("discord.js");
+const { SlashCommandBuilder, AttachmentBuilder, MessageFlags } = require("discord.js");
 const logger = require("../../utils/logger");
 const { generateImage } = require("../../utils/llm");
 const { canGenerateImage } = require("../../utils/ratelimiter");
@@ -35,7 +35,7 @@ module.exports = {
       return interaction.reply({
         embeds: [buildInfoEmbed(interaction.user, interaction.client, `Image generation is only available in chatbot channels: ${formatChatbotChannelMentions(interaction.client)}`, COLORS.warning)
           .setTitle("Not Available")],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 

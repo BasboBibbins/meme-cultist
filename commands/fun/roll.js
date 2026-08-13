@@ -25,6 +25,6 @@ module.exports = {
       interaction.client,
       `${number > 1 ? `You rolled **${number} ${dice}**-sided dice and got:` : `You rolled a **${dice}**-sided die and got:`}\n**${await roll(dice, number)}**`
     );
-    await interaction.reply({ embeds: [embed], fetchReply: true});
+    await interaction.reply({ embeds: [embed] });
   },
 };

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
 const { CURRENCY_NAME } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { buildBaseEmbed, buildErrorEmbed, buildSuccessEmbed, COLORS } = require("../../utils/embeds");
@@ -97,7 +97,7 @@ module.exports = {
           .setDescription(desc.trim())
           .setFooter({ ...footer, text: `${footer.text}` })
           .setColor(COLORS.blurple);
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       }
 
       // ── /shop buy ───────────────────────────────────────────
@@ -118,7 +118,7 @@ module.exports = {
           }
           return interaction.reply({
             embeds: [buildErrorEmbed(user, interaction.client, desc).setFooter(footer)],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
 
@@ -131,7 +131,7 @@ module.exports = {
             + `New balance: **${result.newBalance.toLocaleString("en-US")} ${CURRENCY_NAME}**\n\n`
             + "Use `/theme set` to equip it!"
           ).setFooter(footer)],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -142,7 +142,7 @@ module.exports = {
         if (!item) {
           return interaction.reply({
             embeds: [buildErrorEmbed(user, interaction.client, `Unknown item \`${itemId}\`.`).setFooter(footer)],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
 
@@ -174,13 +174,13 @@ module.exports = {
               .setDescription(desc)
               .setColor(rarityColor)
               .setFooter(footer)],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
 
         // Theme items: paginated game previews
         const embed = buildThemeInfoEmbed({ item, isOwned, footer });
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const attachments = {};
         for (const game of PREVIEW_GAMES) {

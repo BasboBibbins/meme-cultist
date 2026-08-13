@@ -8,7 +8,7 @@ jest.mock("../../utils/logger", () => ({
 }));
 
 const { db } = require("../../database");
-const { parseBet } = require("../../utils/betparse");
+const { parseBet, validateTransferAmount } = require("../../utils/betparse");
 
 const USER_ID = "test_user";
 
@@ -103,5 +103,47 @@ describe("parseBet — invalid input", () => {
 
   test("division by zero returns NaN", async () => {
     expect(await parseBet("100/0", USER_ID)).toBeNaN();
+  });
+});
+
+describe("validateTransferAmount", () => {
+  test("rejects NaN, which passes every bounds comparison and nulls balances downstream", () => {
+    expect(validateTransferAmount(NaN, 1000)).toEqual({ ok: false, reason: "not_a_number" });
+    expect(NaN > 1000).toBe(false);
+    expect(NaN < 1).toBe(false);
+  });
+
+  test("rejects what parseBet returns for garbage input", async () => {
+    for (const bad of ["abc", "ten koku", "5x", "", "100/0"]) {
+      const amount = await parseBet(bad, USER_ID);
+      expect(validateTransferAmount(amount, 1000).ok).toBe(false);
+    }
+  });
+
+  test("rejects non-numbers and infinities", () => {
+    expect(validateTransferAmount(undefined, 1000).reason).toBe("not_a_number");
+    expect(validateTransferAmount(null, 1000).reason).toBe("not_a_number");
+    expect(validateTransferAmount("500", 1000).reason).toBe("not_a_number");
+    expect(validateTransferAmount(Infinity, 1000).reason).toBe("not_a_number");
+  });
+
+  test("rejects fractions", () => {
+    expect(validateTransferAmount(10.5, 1000)).toEqual({ ok: false, reason: "not_whole" });
+  });
+
+  test("rejects zero and negatives before checking the balance", () => {
+    expect(validateTransferAmount(0, 1000).reason).toBe("below_minimum");
+    expect(validateTransferAmount(-50, 1000).reason).toBe("below_minimum");
+  });
+
+  test("rejects more than the balance, and treats a missing balance as zero", () => {
+    expect(validateTransferAmount(1001, 1000).reason).toBe("insufficient");
+    expect(validateTransferAmount(1, undefined).reason).toBe("insufficient");
+    expect(validateTransferAmount(1, null).reason).toBe("insufficient");
+  });
+
+  test("accepts a whole amount within the balance, including the whole balance", () => {
+    expect(validateTransferAmount(1, 1000)).toEqual({ ok: true });
+    expect(validateTransferAmount(1000, 1000)).toEqual({ ok: true });
   });
 });

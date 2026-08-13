@@ -13,8 +13,7 @@ const {
   ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle,
-} = require("discord.js");
+  TextInputStyle, MessageFlags } = require("discord.js");
 const logger = require("../logger");
 const kbStore = require("../kb");
 const kbPreflight = require("../kb/preflight");
@@ -138,7 +137,7 @@ async function finishApproval(interaction, client, proposal, resolvedBy) {
 // bot.js guarantees interaction.customId starts with "kbprop:".
 async function handleProposalInteraction(interaction, client) {
   if (interaction.user.id !== OWNER_ID) {
-    return interaction.reply({ content: "This action is for the bot owner only.", ephemeral: true });
+    return interaction.reply({ content: "This action is for the bot owner only.", flags: MessageFlags.Ephemeral });
   }
 
   const [, action, idStr] = interaction.customId.split(":");
@@ -193,11 +192,11 @@ async function handleProposalInteraction(interaction, client) {
       return finishApproval(submitted, client, updated, interaction.user.id);
     }
 
-    return interaction.reply({ content: "Unknown action.", ephemeral: true });
+    return interaction.reply({ content: "Unknown action.", flags: MessageFlags.Ephemeral });
   } catch (err) {
     logger.error(`[KBProposals] Interaction handler failed for ${interaction.customId}: ${err.message}`);
     if (!interaction.replied && !interaction.deferred) {
-      return interaction.reply({ content: "Something went wrong handling that.", ephemeral: true }).catch(() => {});
+      return interaction.reply({ content: "Something went wrong handling that.", flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   }
 }

@@ -8,7 +8,7 @@
  * dispatches to the right manager based on the item's `category`.
  */
 
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, MessageFlags } = require("discord.js");
 const { db } = require("../database");
 
 const { CURRENCY_NAME } = require("../config.js");
@@ -474,7 +474,7 @@ function buildEquipResultEmbed({ result, itemId, user, footer }) {
       .setColor(0xFF0000)
       .setTimestamp();
     if (footer) embed.setFooter(footer);
-    return { embed, ephemeral: true };
+    return { embed, flags: MessageFlags.Ephemeral };
   }
 
   const embed = new EmbedBuilder()
@@ -483,7 +483,7 @@ function buildEquipResultEmbed({ result, itemId, user, footer }) {
     .setColor(0x00FF00)
     .setTimestamp();
   if (footer) embed.setFooter(footer);
-  return { embed, ephemeral: true };
+  return { embed, flags: MessageFlags.Ephemeral };
 }
 
 async function respondThemeAutocomplete(interaction, { onlyOwned = false } = {}) {

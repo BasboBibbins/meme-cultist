@@ -1,137 +1,228 @@
-const { ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
+// The now-playing panel: owns the collector, the refresh loop, and one panel per
+// guild. Rendering lives in musicPanelV2.js and the shared action layer in
+// musicControls.js, so the panel and the slash commands cannot drift apart.
+
 const wait = require("util").promisify(setTimeout);
-const logger = require("../utils/logger");
-const { buildInfoEmbed } = require("./embeds");
+const { MessageFlags } = require("discord.js");
+const logger = require("./logger");
+const { withLock } = require("./lock");
+const { buildErrorEmbed } = require("./embeds");
+const { remainingMs, progressBar } = require("./musicFormat");
+const { buildNowPlayingV2, resolveMusicColors } = require("./musicPanelV2");
+const { isLooping, toggleLoop, restoreLoop, togglePause, skipTrack, stopPlayback } = require("./musicControls");
 
-let msg = null;
+const PROGRESS_TICK_MS = 5000;
+const PAUSED_COLLECTOR_MS = 300000;
+const IDLE_GRACE_MS = 30000;
+const STOP_CONFIRM_MS = 8000;
 
-module.exports = {
-  currentTrack: null,
-  trackStart: async (client, queue, track) => {
-    if (msg != null) return;
+// One panel per guild. Entries are reset rather than deleted, so a timer or collector
+// still holding a state object keeps acting on the one it was started against.
+const panels = new Map();
 
-    const channel = queue.metadata.channel; 
-    const requestedBy = queue.metadata.requestedBy; 
-    module.exports.currentTrack = track;
+function panelState(guildId) {
+  const key = guildId ?? "unknown";
+  let state = panels.get(key);
+  if (!state) {
+    state = { msg: null, msgTrackUrl: null, progressTimer: null, collector: null, stopConfirmTimer: null, lastBar: null };
+    panels.set(key, state);
+  }
+  return state;
+}
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("pause")
-        .setLabel("Pause")
-        .setStyle(ButtonStyle.Primary)
-        .setEmoji("⏸️"),
-      new ButtonBuilder()
-        .setCustomId("skip")
-        .setLabel("Skip")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("⏭️"),
-      new ButtonBuilder()
-        .setCustomId("stop")
-        .setLabel("Stop")
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("⏹️")
-    );
+function clearProgressTimer(state) {
+  if (state.progressTimer) clearInterval(state.progressTimer);
+  state.progressTimer = null;
+  state.lastBar = null;
+}
 
-    const desc = `[${track.title}](${track.url})\nBy **${track.author}**${track.views > 0 ? ` | **${track.views}** views` : ""}`;
-    let currentQueue = {};
-    queue.tracks.map((track, index) => {
-      currentQueue[index] = track;
-    });
+function clearStopConfirm(state) {
+  if (state.stopConfirmTimer) clearTimeout(state.stopConfirmTimer);
+  state.stopConfirmTimer = null;
+}
 
-    const player = buildInfoEmbed(requestedBy, client, `${desc}\n\n${track.isStream ? "🔴 LIVE" : `🔘 ${queue.node.createProgressBar()} 🔘`}\n\n${Object.keys(currentQueue).length > 0 ? `Up Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`)
-      .setTitle(`🎧 Now Playing${queue.channel ? ` in ${queue.channel.name}` : ""}`)
-      .setAuthor({ name: `Requested by ${requestedBy.displayName}`, iconURL: requestedBy.displayAvatarURL({ dynamic: true }) })
-      .setThumbnail(track.thumbnail);
+// Discord allows roughly five message edits per five seconds per channel, and that
+// budget is shared with every other command running in it. The bar is only a couple
+// of dozen cells wide, so tick slowly and edit when a cell actually moves.
+function startProgressTimer(state, panelMsg, queue, track, render) {
+  clearProgressTimer(state);
+  state.progressTimer = setInterval(async () => {
+    if (state.msg !== panelMsg || !queue.node.isPlaying() || queue.node.isPaused() || track.isStream) return clearProgressTimer(state);
+    if (state.stopConfirmTimer) return;
 
-    msg = await channel.send({ embeds: [player], components: [row] });
+    const bar = progressBar(queue, track);
+    if (bar === state.lastBar) return;
+    state.lastBar = bar;
 
-    const interval = setInterval(async () => {
-      currentQueue = {};
-      queue.tracks.map((track, index) => {
-        currentQueue[index] = track;
-      });
+    try {
+      await panelMsg.edit(render());
+    } catch (err) {
+      logger.warn(`[Music] Progress update failed, stopping refresh: ${err.message}`);
+      clearProgressTimer(state);
+    }
+  }, PROGRESS_TICK_MS);
+}
 
-      if (!queue.node.isPlaying() || queue.node.isPaused() || track.isStream) return clearInterval(interval);
+async function destroyPanel(state, panelMsg) {
+  clearProgressTimer(state);
+  clearStopConfirm(state);
+  if (panelMsg) await panelMsg.delete().catch(err => logger.warn(`[Music] Panel delete failed: ${err.message}`));
+  if (state.msg === panelMsg) {
+    state.msg = null;
+    state.msgTrackUrl = null;
+  }
+}
 
-      player.setDescription(`${desc}\n\n${track.isStream ? "🔴 LIVE" : `🔘 ${queue.node.createProgressBar()} 🔘`}${Object.keys(currentQueue).length > 0 ? `\n\nUp Next: [${currentQueue[0].title}](${currentQueue[0].url})\nBy **${currentQueue[0].author}**` : ""}`);
-      await msg.edit({ embeds: [player], components: [row] });
-    }, 1000);
+// A collector filter rejects silently, which Discord renders as "This interaction
+// failed" — the rule has to be answered inside collect to read as a rule.
+function inSameVoiceChannel(interaction, queue) {
+  return interaction.member?.voice?.channelId === queue.channel?.id;
+}
 
-    const filter = i => i.member.voice.channelId === queue.channel.id;
-    const collector = await msg.createMessageComponentCollector({ filter, time: (track.durationMS - queue.node.getTimestamp().current * 1000) });
+async function handleControl(interaction, state, panelMsg, queue, render, owner) {
+  clearStopConfirm(state);
 
-    collector.on("collect", async i => {
-      if (!filter) return await i.reply({ content: "Join the bot's channel to use these buttons!", ephemeral: true });
-      logger.debug(`${i.member.user.displayName} pressed ${i.customId}`);
+  if (interaction.customId === "pause") {
+    const paused = await togglePause(queue);
+    owner.resetTimer({ time: PAUSED_COLLECTOR_MS });
+    state.lastBar = null;
+    return interaction.editReply(render(paused));
+  }
 
-      if (i.customId === "pause") {
-        queue.node.isPaused() ? await queue.node.resume() : await queue.node.pause();
-        await collector.resetTimer({ time: 300000 });
+  if (interaction.customId === "loop") {
+    toggleLoop(queue);
+    state.lastBar = null;
+    return interaction.editReply(render(queue.node.isPaused()));
+  }
 
-        player.setTitle(queue.node.isPaused() ? "⏸️ Song Paused" : `🎧 Now Playing${queue.channel ? ` in ${queue.channel.name}` : ""}`);
-        row.components[0].setLabel(queue.node.isPaused() ? "Resume" : "Pause").setEmoji(queue.node.isPaused() ? "▶️" : "⏸️");
-        row.components[1].setDisabled(queue.node.isPaused());
+  if (interaction.customId === "skip") {
+    await skipTrack(queue);
+    await destroyPanel(state, panelMsg);
+    return owner.stop();
+  }
 
-        await i.update({ embeds: [player], components: [row] });
+  if (interaction.customId === "stop") {
+    await interaction.editReply(render(queue.node.isPaused(), { confirmStop: true }));
+    state.stopConfirmTimer = setTimeout(async () => {
+      state.stopConfirmTimer = null;
+      if (state.msg !== panelMsg) return;
+      await panelMsg.edit(render(queue.node.isPaused()))
+        .catch(err => logger.warn(`[Music] Stop confirm auto-revert failed: ${err.message}`));
+    }, STOP_CONFIRM_MS);
+    return;
+  }
 
-      } else if (i.customId === "skip") {
-        try {
-          if (queue.node.isPaused()) {
-            return await i.reply({ content: "Unpause before trying to skip. Too lazy to fix this bug for now.", ephemeral: true });
-          }
-          await queue.node.skip(); 
-          if (msg) await msg.delete();
-          await collector.stop();
-        } catch (e) {
-          logger.error(e);
-        }
+  if (interaction.customId === "stop_cancel") {
+    state.lastBar = null;
+    return interaction.editReply(render(queue.node.isPaused()));
+  }
 
-      } else if (i.customId === "stop") {
-        try {
-          await queue.node.stop(); 
-          if (msg) await msg.delete();
-          return await collector.stop();
-        } catch (e) {
-          logger.error(e);
-        }
-      }
-    });
+  if (interaction.customId === "stop_confirm") {
+    await stopPlayback(queue);
+    await destroyPanel(state, panelMsg);
+    return owner.stop();
+  }
+}
 
-    collector.on("end", async (collected, reason) => {
-      logger.debug(`Collected ${collected.size} interactions. Reason: ${reason}`);
-      if (reason === "time") {
-        if (queue.node.isPaused()) {
-          const reply = await msg.reply("Are you still there? Music will be stopped in 30 seconds if you don't respond.");
-          await wait(30000);
-          if (queue.node.isPaused()) {
-            await queue.node.stop(); 
-            if (msg) msg.delete();
-            if (reply) await reply.delete();
-          } else {
-            if (reply) await reply.delete();
-          }
-        }
-      }
-      clearInterval(interval);
-    });
-  },
+// The collector is captured locally as well as stored: a later panel replaces the
+// module reference, and an in-flight handler must still act on its own.
+function attachCollector(state, panelMsg, queue, track, render) {
+  const owner = panelMsg.createMessageComponentCollector({ time: remainingMs(queue, track) });
+  state.collector = owner;
 
-  trackEnd: async (client, queue, track) => {
-    msg = null;
-    module.exports.currentTrack = null;
-  },
+  owner.on("collect", async i => {
+    logger.debug(`[Music] ${i.member?.user?.displayName ?? "someone"} pressed ${i.customId}`);
 
-  queueString: (tracks) => {
-    let result = tracks.map((track, i) =>
-      `**${i + 1}.** [${track.title}](${track.url}) by **${track.author}** - ${track.duration}`
-    ).join("\n");
-
-    if (result.length > 3584) {
-      result = result.substring(0, 3584);
-      result = result.substring(0, result.lastIndexOf("\n"));
-      result += "\n...";
+    if (!inSameVoiceChannel(i, queue)) {
+      return i.reply({
+        embeds: [buildErrorEmbed(i.user, i.client, "Get in the voice channel if you want to touch the buttons.")],
+        flags: MessageFlags.Ephemeral,
+      }).catch(err => logger.warn(`[Music] Out-of-voice notice failed: ${err.message}`));
     }
 
-    return result;
-  }
+    // Ack before the lock: a queued caller must not burn the three-second window.
+    try {
+      await i.deferUpdate();
+    } catch (err) {
+      return logger.warn(`[Music] Could not acknowledge "${i.customId}": ${err.message}`);
+    }
+
+    try {
+      await withLock(`music:${queue.guild?.id ?? "unknown"}`, () => handleControl(i, state, panelMsg, queue, render, owner));
+    } catch (err) {
+      logger.error(`[Music] Control "${i.customId}" failed: ${err.message}`);
+      await i.followUp({
+        embeds: [buildErrorEmbed(i.user, i.client, "That button ate it. The song may already be gone — run `/np` for a fresh panel.")],
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => logger.warn("[Music] Could not deliver the control failure notice."));
+    }
+  });
+
+  owner.on("end", async (collected, reason) => {
+    logger.debug(`[Music] Collected ${collected.size} interactions. Reason: ${reason}`);
+    clearStopConfirm(state);
+    if (state.msg === panelMsg) clearProgressTimer(state);
+
+    if (reason === "time" && queue.node.isPaused() && state.msg === panelMsg) {
+      const reply = await panelMsg.reply("Still there? I'm killing this in 30 seconds if nobody speaks up.").catch(() => null);
+      await wait(IDLE_GRACE_MS);
+      if (queue.node.isPaused()) {
+        await queue.node.stop().catch(err => logger.warn(`[Music] Idle stop failed: ${err.message}`));
+        await destroyPanel(state, panelMsg);
+      }
+      if (reply) await reply.delete().catch(err => logger.warn(`[Music] Idle prompt cleanup failed: ${err.message}`));
+      return;
+    }
+
+    // A looping track re-enters trackStart immediately and reattaches. Anything else
+    // leaves buttons that no longer route anywhere, so take them away.
+    if (state.msg === panelMsg && !isLooping(queue)) {
+      await panelMsg.edit(render(queue.node.isPaused(), { controls: false }))
+        .catch(err => logger.debug(`[Music] Could not retire panel controls: ${err.message}`));
+    }
+  });
+}
+
+module.exports = {
+  trackStart: async (client, queue, track) => {
+    const state = panelState(queue.guild?.id);
+    const requestedBy = queue.metadata.requestedBy;
+    // Resolved once per track: the panel wears the requester's equipped theme, and
+    // a DB read per refresh tick would be gratuitous.
+    const colors = await resolveMusicColors(requestedBy?.id);
+    const renderFor = panelTrack => (paused = false, opts = {}) =>
+      buildNowPlayingV2({ track: panelTrack, queue, requestedBy, client, colors, paused, looping: isLooping(queue), ...opts });
+
+    // TRACK repeat replays via PlayerFinish -> PlayerStart, so a looping song re-enters here each cycle; reuse the panel instead of posting one per repeat, and restart the refresh and collector the last cycle stopped.
+    if (state.msg != null) {
+      if (isLooping(queue) && state.msgTrackUrl === track.url) {
+        const render = renderFor(track);
+        startProgressTimer(state, state.msg, queue, track, () => render(false));
+        if (!state.collector || state.collector.ended) attachCollector(state, state.msg, queue, track, render);
+      }
+      return;
+    }
+
+    const channel = queue.metadata.channel;
+
+    // Skip clears repeat to get past the current track; reapply it for the new one.
+    restoreLoop(queue);
+
+    const render = renderFor(track);
+    state.msg = await channel.send(render(false));
+    state.msgTrackUrl = track.url;
+
+    startProgressTimer(state, state.msg, queue, track, () => render(false));
+    attachCollector(state, state.msg, queue, track, render);
+  },
+
+  // Keeps the panel alive across a loop cycle; clearing it would post a fresh one.
+  trackEnd: async (client, queue, track) => {
+    const state = panelState(queue.guild?.id);
+    if (isLooping(queue) && state.msgTrackUrl === track?.url) return;
+    clearProgressTimer(state);
+    clearStopConfirm(state);
+    state.msg = null;
+    state.msgTrackUrl = null;
+  },
 };

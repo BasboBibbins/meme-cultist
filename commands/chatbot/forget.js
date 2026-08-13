@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
 const { getUserChatbotData, updateUserChatbotData, getThreadContext, updateThreadContext } = require("../../utils/openai");
 const logger = require("../../utils/logger");
 
@@ -44,18 +44,18 @@ module.exports = {
 
     if (scope === "channel") {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) {
-        return interaction.reply({ content: "You need Manage Channels to remove channel-level facts.", ephemeral: true });
+        return interaction.reply({ content: "You need Manage Channels to remove channel-level facts.", flags: MessageFlags.Ephemeral });
       }
       const ctx = await getThreadContext(interaction.channel);
       const facts = Array.isArray(ctx?.facts) ? ctx.facts : [];
       const before = facts.length;
       const next = facts.filter(f => f.key !== factKey);
       if (next.length === before) {
-        return interaction.reply({ content: `No channel fact with key **${factKey}**.`, ephemeral: true });
+        return interaction.reply({ content: `No channel fact with key **${factKey}**.`, flags: MessageFlags.Ephemeral });
       }
       await updateThreadContext(interaction.channel, { facts: next });
       logger.log(`[Forget] ${interaction.user.tag} removed channel fact "${factKey}" from ${interaction.channel.id}`);
-      return interaction.reply({ content: `Forgot channel fact **${factKey}**.`, ephemeral: true });
+      return interaction.reply({ content: `Forgot channel fact **${factKey}**.`, flags: MessageFlags.Ephemeral });
     }
 
     const data = await getUserChatbotData(interaction.user.id);
@@ -63,10 +63,10 @@ module.exports = {
     const before = facts.length;
     const next = facts.filter(f => f.key !== factKey);
     if (next.length === before) {
-      return interaction.reply({ content: `I don't have a fact with key **${factKey}** about you.`, ephemeral: true });
+      return interaction.reply({ content: `I don't have a fact with key **${factKey}** about you.`, flags: MessageFlags.Ephemeral });
     }
     await updateUserChatbotData(interaction.user.id, { facts: next });
     logger.log(`[Forget] ${interaction.user.tag} removed user fact "${factKey}"`);
-    await interaction.reply({ content: `Forgot **${factKey}**.`, ephemeral: true });
+    await interaction.reply({ content: `Forgot **${factKey}**.`, flags: MessageFlags.Ephemeral });
   },
 };

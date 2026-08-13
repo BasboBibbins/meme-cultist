@@ -6,7 +6,8 @@ module.exports = {
     .setName("ping")
     .setDescription("Pong!"),
   async execute(interaction) {
-    const sent = await interaction.reply({ content: "Pinging...", fetchReply: true });
+    await interaction.reply({ content: "Pinging..." });
+    const sent = await interaction.fetchReply();
     const embed = buildInfoEmbed(
       interaction.user,
       interaction.client,

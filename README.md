@@ -70,7 +70,7 @@ Copy `.env.example` to `.env` and fill in what you need:
 TOKEN=                    # Discord bot token (required)
 OPENAI_API_KEY=           # DeepSeek API key (required for chatbot)
 GEMINI_API_KEY=           # Google Gemini key (image vision + generation)
-COOKIE=                   # YouTube cookies for age-restricted videos (optional)
+YTDLP_COOKIES=            # Path to a cookies.txt for age-restricted YouTube videos (optional)
 GENIUS_API_KEY=           # Genius API for /lyrics (optional)
 GITHUB_TOKEN=             # GitHub token for /feedback issue creation (optional)
 CF_ACCOUNT_ID=            # Cloudflare Workers AI for image generation (optional)

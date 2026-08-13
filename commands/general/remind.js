@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, Role } = require("discord.js");
+const { SlashCommandBuilder, Role, MessageFlags } = require("discord.js");
 const jobs = require("../../utils/jobs");
 const { parseWhen } = require("../../utils/reminders/parse");
 const { REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE } = require("../../config.js");
@@ -65,7 +65,7 @@ module.exports = {
     const subcommand = interaction.options.getSubcommand();
     const userId = interaction.user.id;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (subcommand === "add") {
       const when = interaction.options.getString("when");

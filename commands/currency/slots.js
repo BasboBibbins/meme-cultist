@@ -1,7 +1,6 @@
 const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-  ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle,
-} = require("discord.js");
+  ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const {
   CURRENCY_NAME, SLOTS_MAX_LINES, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_LINES,
@@ -157,7 +156,7 @@ async function openSlotsPanel(interaction, user, client) {
     }
     await interaction.reply({
       embeds: [buildErrorEmbed(user, client, "You already have a slots panel open in this channel. Use the buttons on your existing message.")],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     existing.lastEphemeralInteraction = interaction;
     return;
@@ -226,7 +225,7 @@ function attachSessionCollector(client, message, session, channel) {
     } catch (err) {
       logger.error(`[slots] collector error: ${err && err.stack || err}`);
       try {
-        if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong.", ephemeral: true });
+        if (!i.replied && !i.deferred) await i.reply({ content: "Something went wrong.", flags: MessageFlags.Ephemeral });
       } catch (_) {}
     }
   });
@@ -329,7 +328,7 @@ async function handleSpin(buttonInt, session, client, channel) {
       }
       await buttonInt.reply({
         embeds: [buildErrorEmbed(user, client, `${reason} Click **Spin** again to enter a new bet.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       session.lastEphemeralInteraction = buttonInt;
       return;
@@ -350,7 +349,7 @@ async function handleSpin(buttonInt, session, client, channel) {
 
   const lines = parseLinesField(submit);
   if (lines === null) {
-    return submit.reply({ embeds: [buildErrorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], flags: MessageFlags.Ephemeral });
   }
 
   session.lastBet = amount;
@@ -388,11 +387,11 @@ function parseLinesField(submit) {
 async function spinWithSettings(interaction, session, client, channel, user, bet, lines, deferUpdate) {
   const current = client.slotsPanels.get(session.key);
   if (!current || current.status !== "waiting") {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your slots panel is no longer available.")], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, "Your slots panel is no longer available.")], flags: MessageFlags.Ephemeral });
   }
 
   if (bet % 1 !== 0 || bet < 1) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet a positive whole number of ${CURRENCY_NAME}!`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet a positive whole number of ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
   }
   const safeLines = Math.min(Math.max(Math.trunc(lines) || 1, 1), SLOTS_MAX_LINES);
   const totalCost = bet * safeLines;
@@ -404,7 +403,7 @@ async function spinWithSettings(interaction, session, client, channel, user, bet
     return true;
   });
   if (!debited) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}! Need **${totalCost.toLocaleString("en-US")}** for this spin.`)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}! Need **${totalCost.toLocaleString("en-US")}** for this spin.`)], flags: MessageFlags.Ephemeral });
   }
 
   current.status = "spinning";
@@ -500,7 +499,7 @@ async function handleChangeBet(buttonInt, session, client) {
 
   const current = client.slotsPanels.get(session.key);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your slots panel is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your slots panel is no longer active.")], flags: MessageFlags.Ephemeral });
   }
   current.lastBet = amount;
   current.lastBetExpression = expression;
@@ -514,7 +513,7 @@ async function handleChangeBet(buttonInt, session, client) {
       .setColor(0x0f4c25)
       .setDescription(`Bet updated to **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME}. Click **Spin** to play.`)
       .setTimestamp()],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
   current.lastEphemeralInteraction = submit;
 }
@@ -550,12 +549,12 @@ async function handleChangeLines(buttonInt, session, client) {
 
   const lines = parseLinesField(submit);
   if (lines === null) {
-    return submit.reply({ embeds: [buildErrorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, `Paylines must be a whole number between 1 and ${SLOTS_MAX_LINES}.`)], flags: MessageFlags.Ephemeral });
   }
 
   const current = client.slotsPanels.get(session.key);
   if (!current || current.status === "ended") {
-    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your slots panel is no longer active.")], ephemeral: true });
+    return submit.reply({ embeds: [buildErrorEmbed(user, client, "Your slots panel is no longer active.")], flags: MessageFlags.Ephemeral });
   }
   current.lastLines = lines;
   await persistPreferences(user.id, null, lines);
@@ -568,14 +567,14 @@ async function handleChangeLines(buttonInt, session, client) {
       .setColor(0x0f4c25)
       .setDescription(`Active paylines updated to **${lines}**. Click **Spin** to play.`)
       .setTimestamp()],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
   current.lastEphemeralInteraction = submit;
 }
 
 async function handlePaytable(buttonInt, client) {
   const { embed, attachment } = await buildPaytablePayload(buttonInt.user, client);
-  return buttonInt.reply({ embeds: [embed], files: [attachment], ephemeral: true });
+  return buttonInt.reply({ embeds: [embed], files: [attachment], flags: MessageFlags.Ephemeral });
 }
 
 // ─── command entry point ─────────────────────────────────────────────────────
@@ -626,7 +625,7 @@ module.exports = {
         logger.debug(`User ${user.username} (${user.id}) daily free spin cooldown ends at ${nextAvailable}`);
         return interaction.reply({
           embeds: [buildErrorEmbed(user, client, `You have already used your daily free spins! Next available **${await formatTimeLeft(nextAvailable)}**.`)],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
       logger.debug(`User ${user.username} (${user.id}) is using their daily free spins.`);
@@ -673,7 +672,7 @@ async function spinFromSlash(interaction, user, client, betExpression, linesOpti
     }
     await interaction.reply({
       embeds: [buildErrorEmbed(user, client, "Your slots panel is mid-spin. Wait for it to finish.")],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     existing.lastEphemeralInteraction = interaction;
     return;
@@ -686,14 +685,14 @@ async function spinFromSlash(interaction, user, client, betExpression, linesOpti
 
   const resolved = await resolveBet(betExpression, user.id);
   if (!resolved.ok) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, resolved.reason)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, resolved.reason)], flags: MessageFlags.Ephemeral });
   }
   const totalCost = resolved.amount * safeLines;
   const balance = dbUser.balance ?? 0;
   if (totalCost > balance) {
     return interaction.reply({
       embeds: [buildErrorEmbed(user, client, `Need **${totalCost.toLocaleString("en-US")}** ${CURRENCY_NAME} for this spin (${resolved.amount.toLocaleString("en-US")} × ${safeLines}); you have **${balance.toLocaleString("en-US")}**.`)],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -730,7 +729,7 @@ function buildPanelProxy(realInteraction, panelMessage, channel) {
     deferred: false,
     deferUpdate: async () => { /* no-op for slash */ },
     editReply: (opts) => panelMessage.edit(opts),
-    reply: (opts) => realInteraction.followUp({ ...opts, ephemeral: opts.ephemeral !== false }),
+    reply: (opts) => realInteraction.followUp({ ...opts, flags: opts.flags ?? MessageFlags.Ephemeral }),
     followUp: (opts) => channel.send(opts),
   };
 }
@@ -747,14 +746,14 @@ async function spinOnExistingPanel(interaction, session, client, user, betExpres
 
   const resolved = await resolveBet(betExpression, user.id);
   if (!resolved.ok) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, resolved.reason)], ephemeral: true });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client, resolved.reason)], flags: MessageFlags.Ephemeral });
   }
   const totalCost = resolved.amount * safeLines;
   const balance = dbUser.balance ?? 0;
   if (totalCost > balance) {
     return interaction.reply({
       embeds: [buildErrorEmbed(user, client, `Need **${totalCost.toLocaleString("en-US")}** ${CURRENCY_NAME} for this spin (${resolved.amount.toLocaleString("en-US")} × ${safeLines}); you have **${balance.toLocaleString("en-US")}**.`)],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -768,7 +767,7 @@ async function spinOnExistingPanel(interaction, session, client, user, betExpres
   } catch (err) {
     return interaction.reply({
       embeds: [buildErrorEmbed(user, client, "Couldn't find your panel message — it may have been deleted. Use `/slots spin` to open a fresh one.")],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -777,7 +776,7 @@ async function spinOnExistingPanel(interaction, session, client, user, betExpres
   }
   await interaction.reply({
     content: `Spinning **${resolved.amount.toLocaleString("en-US")}** × **${safeLines}** on your existing panel…`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
   session.lastEphemeralInteraction = interaction;
 
