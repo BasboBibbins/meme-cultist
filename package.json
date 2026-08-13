@@ -1,6 +1,6 @@
 {
   "name": "meme-cultist-2023",
-  "version": "5.8.1",
+  "version": "5.8.2",
   "description": "",
   "main": "bot.js",
   "scripts": {
@@ -55,9 +55,15 @@
   },
   "overrides": {
     "youtubei.js": "^17.2.0",
-    "booru": { "undici": "^7.29.0" },
-    "cheerio": { "undici": "^7.29.0" },
-    "discord-player-youtubei": { "undici": "^7.29.0" },
+    "booru": {
+      "undici": "^7.29.0"
+    },
+    "cheerio": {
+      "undici": "^7.29.0"
+    },
+    "discord-player-youtubei": {
+      "undici": "^7.29.0"
+    },
     "ws": "^8.21.3",
     "qs": "^6.15.3",
     "protobufjs": "^7.6.5",
@@ -67,6 +73,8 @@
     "fast-xml-builder": "^1.3.0",
     "file-type": "^21.3.4",
     "brace-expansion": "^2.1.4",
-    "eslint": { "brace-expansion": "^1.1.18" }
+    "eslint": {
+      "brace-expansion": "^1.1.18"
+    }
   }
 }
