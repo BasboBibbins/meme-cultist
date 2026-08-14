@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require("discord.js");
+const { ModalBuilder, LabelBuilder, TextInputBuilder, TextInputStyle, RadioGroupBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../database");
 const { CURRENCY_NAME } = require("../config.js");
 const { parseBet } = require("./betparse");
@@ -74,28 +74,45 @@ async function openBetModal(buttonInt, opts) {
 
   const amountInput = new TextInputBuilder()
     .setCustomId("amount")
-    .setLabel(label)
     .setStyle(TextInputStyle.Short)
     .setPlaceholder(placeholder)
     .setRequired(true);
   if (typeof defaultAmount === "string" && defaultAmount.length > 0) {
     amountInput.setValue(defaultAmount);
   }
-  const rows = [new ActionRowBuilder().addComponents(amountInput)];
+  // Inputs are wrapped in Label rather than Action Row: Discord no longer
+  // recommends Action Rows in modals, and only Label can carry a radio group.
+  const rows = [new LabelBuilder().setLabel(label).setTextInputComponent(amountInput)];
+
   for (const extra of extras) {
+    const row = new LabelBuilder().setLabel(extra.label);
+    if (extra.description) row.setDescription(extra.description);
+
+    // A fixed set of choices is a radio group, so an invalid value cannot be
+    // typed in the first place and the caller's rejection path goes unused.
+    if (extra.type === "radio") {
+      row.setRadioGroupComponent(
+        new RadioGroupBuilder()
+          .setCustomId(extra.customId)
+          .setRequired(extra.required !== false)
+          .addOptions(...extra.options)
+      );
+      rows.push(row);
+      continue;
+    }
+
     const input = new TextInputBuilder()
       .setCustomId(extra.customId)
-      .setLabel(extra.label)
       .setStyle(extra.style === "paragraph" ? TextInputStyle.Paragraph : TextInputStyle.Short)
       .setRequired(extra.required !== false);
     if (extra.placeholder) input.setPlaceholder(extra.placeholder);
     if (typeof extra.value === "string") input.setValue(extra.value);
     if (typeof extra.minLength === "number") input.setMinLength(extra.minLength);
     if (typeof extra.maxLength === "number") input.setMaxLength(extra.maxLength);
-    rows.push(new ActionRowBuilder().addComponents(input));
+    rows.push(row.setTextInputComponent(input));
   }
 
-  const modal = new ModalBuilder().setCustomId(modalId).setTitle(title).addComponents(...rows);
+  const modal = new ModalBuilder().setCustomId(modalId).setTitle(title).addLabelComponents(...rows);
   await buttonInt.showModal(modal);
 
   let submit;

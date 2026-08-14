@@ -18,6 +18,13 @@ const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
 const ANIMATION_TICKS = RACE_ANIMATION_TICKS ?? 10;
 const TICK_INTERVAL = RACE_TICK_INTERVAL ?? 1500;
 const BET_TYPES = new Set(["win", "place", "show"]);
+// Descriptions carry their meaning, which "win / place / show" alone never did
+// for anyone who hasn't been to a racetrack.
+const BET_TYPE_OPTIONS = [
+  { label: "Win", value: "win", description: "Has to finish 1st. Full odds." },
+  { label: "Place", value: "place", description: "1st or 2nd. Reduced payout." },
+  { label: "Show", value: "show", description: "Top 3. Smallest payout." },
+];
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -76,10 +83,15 @@ function formatBetType(type) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+// Two horses per row rather than four: the label carries a number, a name and
+// the odds, which the mobile client truncates to unreadable stubs at quarter
+// width. Eight horses fill four rows, and the controls take the fifth — the
+// message is at Discord's five-row ceiling, so another row cannot be added.
+const HORSES_PER_ROW = 2;
+
 function buildComponents(horses, disabled = false) {
   const sorted = [...horses].sort((a, b) => a.number - b.number);
-  const row1 = new ActionRowBuilder();
-  const row2 = new ActionRowBuilder();
+  const horseRows = [];
   for (let i = 0; i < sorted.length; i++) {
     const h = sorted[i];
     const btn = new ButtonBuilder()
@@ -88,9 +100,10 @@ function buildComponents(horses, disabled = false) {
       .setEmoji(h.emoji)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled);
-    (i < 4 ? row1 : row2).addComponents(btn);
+    if (i % HORSES_PER_ROW === 0) horseRows.push(new ActionRowBuilder());
+    horseRows[horseRows.length - 1].addComponents(btn);
   }
-  const row3 = new ActionRowBuilder().addComponents(
+  const controlRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("race_start_now")
       .setLabel("Start Now")
@@ -107,7 +120,7 @@ function buildComponents(horses, disabled = false) {
       .setStyle(ButtonStyle.Danger)
       .setDisabled(disabled),
   );
-  return [row1, row2, row3];
+  return [...horseRows, controlRow];
 }
 
 async function handleStartRace(interaction, client, user) {
@@ -307,12 +320,11 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     title: `Bet on Horse ${horse.number}`,
     min: RACE_MIN_BET,
     extras: [{
+      type: "radio",
       customId: "betType",
-      label: "Bet Type (win / place / show)",
-      placeholder: "win",
-      value: cachedBetType,
-      minLength: 3,
-      maxLength: 5,
+      label: "Bet Type",
+      description: "Easier finishes pay less.",
+      options: BET_TYPE_OPTIONS.map(option => ({ ...option, default: option.value === cachedBetType })),
     }],
   };
   if (RACE_MAX_BET) modalOpts.max = RACE_MAX_BET;
@@ -324,9 +336,11 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   if (!result) return;
   const { amount, expression, submit } = result;
 
-  const betTypeRaw = submit.fields.getTextInputValue("betType").trim().toLowerCase();
+  // The radio group constrains this to the three known values, so this guard is
+  // defence in depth — bet type changes the payout, so it is never coerced.
+  const betTypeRaw = (submit.fields.getRadioGroup("betType") || "").toLowerCase();
   if (!BET_TYPES.has(betTypeRaw)) {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Bet type must be `win`, `place`, or `show`.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Pick a bet type — win, place, or show.")], flags: MessageFlags.Ephemeral });
   }
 
   const current = client.raceGames.get(game.channelId);
