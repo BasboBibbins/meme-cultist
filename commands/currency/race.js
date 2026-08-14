@@ -78,6 +78,12 @@ module.exports = {
 };
 
 
+function startRejectionMessage(game) {
+  if (game.phase === "starting") return "A race is starting in this channel. Give the panel a moment to appear.";
+  if (game.phase === "betting") return "A race is already accepting bets in this channel. Click a horse on the existing panel to wager.";
+  return "A race is already in progress. Please wait for it to finish.";
+}
+
 function formatBetType(type) {
   const t = (type || "win").toLowerCase();
   return t.charAt(0).toUpperCase() + t.slice(1);
@@ -129,59 +135,69 @@ async function handleStartRace(interaction, client, user) {
 
   const existingGame = client.raceGames.get(channelId);
   if (existingGame) {
-    const phaseMsg = existingGame.phase === "betting"
-      ? "A race is already accepting bets in this channel — click a horse on the existing panel to wager."
-      : "A race is already in progress. Please wait for it to finish.";
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client,phaseMsg)], flags: MessageFlags.Ephemeral });
+    return interaction.reply({ embeds: [buildErrorEmbed(user, client,startRejectionMessage(existingGame))], flags: MessageFlags.Ephemeral });
   }
 
-  await interaction.deferReply();
+  // Claimed before the first await, or a concurrent /race start clears the guard above and orphans one of the two games.
+  const reservation = { phase: "starting", creatorId: user.id };
+  client.raceGames.set(channelId, reservation);
 
-  const horses = generateHorses();
-  const topThree = determineTopThree(horses);
-
-  logger.log(`${user.username} (${user.id}) started a horse race. Winner: Horse ${topThree.first.number} (${topThree.first.name}), 2nd: ${topThree.second.number}, 3rd: ${topThree.third.number}`);
-
+  let message;
   let commentaryPromise = null;
-  if (OPENAI_API_KEY) {
-    commentaryPromise = generateRaceCommentary();
+  let game;
+
+  try {
+    await interaction.deferReply();
+
+    const horses = generateHorses();
+    const topThree = determineTopThree(horses);
+
+    logger.log(`${user.username} (${user.id}) started a horse race. Winner: Horse ${topThree.first.number} (${topThree.first.name}), 2nd: ${topThree.second.number}, 3rd: ${topThree.third.number}`);
+
+    if (OPENAI_API_KEY) {
+      commentaryPromise = generateRaceCommentary();
+    }
+
+    const endTime = Date.now() + BETTING_TIME;
+    const betsDescription = buildBettingDescription(horses, [], endTime);
+
+    const embed = new EmbedBuilder()
+      .setAuthor({ name: `🏇 Horse Race Started by ${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+      .setTitle("🏇 Place Your Bets! 🏇")
+      .setDescription(betsDescription)
+      .setColor(randomHexColor())
+      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+      .setTimestamp();
+
+    message = await interaction.editReply({ embeds: [embed], components: buildComponents(horses) });
+
+    game = {
+      channelId,
+      guildId: channel.guild?.id ?? interaction.guildId,
+      messageId: message.id,
+      creatorId: user.id,
+      creatorUsername: user.displayName,
+      horses,
+      topThree: {
+        firstIndex: topThree.firstIndex,
+        secondIndex: topThree.secondIndex,
+        thirdIndex: topThree.thirdIndex,
+        finishOrder: topThree.finishOrder.slice(),
+      },
+      bets: [],
+      phase: "betting",
+      endTime,
+      collector: null,
+      commentary: null,
+    };
+
+    client.raceGames.set(channelId, game);
+  } catch (err) {
+    if (client.raceGames.get(channelId) === reservation) client.raceGames.delete(channelId);
+    logger.error(`[race] failed to start race in ${channelId}: ${err && err.stack || err}`);
+    await interaction.followUp({ embeds: [buildErrorEmbed(user, client,"Could not start the race. Try again.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+    return;
   }
-
-  const endTime = Date.now() + BETTING_TIME;
-  const betsDescription = buildBettingDescription(horses, [], endTime);
-
-  const embed = new EmbedBuilder()
-    .setAuthor({ name: `🏇 Horse Race Started by ${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setTitle("🏇 Place Your Bets! 🏇")
-    .setDescription(betsDescription)
-    .setColor(randomHexColor())
-    .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTimestamp();
-
-  const message = await interaction.editReply({ embeds: [embed], components: buildComponents(horses) });
-
-  const game = {
-    channelId,
-    guildId: channel.guild?.id ?? interaction.guildId,
-    messageId: message.id,
-    creatorId: user.id,
-    creatorUsername: user.displayName,
-    horses,
-    topThree: {
-      firstIndex: topThree.firstIndex,
-      secondIndex: topThree.secondIndex,
-      thirdIndex: topThree.thirdIndex,
-    },
-    finishOrder: topThree.finishOrder.slice(),
-    winnerIndex: topThree.firstIndex,
-    bets: [],
-    phase: "betting",
-    endTime,
-    collector: null,
-    commentary: null,
-  };
-
-  client.raceGames.set(channelId, game);
 
   const collector = message.createMessageComponentCollector({
     componentType: ComponentType.Button,
@@ -205,6 +221,12 @@ async function handleStartRace(interaction, client, user) {
 
   collector.on("collect", async (i) => {
     try {
+      // A panel that no longer owns the channel slot belongs to a superseded race, so it must never mutate the live one.
+      if (client.raceGames.get(channelId) !== game) {
+        await i.reply({ embeds: [buildErrorEmbed(i.user, i.client,"This race panel is no longer active.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+        collector.stop("superseded");
+        return;
+      }
       if (i.customId.startsWith("race_bet_")) {
         const horseNumber = parseInt(i.customId.replace("race_bet_", ""), 10);
         return handleBetButton(i, client, game, horseNumber);
@@ -242,7 +264,7 @@ async function handleStartRace(interaction, client, user) {
             .setTimestamp()],
           components: [],
         });
-        client.raceGames.delete(channelId);
+        if (client.raceGames.get(channelId) === game) client.raceGames.delete(channelId);
         game.collector.stop("cancel");
         return;
       }
@@ -255,11 +277,10 @@ async function handleStartRace(interaction, client, user) {
   });
 
   collector.on("end", async (_collected, reason) => {
-    const finalGame = client.raceGames.get(channelId);
-    if (!finalGame || finalGame.phase !== "betting") return;
+    if (client.raceGames.get(channelId) !== game || game.phase !== "betting") return;
 
     if (reason === "time" || reason === "start") {
-      await resolveRace(client, channel, message, finalGame);
+      await resolveRace(client, channel, message, game);
     }
   });
 }
@@ -317,7 +338,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   }
 
   const current = client.raceGames.get(game.channelId);
-  if (!current || current.phase !== "betting") {
+  if (current !== game || current.phase !== "betting") {
     return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open for this race.")], flags: MessageFlags.Ephemeral });
   }
 
@@ -396,6 +417,12 @@ async function handleSlashBet(interaction, client, user) {
       flags: MessageFlags.Ephemeral,
     });
   }
+  if (game.phase === "starting") {
+    return interaction.reply({
+      embeds: [buildErrorEmbed(user, client,"A race is starting in this channel. Give the panel a moment to appear.")],
+      flags: MessageFlags.Ephemeral,
+    });
+  }
   if (game.phase !== "betting") {
     return interaction.reply({
       embeds: [buildErrorEmbed(user, client,"Betting is closed for this race. Please wait for it to finish.")],
@@ -456,7 +483,7 @@ async function handleSlashBet(interaction, client, user) {
   await db.set(`${user.id}.race.lastBetType`, betTypeRaw);
 
   const current = client.raceGames.get(channelId);
-  if (!current || current.phase !== "betting") {
+  if (current !== game || current.phase !== "betting") {
     // Race ended between validation and debit — refund and bail.
     await withUserLock(user.id, () => db.add(`${user.id}.balance`, amount));
     await db.sub(`${user.id}.stats.race.totalBet`, amount);
@@ -555,7 +582,7 @@ async function handleClearBets(buttonInt, client, game) {
   }
 
   const current = client.raceGames.get(game.channelId);
-  if (!current || current.phase !== "betting") {
+  if (current !== game || current.phase !== "betting") {
     return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open — your bets are already locked in.")], flags: MessageFlags.Ephemeral });
   }
 
@@ -608,7 +635,18 @@ async function repostRaceMessage(channel, previous, payload) {
   }
 }
 
+// Releases the channel slot whatever happens below. A throw mid-resolve used to wedge the channel until restart.
 async function resolveRace(client, channel, message, game) {
+  try {
+    await runRace(client, channel, message, game);
+  } catch (err) {
+    logger.error(`[race] resolve failed in ${game.channelId}: ${err && err.stack || err}`);
+  } finally {
+    if (client.raceGames.get(game.channelId) === game) client.raceGames.delete(game.channelId);
+  }
+}
+
+async function runRace(client, channel, message, game) {
   game.phase = "racing";
 
   await message.edit({ components: [] }).catch(() => {});
@@ -624,7 +662,6 @@ async function resolveRace(client, channel, message, game) {
       .setColor(0xFFAA00)
       .setTimestamp();
     await message.edit({ embeds: [embed] }).catch(() => {});
-    client.raceGames.delete(game.channelId);
     return;
   }
 
@@ -660,7 +697,7 @@ async function resolveRace(client, channel, message, game) {
     await wait(TICK_INTERVAL);
   }
 
-  finishOrder = game.finishOrder.slice();
+  finishOrder = game.topThree.finishOrder.slice();
 
   for (let i = 0; i < positions.length; i++) {
     positions[i] = 100;
@@ -767,11 +804,12 @@ async function resolveRace(client, channel, message, game) {
   }
 
   try {
-    const finishOrder = game.topThree.finishOrder || [];
-    const podium = [0, 1, 2].map(place => {
-      const idx = finishOrder[place];
-      return idx !== undefined ? { place: place + 1, number: horses[idx].number, name: horses[idx].name, emoji: horses[idx].emoji } : null;
-    }).filter(Boolean);
+    const podium = game.topThree.finishOrder.slice(0, 3).map((idx, place) => ({
+      place: place + 1,
+      number: horses[idx].number,
+      name: horses[idx].name,
+      emoji: horses[idx].emoji,
+    }));
 
     const byUser = {};
     for (const r of results) {
@@ -931,6 +969,5 @@ async function resolveRace(client, channel, message, game) {
     }
   }
 
-  client.raceGames.delete(game.channelId);
   logger.log(`Race in channel ${game.channelId} completed. Top 3: ${winner.number} (${winner.name}), ${secondPlace.number} (${secondPlace.name}), ${thirdPlace.number} (${thirdPlace.name}). Bets: ${game.bets.length}, Wagered: ${totalWagered}, Paid: ${totalPaid}`);
 }
