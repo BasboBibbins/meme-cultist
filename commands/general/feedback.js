@@ -242,6 +242,7 @@ async function createGitHubIssue(feedback) {
 
 **Submitted by:** ${feedback.username} (${feedback.userId})
 **Source:** ${feedback.guildName}
+**Bot Version:** ${require("../../package.json").version}
 
 ### Description
 
