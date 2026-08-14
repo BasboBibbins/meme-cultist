@@ -1,4 +1,4 @@
-// Silence a justified use with: // eslint-disable-next-line no-em-dash
+// Not suppressible: no-lint-suppression guards this rule.
 
 const EM_DASH = "—";
 

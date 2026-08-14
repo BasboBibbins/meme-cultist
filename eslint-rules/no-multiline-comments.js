@@ -1,4 +1,4 @@
-// Silence a justified block with: // eslint-disable-next-line no-multiline-comments
+// Not suppressible: no-lint-suppression guards this rule. Shorten instead.
 
 const DIRECTIVE = /^\s*(eslint|globals?|exported|istanbul|c8|jshint|jslint)\b/;
 

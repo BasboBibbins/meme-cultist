@@ -5,5 +5,6 @@ module.exports = {
   rules: {
     "no-multiline-comments": "warn",
     "no-em-dash": "warn",
+    "no-lint-suppression": "error",
   },
 };
