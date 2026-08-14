@@ -8,7 +8,8 @@ const { applyRaceAggregates } = require("../../utils/guildStats");
 const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
-const { randomHexColor } = require("../../utils/randomcolor");
+const { getEquippedTheme } = require("../../themes/manager");
+const { getThemeColors, toEmbedColor } = require("../../themes/resolver");
 const { buildErrorEmbed } = require("../../utils/embeds");
 const wait = require("node:timers/promises").setTimeout;
 const { recordGameResult } = require("../../utils/gameResults");
@@ -77,6 +78,27 @@ module.exports = {
   },
 };
 
+
+// Four roles, resolved once per race so all three acts share one identity.
+async function resolveRaceColors(userId) {
+  const colors = getThemeColors(await getEquippedTheme(userId), "race");
+  return {
+    identity: toEmbedColor(colors.embedColor),
+    win: toEmbedColor(colors.textWin, 0x00AE86),
+    loss: toEmbedColor(colors.textLoss, 0xFF0000),
+    interrupted: toEmbedColor(colors.gold, 0xFFD700),
+  };
+}
+
+function buildLobbyEmbed(client, game) {
+  return new EmbedBuilder()
+    .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+    .setTitle("🏇 Place Your Bets! 🏇")
+    .setDescription(buildBettingDescription(game.horses, game.bets, game.endTime))
+    .setColor(game.colors.identity)
+    .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+    .setTimestamp();
+}
 
 function startRejectionMessage(game) {
   if (game.phase === "starting") return "A race is starting in this channel. Give the panel a moment to appear.";
@@ -160,12 +182,13 @@ async function handleStartRace(interaction, client, user) {
 
     const endTime = Date.now() + BETTING_TIME;
     const betsDescription = buildBettingDescription(horses, [], endTime);
+    const colors = await resolveRaceColors(user.id);
 
     const embed = new EmbedBuilder()
       .setAuthor({ name: `🏇 Horse Race Started by ${user.displayName}`, iconURL: user.displayAvatarURL({ dynamic: true }) })
       .setTitle("🏇 Place Your Bets! 🏇")
       .setDescription(betsDescription)
-      .setColor(randomHexColor())
+      .setColor(colors.identity)
       .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTimestamp();
 
@@ -177,6 +200,7 @@ async function handleStartRace(interaction, client, user) {
       messageId: message.id,
       creatorId: user.id,
       creatorUsername: user.displayName,
+      colors,
       horses,
       topThree: {
         firstIndex: topThree.firstIndex,
@@ -260,7 +284,7 @@ async function handleStartRace(interaction, client, user) {
           embeds: [new EmbedBuilder()
             .setTitle("Race Cancelled")
             .setDescription("All bets have been refunded.")
-            .setColor(0xFFAA00)
+            .setColor(game.colors.interrupted)
             .setTimestamp()],
           components: [],
         });
@@ -372,15 +396,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
 
   try {
     const gameMessage = await buttonInt.channel.messages.fetch(current.messageId);
-    const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
-    const refreshed = new EmbedBuilder()
-      .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTitle("🏇 Place Your Bets! 🏇")
-      .setDescription(betsDescription)
-      .setColor(randomHexColor())
-      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
-    await gameMessage.edit({ embeds: [refreshed] });
+    await gameMessage.edit({ embeds: [buildLobbyEmbed(client, current)] });
   } catch (e) {
     logger.error(`Error updating race message: ${e.message}`);
   }
@@ -394,7 +410,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
       `**Bet Type:** ${formatBetType(betTypeRaw)}`,
       `**Potential win:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betTypeRaw).toLocaleString("en-US")} ${CURRENCY_NAME}`,
     ].join("\n"))
-    .setColor(randomHexColor())
+    .setColor(current.colors.identity)
     .setTimestamp();
 
   await submit.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
@@ -508,15 +524,7 @@ async function handleSlashBet(interaction, client, user) {
 
   try {
     const gameMessage = await interaction.channel.messages.fetch(current.messageId);
-    const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
-    const refreshed = new EmbedBuilder()
-      .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTitle("🏇 Place Your Bets! 🏇")
-      .setDescription(betsDescription)
-      .setColor(randomHexColor())
-      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
-    await gameMessage.edit({ embeds: [refreshed] });
+    await gameMessage.edit({ embeds: [buildLobbyEmbed(client, current)] });
   } catch (e) {
     logger.error(`Error updating race message: ${e.message}`);
   }
@@ -530,7 +538,7 @@ async function handleSlashBet(interaction, client, user) {
       `**Bet Type:** ${formatBetType(betTypeRaw)}`,
       `**Potential win:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betTypeRaw).toLocaleString("en-US")} ${CURRENCY_NAME}`,
     ].join("\n"))
-    .setColor(randomHexColor())
+    .setColor(current.colors.identity)
     .setTimestamp();
 
   await interaction.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
@@ -601,23 +609,15 @@ async function handleClearBets(buttonInt, client, game) {
 
   try {
     const gameMessage = await submit.channel.messages.fetch(current.messageId);
-    const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
-    const refreshed = new EmbedBuilder()
-      .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTitle("🏇 Place Your Bets! 🏇")
-      .setDescription(betsDescription)
-      .setColor(randomHexColor())
-      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
-    await gameMessage.edit({ embeds: [refreshed] });
+    await gameMessage.edit({ embeds: [buildLobbyEmbed(client, current)] });
   } catch (e) {
     logger.error(`Error updating race message after clear: ${e.message}`);
   }
 
   const confirmEmbed = new EmbedBuilder()
     .setAuthor({ name: "Bets Cleared", iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setDescription(`Cleared **${standingBets.length}** bet${standingBets.length === 1 ? "" : "s"} — refunded **${refund.toLocaleString("en-US")}** ${CURRENCY_NAME} to your wallet.`)
-    .setColor(0xFFAA00)
+    .setDescription(`Cleared **${standingBets.length}** bet${standingBets.length === 1 ? "" : "s"}. Refunded **${refund.toLocaleString("en-US")}** ${CURRENCY_NAME} to your wallet.`)
+    .setColor(current.colors.interrupted)
     .setTimestamp();
   await submit.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
 }
@@ -659,7 +659,7 @@ async function runRace(client, channel, message, game) {
     const embed = new EmbedBuilder()
       .setTitle("Race Cancelled")
       .setDescription("No bets were placed. The race has been cancelled.")
-      .setColor(0xFFAA00)
+      .setColor(game.colors.interrupted)
       .setTimestamp();
     await message.edit({ embeds: [embed] }).catch(() => {});
     return;
@@ -667,7 +667,7 @@ async function runRace(client, channel, message, game) {
 
   const embed = new EmbedBuilder()
     .setAuthor({ name: "Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setColor(randomHexColor())
+    .setColor(game.colors.identity)
     .setTimestamp();
 
   // The lobby message is replaced on the first tick rather than edited, so the
@@ -911,7 +911,10 @@ async function runRace(client, channel, message, game) {
 
   embed.setTitle("🏁 Race Results 🏁");
   embed.setDescription(resultsLines.join("\n"));
-  embed.setColor(winner.displayOdds < 5 ? 0x00AA00 : (winner.displayOdds < 10 ? 0xFFAA00 : 0xFF0000));
+  // Results are collective, so the band stays the panel identity. Win and loss
+  // color belongs in the DM, where the outcome is one person's.
+  // eslint-disable-next-line no-multiline-comments
+  embed.setColor(game.colors.identity);
 
   // Reposted again so the outcome cannot be buried by traffic during the run.
   // Nothing is lost by dropping the animation message — the final frame is
@@ -933,6 +936,8 @@ async function runRace(client, channel, message, game) {
     try {
       const dmUser = await client.users.fetch(uid);
       const newBalance = await db.get(`${uid}.balance`) ?? 0;
+      // The DM is one person's, so it wears their theme rather than the creator's.
+      const dmColors = await resolveRaceColors(uid);
 
       const betLines = agg.bets.map(b => {
         const horse = horses[b.horseIndex];
@@ -947,7 +952,7 @@ async function runRace(client, channel, message, game) {
         const outcome = b.won
           ? `**+${b.winnings.toLocaleString("en-US")}** ${CURRENCY_NAME}`
           : `**-${b.amount.toLocaleString("en-US")}** ${CURRENCY_NAME}`;
-        return `${b.won ? "✅" : "❌"} Horse ${horse.number} ${horse.emoji} (${betTypeLabel}) — bet ${b.amount.toLocaleString("en-US")}, finished ${positionText} → ${outcome}`;
+        return `${b.won ? "✅" : "❌"} Horse ${horse.number} ${horse.emoji} (${betTypeLabel}), bet ${b.amount.toLocaleString("en-US")}, finished ${positionText} → ${outcome}`;
       });
 
       const dmEmbed = new EmbedBuilder()
@@ -960,7 +965,7 @@ async function runRace(client, channel, message, game) {
           `**Net:** ${agg.net >= 0 ? "+" : ""}${agg.net.toLocaleString("en-US")} ${CURRENCY_NAME}`,
           `**New balance:** ${newBalance.toLocaleString("en-US")} ${CURRENCY_NAME}`,
         ].join("\n"))
-        .setColor(agg.net > 0 ? 0x00AA00 : (agg.net < 0 ? 0xFF0000 : 0x888888))
+        .setColor(agg.net > 0 ? dmColors.win : (agg.net < 0 ? dmColors.loss : dmColors.identity))
         .setTimestamp();
 
       await sendDM(dmUser, { embeds: [dmEmbed] });
