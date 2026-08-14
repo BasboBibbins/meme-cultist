@@ -30,6 +30,14 @@ function trackLines(description) {
   return description.split("\n").filter(line => line.includes("|"));
 }
 
+// Alignment is only promised up to the odds column. Anything trailing it is
+// allowed to be ragged, which is why the rank marker lives there.
+// eslint-disable-next-line no-multiline-comments
+function alignedWidth(line) {
+  const match = line.match(/\d+(\.\d+)?x/);
+  return cellWidth(line.slice(0, match.index + match[0].length));
+}
+
 describe("buildTrack", () => {
   test("occupies the same width at every progress value", () => {
     const widths = [0, 1, 25, 50, 99, 100].map(p => cellWidth(buildTrack(p, "🐎")));
@@ -52,7 +60,7 @@ describe("buildRaceDescription", () => {
 
   test("aligns every lane mid race", () => {
     const positions = [0, 12, 35, 48, 60, 77, 90, 100];
-    const widths = trackLines(buildRaceDescription(horses, positions, 5, 10, null, [7], topThree)).map(cellWidth);
+    const widths = trackLines(buildRaceDescription(horses, positions, 5, 10, null, [7], topThree)).map(alignedWidth);
     expect(widths).toHaveLength(8);
     expect(new Set(widths).size).toBe(1);
   });
@@ -60,7 +68,7 @@ describe("buildRaceDescription", () => {
   test("aligns every lane at the finish, where ranks appear", () => {
     const positions = new Array(8).fill(100);
     const description = buildRaceDescription(horses, positions, 10, 10, topThree.firstIndex, topThree.finishOrder);
-    const widths = trackLines(description).map(cellWidth);
+    const widths = trackLines(description).map(alignedWidth);
     expect(new Set(widths).size).toBe(1);
   });
 
@@ -72,15 +80,19 @@ describe("buildRaceDescription", () => {
     expect(description).toContain("🥉 3rd");
   });
 
-  test("pads an unranked lane to the exact width of a ranked one", () => {
+  test("keeps the rank marker clear of every aligned column", () => {
     const positions = new Array(8).fill(100);
     const lanes = trackLines(buildRaceDescription(horses, positions, 10, 10, topThree.firstIndex, topThree.finishOrder));
     const ranked = lanes.filter(line => /\d(st|nd|rd)/.test(line));
-    const unranked = lanes.filter(line => !/\d(st|nd|rd)/.test(line));
     expect(ranked).toHaveLength(3);
-    expect(unranked).toHaveLength(5);
-    const prefixWidth = line => cellWidth(line.slice(0, line.indexOf("|")));
-    expect(new Set([...ranked, ...unranked].map(prefixWidth)).size).toBe(1);
+    expect(lanes.filter(line => !/\d(st|nd|rd)/.test(line))).toHaveLength(5);
+
+    for (const line of ranked) {
+      expect(line).toMatch(/\d+(\.\d+)?x {2}(🥇 1st|🥈 2nd|🥉 3rd)$/u);
+    }
+    for (const line of lanes) {
+      expect(line).toMatch(/^\d \|/);
+    }
   });
 
   test("emits no markdown, because it renders inside a code block", () => {

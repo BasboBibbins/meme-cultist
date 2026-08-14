@@ -40,12 +40,10 @@ const ODDS_LABELS = [
   { threshold: 0,    label: "🔴 Outsider" },
 ];
 
-const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
-
-// A medal renders two cells wide, so an unranked lane needs six spaces to hold
-// the same column. test/unit/race.test.js asserts the two stay in step.
+// Trails the lane rather than leading it: a medal is not reliably two monospace
+// cells, so anything after it would sit ragged on some clients.
 // eslint-disable-next-line no-multiline-comments
-const RANK_BLANK = " ".repeat(6);
+const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
 
 function formatBetType(type) {
   const t = (type || "win").toLowerCase();
@@ -230,10 +228,11 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
   }
 
   for (const i of sortedIndices) {
-    const rank = RANK_LABELS[medalMap.get(i)] ?? RANK_BLANK;
+    const rank = RANK_LABELS[medalMap.get(i)];
     const track = buildTrack(positions[i], horses[i].emoji);
     const odds = `${horses[i].displayOdds}x`.padStart(6, " ");
-    lines.push(`${rank} ${horses[i].number} ${track}${odds}`);
+    const lane = `${horses[i].number} ${track}${odds}`;
+    lines.push(rank ? `${lane}  ${rank}` : lane);
   }
 
   return lines.join("\n");
