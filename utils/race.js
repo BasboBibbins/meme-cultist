@@ -45,9 +45,104 @@ const ODDS_LABELS = [
 // eslint-disable-next-line no-multiline-comments
 const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
 
+// Discord's own description cap is 4096. The headroom absorbs the mention
+// expansion and any trailing notice appended after the fit check.
+// eslint-disable-next-line no-multiline-comments
+const RESULTS_DESCRIPTION_LIMIT = 3900;
+const MAX_RESULT_LINES = 12;
+const MAX_BETTORS_PER_HORSE = 6;
+
 function formatBetType(type) {
   const t = (type || "win").toLowerCase();
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// Display names are user controlled and land in a markdown context.
+function escapeMarkdown(text) {
+  return String(text).replace(/([\\*_~`|])/g, "\\$1");
+}
+
+// One entry per bettor rather than per bet, so a user with six bets costs one
+// line instead of six.
+// eslint-disable-next-line no-multiline-comments
+function summarizeBettors(results) {
+  const byUser = new Map();
+
+  for (const r of results) {
+    if (!byUser.has(r.userId)) {
+      byUser.set(r.userId, { userId: r.userId, bets: 0, wins: 0, staked: 0, returned: 0, only: null });
+    }
+    const entry = byUser.get(r.userId);
+    entry.bets += 1;
+    entry.staked += r.amount;
+    if (r.won) {
+      entry.wins += 1;
+      entry.returned += r.winnings;
+    }
+    entry.only = entry.bets === 1 ? r : null;
+  }
+
+  return [...byUser.values()]
+    .map(e => ({ ...e, net: e.returned - e.staked }))
+    .sort((a, b) => b.net - a.net);
+}
+
+function buildResultsSection(bettors, horses, currencyName, maxLines = MAX_RESULT_LINES) {
+  if (bettors.length === 0) return [];
+
+  const lines = ["", "**Results:**"];
+  const shown = bettors.slice(0, maxLines);
+
+  for (const b of shown) {
+    const amount = Math.abs(b.net).toLocaleString("en-US");
+
+    if (b.only) {
+      const horse = horses[b.only.horseIndex];
+      const place = ["🥇", "🥈", "🥉"][b.only.horsePosition] ?? "";
+      const type = formatBetType(b.only.betType);
+      lines.push(b.only.won
+        ? `${place}✅ <@${b.userId}> won **${b.only.winnings.toLocaleString("en-US")}** ${currencyName} on Horse ${horse.number} (${type})`
+        : `❌ <@${b.userId}> lost **${b.only.amount.toLocaleString("en-US")}** ${currencyName} on Horse ${horse.number} (${type})`);
+      continue;
+    }
+
+    const record = `${b.wins}/${b.bets} bets`;
+    if (b.net > 0) lines.push(`✅ <@${b.userId}> won **${amount}** ${currencyName} net on ${record}`);
+    else if (b.net < 0) lines.push(`❌ <@${b.userId}> lost **${amount}** ${currencyName} net on ${record}`);
+    else lines.push(`➖ <@${b.userId}> broke even on ${record}`);
+  }
+
+  const hidden = bettors.length - shown.length;
+  if (hidden > 0) {
+    const staked = bettors.slice(maxLines).reduce((sum, b) => sum + b.staked, 0);
+    lines.push(`*…and ${hidden} more bettor${hidden === 1 ? "" : "s"} staking ${staked.toLocaleString("en-US")} ${currencyName}.*`);
+  }
+
+  return lines;
+}
+
+// Drops result lines from the bottom until the whole description fits, so a
+// race can never fail to post because too many people bet on it.
+// eslint-disable-next-line no-multiline-comments
+function fitDescription(headLines, sectionLines, limit = RESULTS_DESCRIPTION_LIMIT) {
+  const section = [...sectionLines];
+  let dropped = 0;
+
+  const render = () => [...headLines, ...section].join("\n");
+
+  while (render().length > limit && section.length > 2) {
+    section.pop();
+    dropped += 1;
+  }
+
+  if (dropped > 0) {
+    section.push(`*…and ${dropped} more result${dropped === 1 ? "" : "s"} not shown.*`);
+    while (render().length > limit && section.length > 2) {
+      section.splice(section.length - 2, 1);
+    }
+  }
+
+  return render();
 }
 
 function shuffleArray(array) {
@@ -266,17 +361,21 @@ function buildBettingDescription(horses, bets, endTime) {
     for (const horseIdx of sortedHorseIndices) {
       const horse = horses[horseIdx];
       const horseBets = betsByHorse[horseIdx];
-      const label = b => `${b.username} (${formatBetType(b.betType)})`;
 
       if (horseBets.length === 1) {
         const bet = horseBets[0];
-        lines.push(`• **${horse.number}** ${horse.emoji} ${bet.amount.toLocaleString()} koku · ${label(bet)}`);
+        lines.push(`• **${horse.number}** ${horse.emoji} ${bet.amount.toLocaleString()} koku · ${escapeMarkdown(bet.username)} (${formatBetType(bet.betType)})`);
         continue;
       }
 
       const total = horseBets.reduce((sum, b) => sum + b.amount, 0);
-      const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()} ${formatBetType(b.betType)})`).join(", ");
-      lines.push(`• **${horse.number}** ${horse.emoji} ${total.toLocaleString()} koku · ${users}`);
+      const shown = horseBets.slice(0, MAX_BETTORS_PER_HORSE);
+      const hidden = horseBets.length - shown.length;
+      const users = shown
+        .map(b => `${escapeMarkdown(b.username)} (${b.amount.toLocaleString()} ${formatBetType(b.betType)})`)
+        .join(", ");
+      const overflow = hidden > 0 ? `, +${hidden} more` : "";
+      lines.push(`• **${horse.number}** ${horse.emoji} ${total.toLocaleString()} koku · ${users}${overflow}`);
     }
   } else {
     lines.push("\n*No bets yet. Be the first to place a bet!*");
@@ -465,6 +564,10 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
 }
 
 module.exports = {
+  summarizeBettors,
+  buildResultsSection,
+  fitDescription,
+  escapeMarkdown,
   generateHorses,
   determineWinner,
   determineTopThree,

@@ -5,7 +5,7 @@ const { openBetModal } = require("../../utils/betModal");
 const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
 const { applyRaceAggregates } = require("../../utils/guildStats");
-const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary } = require("../../utils/race");
+const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -13,6 +13,7 @@ const { getThemeColors, toEmbedColor } = require("../../themes/resolver");
 const { buildErrorEmbed } = require("../../utils/embeds");
 const wait = require("node:timers/promises").setTimeout;
 const { recordGameResult } = require("../../utils/gameResults");
+const PACKAGE_VERSION = require("../../package.json").version;
 
 const HOUSE_EDGE = RACE_HOUSE_EDGE ?? 0.10;
 const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
@@ -88,6 +89,19 @@ async function resolveRaceColors(userId) {
     loss: toEmbedColor(colors.textLoss, 0xFF0000),
     interrupted: toEmbedColor(colors.gold, 0xFFD700),
   };
+}
+
+// The race stopped without a result. Same author and footer as the panel it
+// replaces, so it does not read as a stray message.
+// eslint-disable-next-line no-multiline-comments
+function buildStoppedEmbed(client, game, description) {
+  return new EmbedBuilder()
+    .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+    .setTitle("Race Cancelled")
+    .setDescription(description)
+    .setColor(game.colors.interrupted)
+    .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+    .setTimestamp();
 }
 
 function buildLobbyEmbed(client, game) {
@@ -280,12 +294,11 @@ async function handleStartRace(interaction, client, user) {
           await db.sub(`${uid}.stats.race.totalBet`, amount);
         }
 
+        const refunded = Object.values(refundsByUser).reduce((sum, amount) => sum + amount, 0);
         await i.update({
-          embeds: [new EmbedBuilder()
-            .setTitle("Race Cancelled")
-            .setDescription("All bets have been refunded.")
-            .setColor(game.colors.interrupted)
-            .setTimestamp()],
+          embeds: [buildStoppedEmbed(client, game, refunded > 0
+            ? `Cancelled by **${game.creatorUsername}**. Refunded **${refunded.toLocaleString("en-US")}** ${CURRENCY_NAME} across ${game.bets.length} bet${game.bets.length === 1 ? "" : "s"}.`
+            : `Cancelled by **${game.creatorUsername}**. No bets to refund.`)],
           components: [],
         });
         if (client.raceGames.get(channelId) === game) client.raceGames.delete(channelId);
@@ -656,12 +669,8 @@ async function runRace(client, channel, message, game) {
   let finishOrder = [];
 
   if (game.bets.length === 0) {
-    const embed = new EmbedBuilder()
-      .setTitle("Race Cancelled")
-      .setDescription("No bets were placed. The race has been cancelled.")
-      .setColor(game.colors.interrupted)
-      .setTimestamp();
-    await message.edit({ embeds: [embed] }).catch(() => {});
+    const embed = buildStoppedEmbed(client, game, "Nobody put anything down, so the horses went home. Start another with `/race start`.");
+    await message.edit({ embeds: [embed], components: [] }).catch(() => {});
     return;
   }
 
@@ -889,28 +898,10 @@ async function runRace(client, channel, message, game) {
     `**Total paid:** ${totalPaid.toLocaleString("en-US")} ${CURRENCY_NAME}`,
   );
 
-  if (results.length > 0) {
-    resultsLines.push("");
-    resultsLines.push("**Results:**");
-    const sorted = [...results].sort((a, b) => {
-      if (a.won && !b.won) return -1;
-      if (!a.won && b.won) return 1;
-      return b.winnings - a.winnings;
-    });
-    for (const result of sorted) {
-      const horse = horses[result.horseIndex];
-      const betTypeLabel = formatBetType(result.betType);
-      const positionLabel = result.horsePosition === 0 ? "🥇" : (result.horsePosition === 1 ? "🥈" : (result.horsePosition === 2 ? "🥉" : ""));
-      if (result.won) {
-        resultsLines.push(`${positionLabel}✅ <@${result.userId}> won **${result.winnings.toLocaleString("en-US")}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})!`);
-      } else {
-        resultsLines.push(`❌ <@${result.userId}> lost **${result.amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on Horse ${horse.number} (${betTypeLabel})`);
-      }
-    }
-  }
+  const resultsSection = buildResultsSection(summarizeBettors(results), horses, CURRENCY_NAME);
 
   embed.setTitle("🏁 Race Results 🏁");
-  embed.setDescription(resultsLines.join("\n"));
+  embed.setDescription(fitDescription(resultsLines, resultsSection));
   // Results are collective, so the band stays the panel identity. Win and loss
   // color belongs in the DM, where the outcome is one person's.
   // eslint-disable-next-line no-multiline-comments
