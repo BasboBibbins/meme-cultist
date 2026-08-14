@@ -40,6 +40,18 @@ const ODDS_LABELS = [
   { threshold: 0,    label: "🔴 Outsider" },
 ];
 
+const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
+
+// A medal renders two cells wide, so an unranked lane needs six spaces to hold
+// the same column. test/unit/race.test.js asserts the two stay in step.
+// eslint-disable-next-line no-multiline-comments
+const RANK_BLANK = " ".repeat(6);
+
+function formatBetType(type) {
+  const t = (type || "win").toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 function shuffleArray(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -148,14 +160,15 @@ function determineTopThree(horses) {
   };
 }
 
-function buildTrack(progress, horseEmoji, trackLength = 20) {
-  if (progress >= 100) {
-    return `|${"—".repeat(trackLength)}${horseEmoji}|🏁`;
-  }
+const TRACK_RAIL = "─";
 
-  const pos    = Math.min(trackLength - 1, Math.floor((progress / 100) * trackLength));
-  const before = "—".repeat(pos);
-  const after  = "—".repeat(trackLength - 1 - pos);
+function buildTrack(progress, horseEmoji, trackLength = 20) {
+  const pos = progress >= 100
+    ? trackLength - 1
+    : Math.min(trackLength - 1, Math.floor((progress / 100) * trackLength));
+
+  const before = TRACK_RAIL.repeat(pos);
+  const after  = TRACK_RAIL.repeat(trackLength - 1 - pos);
 
   return `|${before}${horseEmoji}${after}|🏁`;
 }
@@ -166,8 +179,8 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
   const isFinished = winnerIndex !== null;
   lines.push(
     isFinished
-      ? "🏁 **RACE FINISHED** 🏁\n"
-      : `🏁 **RACE IN PROGRESS — Lap ${tick}/${totalTicks}** 🏁\n`
+      ? "RACE FINISHED\n"
+      : `RACE IN PROGRESS      Lap ${tick}/${totalTicks}\n`
   );
 
   const sortedIndices = horses.map((_, i) => i).sort((a, b) => horses[a].number - horses[b].number);
@@ -217,9 +230,10 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
   }
 
   for (const i of sortedIndices) {
-    const medal = medalMap.get(i) ?? "  ";
+    const rank = RANK_LABELS[medalMap.get(i)] ?? RANK_BLANK;
     const track = buildTrack(positions[i], horses[i].emoji);
-    lines.push(`${medal} **${horses[i].number}.** ${track}  **[${horses[i].displayOdds}x]**`);
+    const odds = `${horses[i].displayOdds}x`.padStart(6, " ");
+    lines.push(`${rank} ${horses[i].number} ${track}${odds}`);
   }
 
   return lines.join("\n");
@@ -230,8 +244,11 @@ function buildBettingDescription(horses, bets, endTime) {
 
   const sortedHorses = [...horses].sort((a, b) => a.number - b.number);
 
+  const nameWidth = Math.max(...sortedHorses.map(h => h.name.length));
+
   for (const horse of sortedHorses) {
-    lines.push(`${horse.number}. ${horse.name} ${horse.emoji}  [${horse.displayOdds}x]  ${getOddsLabel(horse.probability)}`);
+    const odds = `${horse.displayOdds}x`.padStart(6, " ");
+    lines.push(`${horse.number} ${horse.emoji} ${horse.name.padEnd(nameWidth, " ")}${odds}  ${getOddsLabel(horse.probability)}`);
   }
   lines.push("```");
 
@@ -250,9 +267,17 @@ function buildBettingDescription(horses, bets, endTime) {
     for (const horseIdx of sortedHorseIndices) {
       const horse = horses[horseIdx];
       const horseBets = betsByHorse[horseIdx];
+      const label = b => `${b.username} (${formatBetType(b.betType)})`;
+
+      if (horseBets.length === 1) {
+        const bet = horseBets[0];
+        lines.push(`• **${horse.number}** ${horse.emoji} ${bet.amount.toLocaleString()} koku · ${label(bet)}`);
+        continue;
+      }
+
       const total = horseBets.reduce((sum, b) => sum + b.amount, 0);
-      const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()} ${(b.betType || "win").charAt(0).toUpperCase() + (b.betType || "win").slice(1)})`).join(", ");
-      lines.push(`• **Horse ${horse.number}** (${horse.name}) — ${total.toLocaleString()} koku | ${users}`);
+      const users = horseBets.map(b => `${b.username} (${b.amount.toLocaleString()} ${formatBetType(b.betType)})`).join(", ");
+      lines.push(`• **${horse.number}** ${horse.emoji} ${total.toLocaleString()} koku · ${users}`);
     }
   } else {
     lines.push("\n*No bets yet. Be the first to place a bet!*");

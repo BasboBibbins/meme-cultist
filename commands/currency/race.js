@@ -686,7 +686,7 @@ async function runRace(client, channel, message, game) {
     const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, finishOrder, game.topThree);
     const commentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
     embed.setTitle(commentary);
-    embed.setDescription(description);
+    embed.setDescription(`\`\`\`\n${description}\n\`\`\``);
 
     if (tick === 1) {
       raceMessage = await repostRaceMessage(channel, message, { embeds: [embed] });
@@ -877,7 +877,7 @@ async function runRace(client, channel, message, game) {
   ];
   for (let pos = 0; pos < finishOrder.length; pos++) {
     const horse = horses[finishOrder[pos]];
-    resultsLines.push(`${positionPrefix(pos)} **Horse ${horse.number} — ${horse.name}** ${horse.emoji} [${horse.displayOdds}x]`);
+    resultsLines.push(`${positionPrefix(pos)} **Horse ${horse.number}: ${horse.name}** ${horse.emoji} [${horse.displayOdds}x]`);
   }
   resultsLines.push(
     "",
