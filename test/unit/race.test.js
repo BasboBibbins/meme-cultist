@@ -357,4 +357,49 @@ describe("advanceRace", () => {
     for (let tick = 1; tick <= 15; tick++) advanceRace(horses, positions, podiumOnly, tick, 15);
     expect(orderOf(positions).slice(0, 3)).toEqual([topThree.firstIndex, topThree.secondIndex, topThree.thirdIndex]);
   });
+
+  function cellTrack(totalTicks) {
+    const horses = generateHorses();
+    const topThree = determineTopThree(horses);
+    const positions = new Array(8).fill(0);
+    const cells = Array.from({ length: 8 }, () => [0]);
+    for (let tick = 1; tick <= totalTicks; tick++) {
+      advanceRace(horses, positions, topThree, tick, totalTicks);
+      positions.forEach((p, i) => cells[i].push(p >= 100 ? 20 : Math.floor((p / 100) * 20)));
+    }
+    return cells;
+  }
+
+  test.each([5, 10, 15, 20, 27])("never stalls a horse for two laps at %i ticks", totalTicks => {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      for (const lane of cellTrack(totalTicks)) {
+        for (let k = 2; k < lane.length; k++) {
+          expect(lane[k] - lane[k - 2]).toBeGreaterThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  test("never holds a horse on one cell for more than a single lap", () => {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      for (const lane of cellTrack(15)) {
+        let held = 0;
+        for (let k = 1; k < lane.length; k++) {
+          held = lane[k] === lane[k - 1] ? held + 1 : 0;
+          expect(held).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  test("still advances every horse on every single tick", () => {
+    const horses = generateHorses();
+    const topThree = determineTopThree(horses);
+    const positions = new Array(8).fill(0);
+    for (let tick = 1; tick <= 15; tick++) {
+      const before = positions.slice();
+      advanceRace(horses, positions, topThree, tick, 15);
+      positions.forEach((p, i) => expect(p).toBeGreaterThan(before[i]));
+    }
+  });
 });

@@ -399,6 +399,14 @@ function landingFor(rank) {
   return 100 - rank * FINISH_SEPARATION;
 }
 
+// Half a rendered cell, so every horse gains at least one cell every two laps.
+const MIN_STEP = 2.5;
+
+// The back marker's whole journey sets the ceiling on what a floor can promise.
+function minimumStep(horseCount, totalTicks) {
+  return Math.min(MIN_STEP, landingFor(horseCount - 1) / totalTicks);
+}
+
 // Pace alone until here, so an outsider can lead early and still fade.
 const CONVERGENCE_START = 0.55;
 
@@ -430,6 +438,9 @@ function advanceRace(horses, positions, topThree, tick = 1, totalTicks = 10) {
   // Derived per tick so any configured tick count covers the track.
   const baseSpeed = NOMINAL_PACE_DISTANCE / totalTicks;
 
+  const minStep = minimumStep(horses.length, totalTicks);
+  const ticksAfterThis = Math.max(0, totalTicks - tick);
+
   for (let i = 0; i < horses.length; i++) {
     const rank = rankOf.get(i) ?? horses.length - 1;
     const landing = landingFor(rank);
@@ -448,7 +459,11 @@ function advanceRace(horses, positions, topThree, tick = 1, totalTicks = 10) {
       else speed *= 1 - 0.85 * weight;
     }
 
-    positions[i] = Math.min(landing, positions[i] + Math.max(0, speed));
+    // Reserving minStep for every later tick is what stops a horse arriving
+    // early and then standing still.
+    const remaining = landing - positions[i];
+    const ceiling = Math.max(minStep, remaining - minStep * ticksAfterThis);
+    positions[i] = Math.min(landing, positions[i] + Math.min(Math.max(speed, minStep), ceiling));
   }
 
   if (isFinalTick) {
