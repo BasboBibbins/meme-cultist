@@ -6,8 +6,9 @@ const { buildBaseEmbed, buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed, COLO
 const { sendDM } = require("../../utils/dm");
 const { chatWithSchema } = require("../../utils/schemas");
 const {
-  TYPE_LABELS, TYPE_GLYPHS, EMBED_DESCRIPTION_LIMIT, FEEDBACK_FIELDS,
-  buildFeedbackModal, composeDescription, clamp, descriptionFallbackTitle,
+  TYPE_LABELS, TYPE_GLYPHS, EMBED_DESCRIPTION_LIMIT, buildFeedbackModal,
+  readFeedbackType, readFeedbackValues, readScreenshotUrl,
+  composeDescription, clamp, descriptionFallbackTitle,
 } = require("../../utils/feedbackForm");
 const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
@@ -321,27 +322,13 @@ function buildOutcomeEmbed(user, client, { type, description, githubResult, owne
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("feedback")
-    .setDescription("Send feedback. Bugs and suggestions open a public GitHub issue credited to you.")
-    .addStringOption(option =>
-      option.setName("type")
-        .setDescription("The type of feedback")
-        .setRequired(true)
-        .addChoices(
-          { name: "Bug Report", value: "bug" },
-          { name: "Feature Suggestion", value: "suggestion" },
-          { name: "General Feedback", value: "general" }
-        ))
-    .addAttachmentOption(option =>
-      option.setName("screenshot")
-        .setDescription("Optional screenshot — worth a thousand words on a broken render")
-        .setRequired(false)),
+    .setDescription("Report a bug, pitch an idea, or just say something."),
   async execute(interaction) {
-    const type = interaction.options.getString("type");
-    const screenshot = interaction.options.getAttachment("screenshot");
-
     // showModal must be the initial response, so nothing may defer before this.
+    // Kind and screenshot are collected inside the form rather than as command
+    // options, so the whole submission is one step.
     const modalId = `feedback:${interaction.id}`;
-    await interaction.showModal(buildFeedbackModal(type, modalId));
+    await interaction.showModal(buildFeedbackModal(modalId));
 
     let submit;
     try {
@@ -355,11 +342,8 @@ module.exports = {
 
     await submit.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const values = {};
-    for (const spec of FEEDBACK_FIELDS[type]) {
-      values[spec.id] = submit.fields.getTextInputValue(spec.id);
-    }
-    const description = composeDescription(type, values);
+    const type = readFeedbackType(submit);
+    const description = composeDescription(readFeedbackValues(submit));
     const user = submit.user;
     const client = submit.client;
     const base = {
@@ -368,7 +352,7 @@ module.exports = {
       username: user.displayName,
       userId: user.id,
       guildName: interaction.guild?.name || "DM",
-      screenshotUrl: screenshot?.url || null,
+      screenshotUrl: readScreenshotUrl(submit),
     };
 
     // Discord's required-field check passes on whitespace, so catch the empty
