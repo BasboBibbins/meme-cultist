@@ -1,4 +1,5 @@
 const {
+  advanceRace,
   buildTrack,
   buildRaceDescription,
   buildBettingDescription,
@@ -10,9 +11,7 @@ const {
   escapeMarkdown,
 } = require("../../utils/race");
 
-// Discord renders emoji at roughly two monospace cells, so column alignment
-// depends on grapheme width rather than string length.
-// eslint-disable-next-line no-multiline-comments
+// Emoji render at roughly two monospace cells.
 const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
 
 function cellWidth(line) {
@@ -22,9 +21,7 @@ function cellWidth(line) {
   );
 }
 
-// The narrowest Discord mobile client fits roughly this many monospace cells
-// before a code block starts scrolling horizontally.
-// eslint-disable-next-line no-multiline-comments
+// Cells the narrowest mobile client fits before a code block scrolls.
 const MOBILE_CELL_BUDGET = 42;
 
 function makeHorses() {
@@ -40,9 +37,7 @@ function trackLines(description) {
   return description.split("\n").filter(line => line.includes("|"));
 }
 
-// Alignment is only promised up to the odds column. Anything trailing it is
-// allowed to be ragged, which is why the rank marker lives there.
-// eslint-disable-next-line no-multiline-comments
+// Alignment is only promised up to the odds column.
 function alignedWidth(line) {
   const match = line.match(/\d+(\.\d+)?x/);
   return cellWidth(line.slice(0, match.index + match[0].length));
@@ -277,5 +272,89 @@ describe("escapeMarkdown", () => {
     const horses = makeHorses();
     const bets = [{ userId: "1", username: "**everyone**", horseIndex: 0, amount: 10, betType: "win" }];
     expect(buildBettingDescription(horses, bets, Date.now())).toContain("\\*\\*everyone\\*\\*");
+  });
+});
+
+describe("advanceRace", () => {
+  function runRace(totalTicks) {
+    const horses = generateHorses();
+    const topThree = determineTopThree(horses);
+    const positions = new Array(8).fill(0);
+    const frames = [];
+    for (let tick = 1; tick <= totalTicks; tick++) {
+      advanceRace(horses, positions, topThree, tick, totalTicks);
+      frames.push(positions.slice());
+    }
+    return { horses, topThree, positions, frames };
+  }
+
+  function orderOf(positions) {
+    return positions.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
+  }
+
+  test.each([5, 10, 15, 20, 30])("lands the predetermined order with %i ticks", totalTicks => {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { topThree, positions } = runRace(totalTicks);
+      expect(orderOf(positions)).toEqual(topThree.finishOrder);
+    }
+  });
+
+  test("never moves a horse backwards", () => {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { frames } = runRace(15);
+      for (let f = 1; f < frames.length; f++) {
+        for (let i = 0; i < 8; i++) {
+          expect(frames[f][i]).toBeGreaterThanOrEqual(frames[f - 1][i]);
+        }
+      }
+    }
+  });
+
+  test("gives every horse its own track cell at the finish", () => {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { positions } = runRace(15);
+      const cells = positions.map(p => (p >= 100 ? 20 : Math.floor((p / 100) * 20)));
+      expect(new Set(cells).size).toBe(8);
+    }
+  });
+
+  test("only the winner crosses the line during the animation", () => {
+    const { topThree, positions } = runRace(15);
+    const crossed = positions.map((p, i) => [p, i]).filter(([p]) => p >= 100).map(([, i]) => i);
+    expect(crossed).toEqual([topThree.firstIndex]);
+  });
+
+  test("keeps the field unresolved through the first half", () => {
+    let earlyLeaderWasWinner = 0;
+    const attempts = 200;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const horses = generateHorses();
+      const topThree = determineTopThree(horses);
+      const positions = new Array(8).fill(0);
+      for (let tick = 1; tick <= 8; tick++) advanceRace(horses, positions, topThree, tick, 15);
+      if (orderOf(positions)[0] === topThree.firstIndex) earlyLeaderWasWinner += 1;
+    }
+    // Was 95.9% before pace archetypes. Chance alone would be 12.5%.
+    expect(earlyLeaderWasWinner / attempts).toBeLessThan(0.45);
+  });
+
+  test("assigns every horse a pace style", () => {
+    const styles = new Set(generateHorses().map(h => h.style));
+    for (const style of styles) {
+      expect(["front", "fader", "closer", "steady"]).toContain(style);
+    }
+  });
+
+  test("still works for a caller that only carries the podium", () => {
+    const horses = generateHorses();
+    const topThree = determineTopThree(horses);
+    const positions = new Array(8).fill(0);
+    const podiumOnly = {
+      firstIndex: topThree.firstIndex,
+      secondIndex: topThree.secondIndex,
+      thirdIndex: topThree.thirdIndex,
+    };
+    for (let tick = 1; tick <= 15; tick++) advanceRace(horses, positions, podiumOnly, tick, 15);
+    expect(orderOf(positions).slice(0, 3)).toEqual([topThree.firstIndex, topThree.secondIndex, topThree.thirdIndex]);
   });
 });

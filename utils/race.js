@@ -40,14 +40,10 @@ const ODDS_LABELS = [
   { threshold: 0,    label: "🔴 Outsider" },
 ];
 
-// Trails the lane rather than leading it: a medal is not reliably two monospace
-// cells, so anything after it would sit ragged on some clients.
-// eslint-disable-next-line no-multiline-comments
+// Trails the lane: a medal is not reliably two monospace cells.
 const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
 
-// Discord's own description cap is 4096. The headroom absorbs the mention
-// expansion and any trailing notice appended after the fit check.
-// eslint-disable-next-line no-multiline-comments
+// Headroom under Discord's 4096 cap for mention expansion.
 const RESULTS_DESCRIPTION_LIMIT = 3900;
 const MAX_RESULT_LINES = 12;
 const MAX_BETTORS_PER_HORSE = 6;
@@ -62,9 +58,6 @@ function escapeMarkdown(text) {
   return String(text).replace(/([\\*_~`|])/g, "\\$1");
 }
 
-// One entry per bettor rather than per bet, so a user with six bets costs one
-// line instead of six.
-// eslint-disable-next-line no-multiline-comments
 function summarizeBettors(results) {
   const byUser = new Map();
 
@@ -121,9 +114,7 @@ function buildResultsSection(bettors, horses, currencyName, maxLines = MAX_RESUL
   return lines;
 }
 
-// Drops result lines from the bottom until the whole description fits, so a
-// race can never fail to post because too many people bet on it.
-// eslint-disable-next-line no-multiline-comments
+// Trims from the bottom so a busy race can never fail to post.
 function fitDescription(headLines, sectionLines, limit = RESULTS_DESCRIPTION_LIMIT) {
   const section = [...sectionLines];
   let dropped = 0;
@@ -193,6 +184,7 @@ function generateHorses() {
       number: numbers[i],
       name: usesAdj ? `${adj[i]} ${noun[i]}` : noun[i],
       emoji: EMOJIS[i],
+      style: PACE_STYLES[Math.floor(Math.random() * PACE_STYLES.length)],
       form,
       probability,
       displayOdds,
@@ -388,32 +380,84 @@ function buildBettingDescription(horses, bets, endTime) {
   return lines.join("\n");
 }
 
-function advanceRace(horses, positions, topThree) {
+// Cosmetic: each curve averages ~1.0, so style never decides the finish.
+const PACE_CURVES = {
+  front:  u => 1.45 - 0.90 * u,
+  fader:  u => 1.60 - 1.30 * u,
+  closer: u => 0.60 + 0.95 * u,
+  steady: u => 1.00 + 0.15 * Math.sin(u * Math.PI),
+};
+
+const PACE_STYLES = Object.keys(PACE_CURVES);
+
+// Wider than one track cell (5%), or ranks stack on the closing frame.
+const FINISH_SEPARATION = 4.5;
+const NOMINAL_PACE_DISTANCE = 92;
+
+// Capping here lets the last tick place the field without reversing anyone.
+function landingFor(rank) {
+  return 100 - rank * FINISH_SEPARATION;
+}
+
+// Pace alone until here, so an outsider can lead early and still fade.
+const CONVERGENCE_START = 0.55;
+
+function convergenceWeight(u) {
+  if (u <= CONVERGENCE_START) return 0;
+  return Math.pow((u - CONVERGENCE_START) / (1 - CONVERGENCE_START), 2);
+}
+
+function rankOrder(topThree, horseCount) {
+  const order = topThree?.finishOrder;
+  if (Array.isArray(order) && order.length === horseCount) return order;
+
+  // Older callers only carried the podium, so fill the rest by index.
+  const podium = [topThree?.firstIndex, topThree?.secondIndex, topThree?.thirdIndex].filter(i => Number.isInteger(i));
+  const rest = Array.from({ length: horseCount }, (_, i) => i).filter(i => !podium.includes(i));
+  return [...podium, ...rest];
+}
+
+function advanceRace(horses, positions, topThree, tick = 1, totalTicks = 10) {
+  const finishOrder = rankOrder(topThree, horses.length);
+  const rankOf = new Map(finishOrder.map((horseIndex, rank) => [horseIndex, rank]));
+
+  const u = Math.min(1, tick / totalTicks);
+  const weight = convergenceWeight(u);
+  const isFinalTick = tick >= totalTicks;
   const newFinishers = [];
+  const crossed = [];
+
+  // Derived per tick so any configured tick count covers the track.
+  const baseSpeed = NOMINAL_PACE_DISTANCE / totalTicks;
 
   for (let i = 0; i < horses.length; i++) {
-    const prevProgress = positions[i];
-    // Base advancement with reduced randomness
-    let advance = 6 + Math.random() * 4; // 6-10, avg 8
+    const rank = rankOf.get(i) ?? horses.length - 1;
+    const landing = landingFor(rank);
+    const pace = PACE_CURVES[horses[i].style] ?? PACE_CURVES.steady;
 
-    // Strong deterministic boosts for predetermined top 3
-    // This ensures they finish in correct order
-    if (i === topThree.firstIndex) {
-      advance += 5 + Math.random() * 2; // +5-7, ensures 1st place
-    } else if (i === topThree.secondIndex) {
-      advance += 3 + Math.random() * 2; // +3-5, ensures 2nd place
-    } else if (i === topThree.thirdIndex) {
-      advance += 1 + Math.random() * 2; // +1-3, ensures 3rd place
+    // Cosmetic drift only: convergence decides the finish.
+    const formBias = 1 + ((horses[i].form ?? 50) / 100 - 0.5) * 0.12;
+    const jitter = 0.78 + Math.random() * 0.44;
+
+    let speed = baseSpeed * pace(u) * jitter * formBias;
+
+    if (weight > 0) {
+      const gap = landing * u - positions[i];
+      // Leaders tire rather than reverse, so a lane never runs backwards.
+      if (gap > 0) speed += gap * weight * 0.55;
+      else speed *= 1 - 0.85 * weight;
     }
 
-    // Form bonus (smaller impact, doesn't override predetermined order)
-    advance += (horses[i].form / 100) * 1.5;
+    positions[i] = Math.min(landing, positions[i] + Math.max(0, speed));
+  }
 
-    positions[i] = Math.min(100, positions[i] + advance);
-
-    if (prevProgress < 100 && positions[i] >= 100) {
-      newFinishers.push(i);
-    }
+  if (isFinalTick) {
+    finishOrder.forEach((horseIndex, rank) => {
+      const landing = landingFor(rank);
+      if (positions[horseIndex] < 100 && landing >= 100) crossed.push(horseIndex);
+      positions[horseIndex] = landing;
+    });
+    newFinishers.push(...crossed);
   }
 
   return { positions, newFinishers };

@@ -91,9 +91,7 @@ async function resolveRaceColors(userId) {
   };
 }
 
-// The race stopped without a result. Same author and footer as the panel it
-// replaces, so it does not read as a stray message.
-// eslint-disable-next-line no-multiline-comments
+// Carries the panel's author and footer so it is not read as a stray message.
 function buildStoppedEmbed(client, game, description) {
   return new EmbedBuilder()
     .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
@@ -684,7 +682,7 @@ async function runRace(client, channel, message, game) {
   let raceMessage = null;
 
   for (let tick = 1; tick <= ANIMATION_TICKS; tick++) {
-    const result = advanceRace(horses, positions, game.topThree);
+    const result = advanceRace(horses, positions, game.topThree, tick, ANIMATION_TICKS);
 
     for (const idx of result.newFinishers) {
       if (!finishOrder.includes(idx)) {
@@ -902,9 +900,7 @@ async function runRace(client, channel, message, game) {
 
   embed.setTitle("🏁 Race Results 🏁");
   embed.setDescription(fitDescription(resultsLines, resultsSection));
-  // Results are collective, so the band stays the panel identity. Win and loss
-  // color belongs in the DM, where the outcome is one person's.
-  // eslint-disable-next-line no-multiline-comments
+  // Collective outcome, so win and loss color belongs in the DM instead.
   embed.setColor(game.colors.identity);
 
   // Reposted again so the outcome cannot be buried by traffic during the run.
