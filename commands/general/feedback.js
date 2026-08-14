@@ -2,9 +2,13 @@ const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { QuickDB } = require("quick.db");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
-const { buildBaseEmbed, buildErrorEmbed, buildInfoEmbed, COLORS } = require("../../utils/embeds");
+const { buildBaseEmbed, buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed, COLORS } = require("../../utils/embeds");
 const { sendDM } = require("../../utils/dm");
 const { chatWithSchema } = require("../../utils/schemas");
+const {
+  TYPE_LABELS, TYPE_GLYPHS, EMBED_DESCRIPTION_LIMIT, FEEDBACK_FIELDS,
+  buildFeedbackModal, composeDescription, clamp, descriptionFallbackTitle,
+} = require("../../utils/feedbackForm");
 const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
 const feedbackDb = new QuickDB({ filePath: "./db/feedback.sqlite" });
@@ -39,29 +43,47 @@ function cleanMarkdownCode(content) {
   return content;
 }
 
+const COMPONENTS = ["chatbot", "games", "themes", "general"];
+const MODAL_TIMEOUT_MS = 10 * 60 * 1000;
+
+// An LLM outage is not evidence the submission was bad, so no unrecoverable
+// branch may reject a user's feedback.
+function failOpen(reason) {
+  return { valid: true, reason, category: "unknown", component: "general" };
+}
+
 async function validateFeedback(type, description, username) {
-  if (!llmAvailable()) return { valid: true, reason: "API unavailable", category: "unknown" };
+  if (!llmAvailable()) return failOpen("API unavailable");
 
-  const typeLabels = { bug: "Bug Report", suggestion: "Feature Suggestion", general: "General Feedback" };
-
+  // Keys and types must match schemas/feedback-validation.json — it is
+  // additionalProperties:false with all four required, so omitting them here
+  // fails validation on every call.
   const prompt = `You are a content moderator. Analyze this feedback and respond with ONLY valid JSON.
 
-Feedback Type: ${typeLabels[type]}
+Feedback Type: ${TYPE_LABELS[type]}
 From User: ${username}
 Content: "${description}"
 
-Classify validity:
+Respond with a JSON object containing exactly these four keys:
+- "valid": boolean — true if the feedback is legitimate, false otherwise.
+- "reason": string — a brief explanation of your decision, or "" if legitimate.
+- "category": string — one of "legitimate", "spam", "abusive", "nonsense", "empty".
+- "component": string — one of "chatbot", "games", "themes", "general".
+
+Category meanings:
 - legitimate: genuine bug reports, feature suggestions, or constructive feedback.
 - spam: repetitive, advertisements, gibberish.
 - abusive: harassment, threats, hate speech.
 - nonsense: random characters, meaningless.
 - empty: < 5 characters of content.
 
-Classify component (what part of the bot this relates to):
+Component meanings (what part of the bot this relates to):
 - chatbot: AI chatbot, memory, personas, knowledge base, reminders, chat behaviour.
 - games: casino games (craps, duel, slots, blackjack, poker, roulette, race, shop).
 - themes: visual appearance, cosmetics, card art, table colours.
-- general: bot-wide issues, currency/economy, commands not covered above, or unclear.`;
+- general: bot-wide issues, currency/economy, commands not covered above, or unclear.
+
+Example: {"valid": true, "reason": "", "category": "legitimate", "component": "games"}`;
 
   try {
     const response = await chatWithSchema({
@@ -71,7 +93,9 @@ Classify component (what part of the bot this relates to):
         { role: "system", content: "You respond only with valid JSON." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 150,
+      // Reasoning tokens eat ~100 of the completion budget before any content
+      // is emitted, so a tighter cap truncates the JSON mid-object.
+      max_tokens: 500,
       temperature: 0.1,
       label: "validateFeedback",
       variant: "validate_feedback",
@@ -82,12 +106,27 @@ Classify component (what part of the bot this relates to):
     }
     logger.warn(`[Feedback] Schema validation failed: ${response.schemaError}. Falling back to legacy parser.`);
     let content = response.result.content?.trim();
-    if (!content) return { valid: false, reason: "Empty response", category: "unknown" };
+    if (!content) return failOpen("Empty response");
     content = cleanMarkdownCode(content);
-    return JSON.parse(content);
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (error) {
+      logger.warn(`[Feedback] Legacy parse failed: ${error.message}`);
+      return failOpen("Unparseable response");
+    }
+    // A schema-invalid object still parses, so nothing below is trusted untyped.
+    if (typeof parsed.valid !== "boolean") return failOpen("Malformed response");
+    return {
+      valid: parsed.valid,
+      reason: typeof parsed.reason === "string" ? parsed.reason : "",
+      category: typeof parsed.category === "string" ? parsed.category : "unknown",
+      // Component becomes a GitHub label; an invented one fails issue creation.
+      component: COMPONENTS.includes(parsed.component) ? parsed.component : "general",
+    };
   } catch (error) {
     logger.error(`[Feedback] Validation error: ${error.message}`);
-    return { valid: false, reason: "Validation failed", category: "error" };
+    return failOpen("Validation unavailable");
   }
 }
 
@@ -99,49 +138,47 @@ async function notifyOwner(client, feedback) {
       return false;
     }
 
-    const typeLabels = {
-      bug: "🐛 Bug Report",
-      suggestion: "💡 Feature Suggestion",
-      general: "💬 General Feedback"
-    };
-
     const fakeUser = { displayName: feedback.username, displayAvatarURL: () => feedback.avatarURL };
     const color = feedback.type === "bug" ? COLORS.error : feedback.type === "suggestion" ? COLORS.success : COLORS.primary;
     const embed = buildBaseEmbed(fakeUser, client)
       .setAuthor({ name: `New Feedback from ${feedback.username}`, iconURL: feedback.avatarURL })
-      .setTitle(typeLabels[feedback.type])
-      .setDescription(feedback.description)
+      .setTitle(`${TYPE_GLYPHS[feedback.type]} ${TYPE_LABELS[feedback.type]}`)
+      .setDescription(clamp(feedback.description, EMBED_DESCRIPTION_LIMIT))
       .setColor(color)
       .addFields(
         { name: "User", value: `${feedback.username} (${feedback.userId})`, inline: true },
-        { name: "Category", value: feedback.category, inline: true },
+        { name: "Category", value: feedback.category || "unknown", inline: true },
         { name: "Component", value: feedback.component || "general", inline: true },
         { name: "Guild", value: feedback.guildName || "Unknown", inline: true }
       );
 
+    // Without this the operator cannot tell a screened submission from one the
+    // moderator failed open on — both read as "unknown".
+    if (feedback.category === "unknown" && feedback.validationReason) {
+      embed.addFields({ name: "Not screened", value: clamp(feedback.validationReason, 1024) });
+    }
+
+    if (feedback.screenshotUrl) embed.setImage(feedback.screenshotUrl);
+
     if (feedback.type === "bug" || feedback.type === "suggestion") {
       embed.addFields({
         name: "GitHub Issue",
-        value: feedback.issueUrl || `Failed: ${feedback.githubError || "Unknown error"}`
+        value: clamp(feedback.issueUrl || `Failed: ${feedback.githubError || "Unknown error"}`, 1024)
       });
     }
 
-    await sendDM(owner, { embeds: [embed] });
+    const sent = await sendDM(owner, { embeds: [embed] });
+    // sendDM returns null when the owner disabled DMs or the send threw, so an
+    // unchecked call reports success for a message that was never delivered.
+    if (!sent) {
+      logger.warn("[Feedback] Owner DM was not delivered.");
+      return false;
+    }
     return true;
   } catch (error) {
     logger.error(`[Feedback] Failed to DM owner: ${error.message}`);
     return false;
   }
-}
-
-// Extract the first complete sentence from a description and cap it at maxLen
-// characters on a word boundary. Used as a fallback when the LLM returns empty.
-function descriptionFallbackTitle(description, maxLen = 100) {
-  const first = description.split(/[.!?\n]/)[0].trim();
-  if (first.length <= maxLen) return first;
-  const cut = first.slice(0, maxLen);
-  const lastSpace = cut.lastIndexOf(" ");
-  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
 }
 
 async function generateIssueTitle(type, description) {
@@ -208,7 +245,7 @@ async function createGitHubIssue(feedback) {
 ### Description
 
 ${feedback.description}
-
+${feedback.screenshotUrl ? `\n### Screenshot\n\n![screenshot](${feedback.screenshotUrl})\n` : ""}
 ---
 *This issue was automatically created from Discord feedback.*`;
 
@@ -241,20 +278,50 @@ ${feedback.description}
   }
 }
 
+// Returns false rather than throwing: this runs after the user has already been
+// acknowledged, and an unhandled throw here reports nothing to anyone.
 async function storeFeedback(feedback) {
   const id = `${Date.now()}-${feedback.userId}`;
-  await feedbackDb.set(id, {
-    ...feedback,
-    timestamp: Date.now(),
-    stored: true
-  });
-  return id;
+  try {
+    await feedbackDb.set(id, {
+      ...feedback,
+      timestamp: Date.now(),
+      stored: true
+    });
+    return true;
+  } catch (error) {
+    logger.error(`[Feedback] Failed to store feedback ${id}: ${error.message}`);
+    return false;
+  }
+}
+
+function buildOutcomeEmbed(user, client, { type, description, githubResult, ownerNotified, stored }) {
+  const body = clamp(description, EMBED_DESCRIPTION_LIMIT);
+  const title = `${TYPE_GLYPHS[type]} ${TYPE_LABELS[type]}`;
+
+  if (githubResult?.url) {
+    return buildSuccessEmbed(user, client, body)
+      .setTitle(title)
+      .addFields({ name: "Filed", value: `[Issue #${githubResult.number}](${githubResult.url})`, inline: true });
+  }
+  if (ownerNotified) {
+    return buildSuccessEmbed(user, client, body)
+      .setTitle(title)
+      .addFields({ name: "Sent", value: "Straight to the owner's DMs.", inline: true });
+  }
+  if (stored) {
+    return buildInfoEmbed(user, client, body, COLORS.warning)
+      .setTitle(title)
+      .addFields({ name: "Saved", value: `Couldn't reach the owner, so it's on disk. Poke <@${OWNER_ID}> if it's urgent.`, inline: false });
+  }
+  return buildErrorEmbed(user, client, `${body}\n\n**Nothing saved.** Copy your text above and send it to <@${OWNER_ID}> directly.`)
+    .setTitle(title);
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("feedback")
-    .setDescription("Submit feedback, bug reports, or feature suggestions for the bot.")
+    .setDescription("Send feedback. Bugs and suggestions open a public GitHub issue credited to you.")
     .addStringOption(option =>
       option.setName("type")
         .setDescription("The type of feedback")
@@ -264,74 +331,105 @@ module.exports = {
           { name: "Feature Suggestion", value: "suggestion" },
           { name: "General Feedback", value: "general" }
         ))
-    .addStringOption(option =>
-      option.setName("description")
-        .setDescription("Describe your feedback in detail")
-        .setRequired(true)),
+    .addAttachmentOption(option =>
+      option.setName("screenshot")
+        .setDescription("Optional screenshot — worth a thousand words on a broken render")
+        .setRequired(false)),
   async execute(interaction) {
     const type = interaction.options.getString("type");
-    const description = interaction.options.getString("description");
-    const typeLabels = { bug: "Bug Report", suggestion: "Feature Suggestion", general: "General Feedback" };
+    const screenshot = interaction.options.getAttachment("screenshot");
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // showModal must be the initial response, so nothing may defer before this.
+    const modalId = `feedback:${interaction.id}`;
+    await interaction.showModal(buildFeedbackModal(type, modalId));
 
-    const validation = await validateFeedback(type, description, interaction.user.displayName);
-
-    if (!validation.valid) {
-      await interaction.editReply({
-        embeds: [buildErrorEmbed(interaction.user, interaction.client, `Your feedback was flagged as **${validation.category}**.\n\nReason: ${validation.reason}`)
-          .setAuthor({ name: "Feedback Rejected", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-          .setTitle("Unable to Submit Feedback")],
+    let submit;
+    try {
+      submit = await interaction.awaitModalSubmit({
+        filter: m => m.customId === modalId && m.user.id === interaction.user.id,
+        time: MODAL_TIMEOUT_MS,
       });
-      logger.log(`[Feedback] Rejected (${validation.category}) from ${interaction.user.displayName}: ${description.slice(0, 50)}...`);
+    } catch {
+      return; // dismissed or timed out — the user chose not to send anything
+    }
+
+    await submit.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const values = {};
+    for (const spec of FEEDBACK_FIELDS[type]) {
+      values[spec.id] = submit.fields.getTextInputValue(spec.id);
+    }
+    const description = composeDescription(type, values);
+    const user = submit.user;
+    const client = submit.client;
+    const base = {
+      type,
+      description,
+      username: user.displayName,
+      userId: user.id,
+      guildName: interaction.guild?.name || "DM",
+      screenshotUrl: screenshot?.url || null,
+    };
+
+    // Discord's required-field check passes on whitespace, so catch the empty
+    // case locally rather than spending two LLM calls to be told it is empty.
+    if (!description) {
+      await submit.editReply({
+        embeds: [buildErrorEmbed(user, client, "That came through blank. Run it again and put something in the box.")
+          .setTitle("Nothing to send")],
+      });
       return;
     }
 
-    await interaction.editReply({
-      embeds: [buildInfoEmbed(interaction.user, interaction.client, description)
-        .setAuthor({ name: "Feedback Received", iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
-        .setTitle(typeLabels[type])
-        .addFields({ name: "Status", value: "Pending review", inline: true })
-        .setFooter({ text: `From ${interaction.user.displayName} (${interaction.user.id})` })],
+    const validation = await validateFeedback(type, description, user.displayName);
+
+    if (!validation.valid) {
+      const reason = clamp((validation.reason || "").trim(), 500) || "That didn't read as real feedback.";
+      // The draft is echoed back because the modal's contents are gone the moment
+      // it closes, and retyping from memory is how a rejection becomes an exit.
+      await submit.editReply({
+        embeds: [buildErrorEmbed(user, client, `${reason}\n\nIf that's wrong, ping <@${OWNER_ID}> — better it gets heard twice than not at all.\n\n**Your draft, so you don't lose it:**\n>>> ${clamp(description, 3000)}`)
+          .setTitle("That didn't go through")],
+      });
+      logger.log(`[Feedback] Rejected (${validation.category}) from ${user.displayName}: ${description.slice(0, 50)}...`);
+      return;
+    }
+
+    await submit.editReply({
+      embeds: [buildSuccessEmbed(user, client, clamp(description, EMBED_DESCRIPTION_LIMIT))
+        .setTitle(`${TYPE_GLYPHS[type]} ${TYPE_LABELS[type]}`)
+        .addFields({ name: "Status", value: "Sending it on…", inline: true })],
     });
 
     let githubResult = null;
     if (type === "bug" || type === "suggestion") {
-      githubResult = await createGitHubIssue({
-        type,
-        component: validation.component,
-        description,
-        username: interaction.user.displayName,
-        userId: interaction.user.id,
-        guildName: interaction.guild?.name || "DM"
-      });
+      githubResult = await createGitHubIssue({ ...base, component: validation.component });
     }
 
-    await notifyOwner(interaction.client, {
-      type,
+    const ownerNotified = await notifyOwner(client, {
+      ...base,
       category: validation.category,
       component: validation.component,
-      description,
-      username: interaction.user.displayName,
-      userId: interaction.user.id,
-      avatarURL: interaction.user.displayAvatarURL({ dynamic: true }),
-      guildName: interaction.guild?.name || "DM",
+      validationReason: validation.reason,
+      avatarURL: user.displayAvatarURL({ dynamic: true }),
       issueUrl: githubResult?.url || null,
       githubError: githubResult?.error || null
     });
 
-    await storeFeedback({
-      type,
+    const stored = await storeFeedback({
+      ...base,
       category: validation.category,
       component: validation.component,
-      description,
-      username: interaction.user.displayName,
-      userId: interaction.user.id,
-      guildName: interaction.guild?.name || "DM",
       issueUrl: githubResult?.url || null,
+      githubError: githubResult?.error || null,
+      ownerNotified,
       valid: true
     });
 
-    logger.log(`[Feedback] ${typeLabels[type]} (${validation.category}) from ${interaction.user.displayName}: ${description.slice(0, 100)}${description.length > 100 ? "..." : ""}`);
+    // The confirmation above is provisional; this one reports what actually
+    // happened, because every delivery path here can fail silently.
+    await submit.editReply({ embeds: [buildOutcomeEmbed(user, client, { type, description, githubResult, ownerNotified, stored })] });
+
+    logger.log(`[Feedback] ${TYPE_LABELS[type]} (${validation.category}) from ${user.displayName}: ${description.slice(0, 100)}${description.length > 100 ? "..." : ""}`);
   }
 };

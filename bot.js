@@ -565,7 +565,17 @@ if (DELETE_SLASH) {
           }
         } catch (error) {
           logger.error(error);
-          await interaction.reply({ content: "There was an error while executing this command!", flags: MessageFlags.Ephemeral });
+          // reply() throws InteractionAlreadyReplied on a deferred or answered
+          // interaction, which would swallow the message and raise an unhandled
+          // rejection on top of the original failure.
+          try {
+            const payload = { content: "There was an error while executing this command!", flags: MessageFlags.Ephemeral };
+            if (interaction.replied) await interaction.followUp(payload);
+            else if (interaction.deferred) await interaction.editReply(payload);
+            else await interaction.reply(payload);
+          } catch (replyError) {
+            logger.error(`Failed to report command error to user: ${replyError.message}`);
+          }
         }
       });
     } else if (interaction.isAutocomplete()) {
