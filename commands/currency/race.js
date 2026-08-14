@@ -20,6 +20,7 @@ const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
 const ANIMATION_TICKS = RACE_ANIMATION_TICKS ?? 10;
 const TICK_INTERVAL = RACE_TICK_INTERVAL ?? 1500;
 const BET_TYPES = new Set(["win", "place", "show"]);
+const COMMENTARY_TIMEOUT = 10000;
 // Descriptions carry their meaning, which "win / place / show" alone never did
 // for anyone who hasn't been to a racetrack.
 const BET_TYPE_OPTIONS = [
@@ -241,20 +242,6 @@ async function handleStartRace(interaction, client, user) {
   });
   game.collector = collector;
 
-  if (commentaryPromise) {
-    try {
-      game.commentary = await Promise.race([
-        commentaryPromise,
-        new Promise(resolve => setTimeout(() => resolve(null), 10000)),
-      ]);
-      if (game.commentary) {
-        logger.debug(`Race commentary generated: ${game.commentary.length} lines`);
-      }
-    } catch (e) {
-      logger.warn(`Failed to generate race commentary: ${e.message}`);
-    }
-  }
-
   collector.on("collect", async (i) => {
     try {
       // A panel that no longer owns the channel slot belongs to a superseded race, so it must never mutate the live one.
@@ -318,6 +305,23 @@ async function handleStartRace(interaction, client, user) {
       await resolveRace(client, channel, message, game);
     }
   });
+
+  // Deliberately not awaited: the buttons are already live, and awaiting here
+  // left every click unhandled until the model replied.
+  if (commentaryPromise) loadCommentary(game, commentaryPromise);
+}
+
+async function loadCommentary(game, commentaryPromise) {
+  let timer;
+  try {
+    const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), COMMENTARY_TIMEOUT); });
+    game.commentary = await Promise.race([commentaryPromise, timeout]);
+    if (game.commentary) logger.debug(`Race commentary generated: ${game.commentary.length} lines`);
+  } catch (e) {
+    logger.warn(`Failed to generate race commentary: ${e.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function handleBetButton(buttonInt, client, game, horseNumber) {
@@ -327,20 +331,22 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     return buttonInt.reply({ embeds: [buildErrorEmbed(user, client,"Betting is closed for this race.")], flags: MessageFlags.Ephemeral });
   }
 
-  const dbUser = await db.get(user.id);
-  if (!dbUser) {
-    logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
-    await addNewDBUser(user);
-  }
-
   const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
   if (horseIndex === -1) {
     return buttonInt.reply({ embeds: [buildErrorEmbed(user, client,"Unknown horse.")], flags: MessageFlags.Ephemeral });
   }
   const horse = game.horses[horseIndex];
 
-  const cachedExpression = await db.get(`${user.id}.race.lastBet`);
-  const cachedBetTypeRaw = await db.get(`${user.id}.race.lastBetType`);
+  // Serial reads here burn the 3s the modal has to appear in.
+  const [dbUser, cachedExpression, cachedBetTypeRaw] = await Promise.all([
+    db.get(user.id),
+    db.get(`${user.id}.race.lastBet`),
+    db.get(`${user.id}.race.lastBetType`),
+  ]);
+  if (!dbUser) {
+    logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
+    await addNewDBUser(user);
+  }
   const cachedBetType = BET_TYPES.has((cachedBetTypeRaw || "").toLowerCase())
     ? cachedBetTypeRaw.toLowerCase()
     : "win";
@@ -437,29 +443,28 @@ async function handleSlashBet(interaction, client, user) {
   const betAmountStr = interaction.options.getString("amount");
   const betTypeRaw = (interaction.options.getString("type") || "win").toLowerCase();
 
+  // Validation, parseBet and the debit exceed the 3s ack window.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const game = client.raceGames.get(channelId);
   if (!game) {
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [buildErrorEmbed(user, client,"No active race in this channel. Use `/race start` to begin a new race.")],
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (game.phase === "starting") {
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [buildErrorEmbed(user, client,"A race is starting in this channel. Give the panel a moment to appear.")],
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (game.phase !== "betting") {
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [buildErrorEmbed(user, client,"Betting is closed for this race. Please wait for it to finish.")],
-      flags: MessageFlags.Ephemeral,
     });
   }
   if (!BET_TYPES.has(betTypeRaw)) {
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [buildErrorEmbed(user, client,"Bet type must be `win`, `place`, or `show`.")],
-      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -471,23 +476,23 @@ async function handleSlashBet(interaction, client, user) {
 
   const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
   if (horseIndex === -1) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client,"Horse number must be between 1 and 8!")], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,"Horse number must be between 1 and 8!")] });
   }
   const horse = game.horses[horseIndex];
 
   const expression = betAmountStr.trim();
   const amount = Number(await parseBet(expression, user.id));
   if (isNaN(amount) || amount % 1 !== 0) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client,`You must bet a valid whole number of ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,`You must bet a valid whole number of ${CURRENCY_NAME}!`)] });
   }
   if (amount <= 0) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client,"Bet must be greater than zero.")], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,"Bet must be greater than zero.")] });
   }
   if (RACE_MIN_BET && amount < RACE_MIN_BET) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client,`Minimum bet is ${RACE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,`Minimum bet is ${RACE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)] });
   }
   if (RACE_MAX_BET && amount > RACE_MAX_BET) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client,`Maximum bet is ${RACE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,`Maximum bet is ${RACE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)] });
   }
 
   const debited = await withUserLock(user.id, async () => {
@@ -498,9 +503,8 @@ async function handleSlashBet(interaction, client, user) {
   });
   if (!debited) {
     const currentBalance = await db.get(`${user.id}.balance`) ?? 0;
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [buildErrorEmbed(user, client,`Insufficient funds! You have **${currentBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)],
-      flags: MessageFlags.Ephemeral,
     });
   }
   await db.add(`${user.id}.stats.race.totalBet`, amount);
@@ -514,9 +518,8 @@ async function handleSlashBet(interaction, client, user) {
     // Race ended between validation and debit — refund and bail.
     await withUserLock(user.id, () => db.add(`${user.id}.balance`, amount));
     await db.sub(`${user.id}.stats.race.totalBet`, amount);
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [buildErrorEmbed(user, client,"Betting closed while your bet was being placed — refunded.")],
-      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -552,7 +555,7 @@ async function handleSlashBet(interaction, client, user) {
     .setColor(current.colors.identity)
     .setTimestamp();
 
-  await interaction.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
+  await interaction.editReply({ embeds: [confirmEmbed] });
 }
 
 async function handleClearBets(buttonInt, client, game) {
