@@ -10,7 +10,7 @@ module.exports = {
     },
     schema: [],
     messages: {
-      multiline: "Comment block spans {{lines}} lines. Confirm the extra lines are necessary — prefer one line, or none.",
+      multiline: "Comment block spans {{lines}} lines. Confirm the extra lines are necessary — prefer one line, or none. If the code is decipherable alone, remove the comment/",
     },
   },
 
