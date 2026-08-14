@@ -155,7 +155,7 @@ async function handleStartRace(interaction, client, user) {
     .setTitle("🏇 Place Your Bets! 🏇")
     .setDescription(betsDescription)
     .setColor(randomHexColor())
-    .setFooter({ text: `Betting closes in ${BETTING_TIME / 1000}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+    .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
     .setTimestamp();
 
   const message = await interaction.editReply({ embeds: [embed], components: buildComponents(horses) });
@@ -178,7 +178,6 @@ async function handleStartRace(interaction, client, user) {
     phase: "betting",
     endTime,
     collector: null,
-    countdownInterval: null,
     commentary: null,
   };
 
@@ -204,29 +203,6 @@ async function handleStartRace(interaction, client, user) {
     }
   }
 
-  game.countdownInterval = setInterval(async () => {
-    const currentGame = client.raceGames.get(channelId);
-    if (!currentGame || currentGame.phase !== "betting") {
-      clearInterval(currentGame?.countdownInterval);
-      return;
-    }
-
-    const remaining = Math.ceil((currentGame.endTime - Date.now()) / 1000);
-    if (remaining <= 0) {
-      clearInterval(currentGame.countdownInterval);
-      return;
-    }
-
-    try {
-      const newDesc = buildBettingDescription(currentGame.horses, currentGame.bets, currentGame.endTime);
-      await message.edit({
-        embeds: [embed.setDescription(newDesc).setFooter({ text: `Betting closes in ${remaining}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })],
-      });
-    } catch (e) {
-      clearInterval(currentGame.countdownInterval);
-    }
-  }, 1000);
-
   collector.on("collect", async (i) => {
     try {
       if (i.customId.startsWith("race_bet_")) {
@@ -237,7 +213,6 @@ async function handleStartRace(interaction, client, user) {
         if (i.user.id !== game.creatorId) {
           return i.reply({ embeds: [buildErrorEmbed(i.user, i.client,`Only **${game.creatorUsername}** can start this race.`)], flags: MessageFlags.Ephemeral });
         }
-        clearInterval(game.countdownInterval);
         await i.deferUpdate().catch(() => {});
         game.collector.stop("start");
         return;
@@ -249,7 +224,6 @@ async function handleStartRace(interaction, client, user) {
         if (i.user.id !== game.creatorId) {
           return i.reply({ embeds: [buildErrorEmbed(i.user, i.client,`Only **${game.creatorUsername}** can cancel this race.`)], flags: MessageFlags.Ephemeral });
         }
-        clearInterval(game.countdownInterval);
 
         const refundsByUser = {};
         for (const b of game.bets) {
@@ -281,7 +255,6 @@ async function handleStartRace(interaction, client, user) {
   });
 
   collector.on("end", async (_collected, reason) => {
-    clearInterval(game.countdownInterval);
     const finalGame = client.raceGames.get(channelId);
     if (!finalGame || finalGame.phase !== "betting") return;
 
@@ -378,14 +351,13 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
 
   try {
     const gameMessage = await buttonInt.channel.messages.fetch(current.messageId);
-    const remaining = Math.max(0, Math.ceil((current.endTime - Date.now()) / 1000));
     const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
     const refreshed = new EmbedBuilder()
       .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTitle("🏇 Place Your Bets! 🏇")
       .setDescription(betsDescription)
       .setColor(randomHexColor())
-      .setFooter({ text: `Betting closes in ${remaining}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTimestamp();
     await gameMessage.edit({ embeds: [refreshed] });
   } catch (e) {
@@ -509,14 +481,13 @@ async function handleSlashBet(interaction, client, user) {
 
   try {
     const gameMessage = await interaction.channel.messages.fetch(current.messageId);
-    const remaining = Math.max(0, Math.ceil((current.endTime - Date.now()) / 1000));
     const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
     const refreshed = new EmbedBuilder()
       .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTitle("🏇 Place Your Bets! 🏇")
       .setDescription(betsDescription)
       .setColor(randomHexColor())
-      .setFooter({ text: `Betting closes in ${remaining}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTimestamp();
     await gameMessage.edit({ embeds: [refreshed] });
   } catch (e) {
@@ -603,14 +574,13 @@ async function handleClearBets(buttonInt, client, game) {
 
   try {
     const gameMessage = await submit.channel.messages.fetch(current.messageId);
-    const remaining = Math.max(0, Math.ceil((current.endTime - Date.now()) / 1000));
     const betsDescription = buildBettingDescription(current.horses, current.bets, current.endTime);
     const refreshed = new EmbedBuilder()
       .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTitle("🏇 Place Your Bets! 🏇")
       .setDescription(betsDescription)
       .setColor(randomHexColor())
-      .setFooter({ text: `Betting closes in ${remaining}s • Click a horse to bet`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+      .setFooter({ text: "Click a horse to bet", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
       .setTimestamp();
     await gameMessage.edit({ embeds: [refreshed] });
   } catch (e) {

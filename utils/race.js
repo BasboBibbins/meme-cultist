@@ -258,8 +258,9 @@ function buildBettingDescription(horses, bets, endTime) {
     lines.push("\n*No bets yet. Be the first to place a bet!*");
   }
 
-  const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
-  lines.push(`\n⏱️ Race starts in **${remaining}s**...`);
+  // Rendered client-side and refreshed by Discord itself, so the countdown
+  // ticks without the bot editing the message once per second.
+  lines.push(`\n⏱️ Race starts <t:${Math.floor(endTime / 1000)}:R>`);
 
   return lines.join("\n");
 }
