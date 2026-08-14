@@ -611,6 +611,19 @@ async function handleClearBets(buttonInt, client, game) {
   await submit.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
 }
 
+// repost message so it doesn't get lost in spam
+async function repostRaceMessage(channel, previous, payload) {
+  try {
+    const posted = await channel.send(payload);
+    if (previous) await previous.delete().catch(() => {});
+    return posted;
+  } catch (err) {
+    logger.warn(`[race] repost failed, falling back to editing in place: ${err.message}`);
+    if (previous) await previous.edit(payload).catch(() => {});
+    return previous;
+  }
+}
+
 async function resolveRace(client, channel, message, game) {
   game.phase = "racing";
 
@@ -626,7 +639,7 @@ async function resolveRace(client, channel, message, game) {
       .setDescription("No bets were placed. The race has been cancelled.")
       .setColor(0xFFAA00)
       .setTimestamp();
-    await message.edit({ embeds: [embed] });
+    await message.edit({ embeds: [embed] }).catch(() => {});
     client.raceGames.delete(game.channelId);
     return;
   }
@@ -635,6 +648,10 @@ async function resolveRace(client, channel, message, game) {
     .setAuthor({ name: "Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
     .setColor(randomHexColor())
     .setTimestamp();
+
+  // The lobby message is replaced on the first tick rather than edited, so the
+  // race runs where people are actually looking.
+  let raceMessage = null;
 
   for (let tick = 1; tick <= ANIMATION_TICKS; tick++) {
     const result = advanceRace(horses, positions, game.topThree);
@@ -650,7 +667,12 @@ async function resolveRace(client, channel, message, game) {
     embed.setTitle(commentary);
     embed.setDescription(description);
 
-    await message.edit({ embeds: [embed] });
+    if (tick === 1) {
+      raceMessage = await repostRaceMessage(channel, message, { embeds: [embed] });
+      game.messageId = raceMessage?.id ?? game.messageId;
+    } else {
+      await raceMessage?.edit({ embeds: [embed] }).catch(() => {});
+    }
     await wait(TICK_INTERVAL);
   }
 
@@ -869,7 +891,11 @@ async function resolveRace(client, channel, message, game) {
   embed.setDescription(resultsLines.join("\n"));
   embed.setColor(winner.displayOdds < 5 ? 0x00AA00 : (winner.displayOdds < 10 ? 0xFFAA00 : 0xFF0000));
 
-  await message.edit({ embeds: [embed] });
+  // Reposted again so the outcome cannot be buried by traffic during the run.
+  // Nothing is lost by dropping the animation message — the final frame is
+  // reproduced inside these results.
+  const resultsMessage = await repostRaceMessage(channel, raceMessage, { embeds: [embed] });
+  game.messageId = resultsMessage?.id ?? game.messageId;
 
   // Aggregate results by user so each participant gets a single rolled-up DM
   // covering every bet they placed this race.
