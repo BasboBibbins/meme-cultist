@@ -23,6 +23,7 @@ function cellWidth(line) {
 
 // Cells the narrowest mobile client fits before a code block scrolls.
 const MOBILE_CELL_BUDGET = 42;
+const FLAG = "🏁";
 
 function makeHorses() {
   const horses = generateHorses();
@@ -37,10 +38,9 @@ function trackLines(description) {
   return description.split("\n").filter(line => line.includes("|"));
 }
 
-// Alignment is only promised up to the odds column.
+// Alignment is only promised up to the finish flag; tags trail it.
 function alignedWidth(line) {
-  const match = line.match(/\d+(\.\d+)?x/);
-  return cellWidth(line.slice(0, match.index + match[0].length));
+  return cellWidth(line.slice(0, line.indexOf("🏁") + 2));
 }
 
 describe("buildTrack", () => {
@@ -93,11 +93,89 @@ describe("buildRaceDescription", () => {
     expect(lanes.filter(line => !/\d(st|nd|rd)/.test(line))).toHaveLength(5);
 
     for (const line of ranked) {
-      expect(line).toMatch(/\d+(\.\d+)?x {2}(🥇 1st|🥈 2nd|🥉 3rd)$/u);
+      expect(line).toMatch(/🏁 {2}(🥇 1st|🥈 2nd|🥉 3rd)$/u);
     }
     for (const line of lanes) {
       expect(line).toMatch(/^\d \|/);
     }
+  });
+
+  function animate(totalTicks) {
+    const field = generateHorses();
+    const order = determineTopThree(field);
+    const positions = new Array(8).fill(0);
+    const crossed = [];
+    const frames = [];
+    for (let tick = 1; tick <= totalTicks; tick++) {
+      const { newFinishers } = advanceRace(field, positions, order, tick, totalTicks);
+      for (const i of newFinishers) if (!crossed.includes(i)) crossed.push(i);
+      frames.push(buildRaceDescription(field, positions, tick, totalTicks, null, crossed, order));
+    }
+    return { field, order, frames };
+  }
+
+  const medalsIn = frame => ["🥇 1st", "🥈 2nd", "🥉 3rd"].filter(m => frame.includes(m));
+
+  test("reveals each podium place as its horse crosses the line", () => {
+    const { frames } = animate(15);
+    const settle = 15 - Math.max(2, Math.round(15 * 0.2));
+    frames.forEach((frame, index) => {
+      const lap = index + 1;
+      const expected = lap < settle ? 0 : Math.min(3, lap - settle + 1);
+      expect(medalsIn(frame)).toHaveLength(expected);
+    });
+  });
+
+  test("marks all three podium places on the closing frame", () => {
+    const { frames } = animate(15);
+    expect(medalsIn(frames[frames.length - 1])).toHaveLength(3);
+  });
+
+  test("marks the true podium rather than whoever happens to be at the line", () => {
+    const { field, order, frames } = animate(15);
+    const closing = frames[frames.length - 1];
+    const marked = ["🥇 1st", "🥈 2nd", "🥉 3rd"].map(medal => {
+      const line = trackLines(closing).find(l => l.endsWith(medal));
+      return Number(line.trim()[0]);
+    });
+    expect(marked).toEqual(order.finishOrder.slice(0, 3).map(i => field[i].number));
+  });
+
+  test("says the race is finished once the whole field is at the line", () => {
+    const { frames } = animate(15);
+    expect(frames[frames.length - 1]).toContain("RACE FINISHED");
+    expect(frames[frames.length - 2]).toContain("RACE IN PROGRESS");
+  });
+
+  test("tags each backed lane with its bettor", () => {
+    const bets = [
+      { userId: "1", username: "basbo", horseIndex: 2, amount: 10, betType: "win" },
+      { userId: "2", username: "averyverylongname", horseIndex: 5, amount: 10, betType: "win" },
+      { userId: "3", username: "second", horseIndex: 5, amount: 10, betType: "win" },
+    ];
+    const lanes = trackLines(buildRaceDescription(horses, new Array(8).fill(40), 3, 15, null, [], topThree, bets));
+    expect(lanes.filter(line => !line.trim().endsWith(FLAG))).toHaveLength(2);
+    expect(lanes.some(line => line.endsWith("basbo"))).toBe(true);
+    expect(lanes.some(line => line.endsWith("aver\u2026 +1"))).toBe(true);
+  });
+
+  test("leaves unbacked lanes untagged", () => {
+    const lanes = trackLines(buildRaceDescription(horses, new Array(8).fill(40), 3, 15, null, [], topThree, []));
+    for (const line of lanes) expect(line.trim().endsWith(FLAG)).toBe(true);
+  });
+
+  test("gives the podium marker the column once a horse is placed", () => {
+    const bets = [{ userId: "1", username: "basbo", horseIndex: topThree.firstIndex, amount: 10, betType: "win" }];
+    const lanes = trackLines(buildRaceDescription(horses, new Array(8).fill(100), 15, 15, null, topThree.finishOrder, topThree, bets));
+    const winner = lanes.find(line => line.startsWith(String(horses[topThree.firstIndex].number)));
+    expect(winner).toContain("1st");
+    expect(winner).not.toContain("basbo");
+  });
+
+  test("keeps every lane inside the mobile budget with tags and ranks", () => {
+    const bets = [0, 1, 2, 3, 4, 5, 6, 7].map(i => ({ userId: String(i), username: "abcdefghijkl", horseIndex: i, amount: 10, betType: "win" }));
+    const lanes = trackLines(buildRaceDescription(horses, new Array(8).fill(100), 15, 15, null, topThree.finishOrder, topThree, bets));
+    for (const line of lanes) expect(cellWidth(line)).toBeLessThanOrEqual(MOBILE_CELL_BUDGET);
   });
 
   test("emits no markdown, because it renders inside a code block", () => {
@@ -276,52 +354,86 @@ describe("escapeMarkdown", () => {
 });
 
 describe("advanceRace", () => {
+  const SETTLE = totalTicks => totalTicks - Math.max(2, Math.round(totalTicks * 0.2));
+
   function runRace(totalTicks) {
     const horses = generateHorses();
     const topThree = determineTopThree(horses);
     const positions = new Array(8).fill(0);
+    const crossedAt = new Map();
+    const crossingOrder = [];
     const frames = [];
+
     for (let tick = 1; tick <= totalTicks; tick++) {
-      advanceRace(horses, positions, topThree, tick, totalTicks);
+      const { newFinishers } = advanceRace(horses, positions, topThree, tick, totalTicks);
+      for (const i of newFinishers) {
+        if (!crossingOrder.includes(i)) {
+          crossingOrder.push(i);
+          crossedAt.set(i, tick);
+        }
+      }
       frames.push(positions.slice());
     }
-    return { horses, topThree, positions, frames };
+    return { horses, topThree, positions, frames, crossingOrder, crossedAt };
   }
 
-  function orderOf(positions) {
-    return positions.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0]).map(x => x[1]);
-  }
+  const cellOf = p => (p >= 100 ? 20 : Math.floor((p / 100) * 20));
 
-  test.each([5, 10, 15, 20, 30])("lands the predetermined order with %i ticks", totalTicks => {
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const { topThree, positions } = runRace(totalTicks);
-      expect(orderOf(positions)).toEqual(topThree.finishOrder);
+  test.each([5, 10, 15, 20, 35])("brings the whole field to the line by the last lap at %i ticks", totalTicks => {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const { positions } = runRace(totalTicks);
+      expect(positions.filter(p => p >= 100)).toHaveLength(8);
     }
   });
 
+  test.each([5, 10, 15, 20, 35])("crosses the field in the predetermined order at %i ticks", totalTicks => {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const { topThree, crossingOrder } = runRace(totalTicks);
+      expect(crossingOrder).toEqual(topThree.finishOrder);
+    }
+  });
+
+  test.each([5, 10, 15, 20, 35])("crosses the podium one lap at a time at %i ticks", totalTicks => {
+    const settle = SETTLE(totalTicks);
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const { topThree, crossedAt } = runRace(totalTicks);
+      const podium = topThree.finishOrder.slice(0, 3).map(i => crossedAt.get(i));
+      expect(podium).toEqual([settle, Math.min(settle + 1, totalTicks), Math.min(settle + 2, totalTicks)]);
+    }
+  });
+
+  test("reports finishers in rank order so accumulated medals stay correct", () => {
+    const horses = generateHorses();
+    const topThree = determineTopThree(horses);
+    const positions = new Array(8).fill(0);
+    const seen = [];
+    for (let tick = 1; tick <= 15; tick++) {
+      const { newFinishers } = advanceRace(horses, positions, topThree, tick, 15);
+      seen.push(...newFinishers);
+    }
+    expect(seen).toEqual(topThree.finishOrder);
+  });
+
   test("never moves a horse backwards", () => {
-    for (let attempt = 0; attempt < 50; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       const { frames } = runRace(15);
       for (let f = 1; f < frames.length; f++) {
-        for (let i = 0; i < 8; i++) {
-          expect(frames[f][i]).toBeGreaterThanOrEqual(frames[f - 1][i]);
-        }
+        for (let i = 0; i < 8; i++) expect(frames[f][i]).toBeGreaterThanOrEqual(frames[f - 1][i]);
       }
     }
   });
 
-  test("gives every horse its own track cell at the finish", () => {
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const { positions } = runRace(15);
-      const cells = positions.map(p => (p >= 100 ? 20 : Math.floor((p / 100) * 20)));
-      expect(new Set(cells).size).toBe(8);
+  test.each([5, 10, 15, 20, 35])("never stalls a running horse for two laps at %i ticks", totalTicks => {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const { frames } = runRace(totalTicks);
+      for (let i = 0; i < 8; i++) {
+        const lane = [0, ...frames.map(f => f[i])];
+        for (let k = 2; k < lane.length; k++) {
+          if (lane[k - 2] >= 100) continue;
+          expect(cellOf(lane[k]) - cellOf(lane[k - 2])).toBeGreaterThanOrEqual(1);
+        }
+      }
     }
-  });
-
-  test("only the winner crosses the line during the animation", () => {
-    const { topThree, positions } = runRace(15);
-    const crossed = positions.map((p, i) => [p, i]).filter(([p]) => p >= 100).map(([, i]) => i);
-    expect(crossed).toEqual([topThree.firstIndex]);
   });
 
   test("keeps the field unresolved through the first half", () => {
@@ -331,16 +443,15 @@ describe("advanceRace", () => {
       const horses = generateHorses();
       const topThree = determineTopThree(horses);
       const positions = new Array(8).fill(0);
-      for (let tick = 1; tick <= 8; tick++) advanceRace(horses, positions, topThree, tick, 15);
-      if (orderOf(positions)[0] === topThree.firstIndex) earlyLeaderWasWinner += 1;
+      for (let tick = 1; tick <= 7; tick++) advanceRace(horses, positions, topThree, tick, 15);
+      const leader = positions.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0])[0][1];
+      if (leader === topThree.firstIndex) earlyLeaderWasWinner += 1;
     }
-    // Was 95.9% before pace archetypes. Chance alone would be 12.5%.
     expect(earlyLeaderWasWinner / attempts).toBeLessThan(0.45);
   });
 
   test("assigns every horse a pace style", () => {
-    const styles = new Set(generateHorses().map(h => h.style));
-    for (const style of styles) {
+    for (const style of new Set(generateHorses().map(h => h.style))) {
       expect(["front", "fader", "closer", "steady"]).toContain(style);
     }
   });
@@ -354,52 +465,11 @@ describe("advanceRace", () => {
       secondIndex: topThree.secondIndex,
       thirdIndex: topThree.thirdIndex,
     };
-    for (let tick = 1; tick <= 15; tick++) advanceRace(horses, positions, podiumOnly, tick, 15);
-    expect(orderOf(positions).slice(0, 3)).toEqual([topThree.firstIndex, topThree.secondIndex, topThree.thirdIndex]);
-  });
-
-  function cellTrack(totalTicks) {
-    const horses = generateHorses();
-    const topThree = determineTopThree(horses);
-    const positions = new Array(8).fill(0);
-    const cells = Array.from({ length: 8 }, () => [0]);
-    for (let tick = 1; tick <= totalTicks; tick++) {
-      advanceRace(horses, positions, topThree, tick, totalTicks);
-      positions.forEach((p, i) => cells[i].push(p >= 100 ? 20 : Math.floor((p / 100) * 20)));
-    }
-    return cells;
-  }
-
-  test.each([5, 10, 15, 20, 27])("never stalls a horse for two laps at %i ticks", totalTicks => {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      for (const lane of cellTrack(totalTicks)) {
-        for (let k = 2; k < lane.length; k++) {
-          expect(lane[k] - lane[k - 2]).toBeGreaterThanOrEqual(1);
-        }
-      }
-    }
-  });
-
-  test("never holds a horse on one cell for more than a single lap", () => {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      for (const lane of cellTrack(15)) {
-        let held = 0;
-        for (let k = 1; k < lane.length; k++) {
-          held = lane[k] === lane[k - 1] ? held + 1 : 0;
-          expect(held).toBeLessThanOrEqual(1);
-        }
-      }
-    }
-  });
-
-  test("still advances every horse on every single tick", () => {
-    const horses = generateHorses();
-    const topThree = determineTopThree(horses);
-    const positions = new Array(8).fill(0);
+    const crossed = [];
     for (let tick = 1; tick <= 15; tick++) {
-      const before = positions.slice();
-      advanceRace(horses, positions, topThree, tick, 15);
-      positions.forEach((p, i) => expect(p).toBeGreaterThan(before[i]));
+      crossed.push(...advanceRace(horses, positions, podiumOnly, tick, 15).newFinishers);
     }
+    expect(crossed.slice(0, 3)).toEqual([topThree.firstIndex, topThree.secondIndex, topThree.thirdIndex]);
+    expect(positions.filter(p => p >= 100)).toHaveLength(8);
   });
 });

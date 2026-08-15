@@ -10,6 +10,7 @@
     "test:llm": "node test/llm/runner.js",
     "test:music": "node test/music/runner.js",
     "preview:canvas": "node test/canvas/preview-all.js",
+    "preview:race": "node test/preview/preview-race.js",
     "lint": "eslint . --rulesdir eslint-rules --config lint-comments.config.js",
     "lint:fix": "eslint . --fix --rulesdir eslint-rules --config lint-comments.config.js",
     "lint:comments": "eslint . --rulesdir eslint-rules --no-eslintrc --parser-options=ecmaVersion:2021 --rule \"{'no-multiline-comments':'warn'}\"",

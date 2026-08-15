@@ -31,7 +31,9 @@ ADJECTIVES.push(...(process.env.ADDITIONAL_ADJECTIVES || "").split(",").map(s =>
 
 logger.debug(`\x1b[33m[Race]\x1b[0m Loaded ${ADJECTIVES.length} adjectives and ${NOUNS.length} nouns for horse name generation.`);
 
-const EMOJIS = ["🏇", "🐎", "🦄", "🦓", "🦌", "🐴", "🎠", "⭐"];
+// Code blocks fall back to the system emoji font, so runners are separated by
+// silhouette and hue. 🏇 🐴 🦌 collided with 🐎 in every font.
+const EMOJIS = ["🐎", "🦄", "🦓", "🐢", "🐐", "🦩", "🎠", "⭐"];
 
 const ODDS_LABELS = [
   { threshold: 0.25, label: "🟢 Favorite" },
@@ -42,6 +44,11 @@ const ODDS_LABELS = [
 
 // Trails the lane: a medal is not reliably two monospace cells.
 const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+function standingsFrom(positions) {
+  return positions.map((p, i) => [p, i]).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
+}
 
 // Headroom under Discord's 4096 cap for mention expansion.
 const RESULTS_DESCRIPTION_LIMIT = 3900;
@@ -258,10 +265,33 @@ function buildTrack(progress, horseEmoji, trackLength = 20) {
   return `|${before}${horseEmoji}${after}|🏁`;
 }
 
-function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = [], topThree = null) {
-  const lines = [];
+const BACKER_WIDTH = 8;
 
-  const isFinished = winnerIndex !== null;
+// Who backed each lane, so a bettor finds their horse by name instead of by a
+// glyph the system emoji font may render differently.
+function backerTags(bets) {
+  const byHorse = new Map();
+  for (const bet of bets) {
+    if (!byHorse.has(bet.horseIndex)) byHorse.set(bet.horseIndex, []);
+    const names = byHorse.get(bet.horseIndex);
+    if (!names.includes(bet.username)) names.push(bet.username);
+  }
+
+  const tags = new Map();
+  for (const [horseIndex, names] of byHorse) {
+    const extra = names.length - 1;
+    const room = extra > 0 ? BACKER_WIDTH - String(extra).length - 2 : BACKER_WIDTH;
+    const first = names[0].length > room ? `${names[0].slice(0, room - 1)}…` : names[0];
+    tags.set(horseIndex, extra > 0 ? `${first} +${extra}` : first);
+  }
+  return tags;
+}
+
+function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = [], topThree = null, bets = []) {
+  const lines = [];
+  const backers = backerTags(bets);
+
+  const isFinished = winnerIndex !== null || positions.every(p => p >= 100);
   lines.push(
     isFinished
       ? "RACE FINISHED\n"
@@ -272,54 +302,21 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
 
   const medalMap = new Map();
 
-  if (isFinished && finishOrder.length > 0) {
-    // Final results: use finish order for medals
-    const medals = ["🥇", "🥈", "🥉"];
-    for (let i = 0; i < Math.min(3, finishOrder.length); i++) {
-      medalMap.set(finishOrder[i], medals[i]);
-    }
-  } else if (finishOrder.length > 0) {
-    // During race: use finish order for medals of horses that have crossed the line
-    const medals = ["🥇", "🥈", "🥉"];
-    for (let i = 0; i < Math.min(3, finishOrder.length); i++) {
-      medalMap.set(finishOrder[i], medals[i]);
-    }
-  } else if (isFinished) {
-    // Fallback when no finishOrder: assign medals by progress
-    medalMap.set(winnerIndex, "🥇");
-    const otherFinished = horses
-      .map((_, i) => ({ i, progress: positions[i] }))
-      .filter(h => h.i !== winnerIndex && h.progress >= 100)
-      .sort((a, b) => b.progress - a.progress);
+  // Crossing order is authoritative: once the field is at the line every
+  // position reads 100, so standings can no longer tell them apart.
+  const podium = finishOrder.length > 0
+    ? finishOrder
+    : (isFinished ? standingsFrom(positions) : []);
 
-    const medals = ["🥈", "🥉"];
-    otherFinished.slice(0, 2).forEach((h, rank) => {
-      medalMap.set(h.i, medals[rank]);
-    });
-  } else {
-    // During race without finishOrder: medals based on current position
-    const finishedHorses = horses
-      .map((_, i) => ({ i, progress: positions[i] }))
-      .filter(h => h.progress >= 100)
-      .sort((a, b) => {
-        if (b.progress !== a.progress) {
-          return b.progress - a.progress;
-        }
-        return 0; // Maintain stable order if progress is identical
-      });
-
-    const medals = ["🥇", "🥈", "🥉"];
-    finishedHorses.slice(0, 3).forEach((h, rank) => {
-      medalMap.set(h.i, medals[rank]);
-    });
-  }
+  podium.slice(0, 3).forEach((horseIndex, rank) => medalMap.set(horseIndex, MEDALS[rank]));
 
   for (const i of sortedIndices) {
-    const rank = RANK_LABELS[medalMap.get(i)];
     const track = buildTrack(positions[i], horses[i].emoji);
-    const odds = `${horses[i].displayOdds}x`.padStart(6, " ");
-    const lane = `${horses[i].number} ${track}${odds}`;
-    lines.push(rank ? `${lane}  ${rank}` : lane);
+    const lane = `${horses[i].number} ${track}`;
+    // The two share one column: a lane already wearing a medal does not also
+    // need a find-me tag, and together they overrun the mobile width.
+    const tag = RANK_LABELS[medalMap.get(i)] ?? backers.get(i) ?? "";
+    lines.push(tag ? `${lane}  ${tag}` : lane);
   }
 
   return lines.join("\n");
@@ -390,29 +387,53 @@ const PACE_CURVES = {
 
 const PACE_STYLES = Object.keys(PACE_CURVES);
 
-// Wider than one track cell (5%), or ranks stack on the closing frame.
-const FINISH_SEPARATION = 4.5;
 const NOMINAL_PACE_DISTANCE = 92;
-
-// Capping here lets the last tick place the field without reversing anyone.
-function landingFor(rank) {
-  return 100 - rank * FINISH_SEPARATION;
-}
 
 // Half a rendered cell, so every horse gains at least one cell every two laps.
 const MIN_STEP = 2.5;
 
-// The back marker's whole journey sets the ceiling on what a floor can promise.
-function minimumStep(horseCount, totalTicks) {
-  return Math.min(MIN_STEP, landingFor(horseCount - 1) / totalTicks);
+// Every horse now runs the full track, so that journey sets what a floor can promise.
+function minimumStep(totalTicks) {
+  return Math.min(MIN_STEP, 100 / totalTicks);
 }
 
 // Pace alone until here, so an outsider can lead early and still fade.
 const CONVERGENCE_START = 0.55;
 
-function convergenceWeight(u) {
-  if (u <= CONVERGENCE_START) return 0;
-  return Math.pow((u - CONVERGENCE_START) / (1 - CONVERGENCE_START), 2);
+// The order is settled with this much of the race left, so the podium is
+// readable on the run to the line instead of snapping on the final frame.
+const RUN_IN_SHARE = 0.2;
+const MIN_RUN_IN_TICKS = 2;
+
+function settleTickFor(totalTicks) {
+  const runIn = Math.max(MIN_RUN_IN_TICKS, Math.round(totalTicks * RUN_IN_SHARE));
+  return Math.max(1, totalTicks - runIn);
+}
+
+// Places are separated in time, not in space: the podium crosses on its own
+// lap each, the pack comes home together, and everyone reaches the line.
+function crossingLap(rank, settleTick, totalTicks) {
+  if (rank >= MEDALS.length) return totalTicks;
+  return Math.min(totalTicks, settleTick + rank);
+}
+
+// Ordered by rank at the settle lap, so the run in is readable before anyone crosses.
+function settleTargetFor(rank, settleTick, totalTicks) {
+  const cross = crossingLap(rank, settleTick, totalTicks);
+  return Math.max(0, (100 * settleTick) / cross - Math.max(0, rank - MEDALS.length + 1) * 0.9);
+}
+
+// Reaches 1 exactly on the settle tick, which is what makes the order land true.
+function convergenceWeight(tick, totalTicks, settleTick) {
+  const from = Math.max(1, Math.round(CONVERGENCE_START * totalTicks));
+  if (tick >= settleTick) return 1;
+  if (tick <= from || settleTick <= from) return 0;
+  const progress = (tick - from) / (settleTick - from);
+  return progress * progress;
+}
+
+function jitter() {
+  return 0.78 + Math.random() * 0.44;
 }
 
 function rankOrder(topThree, horseCount) {
@@ -430,49 +451,48 @@ function advanceRace(horses, positions, topThree, tick = 1, totalTicks = 10) {
   const rankOf = new Map(finishOrder.map((horseIndex, rank) => [horseIndex, rank]));
 
   const u = Math.min(1, tick / totalTicks);
-  const weight = convergenceWeight(u);
+  const settleTick = settleTickFor(totalTicks);
+  const weight = convergenceWeight(tick, totalTicks, settleTick);
   const isFinalTick = tick >= totalTicks;
+  const isRunIn = tick > settleTick;
   const newFinishers = [];
-  const crossed = [];
 
   // Derived per tick so any configured tick count covers the track.
   const baseSpeed = NOMINAL_PACE_DISTANCE / totalTicks;
+  const minStep = minimumStep(totalTicks);
 
-  const minStep = minimumStep(horses.length, totalTicks);
-  const ticksAfterThis = Math.max(0, totalTicks - tick);
+  for (const horseIndex of finishOrder) {
+    const rank = rankOf.get(horseIndex);
+    const before = positions[horseIndex];
+    const cross = crossingLap(rank, settleTick, totalTicks);
 
-  for (let i = 0; i < horses.length; i++) {
-    const rank = rankOf.get(i) ?? horses.length - 1;
-    const landing = landingFor(rank);
-    const pace = PACE_CURVES[horses[i].style] ?? PACE_CURVES.steady;
-
-    // Cosmetic drift only: convergence decides the finish.
-    const formBias = 1 + ((horses[i].form ?? 50) / 100 - 0.5) * 0.12;
-    const jitter = 0.78 + Math.random() * 0.44;
-
-    let speed = baseSpeed * pace(u) * jitter * formBias;
-
-    if (weight > 0) {
-      const gap = landing * u - positions[i];
-      // Leaders tire rather than reverse, so a lane never runs backwards.
-      if (gap > 0) speed += gap * weight * 0.55;
-      else speed *= 1 - 0.85 * weight;
+    if (tick >= cross) {
+      positions[horseIndex] = 100;
+      if (before < 100) newFinishers.push(horseIndex);
+      continue;
     }
 
-    // Reserving minStep for every later tick is what stops a horse arriving
-    // early and then standing still.
-    const remaining = landing - positions[i];
-    const ceiling = Math.max(minStep, remaining - minStep * ticksAfterThis);
-    positions[i] = Math.min(landing, positions[i] + Math.min(Math.max(speed, minStep), ceiling));
-  }
+    const goal = isRunIn ? 100 : settleTargetFor(rank, settleTick, totalTicks);
+    const lastTickOfPhase = isRunIn ? cross : settleTick;
+    const remaining = Math.max(0, goal - before);
+    const ticksLeft = Math.max(1, lastTickOfPhase - tick + 1);
 
-  if (isFinalTick) {
-    finishOrder.forEach((horseIndex, rank) => {
-      const landing = landingFor(rank);
-      if (positions[horseIndex] < 100 && landing >= 100) crossed.push(horseIndex);
-      positions[horseIndex] = landing;
-    });
-    newFinishers.push(...crossed);
+    let step;
+    if (isRunIn) {
+      step = (remaining / ticksLeft) * (0.92 + Math.random() * 0.16);
+    } else {
+      const pace = PACE_CURVES[horses[horseIndex].style] ?? PACE_CURVES.steady;
+      // Cosmetic drift only: convergence decides the finish.
+      const formBias = 1 + ((horses[horseIndex].form ?? 50) / 100 - 0.5) * 0.12;
+      const free = baseSpeed * pace(u) * jitter() * formBias;
+      step = free * (1 - weight) + (remaining / ticksLeft) * weight;
+    }
+
+    // Reserving minStep for every later tick stops a horse arriving early and standing still.
+    const ceiling = Math.max(minStep, remaining - minStep * (lastTickOfPhase - tick));
+    step = Math.min(Math.max(step, Math.min(minStep, remaining)), ceiling);
+
+    positions[horseIndex] = Math.min(goal, before + step);
   }
 
   return { positions, newFinishers };

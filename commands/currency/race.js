@@ -693,7 +693,7 @@ async function runRace(client, channel, message, game) {
       }
     }
 
-    const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, finishOrder, game.topThree);
+    const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, finishOrder, game.topThree, game.bets);
     const commentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
     embed.setTitle(commentary);
     embed.setDescription(`\`\`\`\n${description}\n\`\`\``);
