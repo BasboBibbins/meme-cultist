@@ -1,12 +1,12 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
-const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL } = require("../../config.js");
+const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE_EDGE, RACE_ANIMATION_TICKS, RACE_TICK_INTERVAL, RACE_COMMENTARY_LAP_INTERVAL } = require("../../config.js");
 const { openBetModal } = require("../../utils/betModal");
 const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
 const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { applyRaceAggregates } = require("../../utils/guildStats");
-const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, truncateCells, MEDALS, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
+const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, shouldAdvanceCommentary, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, truncateCells, MEDALS, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -20,6 +20,7 @@ const HOUSE_EDGE = RACE_HOUSE_EDGE ?? 0.10;
 const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
 const ANIMATION_TICKS = RACE_ANIMATION_TICKS ?? 10;
 const TICK_INTERVAL = RACE_TICK_INTERVAL ?? 1500;
+const COMMENTARY_LAP_INTERVAL = RACE_COMMENTARY_LAP_INTERVAL ?? 1;
 const BET_TYPES = new Set(["win", "place", "show"]);
 const HOUSE_CUT_LABEL = `${Math.round(HOUSE_EDGE * 100)}%`;
 
@@ -799,6 +800,8 @@ async function runRace(client, channel, message, game) {
   // Replaced on the first tick rather than edited, so the race runs where people are actually looking.
   let raceMessage = null;
   let winnerTitle = null;
+  // Held between laps: a line swapping every 1.25s is read as flicker rather than as commentary.
+  let lapCommentary = null;
 
   for (let tick = 1; tick <= ANIMATION_TICKS; tick++) {
     const result = advanceRace(horses, positions, game.topThree, tick, ANIMATION_TICKS);
@@ -815,8 +818,10 @@ async function runRace(client, channel, message, game) {
     }
 
     const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, finishOrder, game.topThree, game.bets);
-    const commentary = winnerTitle ?? buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
-    embed.setTitle(commentary);
+    if (!lapCommentary || shouldAdvanceCommentary(tick, COMMENTARY_LAP_INTERVAL)) {
+      lapCommentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
+    }
+    embed.setTitle(winnerTitle ?? lapCommentary);
     embed.setDescription(`\`\`\`\n${description}\n\`\`\``);
 
     if (tick === 1) {

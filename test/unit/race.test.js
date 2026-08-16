@@ -9,6 +9,8 @@ const {
   buildResultsSection,
   fitDescription,
   escapeMarkdown,
+  shouldAdvanceCommentary,
+  settleTickFor,
 } = require("../../utils/race");
 
 // Emoji render at roughly two monospace cells.
@@ -118,7 +120,7 @@ describe("buildRaceDescription", () => {
 
   test("reveals each podium place as its horse crosses the line", () => {
     const { frames } = animate(15);
-    const settle = 15 - Math.max(2, Math.round(15 * 0.2));
+    const settle = settleTickFor(15);
     frames.forEach((frame, index) => {
       const lap = index + 1;
       const expected = lap < settle ? 0 : Math.min(3, lap - settle + 1);
@@ -500,5 +502,116 @@ describe("advanceRace", () => {
     }
     expect(crossed.slice(0, 3)).toEqual([topThree.firstIndex, topThree.secondIndex, topThree.thirdIndex]);
     expect(positions.filter(p => p >= 100)).toHaveLength(8);
+  });
+});
+
+describe("shouldAdvanceCommentary", () => {
+  // Mirrors the animation loop: the title only changes on a lap that advances.
+  function linesShown(totalTicks, interval) {
+    const shown = [];
+    let held = null;
+    for (let tick = 1; tick <= totalTicks; tick++) {
+      if (!held || shouldAdvanceCommentary(tick, interval)) held = `line@${tick}`;
+      shown.push(held);
+    }
+    return shown;
+  }
+
+  test("an interval of 2 changes the line every other lap", () => {
+    expect(linesShown(6, 2)).toEqual([
+      "line@1", "line@1",
+      "line@3", "line@3",
+      "line@5", "line@5",
+    ]);
+  });
+
+  test("an interval of 3 holds each line for three laps", () => {
+    expect(linesShown(6, 3)).toEqual([
+      "line@1", "line@1", "line@1",
+      "line@4", "line@4", "line@4",
+    ]);
+  });
+
+  test("an interval of 1 changes the line every lap", () => {
+    expect(linesShown(4, 1)).toEqual(["line@1", "line@2", "line@3", "line@4"]);
+  });
+
+  test("lap 1 always speaks, so no race opens on a held line", () => {
+    for (const interval of [0, 1, 2, 5, -3, undefined, NaN, "banana"]) {
+      expect(shouldAdvanceCommentary(1, interval)).toBe(true);
+    }
+  });
+
+  test("zero holds the opening line for the whole race", () => {
+    expect(linesShown(5, 0)).toEqual(["line@1", "line@1", "line@1", "line@1", "line@1"]);
+  });
+
+  test("an unparseable interval holds rather than flickering every lap", () => {
+    for (const interval of [undefined, null, NaN, "banana"]) {
+      expect(shouldAdvanceCommentary(4, interval)).toBe(false);
+    }
+  });
+
+  test("a fractional interval floors rather than drifting", () => {
+    expect(linesShown(6, 2.7)).toEqual(linesShown(6, 2));
+  });
+
+  test("the default interval advances the line 8 times over a 15 lap race", () => {
+    const distinct = new Set(linesShown(15, 2));
+    expect(distinct.size).toBe(8);
+  });
+});
+
+describe("settleTickFor", () => {
+  // The winner crossing is what fires the final commentary, so the settle lap is that placement.
+  function winnerCrossingLap(totalTicks) {
+    const field = generateHorses();
+    const order = determineTopThree(field);
+    const positions = new Array(8).fill(0);
+    for (let tick = 1; tick <= totalTicks; tick++) {
+      const { newFinishers } = advanceRace(field, positions, order, tick, totalTicks);
+      if (newFinishers.includes(order.firstIndex)) return tick;
+    }
+    return null;
+  }
+
+  test("defaults to lap 12 of 15, matching the previously hardcoded run in", () => {
+    expect(settleTickFor(15)).toBe(12);
+  });
+
+  test("the winner actually crosses on the default settle lap", () => {
+    for (let run = 0; run < 20; run++) {
+      expect(winnerCrossingLap(15)).toBe(settleTickFor(15));
+    }
+  });
+
+  test("scales with the race length when unpinned", () => {
+    expect(settleTickFor(10)).toBe(8);
+    expect(settleTickFor(20)).toBe(16);
+  });
+
+  test("a pinned lap is used verbatim", () => {
+    expect(settleTickFor(15, 8)).toBe(8);
+    expect(settleTickFor(15, 12)).toBe(12);
+  });
+
+  test("a pinned lap past the finish is clamped, so the winner always crosses", () => {
+    expect(settleTickFor(15, 99)).toBe(15);
+    expect(settleTickFor(15, 15)).toBe(15);
+  });
+
+  test("zero, negative and unparseable values fall back to the derived lap", () => {
+    for (const value of [0, -4, undefined, null, NaN, "banana"]) {
+      expect(settleTickFor(15, value)).toBe(12);
+    }
+  });
+
+  test("a fractional pin floors to a whole lap", () => {
+    expect(settleTickFor(15, 9.8)).toBe(9);
+  });
+
+  test("never returns a lap before the first", () => {
+    expect(settleTickFor(1)).toBeGreaterThanOrEqual(1);
+    expect(settleTickFor(15, 0.4)).toBeGreaterThanOrEqual(1);
   });
 });

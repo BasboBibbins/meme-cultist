@@ -1,4 +1,4 @@
-const { CONVO_MODEL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER } = require("../config.js");
+const { CONVO_MODEL, RACE_PLACE_MULTIPLIER, RACE_SHOW_MULTIPLIER, RACE_FINAL_COMMENTARY_LAP } = require("../config.js");
 const logger = require("./logger");
 const llm = require("./llm");
 
@@ -429,7 +429,12 @@ const CONVERGENCE_START = 0.55;
 const RUN_IN_SHARE = 0.2;
 const MIN_RUN_IN_TICKS = 2;
 
-function settleTickFor(totalTicks) {
+// A pinned lap is clamped rather than trusted: past the last tick the winner would never cross and the race would never resolve.
+function settleTickFor(totalTicks, pinnedLap = RACE_FINAL_COMMENTARY_LAP) {
+  const pinned = Number(pinnedLap);
+  if (Number.isFinite(pinned) && pinned > 0) {
+    return Math.max(1, Math.min(totalTicks, Math.floor(pinned)));
+  }
   const runIn = Math.max(MIN_RUN_IN_TICKS, Math.round(totalTicks * RUN_IN_SHARE));
   return Math.max(1, totalTicks - runIn);
 }
@@ -605,6 +610,15 @@ function getDefaultCommentary() {
   ];
 }
 
+// Lap 1 always speaks, so a held line is one the race actually opened with rather than a leftover.
+function shouldAdvanceCommentary(tick, interval) {
+  if (tick <= 1) return true;
+  const n = Number(interval);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  if (n <= 1) return true;
+  return (tick - 1) % Math.floor(n) === 0;
+}
+
 function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winnerIndex = null, _finishOrder = []) {
   const isFinished = winnerIndex !== null;
   const progress = tick / totalTicks;
@@ -695,6 +709,8 @@ module.exports = {
   buildRaceDescription,
   buildBettingDescription,
   buildRaceTitle,
+  shouldAdvanceCommentary,
+  settleTickFor,
   advanceRace,
   generateRaceCommentary,
   getDefaultRaceStats,
