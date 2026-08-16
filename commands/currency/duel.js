@@ -8,6 +8,7 @@ const { getDuelColors } = require("../../themes/resolver");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { buildErrorEmbed } = require("../../utils/embeds");
 const { recordGameResult } = require("../../utils/gameResults");
 
@@ -68,254 +69,271 @@ module.exports = {
 
     const errorEmbed = buildErrorEmbed(challenger, client);
 
-    // Ensure both users exist in DB
-    let challengerDb = await db.get(challenger.id);
-    if (!challengerDb) {
-      await addNewDBUser(challenger);
-      challengerDb = await db.get(challenger.id);
-    }
-    let opponentDb = await db.get(opponent.id);
-    if (!opponentDb) {
-      await addNewDBUser(opponent);
-      opponentDb = await db.get(opponent.id);
-    }
-
-    // Validation
-    if (opponent.bot) {
-      errorEmbed.setDescription("You can't duel a bot!");
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-    if (opponent.id === challenger.id) {
-      errorEmbed.setDescription("You can't duel yourself!");
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-
-    const bet = Number(await parseBet(betString, challenger.id));
-    if (isNaN(bet)) {
-      errorEmbed.setDescription("Invalid bet amount.");
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-    if (bet % 1 !== 0) {
-      errorEmbed.setDescription(`You must bet a whole number of ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-    if (bet < 1) {
-      errorEmbed.setDescription(`You must bet at least 1 ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-    if (DUEL_MIN_BET && bet < DUEL_MIN_BET) {
-      errorEmbed.setDescription(`Minimum bet is ${DUEL_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-
-    const challengerBalance = await db.get(`${challenger.id}.balance`) || 0;
-    const opponentBank = await db.get(`${opponent.id}.bank`) || 0;
-    const opponentWallet = await db.get(`${opponent.id}.balance`) || 0;
-    const opponentTotal = opponentBank + opponentWallet;
-
-    if (bet > challengerBalance) {
-      errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-    // Opponent eligibility uses their combined wallet+bank — the wallet-only
-    // check is still deferred until they actually click accept.
-    if (bet > opponentTotal) {
-      errorEmbed.setDescription(`${opponent.displayName} doesn't have enough ${CURRENCY_NAME} to be challenged for this wager!`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-
-    // Cooldown check
-    const challengerCooldown = await db.get(`${challenger.id}.cooldowns.duel`) || 0;
-    if (challengerCooldown > Date.now()) {
-      errorEmbed.setDescription(`Duel cooldown active. You can duel again **<t:${Math.floor(challengerCooldown / 1000)}:R>**.`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
-
-    // Create session
     const sessionKey = `${interaction.channelId}:${challenger.id}:${opponent.id}`;
-    if (client.duelGames.has(sessionKey)) {
+    const { claim } = claimSession(client.duelGames, sessionKey);
+    if (!claim) {
       errorEmbed.setDescription("You already have an active duel with this user!");
       return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
     }
 
-    // Escrow only the challenger's wager up front. The opponent's wallet is
-    // checked and deducted when they click accept. Lock prevents concurrent
-    // commands (e.g. /bank withdraw, /slots) from racing the escrow.
-    const escrowed = await withUserLock(challenger.id, async () => {
-      const bal = await db.get(`${challenger.id}.balance`) || 0;
-      if (bal < bet) return false;
-      await db.sub(`${challenger.id}.balance`, bet);
-      return true;
-    });
-    if (!escrowed) {
-      errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
-      return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
-    }
+    // Tracks wager the challenger has been debited for but that no session owns yet, so a failure refunds it rather than eating it.
+    let unownedEscrow = 0;
 
-    client.duelGames.set(sessionKey, {
-      challengerId: challenger.id,
-      opponentId: opponent.id,
-      bet: bet,
-      status: "pending",
-      messageId: null,
-      startedAt: Date.now(),
-    });
-
-    logger.info(`${challenger.username}(${challenger.id}) challenged ${opponent.username}(${opponent.id}) to a duel for ${bet} ${CURRENCY_NAME}.`);
-
-    // Resolve theme colors for the challenger (embed color)
-    const themeId = await getEquippedTheme(challenger.id);
-    const colors = getDuelColors(themeId);
-
-    // Surface the opponent's wallet readiness up front so they know whether
-    // they can accept immediately or need to withdraw from their bank first.
-    const opponentWalletAtChallenge = await db.get(`${opponent.id}.balance`) || 0;
-    const walletReady = opponentWalletAtChallenge >= bet;
-    const shortfallAtChallenge = bet - opponentWalletAtChallenge;
-    const walletLine = walletReady
-      ? ""
-      : `⚠️ ${opponent.displayName}'s wallet only has **${opponentWalletAtChallenge.toLocaleString("en-US")}** ${CURRENCY_NAME}. Withdraw **${shortfallAtChallenge.toLocaleString("en-US")}** from your bank via \`/bank\` before accepting.`;
-
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: `${challenger.displayName} challenges ${opponent.displayName}!`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
-      .setDescription(`**${challenger.displayName}** has wagered **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on a Rock-Paper-Scissors duel!\n\n${opponent}, click **Accept Duel** to lock in your **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME}, or **Decline** to pass.\n\n${walletLine}`)
-      .setColor(colors.embedColor || 0x0f4c25)
-      .setThumbnail(opponent.displayAvatarURL({ dynamic: true, size: 1024 }))
-      .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-      .setTimestamp();
-
-    const acceptRow = new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder()
-          .setCustomId(`duel_accept_${sessionKey}`)
-          .setLabel("Accept Duel")
-          .setStyle(ButtonStyle.Success)
-          .setEmoji("⚔"),
-        new ButtonBuilder()
-          .setCustomId(`duel_decline_${sessionKey}`)
-          .setLabel("Decline")
-          .setStyle(ButtonStyle.Secondary)
-          .setEmoji("✋"),
-      );
-
-    await interaction.deferReply();
-    const msg = await interaction.editReply({ content: `${opponent}`, embeds: [embed], components: [acceptRow] });
-
-    // DM the challenged user with a jump link to the channel message.
-    await sendDM(opponent, { embeds: [new EmbedBuilder()
-      .setTitle("You've been challenged to a duel!")
-      .setThumbnail(challenger.displayAvatarURL({ dynamic: true, size: 1024 }))
-      .setDescription(`**${challenger.displayName}** has challenged you to a Rock-Paper-Scissors duel for **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\n[Jump to the duel](${msg.url}) to **Accept** or **Decline**.\n\n${walletLine}`)
-      .setColor(colors.embedColor || 0x0f4c25)
-      .setTimestamp()
-      .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })] });
-
-    const session = client.duelGames.get(sessionKey);
-    if (session) {
-      session.messageId = msg.id;
-      session.sessionKey = sessionKey;
-    }
-
-    // Single warner shared across accept → RPS → rematch stages so each
-    // non-participant only sees one ephemeral error per duel session.
-    const warn = makeSessionWarner();
-
-    // Accept any click matching the accept/decline customIds — non-opponents
-    // are rejected gracefully inside the handler rather than silently dropped.
-    const acceptCollector = msg.createMessageComponentCollector({
-      filter: i => i.customId === `duel_accept_${sessionKey}` || i.customId === `duel_decline_${sessionKey}`,
-      time: ACCEPT_TIMEOUT,
-    });
-
-    acceptCollector.on("collect", async i => {
-      if (i.user.id !== opponent.id) {
-        const msgText = i.user.id === challenger.id
-          ? "You can't respond to your own challenge."
-          : "This challenge isn't yours to answer.";
-        await warn(i, msgText);
-        return;
+    try {
+    // Ensure both users exist in DB
+      let challengerDb = await db.get(challenger.id);
+      if (!challengerDb) {
+        await addNewDBUser(challenger);
+        challengerDb = await db.get(challenger.id);
+      }
+      let opponentDb = await db.get(opponent.id);
+      if (!opponentDb) {
+        await addNewDBUser(opponent);
+        opponentDb = await db.get(opponent.id);
       }
 
-      if (i.customId === `duel_decline_${sessionKey}`) {
-        acceptCollector.stop("responded");
-        await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
-        client.duelGames.delete(sessionKey);
-
-        const declineEmbed = new EmbedBuilder()
-          .setAuthor({ name: "Duel Declined", iconURL: opponent.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`${opponent.displayName} declined the duel. ${challenger.displayName}'s wager has been refunded.`)
-          .setColor(0xAAAAAA)
-          .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-          .setTimestamp();
-
-        await i.update({ embeds: [declineEmbed], components: [] });
-        logger.info(`Duel ${sessionKey} declined by ${opponent.username}.`);
-        return;
+      // Validation
+      if (opponent.bot) {
+        errorEmbed.setDescription("You can't duel a bot!");
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      if (opponent.id === challenger.id) {
+        errorEmbed.setDescription("You can't duel yourself!");
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
       }
 
-      // Verify the opponent's wallet at acceptance time — bank was only used to gate the initial challenge.
+      const bet = Number(await parseBet(betString, challenger.id));
+      if (isNaN(bet)) {
+        errorEmbed.setDescription("Invalid bet amount.");
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      if (bet % 1 !== 0) {
+        errorEmbed.setDescription(`You must bet a whole number of ${CURRENCY_NAME}!`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      if (bet < 1) {
+        errorEmbed.setDescription(`You must bet at least 1 ${CURRENCY_NAME}!`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      if (DUEL_MIN_BET && bet < DUEL_MIN_BET) {
+        errorEmbed.setDescription(`Minimum bet is ${DUEL_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+
+      const challengerBalance = await db.get(`${challenger.id}.balance`) || 0;
+      const opponentBank = await db.get(`${opponent.id}.bank`) || 0;
       const opponentWallet = await db.get(`${opponent.id}.balance`) || 0;
-      if (opponentWallet < bet) {
-        acceptCollector.stop("responded");
-        await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
-        client.duelGames.delete(sessionKey);
+      const opponentTotal = opponentBank + opponentWallet;
 
-        const shortfall = bet - opponentWallet;
-        const insufficientEmbed = new EmbedBuilder()
-          .setAuthor({ name: "Duel Cancelled", iconURL: challenger.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`${opponent.displayName} only has **${opponentWallet.toLocaleString("en-US")}** ${CURRENCY_NAME} in their wallet — **${shortfall.toLocaleString("en-US")}** short of the **${bet.toLocaleString("en-US")}** bet. Withdraw from your bank via \`/bank\` before the next challenge.\n\n${challenger.displayName}'s wager has been refunded.`)
-          .setColor(0xFF0000)
-          .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-          .setTimestamp();
-
-        await i.update({ embeds: [insufficientEmbed], components: [] });
-        logger.info(`Duel ${sessionKey} cancelled — opponent wallet insufficient at accept time.`);
-        return;
+      if (bet > challengerBalance) {
+        errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      // Opponent eligibility uses their combined wallet+bank — the wallet-only
+      // check is still deferred until they actually click accept.
+      if (bet > opponentTotal) {
+        errorEmbed.setDescription(`${opponent.displayName} doesn't have enough ${CURRENCY_NAME} to be challenged for this wager!`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
       }
 
-      acceptCollector.stop("responded");
-      const opponentEscrowed = await withUserLock(opponent.id, async () => {
-        const bal = await db.get(`${opponent.id}.balance`) || 0;
+      // Cooldown check
+      const challengerCooldown = await db.get(`${challenger.id}.cooldowns.duel`) || 0;
+      if (challengerCooldown > Date.now()) {
+        errorEmbed.setDescription(`Duel cooldown active. You can duel again **<t:${Math.floor(challengerCooldown / 1000)}:R>**.`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+
+      // Escrow only the challenger's wager up front. The opponent's wallet is
+      // checked and deducted when they click accept. Lock prevents concurrent
+      // commands (e.g. /bank withdraw, /slots) from racing the escrow.
+      const escrowed = await withUserLock(challenger.id, async () => {
+        const bal = await db.get(`${challenger.id}.balance`) || 0;
         if (bal < bet) return false;
-        await db.sub(`${opponent.id}.balance`, bet);
+        await db.sub(`${challenger.id}.balance`, bet);
         return true;
       });
-      if (!opponentEscrowed) {
+      if (!escrowed) {
+        errorEmbed.setDescription(`You don't have enough ${CURRENCY_NAME}!`);
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      unownedEscrow = bet;
+
+      client.duelGames.set(sessionKey, {
+        challengerId: challenger.id,
+        opponentId: opponent.id,
+        bet: bet,
+        status: "pending",
+        messageId: null,
+        startedAt: Date.now(),
+      });
+
+      logger.info(`${challenger.username}(${challenger.id}) challenged ${opponent.username}(${opponent.id}) to a duel for ${bet} ${CURRENCY_NAME}.`);
+
+      // Resolve theme colors for the challenger (embed color)
+      const themeId = await getEquippedTheme(challenger.id);
+      const colors = getDuelColors(themeId);
+
+      // Surface the opponent's wallet readiness up front so they know whether
+      // they can accept immediately or need to withdraw from their bank first.
+      const opponentWalletAtChallenge = await db.get(`${opponent.id}.balance`) || 0;
+      const walletReady = opponentWalletAtChallenge >= bet;
+      const shortfallAtChallenge = bet - opponentWalletAtChallenge;
+      const walletLine = walletReady
+        ? ""
+        : `⚠️ ${opponent.displayName}'s wallet only has **${opponentWalletAtChallenge.toLocaleString("en-US")}** ${CURRENCY_NAME}. Withdraw **${shortfallAtChallenge.toLocaleString("en-US")}** from your bank via \`/bank\` before accepting.`;
+
+      const embed = new EmbedBuilder()
+        .setAuthor({ name: `${challenger.displayName} challenges ${opponent.displayName}!`, iconURL: challenger.displayAvatarURL({ dynamic: true }) })
+        .setDescription(`**${challenger.displayName}** has wagered **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} on a Rock-Paper-Scissors duel!\n\n${opponent}, click **Accept Duel** to lock in your **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME}, or **Decline** to pass.\n\n${walletLine}`)
+        .setColor(colors.embedColor || 0x0f4c25)
+        .setThumbnail(opponent.displayAvatarURL({ dynamic: true, size: 1024 }))
+        .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+        .setTimestamp();
+
+      const acceptRow = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId(`duel_accept_${sessionKey}`)
+            .setLabel("Accept Duel")
+            .setStyle(ButtonStyle.Success)
+            .setEmoji("⚔"),
+          new ButtonBuilder()
+            .setCustomId(`duel_decline_${sessionKey}`)
+            .setLabel("Decline")
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji("✋"),
+        );
+
+      await interaction.deferReply();
+      const msg = await interaction.editReply({ content: `${opponent}`, embeds: [embed], components: [acceptRow] });
+
+      // DM the challenged user with a jump link to the channel message.
+      await sendDM(opponent, { embeds: [new EmbedBuilder()
+        .setTitle("You've been challenged to a duel!")
+        .setThumbnail(challenger.displayAvatarURL({ dynamic: true, size: 1024 }))
+        .setDescription(`**${challenger.displayName}** has challenged you to a Rock-Paper-Scissors duel for **${bet.toLocaleString("en-US")}** ${CURRENCY_NAME} in ${interaction.guild.name}!\n\n[Jump to the duel](${msg.url}) to **Accept** or **Decline**.\n\n${walletLine}`)
+        .setColor(colors.embedColor || 0x0f4c25)
+        .setTimestamp()
+        .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })] });
+
+      const session = client.duelGames.get(sessionKey);
+      if (session) {
+        session.messageId = msg.id;
+        session.sessionKey = sessionKey;
+      }
+
+      // Single warner shared across accept → RPS → rematch stages so each
+      // non-participant only sees one ephemeral error per duel session.
+      const warn = makeSessionWarner();
+
+      // Accept any click matching the accept/decline customIds — non-opponents
+      // are rejected gracefully inside the handler rather than silently dropped.
+      const acceptCollector = msg.createMessageComponentCollector({
+        filter: i => i.customId === `duel_accept_${sessionKey}` || i.customId === `duel_decline_${sessionKey}`,
+        time: ACCEPT_TIMEOUT,
+      });
+      // The collector's timeout path refunds from here on, so the escrow is no longer orphaned.
+      unownedEscrow = 0;
+
+      acceptCollector.on("collect", async i => {
+        if (i.user.id !== opponent.id) {
+          const msgText = i.user.id === challenger.id
+            ? "You can't respond to your own challenge."
+            : "This challenge isn't yours to answer.";
+          await warn(i, msgText);
+          return;
+        }
+
+        if (i.customId === `duel_decline_${sessionKey}`) {
+          acceptCollector.stop("responded");
+          await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+          client.duelGames.delete(sessionKey);
+
+          const declineEmbed = new EmbedBuilder()
+            .setAuthor({ name: "Duel Declined", iconURL: opponent.displayAvatarURL({ dynamic: true }) })
+            .setDescription(`${opponent.displayName} declined the duel. ${challenger.displayName}'s wager has been refunded.`)
+            .setColor(0xAAAAAA)
+            .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
+          await i.update({ embeds: [declineEmbed], components: [] });
+          logger.info(`Duel ${sessionKey} declined by ${opponent.username}.`);
+          return;
+        }
+
+        // Verify the opponent's wallet at acceptance time — bank was only used to gate the initial challenge.
+        const opponentWallet = await db.get(`${opponent.id}.balance`) || 0;
+        if (opponentWallet < bet) {
+          acceptCollector.stop("responded");
+          await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+          client.duelGames.delete(sessionKey);
+
+          const shortfall = bet - opponentWallet;
+          const insufficientEmbed = new EmbedBuilder()
+            .setAuthor({ name: "Duel Cancelled", iconURL: challenger.displayAvatarURL({ dynamic: true }) })
+            .setDescription(`${opponent.displayName} only has **${opponentWallet.toLocaleString("en-US")}** ${CURRENCY_NAME} in their wallet — **${shortfall.toLocaleString("en-US")}** short of the **${bet.toLocaleString("en-US")}** bet. Withdraw from your bank via \`/bank\` before the next challenge.\n\n${challenger.displayName}'s wager has been refunded.`)
+            .setColor(0xFF0000)
+            .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+
+          await i.update({ embeds: [insufficientEmbed], components: [] });
+          logger.info(`Duel ${sessionKey} cancelled — opponent wallet insufficient at accept time.`);
+          return;
+        }
+
+        acceptCollector.stop("responded");
+        const opponentEscrowed = await withUserLock(opponent.id, async () => {
+          const bal = await db.get(`${opponent.id}.balance`) || 0;
+          if (bal < bet) return false;
+          await db.sub(`${opponent.id}.balance`, bet);
+          return true;
+        });
+        if (!opponentEscrowed) {
         // Lost the race — wallet drained between the wallet check above and the lock acquisition.
-        await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
-        client.duelGames.delete(sessionKey);
-        const raceEmbed = new EmbedBuilder()
-          .setAuthor({ name: "Duel Cancelled", iconURL: challenger.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`${opponent.displayName}'s wallet changed before acceptance could finalize. ${challenger.displayName}'s wager has been refunded.`)
-          .setColor(0xFF0000)
-          .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-          .setTimestamp();
-        await i.update({ embeds: [raceEmbed], components: [] });
-        return;
-      }
-      session.status = "active";
+          await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+          client.duelGames.delete(sessionKey);
+          const raceEmbed = new EmbedBuilder()
+            .setAuthor({ name: "Duel Cancelled", iconURL: challenger.displayAvatarURL({ dynamic: true }) })
+            .setDescription(`${opponent.displayName}'s wallet changed before acceptance could finalize. ${challenger.displayName}'s wager has been refunded.`)
+            .setColor(0xFF0000)
+            .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
+          await i.update({ embeds: [raceEmbed], components: [] });
+          return;
+        }
+        session.status = "active";
 
-      await i.deferUpdate();
-      await runRpsPhase({ session, challenger, opponent, bet, colors, msg, client, sessionKey, warn });
-    });
+        await i.deferUpdate();
+        await runRpsPhase({ session, challenger, opponent, bet, colors, msg, client, sessionKey, warn });
+      });
 
-    acceptCollector.on("end", async (_, reason) => {
-      if (reason === "time") {
+      acceptCollector.on("end", async (_, reason) => {
+        if (reason === "time") {
         // Opponent never accepted — only the challenger was escrowed.
-        await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
+          await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, bet));
 
-        const expiredEmbed = new EmbedBuilder()
-          .setAuthor({ name: "Duel Expired", iconURL: challenger.displayAvatarURL({ dynamic: true }) })
-          .setDescription(`${opponent.displayName} did not accept the duel in time. The wager has been refunded.`)
-          .setColor(0xFF0000)
-          .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-          .setTimestamp();
+          const expiredEmbed = new EmbedBuilder()
+            .setAuthor({ name: "Duel Expired", iconURL: challenger.displayAvatarURL({ dynamic: true }) })
+            .setDescription(`${opponent.displayName} did not accept the duel in time. The wager has been refunded.`)
+            .setColor(0xFF0000)
+            .setFooter({ text: `${client.user.username} | Version ${require("../../package.json").version}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
+            .setTimestamp();
 
-        await msg.edit({ embeds: [expiredEmbed], components: [] });
+          await msg.edit({ embeds: [expiredEmbed], components: [] });
+          client.duelGames.delete(sessionKey);
+          logger.info(`Duel ${sessionKey} expired — opponent did not accept. Both refunded.`);
+        }
+      });
+    } catch (err) {
+      if (unownedEscrow > 0) {
         client.duelGames.delete(sessionKey);
-        logger.info(`Duel ${sessionKey} expired — opponent did not accept. Both refunded.`);
+        await withUserLock(challenger.id, () => db.add(`${challenger.id}.balance`, unownedEscrow));
       }
-    });
+      logger.error(`[duel] failed to open a challenge ${sessionKey}: ${err && err.stack || err}`);
+      await interaction.followUp({ embeds: [buildErrorEmbed(challenger, client, "Could not start the duel. Any wager taken has been refunded.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+    } finally {
+      releaseSession(client.duelGames, sessionKey, claim);
+    }
   },
 };
 

@@ -13,6 +13,7 @@ const { getTheme } = require("../../utils/slotsThemes");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getJackpotDisplay } = require("../../utils/jackpot");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed } = require("../../utils/embeds");
@@ -149,8 +150,8 @@ function readPersistedBetExpression(dbUser) {
 
 async function openSlotsPanel(interaction, user, client) {
   const key = sessionKey(interaction.channelId, user.id);
-  const existing = client.slotsPanels.get(key);
-  if (existing && existing.status !== "ended") {
+  const { claim, existing } = claimSession(client.slotsPanels, key);
+  if (!claim) {
     if (existing.lastEphemeralInteraction) {
       existing.lastEphemeralInteraction.deleteReply().catch(() => {});
     }
@@ -162,40 +163,45 @@ async function openSlotsPanel(interaction, user, client) {
     return;
   }
 
-  let dbUser = await db.get(user.id);
-  if (!dbUser) {
-    await addNewDBUser(user);
-    dbUser = await db.get(user.id);
+  // The claim is released on every path that never reaches the real session, and is a no-op once it has.
+  try {
+    let dbUser = await db.get(user.id);
+    if (!dbUser) {
+      await addNewDBUser(user);
+      dbUser = await db.get(user.id);
+    }
+
+    const balance = dbUser.balance ?? 0;
+    const lastBetExpression = readPersistedBetExpression(dbUser);
+    const lastLines = Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
+
+    // Resolve the cached expression to a live number for the initial display.
+    // A failed resolve (e.g. balance dropped below `max`) just leaves the panel
+    // in the "no bet set" state — the next Spin click will open the modal.
+    let lastBet = 0;
+    if (lastBetExpression) {
+      const resolved = await resolveBet(lastBetExpression, user.id, { requireBalance: false });
+      if (resolved.ok) lastBet = resolved.amount;
+    }
+
+    await interaction.deferReply();
+    const attachment = await buildIdlePanelAttachment(user, lastBet, lastLines);
+    const embed = buildPanelEmbed(user, client, balance, lastBet, lastLines, null);
+    embed.setTitle("Slots — pick a bet and pull the lever");
+    if (attachment) embed.setImage("attachment://slots-result.png");
+
+    const message = await interaction.editReply({
+      embeds: [embed],
+      components: buildPanelComponents(),
+      files: attachment ? [attachment] : [],
+    });
+
+    const session = createSession(user.id, interaction.channelId, key, message.id, lastBet, lastLines, balance, lastBet > 0 ? lastBetExpression : null);
+    client.slotsPanels.set(key, session);
+    attachSessionCollector(client, message, session, interaction.channel);
+  } finally {
+    releaseSession(client.slotsPanels, key, claim);
   }
-
-  const balance = dbUser.balance ?? 0;
-  const lastBetExpression = readPersistedBetExpression(dbUser);
-  const lastLines = Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
-
-  // Resolve the cached expression to a live number for the initial display.
-  // A failed resolve (e.g. balance dropped below `max`) just leaves the panel
-  // in the "no bet set" state — the next Spin click will open the modal.
-  let lastBet = 0;
-  if (lastBetExpression) {
-    const resolved = await resolveBet(lastBetExpression, user.id, { requireBalance: false });
-    if (resolved.ok) lastBet = resolved.amount;
-  }
-
-  await interaction.deferReply();
-  const attachment = await buildIdlePanelAttachment(user, lastBet, lastLines);
-  const embed = buildPanelEmbed(user, client, balance, lastBet, lastLines, null);
-  embed.setTitle("Slots — pick a bet and pull the lever");
-  if (attachment) embed.setImage("attachment://slots-result.png");
-
-  const message = await interaction.editReply({
-    embeds: [embed],
-    components: buildPanelComponents(),
-    files: attachment ? [attachment] : [],
-  });
-
-  const session = createSession(user.id, interaction.channelId, key, message.id, lastBet, lastLines, balance, lastBet > 0 ? lastBetExpression : null);
-  client.slotsPanels.set(key, session);
-  attachSessionCollector(client, message, session, interaction.channel);
 }
 
 function attachSessionCollector(client, message, session, channel) {
@@ -658,15 +664,12 @@ module.exports = {
 // fast path.
 async function spinFromSlash(interaction, user, client, betExpression, linesOption) {
   const key = sessionKey(interaction.channelId, user.id);
-  const existing = client.slotsPanels.get(key);
-
-  // Power-user reuse: if a panel already exists and is idle, treat
-  // `/slots spin bet:X` as if the user clicked Spin on that panel — the
-  // spin animation renders on the existing panel message.
-  if (existing && existing.status === "waiting") {
-    return spinOnExistingPanel(interaction, existing, client, user, betExpression, linesOption);
-  }
-  if (existing && existing.status !== "ended") {
+  const { claim, existing } = claimSession(client.slotsPanels, key);
+  if (!claim) {
+    // Power-user reuse: `/slots spin bet:X` against an idle panel is a Spin click on that panel.
+    if (existing.status === "waiting") {
+      return spinOnExistingPanel(interaction, existing, client, user, betExpression, linesOption);
+    }
     if (existing.lastEphemeralInteraction) {
       existing.lastEphemeralInteraction.deleteReply().catch(() => {});
     }
@@ -678,40 +681,45 @@ async function spinFromSlash(interaction, user, client, betExpression, linesOpti
     return;
   }
 
-  const dbUser = (await db.get(user.id)) || {};
-  const safeLines = typeof linesOption === "number"
-    ? Math.min(Math.max(linesOption, 1), SLOTS_MAX_LINES)
-    : Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
+  // The claim is released on every path that never reaches the real session, and is a no-op once it has.
+  try {
+    const dbUser = (await db.get(user.id)) || {};
+    const safeLines = typeof linesOption === "number"
+      ? Math.min(Math.max(linesOption, 1), SLOTS_MAX_LINES)
+      : Math.min(Math.max(dbUser.slots?.lastLines ?? 1, 1), SLOTS_MAX_LINES);
 
-  const resolved = await resolveBet(betExpression, user.id);
-  if (!resolved.ok) {
-    return interaction.reply({ embeds: [buildErrorEmbed(user, client, resolved.reason)], flags: MessageFlags.Ephemeral });
+    const resolved = await resolveBet(betExpression, user.id);
+    if (!resolved.ok) {
+      return await interaction.reply({ embeds: [buildErrorEmbed(user, client, resolved.reason)], flags: MessageFlags.Ephemeral });
+    }
+    const totalCost = resolved.amount * safeLines;
+    const balance = dbUser.balance ?? 0;
+    if (totalCost > balance) {
+      return await interaction.reply({
+        embeds: [buildErrorEmbed(user, client, `Need **${totalCost.toLocaleString("en-US")}** ${CURRENCY_NAME} for this spin (${resolved.amount.toLocaleString("en-US")} × ${safeLines}); you have **${balance.toLocaleString("en-US")}**.`)],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    // Overwrite saved defaults (expression + lines) so they survive panel close.
+    await persistPreferences(user.id, betExpression.trim(), safeLines);
+
+    await interaction.deferReply();
+    const message = await interaction.fetchReply();
+
+    const session = createSession(
+      user.id, interaction.channelId, key, message.id,
+      resolved.amount, safeLines, balance, betExpression.trim(),
+    );
+    client.slotsPanels.set(key, session);
+
+    return await spinWithSettings(
+      interaction, session, client, interaction.channel, user,
+      resolved.amount, safeLines, /* deferUpdate */ false,
+    );
+  } finally {
+    releaseSession(client.slotsPanels, key, claim);
   }
-  const totalCost = resolved.amount * safeLines;
-  const balance = dbUser.balance ?? 0;
-  if (totalCost > balance) {
-    return interaction.reply({
-      embeds: [buildErrorEmbed(user, client, `Need **${totalCost.toLocaleString("en-US")}** ${CURRENCY_NAME} for this spin (${resolved.amount.toLocaleString("en-US")} × ${safeLines}); you have **${balance.toLocaleString("en-US")}**.`)],
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  // Overwrite saved defaults (expression + lines) so they survive panel close.
-  await persistPreferences(user.id, betExpression.trim(), safeLines);
-
-  await interaction.deferReply();
-  const message = await interaction.fetchReply();
-
-  const session = createSession(
-    user.id, interaction.channelId, key, message.id,
-    resolved.amount, safeLines, balance, betExpression.trim(),
-  );
-  client.slotsPanels.set(key, session);
-
-  return spinWithSettings(
-    interaction, session, client, interaction.channel, user,
-    resolved.amount, safeLines, /* deferUpdate */ false,
-  );
 }
 
 // Wraps the slash interaction so `playSlots` and `spinWithSettings` (which

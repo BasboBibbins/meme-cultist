@@ -14,6 +14,7 @@ const { getEquippedTheme } = require("../../themes/manager");
 const { getThemeColors } = require("../../themes/resolver");
 const { contributeToJackpot } = require("../../utils/jackpot");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
@@ -60,28 +61,36 @@ module.exports = {
     const user = interaction.user;
     const channelId = interaction.channelId;
 
-    if (client.rouletteGames.has(channelId)) {
+    const { claim } = claimSession(client.rouletteGames, channelId);
+    if (!claim) {
       return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A roulette game is already running in this channel — click a bet button on the table to join.")], flags: MessageFlags.Ephemeral });
     }
 
-    const dbUser = await db.get(user.id);
-    if (!dbUser) {
-      await addNewDBUser(user);
-    }
-
-    // Slash-supplied default bet is stashed as the raw expression so that
-    // subsequent bet-button clicks re-resolve it against the live balance.
-    let initialExpression = null;
-    const amountStr = interaction.options.getString("amount");
-    if (amountStr) {
-      const check = await resolveBet(amountStr, user.id, { min: ROULETTE_MIN_BET, max: ROULETTE_MAX_BET, requireBalance: false });
-      if (!check.ok) {
-        return interaction.reply({ embeds: [buildErrorEmbed(user, client, check.reason)], flags: MessageFlags.Ephemeral });
+    try {
+      const dbUser = await db.get(user.id);
+      if (!dbUser) {
+        await addNewDBUser(user);
       }
-      initialExpression = amountStr.trim();
-    }
 
-    return handleNewGame(interaction, client, user, initialExpression);
+      // Slash-supplied default bet is stashed as the raw expression so that
+      // subsequent bet-button clicks re-resolve it against the live balance.
+      let initialExpression = null;
+      const amountStr = interaction.options.getString("amount");
+      if (amountStr) {
+        const check = await resolveBet(amountStr, user.id, { min: ROULETTE_MIN_BET, max: ROULETTE_MAX_BET, requireBalance: false });
+        if (!check.ok) {
+          releaseSession(client.rouletteGames, channelId, claim);
+          return interaction.reply({ embeds: [buildErrorEmbed(user, client, check.reason)], flags: MessageFlags.Ephemeral });
+        }
+        initialExpression = amountStr.trim();
+      }
+
+      return await handleNewGame(interaction, client, user, initialExpression);
+    } catch (err) {
+      releaseSession(client.rouletteGames, channelId, claim);
+      logger.error(`[roulette] failed to open a table in ${channelId}: ${err && err.stack || err}`);
+      await interaction.followUp({ embeds: [buildErrorEmbed(user, client, "Could not open the roulette table. Try again.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
   },
 };
 
@@ -600,13 +609,16 @@ function attachPlayAgainCollector(client, message, prevState, prevBets) {
     if (!eligibleUserIds.has(i.user.id)) {
       return i.reply({ content: "Only players from the previous game can use Play Again.", flags: MessageFlags.Ephemeral });
     }
-    if (client.rouletteGames.has(prevState.channelId)) {
+    // Every ended game in this channel still carries a Play Again button, so stopping this collector alone does not close the window.
+    const { claim } = claimSession(client.rouletteGames, prevState.channelId);
+    if (!claim) {
       return i.reply({ content: "A roulette game is already running in this channel — join it directly.", flags: MessageFlags.Ephemeral });
     }
     collector.stop("used");
     try {
       await handlePlayAgain(i, client, prevState, prevBets, message);
     } catch (err) {
+      releaseSession(client.rouletteGames, prevState.channelId, claim);
       logger.error(`[roulette] play-again error: ${err && err.stack || err}`);
     }
   });

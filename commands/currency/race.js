@@ -4,6 +4,7 @@ const { CURRENCY_NAME, RACE_MIN_BET, RACE_MAX_BET, RACE_BETTING_TIME, RACE_HOUSE
 const { openBetModal } = require("../../utils/betModal");
 const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { applyRaceAggregates } = require("../../utils/guildStats");
 const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, truncateCells, MEDALS, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
 const logger = require("../../utils/logger");
@@ -238,14 +239,11 @@ async function handleStartRace(interaction, client, user) {
   const channelId = interaction.channelId;
   const channel = interaction.channel;
 
-  const existingGame = client.raceGames.get(channelId);
-  if (existingGame) {
+  const { claim, existing: existingGame } = claimSession(client.raceGames, channelId);
+  if (!claim) {
     return interaction.reply({ embeds: [buildErrorEmbed(user, client,startRejectionMessage(existingGame))], flags: MessageFlags.Ephemeral });
   }
-
-  // Claimed before the first await, or a concurrent /race start clears the guard above and orphans one of the two games.
-  const reservation = { phase: "starting", creatorId: user.id };
-  client.raceGames.set(channelId, reservation);
+  claim.creatorId = user.id;
 
   let message;
   let commentaryPromise = null;
@@ -300,7 +298,7 @@ async function handleStartRace(interaction, client, user) {
 
     client.raceGames.set(channelId, game);
   } catch (err) {
-    if (client.raceGames.get(channelId) === reservation) client.raceGames.delete(channelId);
+    releaseSession(client.raceGames, channelId, claim);
     logger.error(`[race] failed to start race in ${channelId}: ${err && err.stack || err}`);
     await interaction.followUp({ embeds: [buildErrorEmbed(user, client, "Could not start the race. Try again.")], flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
