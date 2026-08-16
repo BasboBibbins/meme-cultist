@@ -36,11 +36,42 @@ logger.debug(`\x1b[33m[Race]\x1b[0m Loaded ${ADJECTIVES.length} adjectives and $
 const EMOJIS = ["🐎", "🦄", "🦓", "🐢", "🐐", "🦩", "🎠", "⭐"];
 
 const ODDS_LABELS = [
-  { threshold: 0.25, label: "🟢 Favorite" },
-  { threshold: 0.10, label: "🟡 Contender" },
-  { threshold: 0.05, label: "🟠 Longshot" },
-  { threshold: 0,    label: "🔴 Outsider" },
+  { threshold: 0.25, dot: "🟢", label: "🟢 Favorite" },
+  { threshold: 0.10, dot: "🟡", label: "🟡 Contender" },
+  { threshold: 0.05, dot: "🟠", label: "🟠 Longshot" },
+  { threshold: 0,    dot: "🔴", label: "🔴 Outsider" },
 ];
+
+const GRAPHEME_SEGMENTER = new Intl.Segmenter("en", { granularity: "grapheme" });
+
+// Code blocks render emoji at roughly two monospace cells, so column math on string length is wrong by one per emoji.
+function cellWidth(text) {
+  let width = 0;
+  for (const { segment } of GRAPHEME_SEGMENTER.segment(String(text))) {
+    width += /\p{Extended_Pictographic}/u.test(segment) ? 2 : 1;
+  }
+  return width;
+}
+
+// Cuts on grapheme boundaries, so a truncated name can never emit half a surrogate pair.
+function truncateCells(text, maxCells) {
+  const value = String(text);
+  if (cellWidth(value) <= maxCells) return value;
+
+  let out = "";
+  let width = 0;
+  for (const { segment } of GRAPHEME_SEGMENTER.segment(value)) {
+    const w = /\p{Extended_Pictographic}/u.test(segment) ? 2 : 1;
+    if (width + w > maxCells - 1) break;
+    out += segment;
+    width += w;
+  }
+  return `${out}…`;
+}
+
+function padCells(text, cells) {
+  return `${text}${" ".repeat(Math.max(0, cells - cellWidth(text)))}`;
+}
 
 // Trails the lane: a medal is not reliably two monospace cells.
 const RANK_LABELS = { "🥇": "🥇 1st", "🥈": "🥈 2nd", "🥉": "🥉 3rd" };
@@ -155,6 +186,11 @@ function getOddsLabel(probability) {
   return ODDS_LABELS.find(o => probability >= o.threshold)?.label ?? "🔴 Outsider";
 }
 
+// The table carries the dot alone: the word restates the odds beside it and costs ten cells the names need.
+function getOddsDot(probability) {
+  return ODDS_LABELS.find(o => probability >= o.threshold)?.dot ?? "🔴";
+}
+
 function oddsForBetType(displayOdds, betType = "win") {
   switch (betType) {
     case "place": return (displayOdds - 1) * RACE_PLACE_MULTIPLIER + 1;
@@ -263,6 +299,13 @@ function buildTrack(progress, horseEmoji, trackLength = 20) {
   return `|${before}${horseEmoji}${after}|🏁`;
 }
 
+// Cells the narrowest mobile client fits before a code block starts scrolling sideways.
+const MOBILE_CELL_BUDGET = 42;
+const ODDS_CELLS = 6;
+// number, space, emoji, space, odds, gap, tier dot. Whatever is left belongs to the name.
+const TABLE_CHROME_CELLS = 1 + 1 + 2 + 1 + ODDS_CELLS + 2 + 2;
+const NAME_CELL_BUDGET = MOBILE_CELL_BUDGET - TABLE_CHROME_CELLS;
+
 const BACKER_WIDTH = 8;
 
 // Who backed each lane, so a bettor finds their horse by name instead of by a
@@ -279,7 +322,7 @@ function backerTags(bets) {
   for (const [horseIndex, names] of byHorse) {
     const extra = names.length - 1;
     const room = extra > 0 ? BACKER_WIDTH - String(extra).length - 2 : BACKER_WIDTH;
-    const first = names[0].length > room ? `${names[0].slice(0, room - 1)}…` : names[0];
+    const first = truncateCells(names[0], room);
     tags.set(horseIndex, extra > 0 ? `${first} +${extra}` : first);
   }
   return tags;
@@ -325,12 +368,14 @@ function buildBettingDescription(horses, bets, endTime) {
 
   const sortedHorses = [...horses].sort((a, b) => a.number - b.number);
 
-  const nameWidth = Math.max(...sortedHorses.map(h => h.name.length));
+  // Derived from the budget, not from the data: padding to the longest name pushed every row over, not just the long one.
+  const names = sortedHorses.map(h => truncateCells(h.name, NAME_CELL_BUDGET));
+  const nameWidth = Math.max(...names.map(cellWidth));
 
-  for (const horse of sortedHorses) {
-    const odds = `${horse.displayOdds}x`.padStart(6, " ");
-    lines.push(`${horse.number} ${horse.emoji} ${horse.name.padEnd(nameWidth, " ")}${odds}  ${getOddsLabel(horse.probability)}`);
-  }
+  sortedHorses.forEach((horse, i) => {
+    const odds = `${horse.displayOdds}x`.padStart(ODDS_CELLS, " ");
+    lines.push(`${horse.number} ${horse.emoji} ${padCells(names[i], nameWidth)}${odds}  ${getOddsDot(horse.probability)}`);
+  });
   lines.push("```");
 
   if (bets.length > 0) {
@@ -661,6 +706,9 @@ module.exports = {
   calculatePayout,
   effectiveMultiplier,
   getOddsLabel,
+  getOddsDot,
+  cellWidth,
+  truncateCells,
   getDefaultCommentary,
   COMMENTARY_GUARD_TIMEOUT,
   buildTrack,

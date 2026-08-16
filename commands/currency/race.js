@@ -5,7 +5,7 @@ const { openBetModal } = require("../../utils/betModal");
 const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
 const { applyRaceAggregates } = require("../../utils/guildStats");
-const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
+const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, truncateCells, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -201,6 +201,8 @@ async function refundBets(bets) {
 // width. Eight horses fill four rows, and the controls take the fifth — the
 // message is at Discord's five-row ceiling, so another row cannot be added.
 const HORSES_PER_ROW = 2;
+// Discord clips a half-width label from the right, so an untrimmed name ate the odds. Trimming here keeps them.
+const BUTTON_NAME_CELLS = 12;
 
 function buildComponents(horses, disabled = false) {
   const sorted = [...horses].sort((a, b) => a.number - b.number);
@@ -209,7 +211,7 @@ function buildComponents(horses, disabled = false) {
     const h = sorted[i];
     const btn = new ButtonBuilder()
       .setCustomId(`race_bet_${h.number}`)
-      .setLabel(`${h.number}: ${h.name} [${h.displayOdds}x]`)
+      .setLabel(`${h.number}: ${truncateCells(h.name, BUTTON_NAME_CELLS)} [${h.displayOdds}x]`)
       .setEmoji(h.emoji)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled);

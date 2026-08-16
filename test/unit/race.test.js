@@ -189,6 +189,14 @@ describe("buildRaceDescription", () => {
       expect(cellWidth(line)).toBeLessThanOrEqual(MOBILE_CELL_BUDGET);
     }
   });
+
+  test("truncates an emoji backer tag without splitting a surrogate pair", () => {
+    const bets = [{ userId: "1", username: "🐎🐎🐎🐎🐎", horseIndex: 0, amount: 10, betType: "win" }];
+    const description = buildRaceDescription(horses, new Array(8).fill(50), 5, 10, null, [], topThree, bets);
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    expect(lone.test(description)).toBe(false);
+    expect(description).not.toContain("�");
+  });
 });
 
 describe("buildBettingDescription", () => {
@@ -222,6 +230,27 @@ describe("buildBettingDescription", () => {
     const long = listedLines(makeHorses());
     expect(cellWidth(long[0])).toBeGreaterThan(cellWidth(short[0]));
     expect(long[0]).toContain("Definitely-Not-A Accountant");
+  });
+
+  test("fits the mobile cell budget, longest name and widest odds included", () => {
+    for (const line of listedLines(makeHorses())) {
+      expect(cellWidth(line)).toBeLessThanOrEqual(MOBILE_CELL_BUDGET);
+    }
+  });
+
+  test("aligns every row to one width regardless of which lane emoji it carries", () => {
+    const widths = listedLines(makeHorses()).map(cellWidth);
+    expect(new Set(widths).size).toBe(1);
+  });
+
+  test("clips a name that cannot fit the budget rather than overflowing the block", () => {
+    const horses = makeHorses();
+    horses[0].name = "A".repeat(80);
+    const listed = listedLines(horses);
+    for (const line of listed) {
+      expect(cellWidth(line)).toBeLessThanOrEqual(MOBILE_CELL_BUDGET);
+    }
+    expect(listed[0]).toContain("…");
   });
 
   test("still reports bets and the relative start time", () => {
