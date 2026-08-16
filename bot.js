@@ -8,7 +8,7 @@ const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
-const { trackStart, trackEnd } = require("./utils/musicPlayer");
+const { trackStart, trackEnd, teardownPanel } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
@@ -27,7 +27,7 @@ const { DefaultExtractors } = require("@discord-player/extractor");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
 const { handleProposalInteraction } = require("./utils/kbProposals");
-const { takeUnplayableReason } = require("./utils/musicStream");
+const { takeUnplayableReason, logYtdlpDiagnostics } = require("./utils/musicStream");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -132,6 +132,24 @@ async function notifyMusicFailure(queue, message) {
     await channel.send({ embeds: [buildInfoEmbed(client.user, client, message).setColor(COLORS.error)] });
   } catch (err) {
     logger.warn(`[Music] Could not report failure to channel: ${err.message}`);
+  }
+}
+
+// A half-dead queue is worse than a stopped one: the panel keeps claiming a track is playing while
+// nothing is. Everything is torn down together, and the embed is the only thing left behind.
+async function killMusicSession(queue, message) {
+  const dropped = queue?.tracks?.size ?? 0;
+  const tail = dropped > 0 ? `\n\nStopped playback and cleared **${dropped}** queued track${dropped === 1 ? "" : "s"}. Use \`/play\` to start again.` : "\n\nStopped playback. Use `/play` to start again.";
+
+  await teardownPanel(queue?.guild?.id).catch(err => logger.warn(`[Music] Panel teardown failed: ${err.message}`));
+  await notifyMusicFailure(queue, `${message}${tail}`);
+
+  try {
+    queue?.tracks?.clear();
+    queue?.node?.stop();
+    queue?.delete();
+  } catch (err) {
+    logger.warn(`[Music] Could not fully tear down the queue: ${err.message}`);
   }
 }
 
@@ -261,6 +279,7 @@ if (DELETE_SLASH) {
       logger.warn("[Music] No YouTube extractor is active — text searches will find nothing.");
     }
     client.player = player;
+    logYtdlpDiagnostics();
     // Pre-warm slot image caches to eliminate cold-start latency on first spin
     try {
       const { warmCaches } = require("./utils/slotsCanvas");
@@ -648,20 +667,19 @@ if (DELETE_SLASH) {
   player.events.on(GuildQueueEvent.Error, async (queue, error) => {
     logger.error(`Error in ${queue.guild.name}'s queue! - ${error.message}`);
     logger.error(error.stack);
-    await notifyMusicFailure(queue, "The queue hit an error and had to stop.");
+    await killMusicSession(queue, "The queue hit an error it could not recover from.");
   });
   player.events.on(GuildQueueEvent.PlayerError, async (queue, error, track) => {
     // A track that can never play is reported verbatim — "skipping it" would hide the reason, and the bot should not sit in a channel with nothing to play.
     const unplayable = takeUnplayableReason(track);
     if (unplayable) {
       logger.warn(`[Music] Unplayable track in ${queue.guild?.name}: ${unplayable}`);
-      await notifyMusicFailure(queue, `${unplayable}\nTry searching for it by name instead.`);
-      if (queue.tracks.size === 0) queue.delete();
+      await killMusicSession(queue, `${unplayable}\nTry searching for it by name instead.`);
       return;
     }
     logger.error(`Playback error in ${queue.guild.name}${track ? ` on "${track.title}"` : ""} - ${error.message}`);
     logger.error(error.stack);
-    await notifyMusicFailure(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}. Skipping it.`);
+    await killMusicSession(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}: ${error.message || "the audio source failed"}.`);
   });
 
   // Chatbot events
