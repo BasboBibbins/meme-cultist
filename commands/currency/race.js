@@ -93,10 +93,10 @@ async function resolveRaceColors(userId) {
 }
 
 // Carries the panel's author and footer so it is not read as a stray message.
-function buildStoppedEmbed(client, game, description) {
+function buildStoppedEmbed(client, game, description, title = "Race Cancelled") {
   return new EmbedBuilder()
     .setAuthor({ name: "🏇 Horse Race", iconURL: client.user.displayAvatarURL({ dynamic: true }) })
-    .setTitle("Race Cancelled")
+    .setTitle(title)
     .setDescription(description)
     .setColor(game.colors.interrupted)
     .setFooter({ text: `${client.user.username} | Version ${PACKAGE_VERSION}`, iconURL: client.user.displayAvatarURL({ dynamic: true }) })
@@ -122,6 +122,52 @@ function startRejectionMessage(game) {
 function formatBetType(type) {
   const t = (type || "win").toLowerCase();
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const BETTING_CLOSED_REFUNDED = "Betting closed while your bet was being placed, refunded.";
+
+// Stake and its wagered-total stat move together under one lock, or a concurrent clear leaves the two disagreeing.
+async function debitStake(userId, amount) {
+  return withUserLock(userId, async () => {
+    const balance = await db.get(`${userId}.balance`) ?? 0;
+    if (balance < amount) return false;
+    await db.sub(`${userId}.balance`, amount);
+    await db.add(`${userId}.stats.race.totalBet`, amount);
+    return true;
+  });
+}
+
+async function refundStake(userId, amount) {
+  if (!(amount > 0)) return;
+  await withUserLock(userId, async () => {
+    await db.add(`${userId}.balance`, amount);
+    await db.sub(`${userId}.stats.race.totalBet`, amount);
+  });
+}
+
+// Draining rather than reading is what makes a double refund impossible when two paths race to settle the same game.
+function takeBets(game) {
+  const taken = game.bets;
+  game.bets = [];
+  return taken;
+}
+
+// One user's stakes collapse into a single lock, and one failed refund never strands the rest.
+async function refundBets(bets) {
+  const byUser = {};
+  for (const bet of bets) {
+    byUser[bet.userId] = (byUser[bet.userId] || 0) + bet.amount;
+  }
+  let refunded = 0;
+  for (const [uid, amount] of Object.entries(byUser)) {
+    try {
+      await refundStake(uid, amount);
+      refunded += amount;
+    } catch (err) {
+      logger.error(`[race] refund failed for ${uid} (${amount}): ${err && err.stack || err}`);
+    }
+  }
+  return refunded;
 }
 
 // Two horses per row rather than four: the label carries a number, a name and
@@ -270,19 +316,14 @@ async function handleStartRace(interaction, client, user) {
           return i.reply({ embeds: [buildErrorEmbed(i.user, i.client,`Only **${game.creatorUsername}** can cancel this race.`)], flags: MessageFlags.Ephemeral });
         }
 
-        const refundsByUser = {};
-        for (const b of game.bets) {
-          refundsByUser[b.userId] = (refundsByUser[b.userId] || 0) + b.amount;
-        }
-        for (const [uid, amount] of Object.entries(refundsByUser)) {
-          await withUserLock(uid, () => db.add(`${uid}.balance`, amount));
-          await db.sub(`${uid}.stats.race.totalBet`, amount);
-        }
+        const cancelled = takeBets(game);
+        const refunded = await refundBets(cancelled);
 
-        const refunded = Object.values(refundsByUser).reduce((sum, amount) => sum + amount, 0);
+        // Set before the collector stops, or the end handler reads this as an abandon and posts over the cancel notice.
+        game.phase = "cancelled";
         await i.update({
           embeds: [buildStoppedEmbed(client, game, refunded > 0
-            ? `Cancelled by **${game.creatorUsername}**. Refunded **${refunded.toLocaleString("en-US")}** ${CURRENCY_NAME} across ${game.bets.length} bet${game.bets.length === 1 ? "" : "s"}.`
+            ? `Cancelled by **${game.creatorUsername}**. Refunded **${refunded.toLocaleString("en-US")}** ${CURRENCY_NAME} across ${cancelled.length} bet${cancelled.length === 1 ? "" : "s"}.`
             : `Cancelled by **${game.creatorUsername}**. No bets to refund.`)],
           components: [],
         });
@@ -299,11 +340,16 @@ async function handleStartRace(interaction, client, user) {
   });
 
   collector.on("end", async (_collected, reason) => {
-    if (client.raceGames.get(channelId) !== game || game.phase !== "betting") return;
+    if (game.phase !== "betting") return;
 
-    if (reason === "time" || reason === "start") {
+    const ownsChannel = client.raceGames.get(channelId) === game;
+    if (ownsChannel && (reason === "time" || reason === "start")) {
       await resolveRace(client, channel, message, game);
+      return;
     }
+
+    // Every other stop reason ends the race without running it, so the stakes have to come back.
+    await abandonRace(client, channel, message, game, reason);
   });
 
   // Deliberately not awaited: the buttons are already live, and awaiting here
@@ -380,19 +426,21 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
 
   const current = client.raceGames.get(game.channelId);
   if (current !== game || current.phase !== "betting") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open for this race.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, "Betting is no longer open for this race.")], flags: MessageFlags.Ephemeral });
   }
 
-  const debited = await withUserLock(user.id, async () => {
-    const balance = await db.get(`${user.id}.balance`) ?? 0;
-    if (balance < amount) return false;
-    await db.sub(`${user.id}.balance`, amount);
-    return true;
-  });
+  const debited = await debitStake(user.id, amount);
   if (!debited) {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Insufficient funds in wallet!")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, "Insufficient funds in wallet!")], flags: MessageFlags.Ephemeral });
   }
-  await db.add(`${user.id}.stats.race.totalBet`, amount);
+
+  // The debit is an await, so the race can resolve underneath it. Without this the stake is gone and no bet exists.
+  const stillBetting = client.raceGames.get(game.channelId);
+  if (stillBetting !== game || stillBetting.phase !== "betting") {
+    await refundStake(user.id, amount);
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, BETTING_CLOSED_REFUNDED)], flags: MessageFlags.Ephemeral });
+  }
+
   await db.set(`${user.id}.race.lastBet`, expression);
   await db.set(`${user.id}.race.lastBetType`, betTypeRaw);
 
@@ -495,33 +543,25 @@ async function handleSlashBet(interaction, client, user) {
     return interaction.editReply({ embeds: [buildErrorEmbed(user, client,`Maximum bet is ${RACE_MAX_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)] });
   }
 
-  const debited = await withUserLock(user.id, async () => {
-    const balance = await db.get(`${user.id}.balance`) ?? 0;
-    if (balance < amount) return false;
-    await db.sub(`${user.id}.balance`, amount);
-    return true;
-  });
+  const debited = await debitStake(user.id, amount);
   if (!debited) {
     const currentBalance = await db.get(`${user.id}.balance`) ?? 0;
     return interaction.editReply({
-      embeds: [buildErrorEmbed(user, client,`Insufficient funds! You have **${currentBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)],
+      embeds: [buildErrorEmbed(user, client, `Insufficient funds! You have **${currentBalance.toLocaleString("en-US")}** ${CURRENCY_NAME}.`)],
     });
   }
-  await db.add(`${user.id}.stats.race.totalBet`, amount);
-  // Cache the raw expression + bet type so future button-driven modals
-  // pre-fill, keeping the slash and button paths in sync.
-  await db.set(`${user.id}.race.lastBet`, expression);
-  await db.set(`${user.id}.race.lastBetType`, betTypeRaw);
 
   const current = client.raceGames.get(channelId);
   if (current !== game || current.phase !== "betting") {
-    // Race ended between validation and debit — refund and bail.
-    await withUserLock(user.id, () => db.add(`${user.id}.balance`, amount));
-    await db.sub(`${user.id}.stats.race.totalBet`, amount);
+    await refundStake(user.id, amount);
     return interaction.editReply({
-      embeds: [buildErrorEmbed(user, client,"Betting closed while your bet was being placed — refunded.")],
+      embeds: [buildErrorEmbed(user, client, BETTING_CLOSED_REFUNDED)],
     });
   }
+
+  // Cached so the next button-driven modal pre-fills, keeping the slash and button paths in sync.
+  await db.set(`${user.id}.race.lastBet`, expression);
+  await db.set(`${user.id}.race.lastBetType`, betTypeRaw);
 
   current.bets.push({
     userId: user.id,
@@ -616,8 +656,7 @@ async function handleClearBets(buttonInt, client, game) {
   const refund = standingBets.reduce((sum, b) => sum + b.amount, 0);
   current.bets = current.bets.filter(b => b.userId !== user.id);
 
-  await withUserLock(user.id, () => db.add(`${user.id}.balance`, refund));
-  await db.sub(`${user.id}.stats.race.totalBet`, refund);
+  await refundStake(user.id, refund);
 
   logger.log(`${user.username} (${user.id}) cleared ${standingBets.length} race bet(s) in ${current.channelId}, refunded ${refund}.`);
 
@@ -649,12 +688,48 @@ async function repostRaceMessage(channel, previous, payload) {
   }
 }
 
+// The panel is the first casualty of a messageDelete abandon, so the notice falls back to a fresh channel message.
+async function announceStopped(client, channel, message, game, description, title) {
+  const payload = { embeds: [buildStoppedEmbed(client, game, description, title)], components: [] };
+  try {
+    await message.edit(payload);
+    return;
+  } catch (err) {
+    logger.debug(`[race] could not edit panel for stop notice in ${game.channelId}: ${err.message}`);
+  }
+  await channel.send({ embeds: payload.embeds }).catch(() => {});
+}
+
+// Reached when the collector dies for any reason that is not a real start: the race never runs, so nobody stays debited.
+async function abandonRace(client, channel, message, game, reason) {
+  game.phase = "abandoned";
+  try {
+    const abandoned = takeBets(game);
+    const refunded = await refundBets(abandoned);
+    logger.warn(`[race] abandoned in ${game.channelId} (${reason}): refunded ${refunded} across ${abandoned.length} bet(s)`);
+    if (abandoned.length > 0) {
+      await announceStopped(client, channel, message, game, `The race fell over before it could run. Refunded **${refunded.toLocaleString("en-US")}** ${CURRENCY_NAME} across ${abandoned.length} bet${abandoned.length === 1 ? "" : "s"}. Start another with \`/race start\`.`, "Race Abandoned");
+    }
+  } catch (err) {
+    logger.error(`[race] abandon failed in ${game.channelId}: ${err && err.stack || err}`);
+  } finally {
+    if (client.raceGames.get(game.channelId) === game) client.raceGames.delete(game.channelId);
+  }
+}
+
 // Releases the channel slot whatever happens below. A throw mid-resolve used to wedge the channel until restart.
 async function resolveRace(client, channel, message, game) {
   try {
     await runRace(client, channel, message, game);
   } catch (err) {
     logger.error(`[race] resolve failed in ${game.channelId}: ${err && err.stack || err}`);
+    // runRace removes each stake from game.bets as it settles it, so whatever is left here was never paid out.
+    const unsettled = takeBets(game);
+    const refunded = await refundBets(unsettled);
+    if (unsettled.length > 0) {
+      logger.warn(`[race] refunded ${refunded} across ${unsettled.length} unsettled bet(s) in ${game.channelId}`);
+      await announceStopped(client, channel, message, game, `The race broke down before every bet was settled. Refunded **${refunded.toLocaleString("en-US")}** ${CURRENCY_NAME} across ${unsettled.length} unsettled bet${unsettled.length === 1 ? "" : "s"}.`, "Race Broke Down");
+    }
   } finally {
     if (client.raceGames.get(game.channelId) === game) client.raceGames.delete(game.channelId);
   }
@@ -726,7 +801,9 @@ async function runRace(client, channel, message, game) {
   let topSingleBet = null;
   let topSinglePayout = null;
 
-  for (const bet of game.bets) {
+  const wagered = game.bets.slice();
+
+  for (const bet of wagered) {
     const horsePosition = finishOrder.indexOf(bet.horseIndex);
     const betType = bet.betType || "win";
     const horseSnapshot = {
@@ -748,7 +825,15 @@ async function runRace(client, channel, message, game) {
 
     if (won) {
       winnings = calculatePayout(bet.amount, bet.odds, HOUSE_EDGE, betType);
-      await withUserLock(bet.userId, () => db.add(`${bet.userId}.balance`, winnings));
+      // The payout and the personal-best read-modify-write share a lock, or two races resolving at once drop an update.
+      await withUserLock(bet.userId, async () => {
+        await db.add(`${bet.userId}.balance`, winnings);
+        const biggestWin = await db.get(`${bet.userId}.stats.race.biggestWin`) || 0;
+        if (winnings > biggestWin) {
+          await db.set(`${bet.userId}.stats.race.biggestWin`, winnings);
+          await db.set(`${bet.userId}.stats.race.biggestWinHorse`, horseSnapshot);
+        }
+      });
       await db.add(`${bet.userId}.stats.race.wins`, 1);
 
       if (betType === "place") {
@@ -756,20 +841,16 @@ async function runRace(client, channel, message, game) {
       } else if (betType === "show") {
         await db.add(`${bet.userId}.stats.race.showWins`, 1);
       }
-
-      const biggestWin = await db.get(`${bet.userId}.stats.race.biggestWin`) || 0;
-      if (winnings > biggestWin) {
-        await db.set(`${bet.userId}.stats.race.biggestWin`, winnings);
-        await db.set(`${bet.userId}.stats.race.biggestWinHorse`, horseSnapshot);
-      }
     } else {
       await db.add(`${bet.userId}.stats.race.losses`, 1);
 
-      const biggestLoss = await db.get(`${bet.userId}.stats.race.biggestLoss`) || 0;
-      if (bet.amount > biggestLoss) {
-        await db.set(`${bet.userId}.stats.race.biggestLoss`, bet.amount);
-        await db.set(`${bet.userId}.stats.race.biggestLossHorse`, horseSnapshot);
-      }
+      await withUserLock(bet.userId, async () => {
+        const biggestLoss = await db.get(`${bet.userId}.stats.race.biggestLoss`) || 0;
+        if (bet.amount > biggestLoss) {
+          await db.set(`${bet.userId}.stats.race.biggestLoss`, bet.amount);
+          await db.set(`${bet.userId}.stats.race.biggestLossHorse`, horseSnapshot);
+        }
+      });
     }
 
     // Guild-wide aggregate accumulators
@@ -811,6 +892,10 @@ async function runRace(client, channel, message, game) {
     }
 
     results.push({ ...bet, won, winnings, horsePosition });
+
+    // Settled stakes leave the refundable set one at a time, so a throw below refunds only what this loop never reached.
+    const settledIndex = game.bets.indexOf(bet);
+    if (settledIndex !== -1) game.bets.splice(settledIndex, 1);
   }
 
   try {
@@ -848,7 +933,9 @@ async function runRace(client, channel, message, game) {
         },
       });
     }
-  } catch (_) {}
+  } catch (err) {
+    logger.warn(`[race] failed to record game results in ${game.channelId}: ${err.message}`);
+  }
 
   if (game.guildId && Object.keys(horseDeltas).length > 0) {
     try {
@@ -870,7 +957,7 @@ async function runRace(client, channel, message, game) {
     await db.add(`${result.userId}.stats.race.profit`, net);
   }
 
-  const totalWagered = game.bets.reduce((sum, b) => sum + b.amount, 0);
+  const totalWagered = wagered.reduce((sum, b) => sum + b.amount, 0);
   const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 
   const positionPrefix = (pos) => {
@@ -964,5 +1051,5 @@ async function runRace(client, channel, message, game) {
     }
   }
 
-  logger.log(`Race in channel ${game.channelId} completed. Top 3: ${winner.number} (${winner.name}), ${secondPlace.number} (${secondPlace.name}), ${thirdPlace.number} (${thirdPlace.name}). Bets: ${game.bets.length}, Wagered: ${totalWagered}, Paid: ${totalPaid}`);
+  logger.log(`Race in channel ${game.channelId} completed. Top 3: ${winner.number} (${winner.name}), ${secondPlace.number} (${secondPlace.name}), ${thirdPlace.number} (${thirdPlace.name}). Bets: ${wagered.length}, Wagered: ${totalWagered}, Paid: ${totalPaid}`);
 }
