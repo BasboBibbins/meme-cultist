@@ -3,9 +3,11 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
-const TEST_DB = path.resolve(process.cwd(), `db/message_archive_test_${Date.now()}.sqlite`);
+// Kept out of `db/`, because a swallowed unlink there leaves orphans beside the live databases.
+const TEST_DB = path.join(os.tmpdir(), `message_archive_test_${Date.now()}.sqlite`);
 process.env.ARCHIVE_TEST_DB = TEST_DB;
 
 const archive = require("../../utils/messageArchive/store");
