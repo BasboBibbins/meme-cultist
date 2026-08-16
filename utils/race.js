@@ -31,8 +31,7 @@ ADJECTIVES.push(...(process.env.ADDITIONAL_ADJECTIVES || "").split(",").map(s =>
 
 logger.debug(`\x1b[33m[Race]\x1b[0m Loaded ${ADJECTIVES.length} adjectives and ${NOUNS.length} nouns for horse name generation.`);
 
-// Separated by silhouette and hue: code blocks fall back to the system emoji font, where 🏇 🐴 🦌 all collided with 🐎.
-const EMOJIS = ["🐎", "🦄", "🦓", "🐢", "🐐", "🦩", "🎠", "⭐"];
+const EMOJIS = ["🐎", "🦄", "🦓", "🐢", "🐐", "🐙", "🎠", "⭐"];
 
 const ODDS_LABELS = [
   { threshold: 0.25, dot: "🟢", label: "🟢 Favorite" },
