@@ -5,7 +5,7 @@ const { openBetModal } = require("../../utils/betModal");
 const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
 const { applyRaceAggregates } = require("../../utils/guildStats");
-const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, truncateCells, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
+const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, truncateCells, MEDALS, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -20,7 +20,6 @@ const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
 const ANIMATION_TICKS = RACE_ANIMATION_TICKS ?? 10;
 const TICK_INTERVAL = RACE_TICK_INTERVAL ?? 1500;
 const BET_TYPES = new Set(["win", "place", "show"]);
-const COMMENTARY_TIMEOUT = COMMENTARY_GUARD_TIMEOUT;
 const HOUSE_CUT_LABEL = `${Math.round(HOUSE_EDGE * 100)}%`;
 
 // "Win / place / show" means nothing to anyone who has not been to a racetrack, and the multiplier is the part people act on.
@@ -145,7 +144,7 @@ async function buildBetConfirmEmbed(user, game, horse, amount, betType) {
       `**${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on **Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
       `**${formatBetType(betType)}** at ${horse.displayOdds}x`,
       "",
-      `**Pays if it lands:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betType).toLocaleString("en-US")} ${CURRENCY_NAME}, after the ${HOUSE_CUT_LABEL} cut`,
+      `**Pays if it lands:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betType).toLocaleString("en-US")} ${CURRENCY_NAME}`,
       `**Wallet now:** ${balance.toLocaleString("en-US")} ${CURRENCY_NAME}`,
     ].join("\n"))
     .setColor(game.colors.identity)
@@ -196,10 +195,7 @@ async function refundBets(bets) {
   return refunded;
 }
 
-// Two horses per row rather than four: the label carries a number, a name and
-// the odds, which the mobile client truncates to unreadable stubs at quarter
-// width. Eight horses fill four rows, and the controls take the fifth — the
-// message is at Discord's five-row ceiling, so another row cannot be added.
+// Two per row, not four: at quarter width the mobile client cuts the label to a stub. Four horse rows plus controls hits Discord's five-row ceiling.
 const HORSES_PER_ROW = 2;
 // Discord clips a half-width label from the right, so an untrimmed name ate the odds. Trimming here keeps them.
 const BUTTON_NAME_CELLS = 12;
@@ -306,7 +302,7 @@ async function handleStartRace(interaction, client, user) {
   } catch (err) {
     if (client.raceGames.get(channelId) === reservation) client.raceGames.delete(channelId);
     logger.error(`[race] failed to start race in ${channelId}: ${err && err.stack || err}`);
-    await interaction.followUp({ embeds: [buildErrorEmbed(user, client,"Could not start the race. Try again.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+    await interaction.followUp({ embeds: [buildErrorEmbed(user, client, "Could not start the race. Try again.")], flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
 
@@ -320,7 +316,7 @@ async function handleStartRace(interaction, client, user) {
     try {
       // A panel that no longer owns the channel slot belongs to a superseded race, so it must never mutate the live one.
       if (client.raceGames.get(channelId) !== game) {
-        await i.reply({ embeds: [buildErrorEmbed(i.user, i.client,"This race panel is no longer active.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+        await i.reply({ embeds: [buildErrorEmbed(i.user, i.client, "This race panel is no longer active.")], flags: MessageFlags.Ephemeral }).catch(() => {});
         collector.stop("superseded");
         return;
       }
@@ -380,15 +376,14 @@ async function handleStartRace(interaction, client, user) {
     await abandonRace(client, channel, message, game, reason);
   });
 
-  // Deliberately not awaited: the buttons are already live, and awaiting here
-  // left every click unhandled until the model replied.
+  // Not awaited: the buttons are already live, and awaiting left every click unhandled until the model replied.
   if (commentaryPromise) loadCommentary(game, commentaryPromise);
 }
 
 async function loadCommentary(game, commentaryPromise) {
   let timer;
   try {
-    const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), COMMENTARY_TIMEOUT); });
+    const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), COMMENTARY_GUARD_TIMEOUT); });
     game.commentary = await Promise.race([commentaryPromise, timeout]);
     if (game.commentary) logger.debug(`Race commentary generated: ${game.commentary.length} lines`);
   } catch (e) {
@@ -402,12 +397,12 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   const user = buttonInt.user;
 
   if (game.phase !== "betting") {
-    return buttonInt.reply({ embeds: [buildErrorEmbed(user, client,"Betting is closed for this race.")], flags: MessageFlags.Ephemeral });
+    return buttonInt.reply({ embeds: [buildErrorEmbed(user, client, "Betting is closed for this race.")], flags: MessageFlags.Ephemeral });
   }
 
   const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
   if (horseIndex === -1) {
-    return buttonInt.reply({ embeds: [buildErrorEmbed(user, client,"Unknown horse.")], flags: MessageFlags.Ephemeral });
+    return buttonInt.reply({ embeds: [buildErrorEmbed(user, client, "Unknown horse.")], flags: MessageFlags.Ephemeral });
   }
   const horse = game.horses[horseIndex];
 
@@ -448,11 +443,10 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   if (!result) return;
   const { amount, expression, submit } = result;
 
-  // The radio group constrains this to the three known values, so this guard is
-  // defence in depth — bet type changes the payout, so it is never coerced.
+  // Defence in depth behind the radio group: bet type changes the payout, so it is never coerced.
   const betTypeRaw = (submit.fields.getRadioGroup("betType") || "").toLowerCase();
   if (!BET_TYPES.has(betTypeRaw)) {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Pick a bet type: win, place, or show.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, "Pick a bet type: win, place, or show.")], flags: MessageFlags.Ephemeral });
   }
 
   const current = client.raceGames.get(game.channelId);
@@ -501,10 +495,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   await submit.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
 }
 
-// Power-user fast-path that mirrors the legacy `/race bet` slash subcommand
-// but plugs into the new shared game state: multi-bet allowed, debit goes
-// through withUserLock, panel message is re-rendered, and the user's bet
-// amount + bet type are cached so the next button-driven modal pre-fills.
+// Power-user fast path onto the same shared game state as the buttons: multi-bet, locked debit, panel re-render, cached amount and type.
 async function handleSlashBet(interaction, client, user) {
   const channelId = interaction.channelId;
   const horseNumber = interaction.options.getInteger("horse");
@@ -517,22 +508,22 @@ async function handleSlashBet(interaction, client, user) {
   const game = client.raceGames.get(channelId);
   if (!game) {
     return interaction.editReply({
-      embeds: [buildErrorEmbed(user, client,"No active race in this channel. Use `/race start` to begin a new race.")],
+      embeds: [buildErrorEmbed(user, client, "No active race in this channel. Use `/race start` to begin a new race.")],
     });
   }
   if (game.phase === "starting") {
     return interaction.editReply({
-      embeds: [buildErrorEmbed(user, client,"A race is starting in this channel. Give the panel a moment to appear.")],
+      embeds: [buildErrorEmbed(user, client, "A race is starting in this channel. Give the panel a moment to appear.")],
     });
   }
   if (game.phase !== "betting") {
     return interaction.editReply({
-      embeds: [buildErrorEmbed(user, client,"Betting is closed for this race. Please wait for it to finish.")],
+      embeds: [buildErrorEmbed(user, client, "Betting is closed for this race. Please wait for it to finish.")],
     });
   }
   if (!BET_TYPES.has(betTypeRaw)) {
     return interaction.editReply({
-      embeds: [buildErrorEmbed(user, client,"Bet type must be `win`, `place`, or `show`.")],
+      embeds: [buildErrorEmbed(user, client, "Bet type must be `win`, `place`, or `show`.")],
     });
   }
 
@@ -544,7 +535,7 @@ async function handleSlashBet(interaction, client, user) {
 
   const horseIndex = game.horses.findIndex(h => h.number === horseNumber);
   if (horseIndex === -1) {
-    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,"Horse number must be between 1 and 8!")] });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client, "Horse number must be between 1 and 8!")] });
   }
   const horse = game.horses[horseIndex];
 
@@ -554,7 +545,7 @@ async function handleSlashBet(interaction, client, user) {
     return interaction.editReply({ embeds: [buildErrorEmbed(user, client,`You must bet a valid whole number of ${CURRENCY_NAME}!`)] });
   }
   if (amount <= 0) {
-    return interaction.editReply({ embeds: [buildErrorEmbed(user, client,"Bet must be greater than zero.")] });
+    return interaction.editReply({ embeds: [buildErrorEmbed(user, client, "Bet must be greater than zero.")] });
   }
   if (RACE_MIN_BET && amount < RACE_MIN_BET) {
     return interaction.editReply({ embeds: [buildErrorEmbed(user, client,`Minimum bet is ${RACE_MIN_BET.toLocaleString("en-US")} ${CURRENCY_NAME}!`)] });
@@ -616,7 +607,7 @@ async function handleClearBets(buttonInt, client, game) {
 
   const userBets = game.bets.filter(b => b.userId === user.id);
   if (userBets.length === 0) {
-    // Silent ignore per spec — no ephemeral, just ack so Discord doesn't show "interaction failed".
+    // Silent ignore per spec: ack only, so Discord does not show "interaction failed".
     return buttonInt.deferUpdate().catch(() => {});
   }
 
@@ -649,17 +640,17 @@ async function handleClearBets(buttonInt, client, game) {
 
   const typed = submit.fields.getTextInputValue("confirm").trim().toUpperCase();
   if (typed !== "CONFIRM") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"You must type `CONFIRM` exactly to clear your bets. No bets were removed.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, "You must type `CONFIRM` exactly to clear your bets. No bets were removed.")], flags: MessageFlags.Ephemeral });
   }
 
   const current = client.raceGames.get(game.channelId);
   if (current !== game || current.phase !== "betting") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open, so your bets are already locked in.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, "Betting is no longer open, so your bets are already locked in.")], flags: MessageFlags.Ephemeral });
   }
 
   const standingBets = current.bets.filter(b => b.userId === user.id);
   if (standingBets.length === 0) {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"You no longer have any standing bets to clear.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client, "You no longer have any standing bets to clear.")], flags: MessageFlags.Ephemeral });
   }
 
   const refund = standingBets.reduce((sum, b) => sum + b.amount, 0);
@@ -807,8 +798,7 @@ async function runRace(client, channel, message, game) {
     .setColor(game.colors.identity)
     .setTimestamp();
 
-  // The lobby message is replaced on the first tick rather than edited, so the
-  // race runs where people are actually looking.
+  // Replaced on the first tick rather than edited, so the race runs where people are actually looking.
   let raceMessage = null;
   let winnerTitle = null;
 
@@ -849,8 +839,7 @@ async function runRace(client, channel, message, game) {
   const finishCommentary = winnerTitle ?? buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.topThree.firstIndex, finishOrder);
 
   const results = [];
-  // Per-horse-name accumulator for the guild aggregate write at the end of
-  // the resolve. Bundling avoids N writes per race.
+  // Per-horse accumulator for one bundled guild aggregate write instead of N per race.
   const horseDeltas = {};
   let topSingleBet = null;
   let topSinglePayout = null;
@@ -1014,7 +1003,6 @@ async function runRace(client, channel, message, game) {
   const totalWagered = wagered.reduce((sum, b) => sum + b.amount, 0);
   const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 
-  const MEDALS = ["🥇", "🥈", "🥉"];
   const podiumLines = finishOrder.slice(0, MEDALS.length).map((idx, pos) => {
     const horse = horses[idx];
     return `${MEDALS[pos]} **Horse ${horse.number}: ${horse.name}** ${horse.emoji} [${horse.displayOdds}x]`;
@@ -1043,8 +1031,7 @@ async function runRace(client, channel, message, game) {
   const resultsMessage = await repostRaceMessage(channel, raceMessage, { embeds: [embed], components: [buildPlayAgainRow()] });
   game.messageId = resultsMessage?.id ?? game.messageId;
 
-  // Aggregate results by user so each participant gets a single rolled-up DM
-  // covering every bet they placed this race.
+  // Rolled up per user, so each participant gets one DM covering every bet they placed.
   const byUser = {};
   for (const result of results) {
     if (!byUser[result.userId]) byUser[result.userId] = { username: result.username, bets: [], net: 0 };

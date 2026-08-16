@@ -31,8 +31,7 @@ ADJECTIVES.push(...(process.env.ADDITIONAL_ADJECTIVES || "").split(",").map(s =>
 
 logger.debug(`\x1b[33m[Race]\x1b[0m Loaded ${ADJECTIVES.length} adjectives and ${NOUNS.length} nouns for horse name generation.`);
 
-// Code blocks fall back to the system emoji font, so runners are separated by
-// silhouette and hue. 🏇 🐴 🦌 collided with 🐎 in every font.
+// Separated by silhouette and hue: code blocks fall back to the system emoji font, where 🏇 🐴 🦌 all collided with 🐎.
 const EMOJIS = ["🐎", "🦄", "🦓", "🐢", "🐐", "🦩", "🎠", "⭐"];
 
 const ODDS_LABELS = [
@@ -239,18 +238,6 @@ function generateHorses() {
   return horses;
 }
 
-function determineWinner(horses) {
-  const roll = Math.random();
-  let cumulative = 0;
-
-  for (const horse of horses) {
-    cumulative += horse.probability;
-    if (roll < cumulative) return horse;
-  }
-
-  return horses[horses.length - 1];
-}
-
 function determineTopThree(horses) {
   // Successive weighted draws, each place renormalized over the horses still unplaced.
   const order = [];
@@ -308,8 +295,7 @@ const NAME_CELL_BUDGET = MOBILE_CELL_BUDGET - TABLE_CHROME_CELLS;
 
 const BACKER_WIDTH = 8;
 
-// Who backed each lane, so a bettor finds their horse by name instead of by a
-// glyph the system emoji font may render differently.
+// Who backed each lane, so a bettor finds their horse by name rather than by a glyph the emoji font may redraw.
 function backerTags(bets) {
   const byHorse = new Map();
   for (const bet of bets) {
@@ -328,7 +314,7 @@ function backerTags(bets) {
   return tags;
 }
 
-function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = [], topThree = null, bets = []) {
+function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex = null, finishOrder = [], _topThree = null, bets = []) {
   const lines = [];
   const backers = backerTags(bets);
 
@@ -343,8 +329,7 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
 
   const medalMap = new Map();
 
-  // Crossing order is authoritative: once the field is at the line every
-  // position reads 100, so standings can no longer tell them apart.
+  // Crossing order is authoritative: at the line every position reads 100, so standings can no longer separate them.
   const podium = finishOrder.length > 0
     ? finishOrder
     : (isFinished ? standingsFrom(positions) : []);
@@ -354,8 +339,7 @@ function buildRaceDescription(horses, positions, tick, totalTicks, winnerIndex =
   for (const i of sortedIndices) {
     const track = buildTrack(positions[i], horses[i].emoji);
     const lane = `${horses[i].number} ${track}`;
-    // The two share one column: a lane already wearing a medal does not also
-    // need a find-me tag, and together they overrun the mobile width.
+    // One column for both: a medalled lane needs no find-me tag, and together they overrun the mobile width.
     const tag = RANK_LABELS[medalMap.get(i)] ?? backers.get(i) ?? "";
     lines.push(tag ? `${lane}  ${tag}` : lane);
   }
@@ -413,8 +397,7 @@ function buildBettingDescription(horses, bets, endTime) {
     lines.push("\n*Not a single bet. Eight horses standing around waiting for someone with conviction.*");
   }
 
-  // Rendered client-side and refreshed by Discord itself, so the countdown
-  // ticks without the bot editing the message once per second.
+  // Rendered client-side by Discord, so the countdown ticks without the bot editing once per second.
   lines.push(`\n⏱️ Race starts <t:${Math.floor(endTime / 1000)}:R>`);
 
   return lines.join("\n");
@@ -443,8 +426,7 @@ function minimumStep(totalTicks) {
 // Pace alone until here, so an outsider can lead early and still fade.
 const CONVERGENCE_START = 0.55;
 
-// The order is settled with this much of the race left, so the podium is
-// readable on the run to the line instead of snapping on the final frame.
+// Race left once the order is settled, so the podium reads on the run in instead of snapping on the last frame.
 const RUN_IN_SHARE = 0.2;
 const MIN_RUN_IN_TICKS = 2;
 
@@ -453,8 +435,7 @@ function settleTickFor(totalTicks) {
   return Math.max(1, totalTicks - runIn);
 }
 
-// Places are separated in time, not in space: the podium crosses on its own
-// lap each, the pack comes home together, and everyone reaches the line.
+// Separated in time, not space: each podium place crosses on its own lap and the pack comes home together.
 function crossingLap(rank, settleTick, totalTicks) {
   if (rank >= MEDALS.length) return totalTicks;
   return Math.min(totalTicks, settleTick + rank);
@@ -496,7 +477,6 @@ function advanceRace(horses, positions, topThree, tick = 1, totalTicks = 10) {
   const u = Math.min(1, tick / totalTicks);
   const settleTick = settleTickFor(totalTicks);
   const weight = convergenceWeight(tick, totalTicks, settleTick);
-  const isFinalTick = tick >= totalTicks;
   const isRunIn = tick > settleTick;
   const newFinishers = [];
 
@@ -626,15 +606,17 @@ function getDefaultCommentary() {
   ];
 }
 
-function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winnerIndex = null, finishOrder = []) {
+function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winnerIndex = null, _finishOrder = []) {
   const isFinished = winnerIndex !== null;
   const progress = tick / totalTicks;
 
   if (isFinished && winnerIndex !== null) {
     const winner = horses[winnerIndex];
     const odds = winner.displayOdds;
+    // Ranked within this field: eight horses of similar form all price near 8x, so fixed thresholds called every winner an upset.
+    const shorterPriced = horses.filter(h => h.probability > winner.probability).length;
 
-    if (odds < 3) {
+    if (shorterPriced === 0) {
       const favoriteLines = [
         `${winner.name} wins. Nobody is surprised and nobody is impressed.`,
         `The favorite did favorite things. ${winner.name} at ${odds}x.`,
@@ -643,7 +625,7 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
         `${winner.name} wins exactly as advertised. Boring. Correct.`
       ];
       return favoriteLines[Math.floor(Math.random() * favoriteLines.length)];
-    } else if (odds < 6) {
+    } else if (shorterPriced <= 2) {
       const contenderLines = [
         `${winner.name} gets it done at ${odds}x. Respectable.`,
         `${winner.name} takes it, and somebody in this channel is unbearable now.`,
@@ -652,7 +634,7 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
         `${winner.name} holds on at ${odds}x. Close enough to hurt.`
       ];
       return contenderLines[Math.floor(Math.random() * contenderLines.length)];
-    } else if (odds < 12) {
+    } else if (shorterPriced <= 5) {
       const longshotLines = [
         `Upset. ${winner.name} comes home at ${odds}x and ruins several evenings.`,
         `${winner.name} at ${odds}x. Nobody had this. Nobody.`,
@@ -701,7 +683,6 @@ module.exports = {
   fitDescription,
   escapeMarkdown,
   generateHorses,
-  determineWinner,
   determineTopThree,
   calculatePayout,
   effectiveMultiplier,
@@ -721,4 +702,5 @@ module.exports = {
   ADJECTIVES,
   NOUNS,
   EMOJIS,
+  MEDALS,
 };
