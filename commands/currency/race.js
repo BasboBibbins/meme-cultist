@@ -5,7 +5,7 @@ const { openBetModal } = require("../../utils/betModal");
 const { parseBet } = require("../../utils/betparse");
 const { withUserLock } = require("../../utils/userlock");
 const { applyRaceAggregates } = require("../../utils/guildStats");
-const { generateHorses, determineTopThree, calculatePayout, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription } = require("../../utils/race");
+const { generateHorses, determineTopThree, calculatePayout, effectiveMultiplier, buildBettingDescription, buildRaceDescription, buildRaceTitle, advanceRace, generateRaceCommentary, summarizeBettors, buildResultsSection, fitDescription, COMMENTARY_GUARD_TIMEOUT } = require("../../utils/race");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -20,14 +20,24 @@ const BETTING_TIME = RACE_BETTING_TIME ?? 20000;
 const ANIMATION_TICKS = RACE_ANIMATION_TICKS ?? 10;
 const TICK_INTERVAL = RACE_TICK_INTERVAL ?? 1500;
 const BET_TYPES = new Set(["win", "place", "show"]);
-const COMMENTARY_TIMEOUT = 10000;
-// Descriptions carry their meaning, which "win / place / show" alone never did
-// for anyone who hasn't been to a racetrack.
+const COMMENTARY_TIMEOUT = COMMENTARY_GUARD_TIMEOUT;
+const HOUSE_CUT_LABEL = `${Math.round(HOUSE_EDGE * 100)}%`;
+
+// "Win / place / show" means nothing to anyone who has not been to a racetrack, and the multiplier is the part people act on.
 const BET_TYPE_OPTIONS = [
-  { label: "Win", value: "win", description: "Has to finish 1st. Full odds." },
-  { label: "Place", value: "place", description: "1st or 2nd. Reduced payout." },
-  { label: "Show", value: "show", description: "Top 3. Smallest payout." },
+  { label: "Win", value: "win", blurb: "Must finish 1st" },
+  { label: "Place", value: "place", blurb: "1st or 2nd" },
+  { label: "Show", value: "show", blurb: "Top 3" },
 ];
+
+function betTypeOptions(horse, selected) {
+  return BET_TYPE_OPTIONS.map(({ label, value, blurb }) => ({
+    label,
+    value,
+    description: `${blurb}. Pays ${effectiveMultiplier(horse.displayOdds, HOUSE_EDGE, value)}x your stake.`,
+    default: value === selected,
+  }));
+}
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -125,6 +135,22 @@ function formatBetType(type) {
 }
 
 const BETTING_CLOSED_REFUNDED = "Betting closed while your bet was being placed, refunded.";
+
+// Shared by the button and slash paths so the money moment cannot drift into two versions.
+async function buildBetConfirmEmbed(user, game, horse, amount, betType) {
+  const balance = await db.get(`${user.id}.balance`) ?? 0;
+  return new EmbedBuilder()
+    .setAuthor({ name: "Bet Placed", iconURL: user.displayAvatarURL({ dynamic: true }) })
+    .setDescription([
+      `**${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on **Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
+      `**${formatBetType(betType)}** at ${horse.displayOdds}x`,
+      "",
+      `**Pays if it lands:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betType).toLocaleString("en-US")} ${CURRENCY_NAME}, after the ${HOUSE_CUT_LABEL} cut`,
+      `**Wallet now:** ${balance.toLocaleString("en-US")} ${CURRENCY_NAME}`,
+    ].join("\n"))
+    .setColor(game.colors.identity)
+    .setTimestamp();
+}
 
 // Stake and its wagered-total stat move together under one lock, or a concurrent clear leaves the two disagreeing.
 async function debitStake(userId, amount) {
@@ -236,7 +262,7 @@ async function handleStartRace(interaction, client, user) {
     logger.log(`${user.username} (${user.id}) started a horse race. Winner: Horse ${topThree.first.number} (${topThree.first.name}), 2nd: ${topThree.second.number}, 3rd: ${topThree.third.number}`);
 
     if (OPENAI_API_KEY) {
-      commentaryPromise = generateRaceCommentary();
+      commentaryPromise = generateRaceCommentary(horses);
     }
 
     const endTime = Date.now() + BETTING_TIME;
@@ -364,7 +390,7 @@ async function loadCommentary(game, commentaryPromise) {
     game.commentary = await Promise.race([commentaryPromise, timeout]);
     if (game.commentary) logger.debug(`Race commentary generated: ${game.commentary.length} lines`);
   } catch (e) {
-    logger.warn(`Failed to generate race commentary: ${e.message}`);
+    logger.warn(`Failed to generate race commentary: ${e?.message ?? String(e)}`);
   } finally {
     clearTimeout(timer);
   }
@@ -397,15 +423,18 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     ? cachedBetTypeRaw.toLowerCase()
     : "win";
 
+  // Discord caps a modal title at 45 characters, and a generated name can eat all of it.
+  const namedTitle = `Horse ${horse.number}: ${horse.name} (${horse.displayOdds}x)`;
+
   const modalOpts = {
-    title: `Bet on Horse ${horse.number}`,
+    title: namedTitle.length <= 45 ? namedTitle : `Horse ${horse.number} (${horse.displayOdds}x)`,
     min: RACE_MIN_BET,
     extras: [{
       type: "radio",
       customId: "betType",
       label: "Bet Type",
-      description: "Easier finishes pay less.",
-      options: BET_TYPE_OPTIONS.map(option => ({ ...option, default: option.value === cachedBetType })),
+      description: `Payouts are after the ${HOUSE_CUT_LABEL} house cut.`,
+      options: betTypeOptions(horse, cachedBetType),
     }],
   };
   if (RACE_MAX_BET) modalOpts.max = RACE_MAX_BET;
@@ -421,7 +450,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
   // defence in depth — bet type changes the payout, so it is never coerced.
   const betTypeRaw = (submit.fields.getRadioGroup("betType") || "").toLowerCase();
   if (!BET_TYPES.has(betTypeRaw)) {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Pick a bet type — win, place, or show.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Pick a bet type: win, place, or show.")], flags: MessageFlags.Ephemeral });
   }
 
   const current = client.raceGames.get(game.channelId);
@@ -466,18 +495,7 @@ async function handleBetButton(buttonInt, client, game, horseNumber) {
     logger.error(`Error updating race message: ${e.message}`);
   }
 
-  const confirmEmbed = new EmbedBuilder()
-    .setAuthor({ name: "Bet Placed!", iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setDescription([
-      `You bet **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on:`,
-      `**Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
-      `**Odds:** ${horse.displayOdds}x`,
-      `**Bet Type:** ${formatBetType(betTypeRaw)}`,
-      `**Potential win:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betTypeRaw).toLocaleString("en-US")} ${CURRENCY_NAME}`,
-    ].join("\n"))
-    .setColor(current.colors.identity)
-    .setTimestamp();
-
+  const confirmEmbed = await buildBetConfirmEmbed(user, current, horse, amount, betTypeRaw);
   await submit.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
 }
 
@@ -583,18 +601,7 @@ async function handleSlashBet(interaction, client, user) {
     logger.error(`Error updating race message: ${e.message}`);
   }
 
-  const confirmEmbed = new EmbedBuilder()
-    .setAuthor({ name: "Bet Placed!", iconURL: user.displayAvatarURL({ dynamic: true }) })
-    .setDescription([
-      `You bet **${amount.toLocaleString("en-US")}** ${CURRENCY_NAME} on:`,
-      `**Horse ${horse.number}: ${horse.name}** ${horse.emoji}`,
-      `**Odds:** ${horse.displayOdds}x`,
-      `**Bet Type:** ${formatBetType(betTypeRaw)}`,
-      `**Potential win:** ${calculatePayout(amount, horse.displayOdds, HOUSE_EDGE, betTypeRaw).toLocaleString("en-US")} ${CURRENCY_NAME}`,
-    ].join("\n"))
-    .setColor(current.colors.identity)
-    .setTimestamp();
-
+  const confirmEmbed = await buildBetConfirmEmbed(user, current, horse, amount, betTypeRaw);
   await interaction.editReply({ embeds: [confirmEmbed] });
 }
 
@@ -645,7 +652,7 @@ async function handleClearBets(buttonInt, client, game) {
 
   const current = client.raceGames.get(game.channelId);
   if (current !== game || current.phase !== "betting") {
-    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open — your bets are already locked in.")], flags: MessageFlags.Ephemeral });
+    return submit.reply({ embeds: [buildErrorEmbed(submit.user, submit.client,"Betting is no longer open, so your bets are already locked in.")], flags: MessageFlags.Ephemeral });
   }
 
   const standingBets = current.bets.filter(b => b.userId === user.id);
@@ -673,6 +680,45 @@ async function handleClearBets(buttonInt, client, game) {
     .setColor(current.colors.interrupted)
     .setTimestamp();
   await submit.reply({ embeds: [confirmEmbed], flags: MessageFlags.Ephemeral });
+}
+
+const PLAY_AGAIN_WINDOW = 300000;
+
+function buildPlayAgainRow(disabled = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("race_play_again")
+      .setLabel("Race Again")
+      .setEmoji("🏇")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled),
+  );
+}
+
+// The lobby cannot host this: eight horses and the controls already fill Discord's five rows. The results message has all five free.
+function attachPlayAgain(client, resultsMessage) {
+  if (!resultsMessage) return;
+
+  const collector = resultsMessage.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: PLAY_AGAIN_WINDOW,
+  });
+
+  collector.on("collect", async (i) => {
+    if (i.customId !== "race_play_again") return;
+    collector.stop("used");
+    await resultsMessage.edit({ components: [buildPlayAgainRow(true)] }).catch(() => {});
+    try {
+      await handleStartRace(i, client, i.user);
+    } catch (err) {
+      logger.error(`[race] play again failed in ${i.channelId}: ${err && err.stack || err}`);
+    }
+  });
+
+  collector.on("end", (_collected, reason) => {
+    if (reason === "used") return;
+    resultsMessage.edit({ components: [] }).catch(() => {});
+  });
 }
 
 // repost message so it doesn't get lost in spam
@@ -719,8 +765,9 @@ async function abandonRace(client, channel, message, game, reason) {
 
 // Releases the channel slot whatever happens below. A throw mid-resolve used to wedge the channel until restart.
 async function resolveRace(client, channel, message, game) {
+  let resultsMessage = null;
   try {
-    await runRace(client, channel, message, game);
+    resultsMessage = await runRace(client, channel, message, game);
   } catch (err) {
     logger.error(`[race] resolve failed in ${game.channelId}: ${err && err.stack || err}`);
     // runRace removes each stake from game.bets as it settles it, so whatever is left here was never paid out.
@@ -733,6 +780,9 @@ async function resolveRace(client, channel, message, game) {
   } finally {
     if (client.raceGames.get(game.channelId) === game) client.raceGames.delete(game.channelId);
   }
+
+  // Armed only once the channel slot is free, or the first click races the DM loop and is told a race is already running.
+  attachPlayAgain(client, resultsMessage);
 }
 
 async function runRace(client, channel, message, game) {
@@ -745,7 +795,7 @@ async function runRace(client, channel, message, game) {
   let finishOrder = [];
 
   if (game.bets.length === 0) {
-    const embed = buildStoppedEmbed(client, game, "Nobody put anything down, so the horses went home. Start another with `/race start`.");
+    const embed = buildStoppedEmbed(client, game, "Nobody put anything down, so the horses went home. Start another with `/race start`.", "Nobody Bet");
     await message.edit({ embeds: [embed], components: [] }).catch(() => {});
     return;
   }
@@ -758,6 +808,7 @@ async function runRace(client, channel, message, game) {
   // The lobby message is replaced on the first tick rather than edited, so the
   // race runs where people are actually looking.
   let raceMessage = null;
+  let winnerTitle = null;
 
   for (let tick = 1; tick <= ANIMATION_TICKS; tick++) {
     const result = advanceRace(horses, positions, game.topThree, tick, ANIMATION_TICKS);
@@ -768,8 +819,13 @@ async function runRace(client, channel, message, game) {
       }
     }
 
+    // The upset line is the payoff for the whole animation, so it lands on the lap the leader crosses and holds while the pack comes home.
+    if (!winnerTitle && finishOrder.includes(game.topThree.firstIndex)) {
+      winnerTitle = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, game.topThree.firstIndex, finishOrder);
+    }
+
     const description = buildRaceDescription(horses, positions, tick, ANIMATION_TICKS, null, finishOrder, game.topThree, game.bets);
-    const commentary = buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
+    const commentary = winnerTitle ?? buildRaceTitle(game.commentary, tick, ANIMATION_TICKS, horses, positions, null, finishOrder);
     embed.setTitle(commentary);
     embed.setDescription(`\`\`\`\n${description}\n\`\`\``);
 
@@ -784,15 +840,11 @@ async function runRace(client, channel, message, game) {
 
   finishOrder = game.topThree.finishOrder.slice();
 
-  for (let i = 0; i < positions.length; i++) {
-    positions[i] = 100;
-  }
-
   const winner = horses[game.topThree.firstIndex];
   const secondPlace = horses[game.topThree.secondIndex];
   const thirdPlace = horses[game.topThree.thirdIndex];
-  const finalDescription = buildRaceDescription(horses, positions, ANIMATION_TICKS, ANIMATION_TICKS, game.topThree.firstIndex, finishOrder);
-  const finishCommentary = buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.topThree.firstIndex, finishOrder);
+  // Reused rather than re-rolled, so the results headline is the same sentence people just watched land.
+  const finishCommentary = winnerTitle ?? buildRaceTitle(game.commentary, ANIMATION_TICKS, ANIMATION_TICKS, horses, positions, game.topThree.firstIndex, finishOrder);
 
   const results = [];
   // Per-horse-name accumulator for the guild aggregate write at the end of
@@ -960,43 +1012,33 @@ async function runRace(client, channel, message, game) {
   const totalWagered = wagered.reduce((sum, b) => sum + b.amount, 0);
   const totalPaid = results.filter(r => r.won).reduce((sum, r) => sum + r.winnings, 0);
 
-  const positionPrefix = (pos) => {
-    if (pos === 0) return "🥇";
-    if (pos === 1) return "🥈";
-    if (pos === 2) return "🥉";
-    return `\`${String(pos + 1).padStart(2, " ")}.\``;
-  };
+  const MEDALS = ["🥇", "🥈", "🥉"];
+  const podiumLines = finishOrder.slice(0, MEDALS.length).map((idx, pos) => {
+    const horse = horses[idx];
+    return `${MEDALS[pos]} **Horse ${horse.number}: ${horse.name}** ${horse.emoji} [${horse.displayOdds}x]`;
+  });
 
-  const resultsLines = [
-    `**${finishCommentary}**`,
+  // The rest of the field as numbers on one line: a bettor still finds where their horse landed without five more rows.
+  const alsoRan = finishOrder.slice(MEDALS.length).map(idx => `#${horses[idx].number}`);
+
+  // Payouts lead and are never trimmed. Standings and totals are the safety valve, which the length guard drops first.
+  const payoutLines = buildResultsSection(summarizeBettors(results), horses, CURRENCY_NAME);
+  const standingsLines = [
     "",
     "**Final Standings:**",
+    ...podiumLines,
+    ...(alsoRan.length > 0 ? [`**Then:** ${alsoRan.join(" · ")}`] : []),
+    "",
+    `**Wagered:** ${totalWagered.toLocaleString("en-US")} ${CURRENCY_NAME} · **Paid:** ${totalPaid.toLocaleString("en-US")} ${CURRENCY_NAME}`,
   ];
-  for (let pos = 0; pos < finishOrder.length; pos++) {
-    const horse = horses[finishOrder[pos]];
-    resultsLines.push(`${positionPrefix(pos)} **Horse ${horse.number}: ${horse.name}** ${horse.emoji} [${horse.displayOdds}x]`);
-  }
-  resultsLines.push(
-    "",
-    "```",
-    finalDescription,
-    "```",
-    "",
-    `**Total wagered:** ${totalWagered.toLocaleString("en-US")} ${CURRENCY_NAME}`,
-    `**Total paid:** ${totalPaid.toLocaleString("en-US")} ${CURRENCY_NAME}`,
-  );
-
-  const resultsSection = buildResultsSection(summarizeBettors(results), horses, CURRENCY_NAME);
 
   embed.setTitle("🏁 Race Results 🏁");
-  embed.setDescription(fitDescription(resultsLines, resultsSection));
+  embed.setDescription(fitDescription([`**${finishCommentary}**`, ...payoutLines], standingsLines));
   // Collective outcome, so win and loss color belongs in the DM instead.
   embed.setColor(game.colors.identity);
 
-  // Reposted again so the outcome cannot be buried by traffic during the run.
-  // Nothing is lost by dropping the animation message — the final frame is
-  // reproduced inside these results.
-  const resultsMessage = await repostRaceMessage(channel, raceMessage, { embeds: [embed] });
+  // Reposted so the outcome cannot be buried by traffic during the run.
+  const resultsMessage = await repostRaceMessage(channel, raceMessage, { embeds: [embed], components: [buildPlayAgainRow()] });
   game.messageId = resultsMessage?.id ?? game.messageId;
 
   // Aggregate results by user so each participant gets a single rolled-up DM
@@ -1052,4 +1094,6 @@ async function runRace(client, channel, message, game) {
   }
 
   logger.log(`Race in channel ${game.channelId} completed. Top 3: ${winner.number} (${winner.name}), ${secondPlace.number} (${secondPlace.name}), ${thirdPlace.number} (${thirdPlace.name}). Bets: ${wagered.length}, Wagered: ${totalWagered}, Paid: ${totalPaid}`);
+
+  return resultsMessage;
 }

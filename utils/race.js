@@ -155,21 +155,21 @@ function getOddsLabel(probability) {
   return ODDS_LABELS.find(o => probability >= o.threshold)?.label ?? "🔴 Outsider";
 }
 
-function calculatePayout(betAmount, displayOdds, houseEdge = 0.10, betType = "win") {
-  let odds;
+function oddsForBetType(displayOdds, betType = "win") {
   switch (betType) {
-    case "place":
-      odds = (displayOdds - 1) * RACE_PLACE_MULTIPLIER + 1;
-      break;
-    case "show":
-      odds = (displayOdds - 1) * RACE_SHOW_MULTIPLIER + 1;
-      break;
-    case "win":
-    default:
-      odds = displayOdds;
-      break;
+    case "place": return (displayOdds - 1) * RACE_PLACE_MULTIPLIER + 1;
+    case "show": return (displayOdds - 1) * RACE_SHOW_MULTIPLIER + 1;
+    default: return displayOdds;
   }
-  return Math.floor(betAmount * odds * (1 - houseEdge));
+}
+
+function calculatePayout(betAmount, displayOdds, houseEdge = 0.10, betType = "win") {
+  return Math.floor(betAmount * oddsForBetType(displayOdds, betType) * (1 - houseEdge));
+}
+
+// What a stake actually returns per unit once the rake is off, which the advertised odds never showed.
+function effectiveMultiplier(displayOdds, houseEdge = 0.10, betType = "win") {
+  return Math.round(oddsForBetType(displayOdds, betType) * (1 - houseEdge) * 100) / 100;
 }
 
 function generateHorses() {
@@ -216,9 +216,7 @@ function determineWinner(horses) {
 }
 
 function determineTopThree(horses) {
-  // Predetermine the full finishing order via successive weighted random draws.
-  // Each subsequent place is drawn from the remaining horses with probabilities
-  // renormalized — the same method previously used only for 1st/2nd/3rd.
+  // Successive weighted draws, each place renormalized over the horses still unplaced.
   const order = [];
   let remaining = horses.slice();
 
@@ -367,7 +365,7 @@ function buildBettingDescription(horses, bets, endTime) {
       lines.push(`• **${horse.number}** ${horse.emoji} ${total.toLocaleString()} koku · ${users}${overflow}`);
     }
   } else {
-    lines.push("\n*No bets yet. Be the first to place a bet!*");
+    lines.push("\n*Not a single bet. Eight horses standing around waiting for someone with conviction.*");
   }
 
   // Rendered client-side and refreshed by Discord itself, so the countdown
@@ -502,35 +500,44 @@ function getDefaultRaceStats() {
   return { wins: 0, losses: 0, biggestWin: 0, biggestLoss: 0, totalBet: 0 };
 }
 
-async function generateRaceCommentary() {
-  const prompt = `You are an energetic horse racing commentator. Generate 15 short, exciting one-line commentary phrases for a horse race.
+// A real 15-line generation measures around 7s from a fast connection, so anything near that fails on every slower one.
+const COMMENTARY_REQUEST_TIMEOUT = 20000;
+// Must exceed the request timeout or a slow success is discarded. Nothing awaits this, and betting runs at least 60s.
+const COMMENTARY_GUARD_TIMEOUT = 25000;
+
+async function generateRaceCommentary(horses = []) {
+  const field = horses.map(h => `${h.number}. ${h.name} (${h.displayOdds}x)`).join("\n");
+  const prompt = `Call a horse race for a Discord bot with a crude, meme-brained sense of humor. Write 15 lines.
+
+The field:
+${field || "(unknown, use generic terms like \"the leader\" or \"the longshot\")"}
 
 Rules:
-- Each line should be 1-2 short sentences maximum
-- Make them exciting and varied (tension, surprise, humor)
-- Do NOT reference any specific horse names - use generic terms like "the leader", "the favorite", "a longshot", "number 3"
-- Include phrases for: race start, mid-race action, close finishes, underdogs pulling ahead, favorites struggling
-- Don't use emoji
-- Respond with ONLY the commentary lines, one per line, numbered 1-15
+- One or two short sentences per line. Punchy. No warm-up.
+- Mocking, profane and stupid beats polished sports broadcasting. These names are the joke, so use them.
+- The order matters. Lines 1-2 are the gates opening, 3-6 the early running, 7-10 the middle, 11-13 the run to the line, 14-15 anything.
+- Do not name a winner or say who wins. The result is decided elsewhere.
+- No emoji.
+- Respond with only the 15 lines, numbered 1-15.
 
-Example style:
-"And they're off! The gates burst open with thundering hooves!"
-"A longshot is making a surprising move from the back of the pack!"
-"Neck and neck at the final stretch, this is going to be close!"
-"The favorite is struggling today as the underdogs surge forward!"
+Tone to match:
+"They're off, and immediately someone has made a terrible decision."
+"Grumpy Horoscope is moving and nobody asked it to."
+"The favorite looks smug. The favorite has not won yet."
+"Down the stretch and the koku is officially in danger."
 
-Generate 15 unique commentary lines:`;
+Write the 15 lines:`;
 
   try {
     const res = await llm.chat({
       model: CONVO_MODEL,
       messages: [
-        { role: "system", content: "You are an exciting horse racing commentator. Respond with only numbered commentary lines, one per line. Never use specific horse names." },
+        { role: "system", content: "You are a crude, funny horse racing commentator for a private Discord server. Respond with only numbered commentary lines, one per line. Never announce the winner." },
         { role: "user", content: prompt },
       ],
       max_tokens: 1024,
       temperature: 0.9,
-      timeoutMs: 15_000,
+      timeoutMs: COMMENTARY_REQUEST_TIMEOUT,
       label: "race-commentary",
       variant: "race_commentary",
     });
@@ -546,29 +553,31 @@ Generate 15 unique commentary lines:`;
       return lines.length >= 5 ? lines : getDefaultCommentary();
     }
   } catch (error) {
-    logger.error(`Failed to generate race commentary: ${error.message}`);
+    // The LLM timeout path rejects with a bare string, so reading .message alone logged "undefined".
+    logger.error(`Failed to generate race commentary: ${error?.message ?? String(error)}`);
   }
 
   return getDefaultCommentary();
 }
 
+// Ordered by phase, because buildRaceTitle slices this by tick and an unordered pool narrates the wrong race.
 function getDefaultCommentary() {
   return [
-    "And they're off! The gates burst open!",
-    "A chaotic start as horses jostle for position!",
-    "The crowd roars as they thunder down the track!",
-    "Neck and neck as they approach the first turn!",
-    "A surprise move from the back of the pack!",
-    "The favorite is making a move on the outside!",
-    "Tension builds as they round the final bend!",
-    "This is anyone's race at the halfway point!",
-    "A longshot is pulling ahead unexpectedly!",
-    "The leaders are fighting for every inch!",
-    "The crowd is on their feet for this finish!",
-    "A photo finish might be in the making!",
-    "Every horse is giving it their all!",
-    "The final stretch is approaching!",
-    "What an incredible race we're witnessing!"
+    "They're off, and immediately someone has made a terrible decision.",
+    "The gates open. Eight animals with no concept of money.",
+    "Hooves everywhere. Absolute nonsense down the rail.",
+    "Someone at the back has already given up on the whole idea.",
+    "The favorite looks smug. The favorite has not won yet.",
+    "A longshot is moving and nobody asked it to.",
+    "Halfway, and the pack is one enormous shrug.",
+    "The leader has thoughts. None of them are good.",
+    "Something out wide is cooking. Or dying. Hard to say.",
+    "Positions are changing purely to ruin somebody's afternoon.",
+    "Down the stretch and the koku is officially in danger.",
+    "This is close enough to be genuinely upsetting.",
+    "Somebody is about to get paid and it is probably not you.",
+    "The line is right there. Two of these horses have noticed.",
+    "Whatever happens now, someone is going to be insufferable about it."
   ];
 }
 
@@ -579,67 +588,66 @@ function buildRaceTitle(commentaries, tick, totalTicks, horses, positions, winne
   if (isFinished && winnerIndex !== null) {
     const winner = horses[winnerIndex];
     const odds = winner.displayOdds;
-    const oddsLabel = getOddsLabel(winner.probability);
 
     if (odds < 3) {
       const favoriteLines = [
-        `The favorite ${winner.name} lives up to expectations!`,
-        `${winner.name} delivers as predicted at ${odds}x odds!`,
-        `No surprises here - ${winner.name} takes the win!`,
-        `The crowd expected this - ${winner.name} dominates!`,
-        `${winner.name} proves why they were the favorite!`
+        `${winner.name} wins. Nobody is surprised and nobody is impressed.`,
+        `The favorite did favorite things. ${winner.name} at ${odds}x.`,
+        `${winner.name} wins at ${odds}x, which is barely worth the paperwork.`,
+        `Chalk. ${winner.name} strolls home and the payouts are pathetic.`,
+        `${winner.name} wins exactly as advertised. Boring. Correct.`
       ];
       return favoriteLines[Math.floor(Math.random() * favoriteLines.length)];
     } else if (odds < 6) {
       const contenderLines = [
-        `${winner.name} pulls through with a solid performance!`,
-        `A strong finish from ${winner.name} at ${odds}x!`,
-        `${winner.name} takes the lead and holds on!`,
-        `What a run from ${winner.name}!`,
-        `${winner.name} crosses the line first!`
+        `${winner.name} gets it done at ${odds}x. Respectable.`,
+        `${winner.name} takes it, and somebody in this channel is unbearable now.`,
+        `A clean run from ${winner.name} at ${odds}x.`,
+        `${winner.name} crosses first and the koku changes hands.`,
+        `${winner.name} holds on at ${odds}x. Close enough to hurt.`
       ];
       return contenderLines[Math.floor(Math.random() * contenderLines.length)];
     } else if (odds < 12) {
       const longshotLines = [
-        `An upset! ${winner.name} defies the odds at ${odds}x!`,
-        `What a surprise! ${winner.name} takes it home!`,
-        `The crowd is stunned - ${winner.name} wins at ${odds}x!`,
-        `Nobody saw that coming! ${winner.name} claims victory!`,
-        `An incredible upset by ${winner.name}!`
+        `Upset. ${winner.name} comes home at ${odds}x and ruins several evenings.`,
+        `${winner.name} at ${odds}x. Nobody had this. Nobody.`,
+        `${winner.name} wins at ${odds}x and the favorites can go home.`,
+        `Absolute robbery by ${winner.name} at ${odds}x.`,
+        `${winner.name} takes it at ${odds}x. Chaos. Beautiful.`
       ];
       return longshotLines[Math.floor(Math.random() * longshotLines.length)];
     } else {
       const outsiderLines = [
-        `INCREDIBLE! ${winner.name} shocks everyone at ${odds}x!`,
-        `A massive upset! ${winner.name} pulls off the miracle!`,
-        `Unbelievable! ${winner.name} wins against all odds!`,
-        `One of the biggest upsets ever - ${winner.name}!`,
-        `The crowd goes wild! ${winner.name} at ${odds}x!`
+        `${winner.name} WINS AT ${odds}x. Somebody is rich and everybody else is furious.`,
+        `${odds}x. ${winner.name}. This is a genuine atrocity.`,
+        `Unbelievable. ${winner.name} at ${odds}x, and the house is crying.`,
+        `${winner.name} at ${odds}x. Whoever backed that is never shutting up again.`,
+        `${odds}x. ${winner.name} has personally ended several bankrolls.`
       ];
       return outsiderLines[Math.floor(Math.random() * outsiderLines.length)];
     }
   }
 
-  if (!commentaries || commentaries.length === 0) {
-    return getDefaultCommentary()[Math.floor(Math.random() * getDefaultCommentary().length)];
-  }
+  // Falling back to the defaults still has to go through the banding below, or the title narrates a lap it is nowhere near.
+  const pool = commentaries && commentaries.length > 0 ? commentaries : getDefaultCommentary();
 
-  let pool;
+  let banded;
   if (tick === 1) {
-    pool = commentaries.slice(0, 2);
+    banded = pool.slice(0, 2);
   } else if (progress < 0.4) {
-    pool = commentaries.slice(2, 6);
+    banded = pool.slice(2, 6);
   } else if (progress < 0.7) {
-    pool = commentaries.slice(6, 10);
+    banded = pool.slice(6, 10);
   } else {
-    pool = commentaries.slice(10, 13);
+    banded = pool.slice(10, 13);
   }
 
-  if (pool.length === 0) {
-    pool = commentaries;
+  if (banded.length === 0) {
+    banded = pool;
   }
 
-  return pool[Math.floor(Math.random() * pool.length)];
+  // Rotated rather than sampled: random picks repeated the same line three laps running, which reads as a stuck message.
+  return banded[(tick - 1) % banded.length];
 }
 
 module.exports = {
@@ -651,7 +659,10 @@ module.exports = {
   determineWinner,
   determineTopThree,
   calculatePayout,
+  effectiveMultiplier,
   getOddsLabel,
+  getDefaultCommentary,
+  COMMENTARY_GUARD_TIMEOUT,
   buildTrack,
   buildRaceDescription,
   buildBettingDescription,
