@@ -10,6 +10,7 @@ const { canvasBlackjack } = require("../../utils/blackjackCanvas");
 const { getEquippedTheme } = require("../../themes/manager");
 const { getBlackjackColors } = require("../../themes/resolver");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { buildErrorEmbed } = require("../../utils/embeds");
@@ -84,20 +85,9 @@ function deleteSession(client, channelId, userId) {
 
 // ─── session lifecycle ────────────────────────────────────────────────────────
 
+// The caller owns the session claim for `key`, so this must not re-check occupancy: it would find the claim and reject itself.
 async function openHubPanel(interaction, user, client) {
   const key = sessionKey(interaction.channelId, user.id);
-  const existing = client.blackjackTables.get(key);
-  if (existing && existing.status !== "ended") {
-    if (existing.lastEphemeralInteraction) {
-      existing.lastEphemeralInteraction.deleteReply().catch(() => {});
-    }
-    await interaction.reply({
-      embeds: [buildErrorEmbed(user, client, "You already have a blackjack table open in this channel. Use the buttons on your existing table.")],
-      flags: MessageFlags.Ephemeral,
-    });
-    existing.lastEphemeralInteraction = interaction;
-    return;
-  }
 
   let dbUser = await db.get(user.id);
   if (!dbUser) {
@@ -932,11 +922,9 @@ module.exports = {
     const betOption = interaction.options.getString("bet");
     const key = sessionKey(interaction.channelId, user.id);
 
-    // Block a second session from the same user in the same channel.
-    // Exception: if the user runs `/blackjack bet:X` while an idle table
-    // is open, treat it as a Deal click on that table (legacy slash UX).
-    const existing = client.blackjackTables.get(key);
-    if (existing && existing.status !== "ended") {
+    // Exception: `/blackjack bet:X` against an idle table is a Deal click on that table (legacy slash UX).
+    const { claim, existing } = claimSession(client.blackjackTables, key);
+    if (!claim) {
       if (betOption && existing.status === "waiting") {
         return dealOnExistingTable(interaction, existing, client, user, betOption);
       }
@@ -953,52 +941,57 @@ module.exports = {
       return;
     }
 
-    if (!betOption) {
-      return openHubPanel(interaction, user, client);
+    // The claim is released on every path that never reaches the real session, and is a no-op once it has.
+    try {
+      if (!betOption) {
+        return await openHubPanel(interaction, user, client);
+      }
+
+      // ── Fast path: bet provided, deal immediately ──
+      let dbUser = await db.get(user.id);
+      if (!dbUser) {
+        await addNewDBUser(user);
+        dbUser = await db.get(user.id);
+      }
+
+      const originalBet = Number(await parseBet(betOption, user.id));
+      if (isNaN(originalBet) || originalBet < 1) {
+        return await interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
+      }
+      if (originalBet % 1 !== 0) {
+        return await interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], flags: MessageFlags.Ephemeral });
+      }
+      if (originalBet > (dbUser.balance ?? 0)) {
+        return await interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferReply();
+
+      const startBalance = dbUser.balance ?? 0;
+      const debited = await withUserLock(user.id, async () => {
+        const bal = await db.get(`${user.id}.balance`) ?? 0;
+        if (bal < originalBet) return false;
+        await db.sub(`${user.id}.balance`, originalBet);
+        return true;
+      });
+      if (!debited) {
+        return await interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)] });
+      }
+
+      logger.info(`${user.username}(${user.id}) started blackjack (fast path) with bet ${originalBet} ${CURRENCY_NAME}.`);
+
+      // Create session before the hand so finishHand can find it
+      const message = await interaction.fetchReply();
+      const session = createSession(user.id, interaction.channelId, key, message.id, originalBet, "playing", startBalance);
+      // Seed expression from the slash-option string so follow-on Deal Again
+      // re-resolves dynamic bets like `max` against current balance.
+      session.lastBetExpression = String(betOption).trim();
+      await db.set(`${user.id}.blackjack.lastBet`, session.lastBetExpression).catch(() => {});
+      client.blackjackTables.set(key, session);
+
+      await runHand(interaction, user, client, session, originalBet, message, interaction.channel);
+    } finally {
+      releaseSession(client.blackjackTables, key, claim);
     }
-
-    // ── Fast path: bet provided, deal immediately ──
-    let dbUser = await db.get(user.id);
-    if (!dbUser) {
-      await addNewDBUser(user);
-      dbUser = await db.get(user.id);
-    }
-
-    const originalBet = Number(await parseBet(betOption, user.id));
-    if (isNaN(originalBet) || originalBet < 1) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
-    }
-    if (originalBet % 1 !== 0) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")], flags: MessageFlags.Ephemeral });
-    }
-    if (originalBet > (dbUser.balance ?? 0)) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
-    }
-
-    await interaction.deferReply();
-
-    const startBalance = dbUser.balance ?? 0;
-    const debited = await withUserLock(user.id, async () => {
-      const bal = await db.get(`${user.id}.balance`) ?? 0;
-      if (bal < originalBet) return false;
-      await db.sub(`${user.id}.balance`, originalBet);
-      return true;
-    });
-    if (!debited) {
-      return interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)] });
-    }
-
-    logger.info(`${user.username}(${user.id}) started blackjack (fast path) with bet ${originalBet} ${CURRENCY_NAME}.`);
-
-    // Create session before the hand so finishHand can find it
-    const message = await interaction.fetchReply();
-    const session = createSession(user.id, interaction.channelId, key, message.id, originalBet, "playing", startBalance);
-    // Seed expression from the slash-option string so follow-on Deal Again
-    // re-resolves dynamic bets like `max` against current balance.
-    session.lastBetExpression = String(betOption).trim();
-    await db.set(`${user.id}.blackjack.lastBet`, session.lastBetExpression).catch(() => {});
-    client.blackjackTables.set(key, session);
-
-    await runHand(interaction, user, client, session, originalBet, message, interaction.channel);
   },
 };

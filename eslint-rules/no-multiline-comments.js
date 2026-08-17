@@ -1,4 +1,4 @@
-// Silence a justified block with: // eslint-disable-next-line no-multiline-comments
+// Not suppressible: no-lint-suppression guards this rule. Shorten instead.
 
 const DIRECTIVE = /^\s*(eslint|globals?|exported|istanbul|c8|jshint|jslint)\b/;
 
@@ -10,7 +10,7 @@ module.exports = {
     },
     schema: [],
     messages: {
-      multiline: "Comment block spans {{lines}} lines. Confirm the extra lines are necessary — prefer one line, or none.",
+      multiline: "Comment block spans {{lines}} lines. Confirm the extra lines are necessary — prefer one line, or none. If the code is decipherable alone, remove the comment/",
     },
   },
 

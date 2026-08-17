@@ -13,16 +13,36 @@ function estimateTokenCount(text) {
   return Math.ceil(cjk + digits + remaining / 3.5);
 }
 
-function estimateCost(apiResponse) {
-  // 1M INPUT TOKENS (CACHE HIT):  $0.028
-  // 1M INPUT TOKENS (CACHE MISS): $0.28
-  // 1M OUTPUT TOKENS:             $0.42
+// USD per 1M tokens: [cache hit input, cache miss input, output].
+const MODEL_PRICING = {
+  "deepseek-v4-flash": [0.0028, 0.14, 0.28],
+  "deepseek-v4-pro": [0.003625, 0.435, 0.87],
+};
+// Unlisted legacy ids, mapped so a reasoning model is never costed as the cheap one.
+const LEGACY_PRICING = {
+  "deepseek-chat": "deepseek-v4-flash",
+  "deepseek-reasoner": "deepseek-v4-pro",
+};
+const DEFAULT_MODEL = "deepseek-v4-flash";
+
+function pricingFor(model) {
+  if (!model) return MODEL_PRICING[DEFAULT_MODEL];
+  const resolved = LEGACY_PRICING[model] || model;
+  return MODEL_PRICING[resolved] || MODEL_PRICING[DEFAULT_MODEL];
+}
+
+function estimateCost(apiResponse, model) {
   const usage = apiResponse.usage || {};
   const promptTokensHit = usage.prompt_cache_hit_tokens || 0;
   const promptTokensMissed = usage.prompt_cache_miss_tokens || 0;
-  const completionTokens = usage.completion_tokens || 0;
-  const cost = (promptTokensHit * 0.028 + promptTokensMissed * 0.28 + completionTokens * 0.42) / 1_000_000;
+  // Reasoning tokens bill as output; folded into completion_tokens unless absent.
+  const completionTokens = (usage.completion_tokens || 0) +
+    (usage.completion_tokens_details?.reasoning_tokens && !usage.completion_tokens
+      ? usage.completion_tokens_details.reasoning_tokens
+      : 0);
+  const [hitRate, missRate, outRate] = pricingFor(model);
+  const cost = (promptTokensHit * hitRate + promptTokensMissed * missRate + completionTokens * outRate) / 1_000_000;
   return cost.toFixed(6);
 }
 
-module.exports = { estimateTokenCount, estimateCost };
+module.exports = { estimateTokenCount, estimateCost, MODEL_PRICING };

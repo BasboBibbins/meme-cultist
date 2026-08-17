@@ -65,4 +65,12 @@ function getDuelColors(themeId) {
   return getThemeColors(themeId, "duel");
 }
 
-module.exports = { getThemeColors, getThemeSymbols, getCardSheet, getBlackjackColors, getDuelColors };
+// Palette values are "#rrggbb" strings but EmbedBuilder wants an integer.
+function toEmbedColor(value, fallback = 0x0f4c25) {
+  if (typeof value === "number") return value;
+  if (!value) return fallback;
+  const parsed = parseInt(String(value).replace(/^#/, ""), 16);
+  return Number.isNaN(parsed) ? fallback : parsed;
+}
+
+module.exports = { getThemeColors, getThemeSymbols, getCardSheet, getBlackjackColors, getDuelColors, toEmbedColor };

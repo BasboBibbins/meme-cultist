@@ -206,13 +206,14 @@ const TOOLS = [
       description:
         "Search the server's knowledge base for articles related to a topic. Returns up to 3 relevant entries. " +
         "USE THIS TOOL whenever the user asks about server rules, FAQs, wiki topics, or curated knowledge. " +
-        "Do not guess — search the knowledge base first.",
+        "Do not guess — search the knowledge base first. " +
+        "If a previous result named an entry's slug, pass that slug to fetch it exactly instead of searching again.",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "The topic or question to look up in the knowledge base." }
-        },
-        required: ["query"]
+          query: { type: "string", description: "The topic or question to look up in the knowledge base." },
+          slug: { type: "string", description: "The exact slug of a known entry. Fetches that entry directly instead of searching." }
+        }
       }
     }
   },
@@ -794,9 +795,15 @@ function lexicalKbFallback(guildId, query, limit) {
 }
 
 async function handleLookupKb(args, message, client) {
-  if (!args?.query) return { error: "Missing required 'query' argument." };
+  if (!args?.query && !args?.slug) return { error: "Missing required 'query' or 'slug' argument." };
   const guild = message.guild;
   if (!guild) return { error: "Knowledge base is only available in servers." };
+
+  if (args.slug) {
+    const entry = kbStore.getBySlug(guild.id, args.slug);
+    if (entry) return { results: packKbResults([entry]) };
+    if (!args.query) return { results: [], message: `No knowledge base entry with slug "${args.slug}".` };
+  }
 
   try {
     const { embedding } = await embed({ text: args.query });

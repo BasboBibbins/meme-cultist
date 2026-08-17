@@ -7,6 +7,7 @@ const { openBetModal, resolveBet } = require("../../utils/betModal");
 const { newDeck, dealHand, drawCard, deleteDeck } = require("../../utils/cards");
 const logger = require("../../utils/logger");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { canvasHand, pokerScore, drawPokerPaytable } = require("../../utils/poker");
 const { getJackpot, contributeToJackpot, winJackpot, isJackpotEligible, MIN_BET } = require("../../utils/jackpot");
 const { getEquippedTheme } = require("../../themes/manager");
@@ -135,15 +136,9 @@ function createSession(userId, channelId, key, messageId, startBalance) {
   };
 }
 
+// The caller owns the session claim for `key`, so this must not re-check occupancy: it would find the claim and reject itself.
 async function openHubPanel(interaction, user, client) {
   const key = sessionKey(interaction.channelId, user.id);
-  const existing = client.pokerTables.get(key);
-  if (existing && existing.status !== "ended") {
-    return interaction.reply({
-      embeds: [buildErrorEmbed(user, client, "You already have a poker table open in this channel. Use the buttons on your existing table.")],
-      flags: MessageFlags.Ephemeral,
-    });
-  }
 
   let dbUser = await db.get(user.id);
   if (!dbUser) {
@@ -714,90 +709,93 @@ module.exports = {
     }
 
     const betOption = interaction.options.getString("bet");
-
-    // No bet → open the hub.
-    if (!betOption) {
-      return openHubPanel(interaction, user, client);
-    }
-
-    // Fast path: bet provided → open hub then deal immediately.
     const key = sessionKey(interaction.channelId, user.id);
-    const existing = client.pokerTables.get(key);
 
-    // Power-user reuse: if a panel already exists and is idle, treat
-    // `/poker play bet:X` as if the user clicked Deal on that panel.
-    if (existing && existing.status === "waiting") {
-      return dealOnExistingPanel(interaction, existing, client, user, betOption);
-    }
-    if (existing && existing.status !== "ended") {
+    const { claim, existing } = claimSession(client.pokerTables, key);
+    if (!claim) {
+      // Power-user reuse: `/poker play bet:X` against an idle panel is a Deal click on that panel.
+      if (betOption && existing.status === "waiting") {
+        return dealOnExistingPanel(interaction, existing, client, user, betOption);
+      }
       return interaction.reply({
-        embeds: [buildErrorEmbed(user, client, "A hand is already in progress on your panel. Wait for it to finish.")],
+        embeds: [buildErrorEmbed(user, client, existing.status === "waiting"
+          ? "You already have a poker table open in this channel. Use the buttons on your existing table."
+          : "A hand is already in progress on your panel. Wait for it to finish.")],
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    let dbUser = await db.get(user.id);
-    if (!dbUser) {
-      await addNewDBUser(user);
-      dbUser = await db.get(user.id);
-    }
-
-    const bet = Number(await parseBet(betOption, user.id));
-    const themeId = await getEquippedTheme(user.id);
-    const themeColors = getThemeColors(themeId, "poker");
-
-    if (!Number.isFinite(bet) || bet < 1) {
-      return interaction.reply({
-        embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)],
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    if (bet % 1 !== 0) {
-      return interaction.reply({
-        embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")],
-        flags: MessageFlags.Ephemeral,
-      });
-    }
-    if (bet > (dbUser.balance ?? 0)) {
-      return interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
-    }
-
-    await interaction.deferReply();
-
-    const startBalance = dbUser.balance ?? 0;
-    const hubEmbed = buildHubEmbed(user, client, startBalance, null, themeColors);
-    hubEmbed.setTitle("Video Poker — dealing your hand...");
-    const message = await interaction.editReply({
-      embeds: [hubEmbed],
-      components: buildHubComponents(true, /* disabled */ true),
-    });
-
-    const session = createSession(user.id, interaction.channelId, key, message.id, startBalance);
-    session.lastBetExpression = betOption.trim();
-    client.pokerTables.set(key, session);
-    await db.set(`${user.id}.poker.lastBet`, betOption.trim()).catch(() => {});
-
-    // Debit + start hand
-    const debited = await withUserLock(user.id, async () => {
-      const bal = (await db.get(`${user.id}.balance`)) ?? 0;
-      if (bal < bet) return false;
-      await db.sub(`${user.id}.balance`, bet);
-      return true;
-    });
-    if (!debited) {
-      client.pokerTables.delete(key);
-      return interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], components: [] });
-    }
-    await contributeToJackpot(bet);
-    session.lastBet = bet;
-    session.status = "playing";
-
+    // The claim is released on every path that never reaches the real session, and is a no-op once it has.
     try {
-      await runHand(user, client, session, bet, message, interaction.channel);
-    } catch (err) {
-      logger.error(`[poker] fast-path runHand error: ${err && err.stack || err}`);
-      session.status = "waiting";
-      attachSessionCollector(client, message, session, interaction.channel);
+      if (!betOption) {
+        return await openHubPanel(interaction, user, client);
+      }
+
+      let dbUser = await db.get(user.id);
+      if (!dbUser) {
+        await addNewDBUser(user);
+        dbUser = await db.get(user.id);
+      }
+
+      const bet = Number(await parseBet(betOption, user.id));
+      const themeId = await getEquippedTheme(user.id);
+      const themeColors = getThemeColors(themeId, "poker");
+
+      if (!Number.isFinite(bet) || bet < 1) {
+        return await interaction.reply({
+          embeds: [buildErrorEmbed(user, client, `You must bet at least 1 ${CURRENCY_NAME}!`)],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      if (bet % 1 !== 0) {
+        return await interaction.reply({
+          embeds: [buildErrorEmbed(user, client, "You must bet in whole numbers!")],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      if (bet > (dbUser.balance ?? 0)) {
+        return await interaction.reply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferReply();
+
+      const startBalance = dbUser.balance ?? 0;
+      const hubEmbed = buildHubEmbed(user, client, startBalance, null, themeColors);
+      hubEmbed.setTitle("Video Poker — dealing your hand...");
+      const message = await interaction.editReply({
+        embeds: [hubEmbed],
+        components: buildHubComponents(true, /* disabled */ true),
+      });
+
+      const session = createSession(user.id, interaction.channelId, key, message.id, startBalance);
+      session.lastBetExpression = betOption.trim();
+      client.pokerTables.set(key, session);
+      await db.set(`${user.id}.poker.lastBet`, betOption.trim()).catch(() => {});
+
+      // Debit + start hand
+      const debited = await withUserLock(user.id, async () => {
+        const bal = (await db.get(`${user.id}.balance`)) ?? 0;
+        if (bal < bet) return false;
+        await db.sub(`${user.id}.balance`, bet);
+        return true;
+      });
+      if (!debited) {
+        client.pokerTables.delete(key);
+        return await interaction.editReply({ embeds: [buildErrorEmbed(user, client, `You don't have enough ${CURRENCY_NAME}!`)], components: [] });
+      }
+      await contributeToJackpot(bet);
+      session.lastBet = bet;
+      session.status = "playing";
+
+      try {
+        await runHand(user, client, session, bet, message, interaction.channel);
+      } catch (err) {
+        logger.error(`[poker] fast-path runHand error: ${err && err.stack || err}`);
+        session.status = "waiting";
+        attachSessionCollector(client, message, session, interaction.channel);
+      }
+    } finally {
+      releaseSession(client.pokerTables, key, claim);
     }
   },
 };

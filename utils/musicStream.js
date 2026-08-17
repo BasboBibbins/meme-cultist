@@ -3,11 +3,14 @@
 // format found"). yt-dlp is the only extractor that reliably tracks YouTube's
 // changes, and it is already present via youtube-dl-exec.
 //
-// Format selection is deliberately plain `bestaudio`: constraining it to webm
-// selects a format that returns HTTP 403 on download even though the URL
-// resolves, which is a silent failure mode that costs hours to find.
+// Format selection stays codec-agnostic: constraining it to webm selects a format
+// that returns HTTP 403 on download even though the URL resolves, which is a silent
+// failure mode that costs hours to find. It is `bestaudio/best` rather than bare
+// `bestaudio` because a strict selector aborts outright when YouTube answers with a
+// storyboard-only format list, which is what ytdlpAttempts() below recovers from.
 
 const fs = require("fs");
+const { PassThrough } = require("stream");
 const { spawn, spawnSync } = require("child_process");
 const { constants } = require("youtube-dl-exec");
 const { Track, StreamType, QueryType } = require("discord-player");
@@ -16,8 +19,12 @@ const { YTDLP_COOKIES } = require("../config.js");
 const logger = require("./logger");
 
 const YTDLP = constants.YOUTUBE_DL_PATH;
-const FORMAT = "bestaudio";
+// `/best` matters: bare `bestaudio` is a strict selector that aborts the whole download when YouTube returns no audio-only format.
+const FORMAT = "bestaudio/best";
 const PLAYLIST_LIMIT = 50;
+
+// The clients that do not need a solved JS challenge. YouTube now answers the web clients with a storyboard-only format list, which is what "Requested format is not available" actually means.
+const JS_FREE_CLIENTS = "youtube:player_client=android_vr,ios,tv";
 
 // YouTube's `n` challenge has to be solved in JavaScript, and yt-dlp only enables deno
 // by default. With no runtime it degrades to storyboard-only formats — and once a cookie
@@ -54,46 +61,102 @@ function resolveCookieArgs() {
 
 const cookieArgs = resolveCookieArgs();
 
+// Recorded once at startup: a format-resolution failure is undiagnosable without knowing which
+// yt-dlp is on the box, and each host's binary is whatever its last install happened to fetch.
+function logYtdlpDiagnostics() {
+  const result = spawnSync(YTDLP, ["--version"], { encoding: "utf8", timeout: 15000 });
+  const version = (result.stdout || "").trim();
+
+  if (result.status !== 0 || !version) {
+    logger.error(`[MusicStream] yt-dlp is not runnable at ${YTDLP}. YouTube playback will fail.`);
+    return;
+  }
+  logger.info(`[MusicStream] yt-dlp ${version} at ${YTDLP}${cookieArgs.length ? ", cookies enabled" : ""}`);
+}
+
 // yt-dlp handles far more than YouTube, but every other provider in use streams
 // correctly through its own extractor, so it is scoped to the one that does not.
 function shouldUseYtdlp(url) {
   return typeof url === "string" && /(?:youtube\.com|youtu\.be)/i.test(url);
 }
 
-function createYtdlpStream(url) {
-  const child = spawn(YTDLP, [
+// Ordered recovery chain, each step tried only when the one before produced no audio at all.
+// A cookie jar is the trigger rather than the format string: cookies bar the JS-free clients, so
+// yt-dlp falls to the web clients that YouTube now answers with storyboards only.
+function ytdlpAttempts() {
+  const base = [
     "--format", FORMAT,
     "--output", "-",
     "--quiet",
     "--no-warnings",
     "--no-playlist",
     ...JS_RUNTIME,
-    ...cookieArgs,
-    url,
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+  ];
 
-  let stderr = "";
-  child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+  const attempts = [];
+  if (cookieArgs.length) attempts.push({ label: "cookies", args: [...base, ...cookieArgs] });
+  attempts.push({ label: "no cookies", args: [...base] });
+  attempts.push({ label: "JS-free clients", args: [...base, "--extractor-args", JS_FREE_CLIENTS] });
+  return attempts;
+}
 
-  child.on("error", err => {
-    logger.error(`[MusicStream] yt-dlp failed to spawn: ${err.message}`);
-    child.stdout.destroy(err);
-  });
-
-  // Teardown kills yt-dlp mid-write, so its "unable to write data" complaint is our own doing and must not read as a playback failure.
+// A PassThrough rather than the child's stdout directly, so a failed attempt can be replaced by the
+// next one without the consumer ever seeing the swap. Retrying is only safe while nothing has been
+// written, which is why a partial stream ends rather than restarting.
+function createYtdlpStream(url, track = null) {
+  const out = new PassThrough();
+  const attempts = ytdlpAttempts();
+  let child = null;
   let tornDown = false;
-  child.on("close", code => {
-    if (tornDown || code === 0 || !stderr.trim()) return;
-    logger.error(`[MusicStream] yt-dlp exited ${code} for ${url}: ${stderr.trim().slice(0, 300)}`);
-  });
 
   // Killing the child on stream teardown stops a skipped track leaking a process.
-  child.stdout.on("close", () => {
+  out.on("close", () => {
     tornDown = true;
-    if (!child.killed) child.kill("SIGKILL");
+    if (child && !child.killed) child.kill("SIGKILL");
   });
 
-  return child.stdout;
+  const runAttempt = (index) => {
+    if (tornDown) return;
+
+    if (index >= attempts.length) {
+      const reason = `**${track?.title || "That track"}** could not be streamed. YouTube returned no playable audio for it.`;
+      noteUnplayable(track, reason);
+      logger.error(`[MusicStream] every yt-dlp strategy failed for ${url}`);
+      out.destroy(new UnplayableTrackError(reason));
+      return;
+    }
+
+    const attempt = attempts[index];
+    let bytes = 0;
+    let stderr = "";
+
+    child = spawn(YTDLP, [...attempt.args, url], { stdio: ["ignore", "pipe", "pipe"] });
+    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.stdout.on("data", chunk => { bytes += chunk.length; });
+    child.stdout.pipe(out, { end: false });
+
+    let settled = false;
+
+    child.on("error", err => {
+      if (settled) return;
+      settled = true;
+      logger.error(`[MusicStream] yt-dlp failed to spawn: ${err.message}`);
+      if (!tornDown) runAttempt(index + 1);
+    });
+
+    // Teardown kills yt-dlp mid-write, so its "unable to write data" complaint is our own doing and must not read as a playback failure.
+    child.on("close", code => {
+      if (settled) return;
+      settled = true;
+      if (tornDown) return;
+      if (bytes > 0) return out.end();
+      logger.warn(`[MusicStream] yt-dlp (${attempt.label}) returned no audio for ${url}, exit ${code}: ${stderr.trim().slice(0, 200)}`);
+      runAttempt(index + 1);
+    });
+  };
+
+  runAttempt(0);
+  return out;
 }
 
 // discord-player's onBeforeCreateStream hook: returning null hands the track
@@ -101,7 +164,7 @@ function createYtdlpStream(url) {
 async function beforeCreateStream(track) {
   if (!shouldUseYtdlp(track?.url)) return null;
   logger.debug(`[MusicStream] Streaming via yt-dlp: ${track.title}`);
-  return createYtdlpStream(track.url);
+  return createYtdlpStream(track.url, track);
 }
 
 // discord-player unshifts "-ss" ahead of "-i" for URL-string sources, which corrupts AAC/HLS decoding — and SoundCloud and Spotify both return HLS. Remuxing to a Node stream avoids that path entirely.
@@ -204,7 +267,7 @@ async function afterStreamExtracted(stream, track, queue) {
     const youtubeUrl = await bridgeToYoutube(track, queue);
     if (youtubeUrl) {
       logger.log(`[MusicStream] "${track?.title}" is DRM-protected at source; playing the YouTube match instead.`);
-      return createYtdlpStream(youtubeUrl);
+      return createYtdlpStream(youtubeUrl, track);
     }
     // Returning the URL anyway means ffmpeg decodes noise and the track "plays" for a fraction of a second; failing loudly lets the caller say why.
     const reason = `**${track?.title || "That track"}** is DRM-protected at its source, and no playable alternative was found.`;
@@ -342,4 +405,4 @@ function expandYoutubePlaylist(url, player, requestedBy, limit = PLAYLIST_LIMIT)
   return tracks;
 }
 
-module.exports = { enrichAppleMusicTracks, enrichAppleMusicTrack, appleTrackId, isAppleMusicTrack, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, PLAYLIST_LIMIT };
+module.exports = { enrichAppleMusicTracks, enrichAppleMusicTrack, appleTrackId, isAppleMusicTrack, beforeCreateStream, afterStreamExtracted, UnplayableTrackError, takeUnplayableReason, isDrmProtected, bridgeToYoutube, remuxUrlToStream, createYtdlpStream, ytdlpAttempts, logYtdlpDiagnostics, shouldUseYtdlp, isYoutubePlaylist, expandYoutubePlaylist, formatDuration, YTDLP, FORMAT, JS_FREE_CLIENTS, PLAYLIST_LIMIT };

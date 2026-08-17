@@ -216,6 +216,14 @@ module.exports = {
     attachCollector(state, state.msg, queue, track, render);
   },
 
+  // A failed queue leaves a panel behind that still reads as playing, which is the confusing part of a playback failure.
+  teardownPanel: async (guildId) => {
+    const state = panelState(guildId);
+    const panelMsg = state.msg;
+    if (state.collector && !state.collector.ended) state.collector.stop("failed");
+    await destroyPanel(state, panelMsg);
+  },
+
   // Keeps the panel alive across a loop cycle; clearing it would post a fresh one.
   trackEnd: async (client, queue, track) => {
     const state = panelState(queue.guild?.id);

@@ -163,8 +163,10 @@ const config = {
   RACE_MAX_BET: 0, // default 1000
   RACE_BETTING_TIME: 60000,
   RACE_HOUSE_EDGE: 0.05,
-  RACE_ANIMATION_TICKS: 10,
-  RACE_TICK_INTERVAL: 2000,
+  RACE_ANIMATION_TICKS: 15,
+  RACE_TICK_INTERVAL: 1250,
+  RACE_COMMENTARY_LAP_INTERVAL: 2,
+  RACE_FINAL_COMMENTARY_LAP: 0, // default 0; resolves to lap 12/15
   RACE_PLACE_MULTIPLIER: 0.45,
   RACE_SHOW_MULTIPLIER: 0.28,
 
@@ -321,7 +323,9 @@ const config = {
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),
-  CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || "deepseek-reasoner",
+  CRITIQUE_ENABLED: !/^(0|false|no|off)$/i.test(process.env.CRITIQUE_ENABLED || ""),
+  // A temperature-0 schema check: a reasoning model only buys its own cache namespace.
+  CRITIQUE_MODEL: process.env.CRITIQUE_MODEL || process.env.CONVO_MODEL || "deepseek-v4-flash",
   BOOKMARK_EMOJI: process.env.BOOKMARK_EMOJI || "📌",
   STREAMING_ENABLED: /^(1|true|yes|on)$/i.test(process.env.STREAMING_ENABLED || ""),
 

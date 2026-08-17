@@ -1,10 +1,15 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT } = require("../config.js");
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT } = require("../config.js");
 const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
 const { formatInterval } = require("./time");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
 
 // A max of 0 means uncapped in config.js, so it must not print as "0 koku".
+// Read from config rather than written out, so the documented cut cannot drift from the one actually taken.
+function racePercent(edge) {
+  return `${Math.round((edge ?? 0.10) * 100)}%`;
+}
+
 function betRange(min, max) {
   const floor = `Minimum bet: **${min.toLocaleString("en-US")}** ${CURRENCY_NAME}`;
   const ceiling = max > 0 ? `Maximum bet: **${max.toLocaleString("en-US")}** ${CURRENCY_NAME}` : "No maximum bet";
@@ -175,7 +180,7 @@ module.exports = {
             Horse racing is a multi-player betting game where you bet on which horse will win the race!
             Each race features 8 horses with randomly generated names, form ratings, and odds.
 
-            Use \`/race start\` to start a new race in the channel. Other players can join using \`/race bet [horse] [amount]\`.
+            Use \`/race start\` to start a new race in the channel. Everyone else bets by clicking a horse on the panel. \`/race bet [horse] [amount]\` is the fast path if you already know what you want.
             Each horse has different odds based on their form rating, displayed as:
             • 🟢 **Favorite** - High chance of winning, lower payout
             • 🟡 **Contender** - Medium chance, medium payout
@@ -185,26 +190,27 @@ module.exports = {
             The race is animated with each horse progressing toward the finish line. First horse to cross wins!
 
             **Bet Types:**
-            • **Win** — Horse must finish 1st. Full odds payout.
-            • **Place** — Horse must finish 1st or 2nd. Reduced payout (45% of win odds).
-            • **Show** — Horse must finish 1st, 2nd, or 3rd. Further reduced payout (28% of win odds).
+            • **Win**: Horse must finish 1st. Full odds payout.
+            • **Place**: Horse must finish 1st or 2nd. Reduced payout (45% of win odds).
+            • **Show**: Horse must finish 1st, 2nd, or 3rd. Further reduced payout (28% of win odds).
 
-            Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is 5%.`,
+            Payouts are calculated as: \`bet × odds × (1 - house edge)\`. The house edge is ${racePercent(RACE_HOUSE_EDGE)}, and the payout shown when you place a bet already has it taken off.`,
     rules: `
             1. Use \`/race start\` to create a new race. Anyone in the channel can then place bets.
-            2. Use \`/race bet [horse] [amount]\` to bet on a horse (1-8). You can only place one bet per race.
+            2. Click a horse on the panel to bet, or use \`/race bet [horse] [amount]\` (1-8). You can place as many bets as you like, on as many horses as you like.
             3. Use the \`type\` option to choose Win, Place, or Show (default: Win).
             4. Each horse shows odds (e.g., "2.5x") and a chance indicator (Favorite, Contender, Longshot, Outsider).
-            5. The race creator can start early with "Start Now" or wait for the betting timer to expire.
-            6. Winners receive their payout via DM. The house takes a 5% cut of winnings.
-            7. You can only bet from your wallet, not your bank.`,
+            5. The race creator can start early with "Start Now" or wait for the betting timer to expire. Every new bet resets that timer.
+            6. Winners receive their payout via DM. The house takes a ${racePercent(RACE_HOUSE_EDGE)} cut of winnings.
+            7. You can only bet from your wallet, not your bank.
+            8. "Clear My Bets" refunds everything you have staked on this race while betting is still open.`,
     example: `
             \`/race start\` - Start a new race (becomes the game host)
             \`/race bet 3 500\` - Bet 500 on horse 3 to win
             \`/race bet 5 300 type:place\` - Bet 300 on horse 5 to place (1st or 2nd)
             \`/race bet 7 all type:show\` - Bet all your wallet on horse 7 to show (1st, 2nd, or 3rd)`,
     note: `
-            Only one race per channel at a time. Each player can only bet once per race.
+            Only one race per channel at a time.
             The winner is pre-determined when the race starts, but the animation shows all horses racing.
             Higher form ratings mean higher probability of winning but lower odds.
             Min/max bet amounts are configured by the server admin.`,

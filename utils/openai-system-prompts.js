@@ -6,7 +6,10 @@
 // expected lifetime, and anything that changes every turn is kept out of the
 // system message entirely.
 //
-// System message (stable, cached):
+// System message (stable, cached), ordered by ascending churn rate — a block
+// that is rewritten invalidates every block after it, so the volatile ones go
+// last. Topic and summary are also dropped on mention turns, and keeping them
+// at the tail lets mention and ambient turns share the prefix before them.
 //   1. Variant prefix (behavioral rules for this channel/thread type)
 //   2. Identity rules
 //   3. Discord formatting reference
@@ -14,9 +17,9 @@
 //   5. Tool instructions
 //   6. Server emoji roster
 //   7. Standing directives
-//   8. Channel topic
-//   9. Channel summary
-//  10. Participants roster
+//   8. Participants roster
+//   9. Channel summary (rewritten every SUMMARY_INTERVAL messages)
+//  10. Channel topic (rewritten every TOPIC_UPDATE_INTERVAL messages)
 //
 // Turn context (volatile, rides on the final user message — which is never part
 // of a reusable prefix, so volatility is free there and the retrieval lands
@@ -31,9 +34,9 @@ function assembleSystemPrompt(parts) {
     parts.toolBlock,
     parts.emojiBlock,
     parts.directivesBlock,
-    parts.topicBlock,
-    parts.channelSummaryBlock,
     parts.participantsBlock,
+    parts.channelSummaryBlock,
+    parts.topicBlock,
   ].filter(Boolean);
   return sections.join("\n\n");
 }

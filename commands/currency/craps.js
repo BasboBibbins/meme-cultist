@@ -10,6 +10,7 @@ const { getThemeColors } = require("../../themes/resolver");
 const { contributeToJackpot } = require("../../utils/jackpot");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { withUserLock } = require("../../utils/userlock");
+const { claimSession, releaseSession } = require("../../utils/sessionClaim");
 const { sendDM } = require("../../utils/dm");
 const logger = require("../../utils/logger");
 const wait = require("node:timers/promises").setTimeout;
@@ -67,17 +68,23 @@ async function handlePlay(interaction) {
   const user = interaction.user;
   const channelId = interaction.channelId;
 
-  const existing = client.crapsGames.get(channelId);
-  if (existing) {
+  const { claim } = claimSession(client.crapsGames, channelId);
+  if (!claim) {
     return interaction.reply({ embeds: [buildErrorEmbed(user, client, "A craps session is already running in this channel — click a bet button on the table to join.")], flags: MessageFlags.Ephemeral });
   }
 
-  const dbUser = await db.get(user.id);
-  if (!dbUser) {
-    await addNewDBUser(user);
-  }
+  try {
+    const dbUser = await db.get(user.id);
+    if (!dbUser) {
+      await addNewDBUser(user);
+    }
 
-  return handleNewGame(interaction, client, user);
+    return await handleNewGame(interaction, client, user);
+  } catch (err) {
+    releaseSession(client.crapsGames, channelId, claim);
+    logger.error(`[craps] failed to open a table in ${channelId}: ${err && err.stack || err}`);
+    await interaction.followUp({ embeds: [buildErrorEmbed(user, client, "Could not open the craps table. Try again.")], flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
 }
 
 async function handleNewGame(interaction, client, user) {
