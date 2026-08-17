@@ -135,13 +135,19 @@ function createYtdlpStream(url, track = null) {
     child.stdout.on("data", chunk => { bytes += chunk.length; });
     child.stdout.pipe(out, { end: false });
 
+    let settled = false;
+
     child.on("error", err => {
+      if (settled) return;
+      settled = true;
       logger.error(`[MusicStream] yt-dlp failed to spawn: ${err.message}`);
       if (!tornDown) runAttempt(index + 1);
     });
 
     // Teardown kills yt-dlp mid-write, so its "unable to write data" complaint is our own doing and must not read as a playback failure.
     child.on("close", code => {
+      if (settled) return;
+      settled = true;
       if (tornDown) return;
       if (bytes > 0) return out.end();
       logger.warn(`[MusicStream] yt-dlp (${attempt.label}) returned no audio for ${url}, exit ${code}: ${stderr.trim().slice(0, 200)}`);
