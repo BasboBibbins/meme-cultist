@@ -12,6 +12,9 @@ const {
 } = require("../../utils/feedbackForm");
 const { CONVO_MODEL, OWNER_ID, GITHUB_REPO_OWNER, GITHUB_REPO_NAME } = require("../../config.js");
 
+const { ensureDbDir } = require("../../utils/dbDir");
+
+ensureDbDir();
 const feedbackDb = new QuickDB({ filePath: "./db/feedback.sqlite" });
 
 function llmAvailable() {

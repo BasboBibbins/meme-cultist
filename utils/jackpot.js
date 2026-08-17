@@ -1,4 +1,6 @@
 const { QuickDB } = require("quick.db");
+const { ensureDbDir } = require("./dbDir");
+ensureDbDir();
 const db = new QuickDB({ filePath: "./db/jackpot.sqlite" });
 const logger = require("./logger");
 const { JACKPOT_SEED, JACKPOT_CONTRIBUTION_RATE, JACKPOT_MIN_BET, JACKPOT_INTEREST_RATE_PERCENT, CURRENCY_NAME } = require("../config.js");

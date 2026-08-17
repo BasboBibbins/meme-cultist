@@ -5,6 +5,7 @@
 
 const { QuickDB } = require("quick.db");
 const { withLock } = require("./lock");
+const { ensureDbDir } = require("./dbDir");
 
 const _dbs = new Map();
 
@@ -12,6 +13,7 @@ function getGuildDB(guildId) {
   if (!guildId) throw new Error("getGuildDB requires a guildId");
   let db = _dbs.get(guildId);
   if (!db) {
+    ensureDbDir();
     db = new QuickDB({ filePath: `./db/guild-${guildId}.sqlite` });
     _dbs.set(guildId, db);
   }

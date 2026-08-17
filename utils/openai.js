@@ -42,6 +42,8 @@ const {
 const { formatChatbotChannelMentions } = require("./channels");
 const { QuickDB } = require("quick.db");
 const { db: usersDb } = require("../database");
+const { ensureDbDir } = require("./dbDir");
+ensureDbDir();
 const db = new QuickDB({ filePath: "./db/thread_contexts.sqlite" });
 const logger = require("./logger");
 const { TOOLS, executeToolCall, SIDE_EFFECT_TOOLS } = require("./openai-tools");
