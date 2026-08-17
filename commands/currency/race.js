@@ -339,11 +339,10 @@ async function handleStartRace(interaction, client, user) {
           return i.reply({ embeds: [buildErrorEmbed(i.user, i.client,`Only **${game.creatorUsername}** can cancel this race.`)], flags: MessageFlags.Ephemeral });
         }
 
+        game.phase = "cancelled";
         const cancelled = takeBets(game);
         const refunded = await refundBets(cancelled);
 
-        // Set before the collector stops, or the end handler reads this as an abandon and posts over the cancel notice.
-        game.phase = "cancelled";
         await i.update({
           embeds: [buildStoppedEmbed(client, game, refunded > 0
             ? `Cancelled by **${game.creatorUsername}**. Refunded **${refunded.toLocaleString("en-US")}** ${CURRENCY_NAME} across ${cancelled.length} bet${cancelled.length === 1 ? "" : "s"}.`
