@@ -27,7 +27,7 @@ async function streamFirstResult(area, name, query, engine = QueryType.AUTO) {
     // Mirror production exactly: yt-dlp for YouTube, extractor otherwise, then the
     // remux hook. A URL that merely resolves is not proof of playable audio — that
     // assumption hid the -ss bug that made SoundCloud and Spotify play silence.
-    const { beforeCreateStream, afterStreamExtracted } = require("../../utils/musicStream");
+    const { beforeCreateStream, afterStreamExtracted } = require("../../utils/music/stream");
     const raw = (await beforeCreateStream(track)) || await track.extractor.stream(track);
     if (!raw) {
       capability(area, name, "FAIL", "extractor.stream() returned nothing");
@@ -83,7 +83,7 @@ async function run() {
     }
     const track = res.tracks[0];
     const raw = await track.extractor.stream(track);
-    const { isDrmProtected } = require("../../utils/musicStream");
+    const { isDrmProtected } = require("../../utils/music/stream");
     if (typeof raw !== "string" || !isDrmProtected(raw)) {
       capability("stream", "DRM source (bridged)", "SKIP", "source is no longer DRM-protected");
       return;

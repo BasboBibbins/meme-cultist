@@ -256,12 +256,16 @@ module.exports = {
             • YouTube videos and playlists
             • SoundCloud tracks and playlists
             • Spotify tracks and playlists (plays YouTube equivalent)
+            • Apple Music tracks and albums (plays YouTube equivalent)
             • Direct links to audio files
 
-            The queue can be shuffled by using \`/queue shuffle\`. You can also clear the queue by using \`/queue clear\`.
+            Nothing is ever written to disk. Audio is streamed straight through, and a YouTube track that already has an opus rendition is passed to Discord untouched, so it never loses a second generation to re-encoding.
+
+            The queue can be shuffled by using \`/queue shuffle\` and cleared with \`/queue clear\`. \`/queue view\` pages through it, and \`/queue remove [position]\` drops a single track.
 
             Filters can also be applied to the music. You can see the list of filters by using \`/filter\`.
             You can toggle a filter by using \`/filter [filter name]\`. To turn off all filters, use \`/filter clear\`.
+            Changing a filter rebuilds the audio chain, so the current song restarts when you do.
 
             Playback controls have slash commands as well as buttons on the now playing panel:
             • \`/pause\` and \`/resume\` — hold and continue the current song

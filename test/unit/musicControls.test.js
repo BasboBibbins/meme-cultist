@@ -8,7 +8,7 @@ const { QueueRepeatMode } = require("discord-player");
 const {
   isLooping, setLooping, toggleLoop, clearLoop, restoreLoop,
   setPaused, togglePause, skipTrack, stopPlayback,
-} = require("../../utils/musicControls");
+} = require("../../utils/music/controls");
 
 let guildCounter = 0;
 

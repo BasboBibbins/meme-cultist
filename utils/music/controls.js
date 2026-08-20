@@ -1,7 +1,7 @@
 // Playback actions shared by the now-playing panel buttons and the slash commands, so the two surfaces cannot drift apart.
 
 const { QueueRepeatMode } = require("discord-player");
-const logger = require("./logger");
+const logger = require("../logger");
 
 // Loop intent is tracked separately from queue.repeatMode because skipping has to drop the queue out of TRACK repeat to advance at all.
 const loopIntent = new Map();

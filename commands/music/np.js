@@ -1,7 +1,7 @@
-const { SlashCommandBuilder } = require("discord.js");
-const { resolveMusicContext } = require("../../utils/musicGuards");
-const { isLooping } = require("../../utils/musicControls");
-const { buildNowPlayingV2, resolveMusicColors } = require("../../utils/musicPanelV2");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
+const { resolveMusicContext } = require("../../utils/music/guards");
+const { isLooping } = require("../../utils/music/controls");
+const { buildNowPlayingV2, resolveMusicColors } = require("../../utils/music/panel");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,15 +15,21 @@ module.exports = {
     const requestedBy = queue.metadata?.requestedBy ?? interaction.user;
 
     // Reuses the live panel renderer minus the controls: this message has no collector, so buttons would look active and do nothing.
-    return interaction.reply(buildNowPlayingV2({
-      track: queue.currentTrack,
-      queue,
-      requestedBy,
-      client: interaction.client,
-      colors: await resolveMusicColors(requestedBy?.id),
-      paused: queue.node.isPaused(),
-      looping: isLooping(queue),
-      controls: false,
-    }));
+    // live:false for the same reason. A drawn bar with no refresh behind it is wrong within seconds, so it is a timestamp instead.
+    // Ephemeral because the real panel is already in the channel; a second public copy just competes with it.
+    return interaction.reply({
+      ...buildNowPlayingV2({
+        track: queue.currentTrack,
+        queue,
+        requestedBy,
+        client: interaction.client,
+        colors: await resolveMusicColors(requestedBy?.id),
+        paused: queue.node.isPaused(),
+        looping: isLooping(queue),
+        controls: false,
+        live: false,
+      }),
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral,
+    });
   },
 };

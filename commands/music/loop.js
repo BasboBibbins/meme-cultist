@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require("discord.js");
-const { resolveMusicContext } = require("../../utils/musicGuards");
-const { toggleLoop, setLooping, isLooping } = require("../../utils/musicControls");
-const { buildInfoEmbed } = require("../../utils/embeds");
+const { resolveMusicContext } = require("../../utils/music/guards");
+const { toggleLoop, setLooping } = require("../../utils/music/controls");
+const { musicEmbed } = require("../../utils/music/embeds");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -22,9 +22,9 @@ module.exports = {
     // TRACK repeat leaves queue.tracks untouched, so the queue resumes in order.
     const queued = queue.tracks.size;
     const note = looping
-      ? `🔁 Now looping **${queue.currentTrack.title}**.${queued > 0 ? `\n${queued} track(s) still queued — use \`/skip\` to move on.` : ""}`
+      ? `🔁 Now looping **${queue.currentTrack.title}**.${queued > 0 ? `\n${queued} track(s) still queued. Use \`/skip\` to move on.` : ""}`
       : `➡️ Loop off.${queued > 0 ? " The queue continues as normal." : ""}`;
 
-    return interaction.reply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, note)] });
+    return interaction.reply({ embeds: [await musicEmbed(interaction, note)] });
   },
 };
