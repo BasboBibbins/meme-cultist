@@ -10,7 +10,7 @@ const axios = require("axios");
 const {
   isDrmProtected, shouldUseYtdlp, isYoutubePlaylist, formatDuration,
   appleTrackId, isAppleMusicTrack, enrichAppleMusicTrack,
-} = require("../../utils/musicStream");
+} = require("../../utils/music/stream");
 
 describe("appleTrackId", () => {
   test("reads the ?i= track id, which is what a shared song link carries", () => {

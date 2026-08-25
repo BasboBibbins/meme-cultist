@@ -1,20 +1,22 @@
 // The now-playing panel: owns the collector, the refresh loop, and one panel per
-// guild. Rendering lives in musicPanelV2.js and the shared action layer in
-// musicControls.js, so the panel and the slash commands cannot drift apart.
+// guild. Rendering lives in panel.js and the shared action layer in controls.js,
+// so the panel and the slash commands cannot drift apart.
 
 const wait = require("util").promisify(setTimeout);
 const { MessageFlags } = require("discord.js");
-const logger = require("./logger");
-const { withLock } = require("./lock");
-const { buildErrorEmbed } = require("./embeds");
-const { remainingMs, progressBar } = require("./musicFormat");
-const { buildNowPlayingV2, resolveMusicColors } = require("./musicPanelV2");
-const { isLooping, toggleLoop, restoreLoop, togglePause, skipTrack, stopPlayback } = require("./musicControls");
+const logger = require("../logger");
+const { withLock } = require("../lock");
+const { buildErrorEmbed } = require("../embeds");
+const { remainingMs, progressBar } = require("./format");
+const { buildNowPlayingV2, resolveMusicColors } = require("./panel");
+const { isLooping, toggleLoop, restoreLoop, togglePause, skipTrack, stopPlayback } = require("./controls");
 
 const PROGRESS_TICK_MS = 5000;
 const PAUSED_COLLECTOR_MS = 300000;
 const IDLE_GRACE_MS = 30000;
 const STOP_CONFIRM_MS = 8000;
+// Below this a track did not play, it was truncated, and saying so beats a silent "finished".
+const TRUNCATED_PLAYBACK_MS = 2000;
 
 // One panel per guild. Entries are reset rather than deleted, so a timer or collector
 // still holding a state object keeps acting on the one it was started against.
@@ -24,7 +26,7 @@ function panelState(guildId) {
   const key = guildId ?? "unknown";
   let state = panels.get(key);
   if (!state) {
-    state = { msg: null, msgTrackUrl: null, progressTimer: null, collector: null, stopConfirmTimer: null, lastBar: null };
+    state = { msg: null, msgTrackUrl: null, progressTimer: null, collector: null, stopConfirmTimer: null, lastBar: null, startedAt: 0 };
     panels.set(key, state);
   }
   return state;
@@ -74,7 +76,7 @@ async function destroyPanel(state, panelMsg) {
 }
 
 // A collector filter rejects silently, which Discord renders as "This interaction
-// failed" — the rule has to be answered inside collect to read as a rule.
+// failed". The rule has to be answered inside collect to read as a rule.
 function inSameVoiceChannel(interaction, queue) {
   return interaction.member?.voice?.channelId === queue.channel?.id;
 }
@@ -152,7 +154,7 @@ function attachCollector(state, panelMsg, queue, track, render) {
     } catch (err) {
       logger.error(`[Music] Control "${i.customId}" failed: ${err.message}`);
       await i.followUp({
-        embeds: [buildErrorEmbed(i.user, i.client, "That button ate it. The song may already be gone — run `/np` for a fresh panel.")],
+        embeds: [buildErrorEmbed(i.user, i.client, "That button ate it. The song may already be gone. Run `/np` for a fresh panel.")],
         flags: MessageFlags.Ephemeral,
       }).catch(() => logger.warn("[Music] Could not deliver the control failure notice."));
     }
@@ -187,6 +189,8 @@ module.exports = {
   trackStart: async (client, queue, track) => {
     const state = panelState(queue.guild?.id);
     const requestedBy = queue.metadata.requestedBy;
+
+    state.startedAt = Date.now();
     // Resolved once per track: the panel wears the requester's equipped theme, and
     // a DB read per refresh tick would be gratuitous.
     const colors = await resolveMusicColors(requestedBy?.id);
@@ -216,6 +220,9 @@ module.exports = {
     attachCollector(state, state.msg, queue, track, render);
   },
 
+  // Playback failures are reported where the controls are, which is not always where /play was typed.
+  panelChannel: (guildId) => panels.get(guildId ?? "unknown")?.msg?.channel ?? null,
+
   // A failed queue leaves a panel behind that still reads as playing, which is the confusing part of a playback failure.
   teardownPanel: async (guildId) => {
     const state = panelState(guildId);
@@ -225,12 +232,36 @@ module.exports = {
   },
 
   // Keeps the panel alive across a loop cycle; clearing it would post a fresh one.
+  //
+  // Nulling state.msg on its own orphaned the finished panel: its collector outlives the
+  // track by however long the timeout had left, and the retire branch in `end` guards on
+  // state.msg, which by then no longer matches. The result was a panel per finished track,
+  // each with four buttons that answer "This interaction failed". Retiring the controls
+  // here, before the state is cleared, is the only point that still knows which message it was.
   trackEnd: async (client, queue, track) => {
     const state = panelState(queue.guild?.id);
     if (isLooping(queue) && state.msgTrackUrl === track?.url) return;
+
+    const playedMs = state.startedAt ? Date.now() - state.startedAt : Infinity;
+    if (playedMs < TRUNCATED_PLAYBACK_MS) {
+      logger.warn(`[Music] "${track?.title}" ended after ${playedMs}ms, which is not playback. The audio source produced no usable frames.`);
+    }
+    state.startedAt = 0;
+
+    const finished = state.msg;
     clearProgressTimer(state);
     clearStopConfirm(state);
     state.msg = null;
     state.msgTrackUrl = null;
+
+    if (!finished) return;
+    if (state.collector && !state.collector.ended) state.collector.stop("trackEnd");
+    state.collector = null;
+
+    const colors = await resolveMusicColors(queue.metadata?.requestedBy?.id);
+    await finished.edit(buildNowPlayingV2({
+      track, queue, requestedBy: queue.metadata?.requestedBy, client, colors,
+      paused: false, looping: false, controls: false, live: false,
+    })).catch(err => logger.debug(`[Music] Could not retire the finished panel: ${err.message}`));
   },
 };

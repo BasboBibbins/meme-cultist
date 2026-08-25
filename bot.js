@@ -3,12 +3,13 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const fs = require("fs");
-const { Player, GuildQueueEvent, TrackSkipReason, useMainPlayer } = require("discord-player");
+const { Player, GuildQueueEvent, TrackSkipReason } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
 const { initDB, db, applyCommandStatsResets } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
-const { trackStart, trackEnd, teardownPanel } = require("./utils/musicPlayer");
+const { trackStart, trackEnd, teardownPanel, panelChannel, MusicEngine } = require("./utils/music");
+const { skipTrack, stopPlayback } = require("./utils/music/controls");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
@@ -27,7 +28,7 @@ const { DefaultExtractors } = require("@discord-player/extractor");
 const { sendDM } = require("./utils/dm");
 const { buildInfoEmbed, COLORS } = require("./utils/embeds");
 const { handleProposalInteraction } = require("./utils/kbProposals");
-const { takeUnplayableReason, logYtdlpDiagnostics } = require("./utils/musicStream");
+const { takeUnplayableReason, logYtdlpDiagnostics } = require("./utils/music/stream");
 
 const TOKEN = process.env.TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -114,7 +115,10 @@ if (!fs.existsSync("./db/users.sqlite")) {
   process.exit(1);
 }
 
-const player = new Player(client);
+// discord-player is kept for its extractors, which resolve a Spotify, Apple, or SoundCloud
+// link into metadata. Playback is ours, because its engine cannot both play and preserve opus.
+const searchPlayer = new Player(client);
+const player = new MusicEngine(client, searchPlayer);
 
 process.on("unhandledRejection", (reason, p) => {
   logger.error(`Unhandled Promise Rejection! Reason: ${reason}`);
@@ -125,13 +129,46 @@ process.on("unhandledRejection", (reason, p) => {
     logger.error(err.stack);
   });
 
+// The panel is where the controls are, so that is where a failure has to appear; /play may have been typed somewhere else entirely, and it is only the fallback once the panel is gone.
 async function notifyMusicFailure(queue, message) {
   try {
-    const channel = queue?.metadata?.channel;
+    const channel = panelChannel(queue?.guild?.id) ?? queue?.metadata?.channel;
     if (!channel?.send) return;
     await channel.send({ embeds: [buildInfoEmbed(client.user, client, message).setColor(COLORS.error)] });
   } catch (err) {
     logger.warn(`[Music] Could not report failure to channel: ${err.message}`);
+  }
+}
+
+// One bad track should cost one track, not the session. The panel is read before anything is torn
+// down, because destroying it takes the reporting channel with it.
+async function skipFailedTrack(queue, message, { selfAdvancing, remaining }) {
+  const channel = panelChannel(queue?.guild?.id) ?? queue?.metadata?.channel;
+
+  if (remaining > 0) {
+    // The extraction-failure path dispatches the next track itself; skipping again would cost a second, innocent track.
+    if (!selfAdvancing) {
+      try {
+        if (!await skipTrack(queue)) logger.warn("[Music] Skip was refused; the queue had already left the failed track.");
+      } catch (err) {
+        logger.warn(`[Music] Could not skip the failed track: ${err.message}`);
+      }
+    }
+    return notifyMusicFailure(queue, `${message}\n\nSkipping to the next track. **${remaining}** left in the queue.`);
+  }
+
+  await teardownPanel(queue?.guild?.id).catch(err => logger.warn(`[Music] Panel teardown failed: ${err.message}`));
+
+  try {
+    await channel?.send({ embeds: [buildInfoEmbed(client.user, client, `${message}\n\nNothing else is queued, so playback has stopped. Use \`/play\` to start again.`).setColor(COLORS.error)] });
+  } catch (err) {
+    logger.warn(`[Music] Could not report the final failure: ${err.message}`);
+  }
+
+  try {
+    await stopPlayback(queue);
+  } catch (err) {
+    logger.warn(`[Music] Could not stop the queue: ${err.message}`);
   }
 }
 
@@ -268,10 +305,17 @@ if (DELETE_SLASH) {
     } catch (err) {
       logger.error(`[Music] Failed to load default extractors: ${err.message}`);
     }
+    // Registered with a token so search and metadata survive the same gate streaming does, but retried
+    // without one on failure: no extractor at all means every text search silently returns nothing.
     try {
-      await player.extractors.register(YoutubeiExtractor, {});
+      await player.extractors.register(YoutubeiExtractor, { generateWithPoToken: true });
     } catch (err) {
-      logger.error(`[Music] Failed to register the YouTube extractor — search will return nothing: ${err.message}`);
+      logger.warn(`[Music] Could not register the YouTube extractor with a PO token, retrying without: ${err.message}`);
+      try {
+        await player.extractors.register(YoutubeiExtractor, {});
+      } catch (fallbackErr) {
+        logger.error(`[Music] Failed to register the YouTube extractor, search will return nothing: ${fallbackErr.message}`);
+      }
     }
     const loadedExtractors = player.extractors.store.map(e => e.identifier);
     logger.info(`[Music] ${loadedExtractors.length} extractor(s) active: ${loadedExtractors.join(", ") || "NONE"}`);
@@ -550,7 +594,7 @@ if (DELETE_SLASH) {
             const data = {
               guild: interaction.guild
             };
-            await player.context.provide(data, () => command.execute(interaction));
+            await searchPlayer.context.provide(data, () => command.execute(interaction));
           } else {
             await command.execute(interaction);
           }
@@ -633,8 +677,9 @@ if (DELETE_SLASH) {
     await trackEnd(client, queue, track);
   });
   player.events.on(GuildQueueEvent.Disconnect, async (queue) => {
-    logger.warn(`Nobody is in the voice channel, leaving ${queue.guild.name}!`);
-    await queue.player.destroy();
+    logger.warn(`Left the voice channel in ${queue.guild.name}.`);
+    await teardownPanel(queue.guild?.id).catch(err => logger.warn(`[Music] Panel teardown failed: ${err.message}`));
+    queue.delete();
   });
   // Logs only. Every reason but NoStream is a deliberate action (manual skip, jump, seek), and NoStream is reported by PlayerError immediately after.
   player.events.on(GuildQueueEvent.PlayerSkip, async (queue, track, reason, description) => {
@@ -670,16 +715,29 @@ if (DELETE_SLASH) {
     await killMusicSession(queue, "The queue hit an error it could not recover from.");
   });
   player.events.on(GuildQueueEvent.PlayerError, async (queue, error, track) => {
-    // A track that can never play is reported verbatim — "skipping it" would hide the reason, and the bot should not sit in a channel with nothing to play.
+    // Both reads must happen before the first await: the extraction-failure path dispatches the next track the moment this emit returns, which shifts the queue out from under any later measurement.
+    const remaining = queue?.tracks?.size ?? 0;
+    // The engine dispatches the next track itself after a failure; skipping again would cost a second, innocent track.
+    const selfAdvancing = error?.selfAdvancing === true || error?.code === "ERR_NO_RESULT";
+
+    // Reported verbatim rather than as a generic failure: the reason is the only part a user can act on.
     const unplayable = takeUnplayableReason(track);
     if (unplayable) {
       logger.warn(`[Music] Unplayable track in ${queue.guild?.name}: ${unplayable}`);
-      await killMusicSession(queue, `${unplayable}\nTry searching for it by name instead.`);
+      await skipFailedTrack(queue, `${unplayable}\nTry searching for it by name instead.`, { selfAdvancing, remaining });
       return;
     }
     logger.error(`Playback error in ${queue.guild.name}${track ? ` on "${track.title}"` : ""} - ${error.message}`);
     logger.error(error.stack);
-    await killMusicSession(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}: ${error.message || "the audio source failed"}.`);
+    await skipFailedTrack(queue, `Couldn't play${track ? ` **${track.title}**` : " that track"}: ${error.message || "the audio source failed"}.`, { selfAdvancing, remaining });
+  });
+
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+    try {
+      player.handleVoiceStateUpdate(oldState, newState);
+    } catch (err) {
+      logger.warn(`[Music] Voice state handling failed: ${err.message}`);
+    }
   });
 
   // Chatbot events

@@ -1,6 +1,6 @@
 // Regression cover for the now-playing panel timing math: both helpers read discord-player state that is null until playback resolves.
 
-const { remainingMs, progressBar, DEFAULT_COLLECTOR_MS } = require("../../utils/musicFormat");
+const { remainingMs, progressBar, DEFAULT_COLLECTOR_MS } = require("../../utils/music/format");
 
 const queueWith = (timestamp, bar = "===---") => ({
   node: { getTimestamp: () => timestamp, createProgressBar: () => bar },

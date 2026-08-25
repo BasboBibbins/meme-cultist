@@ -8,7 +8,7 @@ const { MessageFlags, ButtonStyle } = require("discord.js");
 const {
   buildNowPlayingV2, isUsableUrl, safeText, safeUrl, queueCount,
   accentFor, desaturate, DEFAULT_ACCENT, DEFAULT_DANGER,
-} = require("../../utils/musicPanelV2");
+} = require("../../utils/music/panel");
 const { getThemeColors } = require("../../themes/resolver");
 
 const TRACK = {

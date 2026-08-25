@@ -1,5 +1,5 @@
 // Components V2 rendering of the now-playing panel. buildNowPlayingV2 is pure:
-// takes state, returns a message payload, sends nothing — so it is unit-testable
+// takes state, returns a message payload, sends nothing, so it is unit-testable
 // without a voice connection. resolveMusicColors is the one async member here,
 // kept alongside because it exists only to feed the renderer.
 //
@@ -11,10 +11,10 @@ const {
   ThumbnailBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
   escapeMarkdown,
 } = require("discord.js");
-const PACKAGE_VERSION = require("../package.json").version;
-const { progressBar } = require("./musicFormat");
-const { getThemeColors } = require("../themes/resolver");
-const logger = require("./logger");
+const PACKAGE_VERSION = require("../../package.json").version;
+const { progressBar, staticProgress } = require("./format");
+const { getThemeColors } = require("../../themes/resolver");
+const logger = require("../logger");
 
 // Classic's embedColor, the same fallback literal every game command carries.
 const DEFAULT_ACCENT = 0x0f4c25;
@@ -65,7 +65,7 @@ async function resolveMusicColors(userId) {
     if (!userId) return getThemeColors("classic", "music");
     // Required lazily: themes/manager opens the user database, and rendering a
     // panel must not drag a SQLite connection in behind it.
-    const { getEquippedTheme } = require("../themes/manager");
+    const { getEquippedTheme } = require("../../themes/manager");
     return getThemeColors(await getEquippedTheme(userId), "music");
   } catch (err) {
     logger.warn(`[MusicV2] Theme lookup failed for ${userId}, falling back to classic: ${err.message}`);
@@ -128,8 +128,7 @@ function buildControls(paused, looping = false, { confirmStop = false, pending =
       .setCustomId("skip")
       .setLabel("Skip")
       .setStyle(ButtonStyle.Secondary)
-      .setEmoji("⏭️")
-      .setDisabled(paused),
+      .setEmoji("⏭️"),
     // Success styling is the "on" indicator; the label alone reads ambiguously.
     new ButtonBuilder()
       .setCustomId("loop")
@@ -169,7 +168,8 @@ function trackLines(track) {
 }
 
 // controls:false renders the same panel without buttons, for surfaces with no collector behind them (/np).
-function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true, confirmStop = false, colors = null }) {
+// live:false renders a stale-safe timestamp instead of a bar, for a surface with no refresh timer behind it (/np).
+function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, looping = false, controls = true, confirmStop = false, colors = null, live = true }) {
   const container = new ContainerBuilder().setAccentColor(accentFor(colors, { paused, confirmStop: confirmStop && controls }));
 
   const headerText = `${headingFor(queue, paused, looping)}\n${trackLines(track)}`;
@@ -184,7 +184,7 @@ function buildNowPlayingV2({ track, queue, requestedBy, client, paused = false, 
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headerText));
   }
 
-  const bar = progressBar(queue, track);
+  const bar = live ? progressBar(queue, track) : staticProgress(queue, track);
   if (bar) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(bar));

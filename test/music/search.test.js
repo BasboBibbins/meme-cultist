@@ -48,7 +48,7 @@ async function run() {
     const viaExtractor = res?.tracks?.length ?? 0;
     capability("search", "YouTube playlist (extractor)", viaExtractor > 1 ? "OK" : "FAIL", viaExtractor > 1 ? `${viaExtractor} tracks` : `${viaExtractor} — extractor cannot expand playlists`);
 
-    const { expandYoutubePlaylist } = require("../../utils/musicStream");
+    const { expandYoutubePlaylist } = require("../../utils/music/stream");
     const viaYtdlp = viaExtractor > 1 ? [] : expandYoutubePlaylist(YT_PLAYLIST, player, null, 10);
     const total = viaExtractor > 1 ? viaExtractor : viaYtdlp.length;
     capability("search", "YouTube playlist (effective)", total > 1 ? "OK" : "FAIL", total > 1 ? `${total} tracks — "${res?.playlist?.title || "playlist"}"` : "no tracks from either path");
