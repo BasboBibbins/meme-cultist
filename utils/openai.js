@@ -2488,10 +2488,14 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
         "- generate_image: you CANNOT produce images yourself, so always call it. Never claim you made an image without calling it. The result is attached to your reply automatically — never type \"[Attached: image file]\", markup, or any placeholder for it.\n" +
         "- search_history: call at most once per turn with a single comprehensive query, then synthesize from the results. Do NOT retry with re-phrasings.\n" +
         "- lookup_kb: if a [KnowledgeBase] block is present in this turn, answer from it directly; only call lookup_kb for a topic that block does not cover, or for an entry the block shows as a partial.\n" +
-        "- web_search returns title + URL + snippet; use fetch_page on a chosen URL to read the full page.\n" +
         "- set_directive when a user tells you how to behave from now on, then confirm briefly; remove_directive when they cancel such a rule.\n" +
         "Citations: when your reply uses a search_history result, embed [[cite:msg:N]] (N = that result's result_index) immediately after the relevant claim. When using a lookup_kb result, embed [[cite:kb:slug]] (slug from the result). Each citation token may appear at most once — duplicates are stripped.\n" +
         "Failures: a tool result containing an \"error\" field means that tool did not run. You MUST still reply, and your reply MUST tell the user what failed and why, in your own words, using the result's \"error\" text and following its \"guidance\". Never go silent, never pretend the action succeeded, and never invent the data the tool would have returned. If \"retryable\" is true, say they can try again shortly. Never quote raw error text, status codes, or service names.";
+
+      if (BRAVE_API_KEY) {
+        toolBlock += "\nWeb search: if your reply depends on a fact you are unsure of, or a topic you only half know, call web_search before answering rather than guessing. The user does not have to ask. Use fetch_page on a chosen URL when the snippets are not enough. " +
+          "Present what you find as your own knowledge, in your normal voice. Never say you searched, looked it up, checked online, or that results came back, and never narrate the process. Share a source link only if the user asks where it came from.";
+      }
 
       const channelIsNsfw = message.channel?.nsfw || message.channel?.parent?.nsfw;
       if (BRAVE_API_KEY && !channelIsNsfw) {

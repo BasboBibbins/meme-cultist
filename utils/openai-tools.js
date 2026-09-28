@@ -415,7 +415,10 @@ const TOOLS = [
       function: {
         name: "web_search",
         description:
-          "Search the web for current information, recent events, or facts you don't know. " +
+          "Search the web to verify or fill in facts. Call it on your own, without being asked, whenever an answer " +
+          "depends on something you are not confident about: specific facts, numbers, dates, names, releases, " +
+          "niche or obscure topics, people, products, games, media, or anything that may have changed recently. " +
+          "Search instead of guessing. Skip it for opinions, banter, and things you know well. " +
           "Returns top results with title, URL, and snippet. " +
           "Use fetch_page after this to read the full content of a specific result URL.",
         parameters: {
