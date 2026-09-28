@@ -13,6 +13,10 @@ const { db } = require("../database");
 
 const { CURRENCY_NAME } = require("../config.js");
 const { getThemeList, getTheme } = require("../themes/configs");
+const {
+  normalizeAvailability, isWindowActive, windowEndEpoch,
+  isOneTimeAvailability, formatAvailability,
+} = require("./seasonal");
 const { getThemeColors } = require("../themes/resolver");
 const {
   equipTheme, grantTheme, revokeTheme, ownsTheme,
@@ -81,7 +85,7 @@ function getItemById(id) {
 function getPurchasableItems(date = new Date()) {
   return getAllItems().filter(i => {
     if (i.tier === "limited") {
-      return i.price > 0 && i.availability && isThemeAvailable(i.availability, date);
+      return i.price > 0 && i.availability && isWindowActive(i.availability, date);
     }
     return i.weight > 0 && i.price > 0;
   });
@@ -136,124 +140,6 @@ async function getEquipped(userId) {
   return {
     theme: await getEquippedTheme(userId),
   };
-}
-
-// ── Availability helpers (limited themes) ─────────────────────────────
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-function normalizeAvailability(availability) {
-  if (!availability) return [];
-  const ranges = Array.isArray(availability) ? availability : [availability];
-  return ranges.filter(r => r && r.start && r.end);
-}
-
-function resolveRange(range, date) {
-  const { start, end } = range;
-  const y = date.getUTCFullYear();
-
-  const startYear = start.year ?? y;
-  const endYear = end.year ?? (start.year ? end.year ?? start.year : y);
-
-  const startMonth = start.month;
-  const startDay = start.day ?? 1;
-  const endMonth = end.month;
-  const endDay = end.day ?? new Date(Date.UTC(endYear, endMonth, 0)).getUTCDate();
-
-  return {
-    startMs: Date.UTC(startYear, startMonth - 1, startDay),
-    endMs:   Date.UTC(endYear, endMonth - 1, endDay, 23, 59, 59, 999),
-    endYear,
-    endMonth,
-    endDay,
-    endYearPinned: end.year != null,
-  };
-}
-
-function todayMs(date) {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-}
-
-function isRangeActive(resolved, nowMs) {
-  // Year-wrap: e.g. Dec 20 → Jan 5
-  if (resolved.startMs > resolved.endMs) {
-    return nowMs >= resolved.startMs || nowMs <= resolved.endMs;
-  }
-  return nowMs >= resolved.startMs && nowMs <= resolved.endMs;
-}
-
-function isThemeAvailable(availability, date = new Date()) {
-  const nowMs = todayMs(date);
-  return normalizeAvailability(availability)
-    .some(range => isRangeActive(resolveRange(range, date), nowMs));
-}
-
-// Unix epoch (seconds) at which the currently open window closes, or null when
-// no window is open.  Mirrors the end-of-window math in isThemeAvailable so the
-// "available until" deadline lines up exactly with when purchasing stops being
-// allowed.  With overlapping ranges the latest close wins, so the deadline never
-// understates how long the theme is actually buyable.
-function availabilityEndEpoch(availability, date = new Date()) {
-  const nowMs = todayMs(date);
-  let latest = null;
-
-  for (const range of normalizeAvailability(availability)) {
-    const r = resolveRange(range, date);
-    if (!isRangeActive(r, nowMs)) continue;
-
-    let endMs = r.endMs;
-    // Year-wrap (recurring themes, e.g. Dec 20 → Jan 5): while still in the
-    // December head of the window, the window actually closes next January.
-    if (r.startMs > r.endMs && !r.endYearPinned && nowMs >= r.startMs) {
-      endMs = Date.UTC(r.endYear + 1, r.endMonth - 1, r.endDay, 23, 59, 59, 999);
-    }
-    if (latest === null || endMs > latest) latest = endMs;
-  }
-
-  return latest === null ? null : Math.floor(latest / 1000);
-}
-
-// Whether a limited theme is tied to specific years (a one-time event that will
-// not come back) versus having a recurring window.  A single recurring range is
-// enough to bring the theme back, so this only holds when *every* range is
-// year-pinned.
-function isOneTimeAvailability(availability) {
-  const ranges = normalizeAvailability(availability);
-  if (!ranges.length) return false;
-  return ranges.every(r => r.start.year != null || r.end.year != null);
-}
-
-function formatRange(range) {
-  const { start, end } = range;
-
-  const fmtStart = start.day
-    ? `${MONTHS[start.month - 1]} ${start.day}`
-    : MONTHS[start.month - 1];
-  const fmtEnd = end.day
-    ? `${MONTHS[end.month - 1]} ${end.day}`
-    : MONTHS[end.month - 1];
-
-  let str = fmtStart === fmtEnd ? fmtStart : `${fmtStart} - ${fmtEnd}`;
-
-  const yr = end.year ?? start.year;
-  if (yr != null) str += `, ${yr}`;
-
-  return str;
-}
-
-function formatAvailability(availability) {
-  const ranges = normalizeAvailability(availability);
-  if (!ranges.length) return "";
-
-  const sorted = ranges.slice().sort((a, b) =>
-    (a.start.month - b.start.month) || ((a.start.day ?? 1) - (b.start.day ?? 1))
-  );
-
-  let str = sorted.map(formatRange).join(", ");
-
-  const anyYear = ranges.some(r => r.start.year != null || r.end.year != null);
-  if (!anyYear) str += " (yearly)";
-
-  return str;
 }
 
 // ── Daily shop stock ────────────────────────────────────────────────
@@ -349,7 +235,7 @@ async function purchaseItem(userId, guildId, itemId) {
   const item = getItemById(itemId);
   if (!item) return { success: false, error: "unknown_item" };
 
-  if (item.tier === "limited" && item.availability && !isThemeAvailable(item.availability)) {
+  if (item.tier === "limited" && item.availability && !isWindowActive(item.availability)) {
     return { success: false, error: "not_in_season", item };
   }
 
@@ -432,11 +318,11 @@ function buildThemeInfoEmbed({ item, isOwned, footer }) {
   desc += `**Rarity:** ${rarityLabel}\n`;
   desc += `**Style:** ${styleLabel}\n`;
   if (item.tier === "limited" && item.availability) {
-    const inSeason = isThemeAvailable(item.availability);
+    const inSeason = isWindowActive(item.availability);
     desc += `**Availability:** ${formatAvailability(item.availability)}\n`;
     desc += `**Season:** ${inSeason ? "In Season" : "Out of Season"}\n`;
     if (inSeason) {
-      const until = availabilityEndEpoch(item.availability);
+      const until = windowEndEpoch(item.availability);
       const gone = isOneTimeAvailability(item.availability) ? " ⚠️ Won't return" : "";
       desc += `**Available until:** <t:${until}:f> (<t:${until}:R>)${gone}\n`;
     }
@@ -572,9 +458,9 @@ module.exports = {
   buildEquipResultEmbed,
   respondThemeAutocomplete,
   getPreviewAttachment,
-  isThemeAvailable,
+  isThemeAvailable: isWindowActive,
   formatAvailability,
-  availabilityEndEpoch,
+  availabilityEndEpoch: windowEndEpoch,
   isOneTimeAvailability,
   normalizeAvailability,
   getAllItems,
