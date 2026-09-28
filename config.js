@@ -304,6 +304,10 @@ const config = {
   // Persistent personas (utils/personas/)
   PERSONA_DB_PATH: process.env.PERSONA_DB_PATH || "db/personas.sqlite",
 
+  // Self-serve roles (utils/selfRoles/)
+  SELF_ROLES_DB_PATH: process.env.SELF_ROLES_DB_PATH || "db/self_roles.sqlite",
+  ROLES_MODAL_TIMEOUT_MS: parseInt(process.env.ROLES_MODAL_TIMEOUT_MS || "600000", 10),
+
   // Message archive retention (utils/messageArchive/). Pruned daily by the
   // midnight job in bot.js. Both axes are independent: rows older than
   // ARCHIVE_RETENTION_DAYS are dropped first, then each channel is trimmed

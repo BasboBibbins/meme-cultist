@@ -46,6 +46,18 @@ module.exports = {
     note: `
             Results are deleted after 30 days, so an old session will drop off even if you have played nothing since.`
   },
+  roles: {
+    name: "Self-Assign Roles",
+    description: `
+            \`/roles\` opens a form with every role you can give yourself, like game roles so people can ping you instead of everyone.
+
+            Roles you already have start checked. Check the ones you want, uncheck the ones you don't, and submit. The bot adds and removes roles to match, then tells you what changed. Nobody else sees the form or the result.
+            `,
+    note: `
+            Only roles an admin has put on the list appear. \`/roles\` never touches any other role you have.
+
+            Admins manage the list with \`/roleconfig add\`, \`/roleconfig remove\`, and \`/roleconfig list\`. Roles that grant moderator permissions, that are above the bot's own role, or that control bot access can never be listed.`
+  },
   dailyweekly: {
     name: "Dailies and Weeklies",
     description: `
