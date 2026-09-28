@@ -4,6 +4,7 @@ const {
   buildDirectivesBlock,
   similarity,
 } = require("../../utils/directives");
+const { MAX_DIRECTIVES } = require("../../config");
 
 describe("mergeDirectives", () => {
   test("adds a new directive with metadata", () => {
@@ -55,16 +56,22 @@ describe("mergeDirectives", () => {
   });
 
   test("drops the oldest entries beyond the cap", () => {
+    const cap = MAX_DIRECTIVES || 10;
     const subjects = [
       "spoilers", "emoji", "pings", "wordle", "recipes",
       "politics", "birthdays", "screenshots", "translations", "poetry",
-      "acronyms", "measurements",
-    ];
+      "acronyms", "measurements", "weather", "sports", "gardening",
+      "astrology", "cryptocurrency", "diets", "horoscopes", "lottery",
+      "podcasts", "tattoos", "skincare", "anime", "fishing",
+      "chess", "karaoke", "origami", "knitting", "volcanoes",
+    ].slice(0, cap + 2);
+    expect(subjects).toHaveLength(cap + 2);
+
     const incoming = subjects.map(s => `Never discuss ${s} unprompted.`);
     const { directives, dropped } = mergeDirectives([], incoming, { now: 1000 });
-    expect(directives).toHaveLength(10);
+    expect(directives).toHaveLength(cap);
     expect(dropped).toHaveLength(2);
-    expect(directives[0].text).toBe("Never discuss pings unprompted.");
+    expect(directives[0].text).toBe(`Never discuss ${subjects[2]} unprompted.`);
   });
 
   test("ignores empty and too-short input", () => {
