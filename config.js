@@ -89,8 +89,8 @@ const config = {
   // Standing directives — persistent behavioral rules a channel has asked the
   // bot to follow. Unlike facts these never expire and are never compressed.
   DIRECTIVES_ENABLED: true,
-  MAX_DIRECTIVES: 10,
-  DIRECTIVE_MAX_LENGTH: 300,
+  MAX_DIRECTIVES: 20,
+  DIRECTIVE_MAX_LENGTH: 2000,
 
   // Weight of lexical relevance-to-current-turn in fact selection. The
   // remaining weight is split between reinforcement and recency. Set to 0 to
