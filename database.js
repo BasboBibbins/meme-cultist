@@ -257,9 +257,20 @@ function mergeDefaults(row, defaults) {
   return updated;
 }
 
+// Discord allows one full member fetch per guild roughly every 30s, so preview and confirm share one.
+const MEMBER_SNAPSHOT_TTL_MS = 120000;
+let memberSnapshot = null;
+
+async function fetchMembersOnce(guild, now) {
+  if (memberSnapshot?.guildId === guild.id && now - memberSnapshot.at < MEMBER_SNAPSHOT_TTL_MS) return memberSnapshot.members;
+  const members = await guild.members.fetch();
+  memberSnapshot = { guildId: guild.id, at: now, members };
+  return members;
+}
+
 async function buildCleanupPlan(client, now) {
   const guild = client.guilds.cache.get(GUILD_ID);
-  const members = await guild.members.fetch();
+  const members = await fetchMembersOnce(guild, now);
   const memberIds = new Set(members.keys());
   const botIds = new Set(members.filter(m => m.user.bot).map(m => m.id));
   return planCleanup(await db.all(), { memberIds, botIds, now, inactiveDays: CLEANUP_INACTIVE_DAYS, activeDays: INTEREST_ACTIVE_WINDOW_DAYS });
@@ -372,7 +383,10 @@ module.exports = {
     const departed = [];
     const inactive = [];
 
+    // The member snapshot can be up to two minutes old; the live cache catches anyone who rejoined since.
+    const liveMembers = client.guilds.cache.get(GUILD_ID)?.members?.cache;
     for (const entry of plan.departed) {
+      if (liveMembers?.has(entry.id)) continue;
       const amount = await withUserLock(entry.id, async () => {
         const row = await db.get(entry.id);
         await db.delete(entry.id);

@@ -138,8 +138,25 @@ function listEntries(entries) {
   return lines.join("\n");
 }
 
+function cleanupFailureText(err) {
+  const retryAfter = err?.data?.retry_after;
+  if (retryAfter !== undefined) {
+    const at = Math.ceil(Date.now() / 1000 + retryAfter);
+    return `Discord is rate limiting member lookups. Nothing was changed. Try again <t:${at}:R>.`;
+  }
+  return null;
+}
+
 async function runCleanupFlow(interaction) {
-  const plan = await previewCleanup(interaction.client);
+  let plan;
+  try {
+    plan = await previewCleanup(interaction.client);
+  } catch (err) {
+    logger.error(`Database cleanup preview failed: ${err.stack || err}`);
+    const text = cleanupFailureText(err) || "Could not build the cleanup preview. Nothing was changed.";
+    await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, text)] });
+    return;
+  }
   if (plan.departed.length === 0 && plan.inactive.length === 0) {
     await interaction.editReply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Nothing to clean up.")] });
     return;
@@ -188,6 +205,7 @@ async function runCleanupFlow(interaction) {
     await interaction.editReply({ embeds: [done] });
   } catch (err) {
     logger.error(`Database cleanup failed: ${err.stack || err}`);
-    await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "Cleanup failed partway. Check the logs before running it again.")] });
+    const text = cleanupFailureText(err) || "Cleanup failed partway. Check the logs before running it again.";
+    await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, text)] });
   }
 }
