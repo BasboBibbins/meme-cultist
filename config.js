@@ -382,6 +382,13 @@ const config = {
   // irrelevant episodes instead of an empty "no record" result. Measured noise
   // sits ~0.51 and genuine matches ~0.58, so 0.55 separates them.
   EPISODE_RECALL_MIN_SCORE: parseFloat(process.env.EPISODE_RECALL_MIN_SCORE || "0.55"),
+  // Unrelated message pairs score a median 0.57 and a p99 of 0.72 on bge-base, so the floor sits near that p99.
+  HISTORY_SEMANTIC_MIN_SCORE: parseFloat(process.env.HISTORY_SEMANTIC_MIN_SCORE || "0.70"),
+  // The bot writes half the archive at 6x user length, so its own rows would otherwise crowd out users.
+  HISTORY_SELF_WEIGHT: 0.5,
+  // Unembedded archive backlog drains this many rows per job, one job per interval.
+  ARCHIVE_EMBED_DRAIN_BATCH: 100,
+  ARCHIVE_EMBED_DRAIN_INTERVAL_MS: 900000,
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),

@@ -121,20 +121,47 @@ function searchSemantic(channelId, queryEmbedding, candidateIds, limit = 5) {
   return scored.slice(0, limit);
 }
 
+// Streams the whole channel so memory holds only the top `limit`, not every vector.
 function searchSemanticFull(channelId, queryEmbedding, limit = 5) {
   const db = openDb();
   const queryVec = queryEmbedding instanceof Float32Array
     ? queryEmbedding : new Float32Array(queryEmbedding);
-  const rows = db.prepare(
-    "SELECT * FROM message_chunks WHERE channel_id = ? AND embedding IS NOT NULL ORDER BY created_at DESC LIMIT 500"
-  ).all(channelId);
-  const scored = rows.map(r => {
+  const top = [];
+  const rows = db.prepare("SELECT id, embedding FROM message_chunks WHERE channel_id = ? AND embedding IS NOT NULL").iterate(channelId);
+  for (const r of rows) {
     const vec = bufferToFloatArray(r.embedding);
-    if (!vec || vec.length !== queryVec.length) return null;
-    return { ...r, score: cosineSimilarity(queryVec, vec) };
-  }).filter(Boolean);
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit);
+    if (!vec || vec.length !== queryVec.length) continue;
+    const score = cosineSimilarity(queryVec, vec);
+    if (top.length < limit || score > top[top.length - 1].score) {
+      top.push({ id: r.id, score });
+      top.sort((a, b) => b.score - a.score);
+      if (top.length > limit) top.pop();
+    }
+  }
+  if (top.length === 0) return [];
+  const byId = new Map(db.prepare(
+    `SELECT id, channel_id, message_id, author_id, content, created_at FROM message_chunks WHERE id IN (${top.map(() => "?").join(",")})`
+  ).all(...top.map(t => t.id)).map(r => [r.id, r]));
+  return top.filter(t => byId.has(t.id)).map(t => ({ ...byId.get(t.id), score: t.score }));
+}
+
+function getUnembeddedByIds(channelId, ids) {
+  if (!ids || ids.length === 0) return [];
+  const db = openDb();
+  return db.prepare(
+    `SELECT id, content FROM message_chunks WHERE channel_id = ? AND embedding IS NULL AND id IN (${ids.map(() => "?").join(",")})`
+  ).all(channelId, ...ids);
+}
+
+function countUnembedded(channelId) {
+  const db = openDb();
+  return db.prepare("SELECT COUNT(*) AS c FROM message_chunks WHERE channel_id = ? AND embedding IS NULL").get(channelId).c;
+}
+
+function channelsWithUnembedded() {
+  const db = openDb();
+  return db.prepare("SELECT channel_id, COUNT(*) AS c FROM message_chunks WHERE embedding IS NULL GROUP BY channel_id").all()
+    .map(r => ({ channelId: r.channel_id, count: r.c }));
 }
 
 function getUnembeddedForChannel(channelId, limit = 100) {
@@ -260,6 +287,9 @@ module.exports = {
   searchSemantic,
   searchSemanticFull,
   getUnembeddedForChannel,
+  getUnembeddedByIds,
+  countUnembedded,
+  channelsWithUnembedded,
   getOldestChunks,
   deleteChunks,
   setEmbedding,

@@ -11,7 +11,8 @@ const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE, KB_LEXICAL_FALLBACK_MIN_SCORE, KB_LOOKUP_TOTAL_CHARS } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE, HISTORY_SEMANTIC_MIN_SCORE, HISTORY_SELF_WEIGHT, KB_LEXICAL_FALLBACK_MIN_SCORE, KB_LOOKUP_TOTAL_CHARS } = require("../config.js");
+const { buildFTSQueries, fuseRankings } = require("./ftsQuery");
 const config = require("../config.js");
 const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
@@ -262,10 +263,10 @@ const TOOLS = [
     function: {
       name: "search_history",
       description:
-        "Semantic + FTS search of this channel's past message history. " +
+        "Keyword + semantic search of this channel's full past message history. " +
         "Call AT MOST ONCE per turn with a single, comprehensive query covering everything you want to find. " +
-        "If results are empty or thin, synthesize from what is returned — do NOT retry with re-phrasings. " +
-        "Returns up to 5 hits with author, content, and timestamp.",
+        "If results are empty or thin, synthesize from what is returned. Do NOT retry with re-phrasings. " +
+        "Returns up to 5 hits with author name, content, and timestamp. Hits with from_you: true are your own earlier replies, not something a user said.",
       parameters: {
         type: "object",
         properties: {
@@ -835,92 +836,68 @@ async function handleLookupKb(args, message, client) {
 }
 
 
-function buildFTSQuery(rawQuery) {
-  const stopwords = new Set([
-    "the","a","an","is","was","were","are","be","been","i","you","he","she",
-    "they","we","it","that","this","what","did","do","does","how","when",
-    "where","why","who","not","no","but","and","or","if","then","so","my",
-    "your","his","her","their","our","its","at","in","on","for","of","to",
-    "with","by","from","about","said","say","says","have","has","had",
-    "would","could","should","will","can","may","might","let","get","got",
-    "make","made","know","think","want","just","like","went","come","came",
-    "go","see","saw","tell","told","ask","asked","very","really","thing",
-  ]);
-  const cleaned = rawQuery.replace(/["'()*^]/g, " ");
-  const tokens = cleaned
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(t => t.length > 2 && !stopwords.has(t));
-  if (tokens.length === 0) return cleaned.trim() || rawQuery;
-  return tokens.join(" OR ");
+const HISTORY_CANDIDATES = 30;
+
+// Tight AND matches first; OR only tops up, since any single shared word satisfies it.
+function historyKeywordHits(channelId, queries) {
+  if (!queries) return [];
+  const strict = messageArchive.searchFTS(channelId, queries.all, HISTORY_CANDIDATES);
+  if (strict.length >= HISTORY_CANDIDATES || queries.tokens.length === 1) return strict;
+  const seen = new Set(strict.map(r => r.id));
+  const loose = messageArchive.searchFTS(channelId, queries.any, HISTORY_CANDIDATES).filter(r => !seen.has(r.id));
+  return [...strict, ...loose];
+}
+
+function historyAuthorName(authorId, message, client) {
+  return message.guild?.members?.cache?.get(authorId)?.displayName
+    || client?.users?.cache?.get(authorId)?.username
+    || "unknown user";
 }
 
 async function handleSearchHistory(args, message, client) {
   if (!args?.query) return { error: "Missing required 'query' argument." };
   const limit = Math.min(Math.max(args.limit || 5, 1), 10);
   const channelId = message.channelId;
+  const selfId = client?.user?.id;
 
   try {
-    const ftsQuery = buildFTSQuery(args.query);
-    const ftsResults = messageArchive.searchFTS(channelId, ftsQuery, 30);
-    if (ftsResults.length === 0) {
-      try {
-        const { embedding } = await embed({ text: args.query });
-        const semanticResults = messageArchive.searchSemanticFull(channelId, embedding, limit);
-        if (semanticResults.length > 0) {
-          return {
-            results: semanticResults.map((r, i) => ({
-              result_index: i + 1,
-              message_id: r.message_id,
-              author_id: r.author_id,
-              content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
-              created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
-            })),
-            total_matches: semanticResults.length,
-            note: "Results via semantic search (no FTS matches).",
-          };
-        }
-      } catch (err) {
-        logger.warn(`[search_history] Semantic fallback failed: ${err.message}`);
-      }
+    const keywordHits = historyKeywordHits(channelId, buildFTSQueries(args.query));
+
+    let semanticHits = [];
+    try {
+      const { embedding } = await embed({ text: args.query });
+      semanticHits = messageArchive.searchSemanticFull(channelId, embedding, HISTORY_CANDIDATES)
+        .filter(r => r.score >= HISTORY_SEMANTIC_MIN_SCORE);
+    } catch (err) {
+      logger.warn(`[search_history] Semantic search unavailable, using keywords only: ${err.message}`);
+    }
+
+    const ranked = fuseRankings([keywordHits, semanticHits], {
+      limit,
+      weightFor: (row) => (row.author_id === selfId ? HISTORY_SELF_WEIGHT : 1),
+    });
+    if (ranked.length === 0) {
       return {
         results: [],
         total_matches: 0,
-        note: "No matches in this channel's history for that query. Do not retry with paraphrases — answer from prior context or state that you do not have a record.",
+        note: "No matches in this channel's history for that query. Do not retry with paraphrases. Answer from prior context or say you do not have a record of it.",
       };
     }
 
-    let finalResults = ftsResults.slice(0, limit);
-    const topRank = ftsResults[0]?.rank;
-    const needsSemantic =
-      (typeof topRank === "number" && topRank > FTS_WEAK_RANK_THRESHOLD) ||
-      ftsResults.length < limit;
-
-    if (needsSemantic) {
-      try {
-        const { embedding } = await embed({ text: args.query });
-        const candidateIds = ftsResults.map(r => r.id);
-        const semanticResults = messageArchive.searchSemantic(channelId, embedding, candidateIds, limit);
-        if (semanticResults.length > 0) {
-          finalResults = semanticResults;
-        }
-      } catch (err) {
-        logger.warn(`[search_history] Semantic re-rank failed: ${err.message}`);
-      }
-    }
-
     const out = {
-      results: finalResults.map((r, i) => ({
+      results: ranked.map((r, i) => ({
         result_index: i + 1,
         message_id: r.message_id,
+        author: r.author_id === selfId ? "you" : historyAuthorName(r.author_id, message, client),
         author_id: r.author_id,
+        from_you: r.author_id === selfId,
         content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
         created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
       })),
-      total_matches: ftsResults.length,
+      total_matches: new Set([...keywordHits, ...semanticHits].map(r => r.id)).size,
     };
-    if (finalResults.length < limit) {
-      out.note = "These are all matches for this query. Do not re-query with variations — synthesize from these results.";
+    if (ranked.length < limit) {
+      out.note = "These are all matches for this query. Do not re-query with variations. Synthesize from these results.";
     }
     return out;
   } catch (err) {
@@ -953,8 +930,8 @@ async function handleRecallEpisode(args, message) {
   });
 
   try {
-    const ftsQuery = buildFTSQuery(args.query);
-    const ftsResults = episodes.searchFTS(scopePairs, ftsQuery, 30);
+    const queries = buildFTSQueries(args.query);
+    const ftsResults = queries ? episodes.searchFTS(scopePairs, queries.any, 30) : [];
 
     if (ftsResults.length === 0) {
       try {

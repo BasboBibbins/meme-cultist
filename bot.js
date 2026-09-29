@@ -334,8 +334,14 @@ if (DELETE_SLASH) {
     // Handlers live in utils/jobs/embedHandlers.js so their failure behaviour is
     // testable — they were inline here when they silently swallowed errors, which
     // is largely why that went unnoticed.
-    const { registerEmbedHandlers } = require("./utils/jobs/embedHandlers");
-    registerEmbedHandlers(jobs, { kbStore, llm, messageArchive, episodeStore });
+    const { registerEmbedHandlers, enqueueMessageDrain } = require("./utils/jobs/embedHandlers");
+    const { ARCHIVE_EMBED_DRAIN_BATCH, ARCHIVE_EMBED_DRAIN_INTERVAL_MS } = require("./config.js");
+    registerEmbedHandlers(jobs, {
+      kbStore, llm, messageArchive, episodeStore,
+      drainBatch: ARCHIVE_EMBED_DRAIN_BATCH,
+      drainIntervalMs: ARCHIVE_EMBED_DRAIN_INTERVAL_MS,
+      maxAttempts: EMBED_JOB_MAX_ATTEMPTS,
+    });
 
     // When the embed breaker closes, drain whatever piled up while it was open.
     // Wired here rather than inside the breaker so that module stays unaware of
@@ -378,13 +384,8 @@ if (DELETE_SLASH) {
             if (fetched.size < 100) hasMore = false;
           }
           if (totalInserted > 0) {
-            jobs.enqueue({
-              kind: "message_embed",
-              payload: { channelId, chunkIds: [] },
-              run_at: Date.now(),
-              max_attempts: EMBED_JOB_MAX_ATTEMPTS,
-            });
-            logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed job.`);
+            enqueueMessageDrain(jobs, channelId, { maxAttempts: EMBED_JOB_MAX_ATTEMPTS });
+            logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed drain.`);
           } else {
             logger.log(`[Backfill] No new messages for ${channelId}.`);
           }
@@ -486,6 +487,16 @@ if (DELETE_SLASH) {
       } catch (err) {
         logger.error(`[Backfill] Trigger failed for ${channelId}: ${err.message}`);
       }
+    }
+
+    try {
+      for (const { channelId, count } of messageArchive.channelsWithUnembedded()) {
+        if (enqueueMessageDrain(jobs, channelId, { maxAttempts: EMBED_JOB_MAX_ATTEMPTS })) {
+          logger.log(`[MessageEmbed] ${count} unembedded chunks in ${channelId}, drain started.`);
+        }
+      }
+    } catch (err) {
+      logger.error(`[MessageEmbed] Drain startup failed: ${err.message}`);
     }
   });
 
