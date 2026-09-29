@@ -1,10 +1,12 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
-const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, previewCleanup, runCleanup } = require("../../database");
+const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, previewCleanup, runCleanup, db } = require("../../database");
 const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("../../config.js");
 const logger = require("../../utils/logger");
 const wait = require("util").promisify(setTimeout);
 const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
 const { splitPot } = require("../../utils/dbCleanup");
+const { getJackpot } = require("../../utils/jackpot");
+const { sendDM } = require("../../utils/dm");
 
 const CLEANUP_CONFIRM_TIMEOUT_MS = 60000;
 
@@ -138,6 +140,28 @@ function listEntries(entries) {
   return lines.join("\n");
 }
 
+async function notifyCleanupRecipients(client, guildName, result) {
+  if (!(result.perRecipient > 0)) return 0;
+  const { amount: jackpotAmount } = await getJackpot();
+  let delivered = 0;
+  for (const id of result.recipients) {
+    try {
+      const user = await client.users.fetch(id);
+      const bank = (await db.get(`${id}.bank`)) || 0;
+      const embed = buildInfoEmbed(user, client, [
+        `Accounts inactive for over a year in ${guildName} had their ${CURRENCY_NAME} shared out between everyone who played this week. The other half went to the progressive jackpot, which now stands at **${jackpotAmount.toLocaleString("en-US")}** ${CURRENCY_NAME}.`,
+        `You now have **${bank.toLocaleString("en-US")}** ${CURRENCY_NAME} in your bank!`,
+      ].join("\n\n"))
+        .setAuthor({ name: `You received ${result.perRecipient.toLocaleString("en-US")} ${CURRENCY_NAME} from the inactive account cleanup!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setThumbnail(client.user.displayAvatarURL({ dynamic: true, size: 1024 }));
+      if (await sendDM(user, { embeds: [embed] })) delivered++;
+    } catch (err) {
+      logger.warn(`[db cleanup] Could not notify recipient ${id}: ${err.message}`);
+    }
+  }
+  return delivered;
+}
+
 function cleanupFailureText(err) {
   const retryAfter = err?.data?.retry_after;
   if (retryAfter !== undefined) {
@@ -191,21 +215,34 @@ async function runCleanupFlow(interaction) {
   }
 
   await click.update({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleaning up...")], components: [] });
+  let result;
   try {
-    const result = await runCleanup(interaction.client);
-    const done = buildSuccessEmbed(interaction.user, interaction.client, [
-      `Deleted **${result.departed.length}** departed members and emptied **${result.inactive.length}** inactive members.`,
-      `**${result.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${result.jackpot.toLocaleString("en-US")}** to the jackpot, **${result.perRecipient.toLocaleString("en-US")}** each to **${result.recipients.length}** active players.`,
-    ].join("\n\n"))
-      .setTitle("Database Cleanup Complete")
-      .addFields(
-        { name: "Departed", value: listEntries(result.departed), inline: true },
-        { name: "Inactive", value: listEntries(result.inactive), inline: true },
-      );
-    await interaction.editReply({ embeds: [done] });
+    result = await runCleanup(interaction.client);
   } catch (err) {
     logger.error(`Database cleanup failed: ${err.stack || err}`);
     const text = cleanupFailureText(err) || "Cleanup failed partway. Check the logs before running it again.";
     await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, text)] });
+    return;
   }
+
+  // Separate from the cleanup's own try: a notification failure must never read as a failed cleanup.
+  let delivered = 0;
+  try {
+    delivered = await notifyCleanupRecipients(interaction.client, interaction.guild?.name || "the server", result);
+  } catch (err) {
+    logger.warn(`[db cleanup] Recipient notifications failed: ${err.message}`);
+  }
+
+  const lines = [
+    `Deleted **${result.departed.length}** departed members and emptied **${result.inactive.length}** inactive members.`,
+    `**${result.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${result.jackpot.toLocaleString("en-US")}** to the jackpot, **${result.perRecipient.toLocaleString("en-US")}** each to **${result.recipients.length}** active players.`,
+  ];
+  if (result.perRecipient > 0) lines.push(`Notified **${delivered}** of **${result.recipients.length}** recipients by DM. The rest have DMs off or closed.`);
+  const done = buildSuccessEmbed(interaction.user, interaction.client, lines.join("\n\n"))
+    .setTitle("Database Cleanup Complete")
+    .addFields(
+      { name: "Departed", value: listEntries(result.departed), inline: true },
+      { name: "Inactive", value: listEntries(result.inactive), inline: true },
+    );
+  await interaction.editReply({ embeds: [done] });
 }
