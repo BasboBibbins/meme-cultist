@@ -36,7 +36,7 @@ function evaluateBudget({ monthlyBudget, monthUsed, dayUsed, now, pacingFactor, 
 }
 
 // Brave sends "per-second, per-month" pairs; the last value is the monthly window.
-function parseMonthlyRemaining(header) {
+function parseMonthlyWindow(header) {
   if (!header) return null;
   const values = String(header).split(",").map(v => Number(v.trim()));
   if (values.length < 2) return null;
@@ -44,9 +44,15 @@ function parseMonthlyRemaining(header) {
   return Number.isFinite(monthly) ? monthly : null;
 }
 
+// Credit-billed plans have no monthly quota and report limit 0, remaining 0, which is not exhaustion.
+function providerExhausted({ status, monthlyLimit, monthlyRemaining }) {
+  if (status === 402) return true;
+  return monthlyLimit > 0 && monthlyRemaining === 0;
+}
+
 function projectMonth(monthUsed, now) {
   const elapsed = new Date(now).getUTCDate();
   return Math.round((monthUsed / elapsed) * daysInMonth(now));
 }
 
-module.exports = { dayKey, monthKey, daysInMonth, daysLeftInMonth, endOfUtcDay, dailyLimit, evaluateBudget, parseMonthlyRemaining, projectMonth };
+module.exports = { dayKey, monthKey, daysInMonth, daysLeftInMonth, endOfUtcDay, dailyLimit, evaluateBudget, parseMonthlyWindow, providerExhausted, projectMonth };

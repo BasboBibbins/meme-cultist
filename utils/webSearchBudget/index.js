@@ -1,7 +1,7 @@
 const config = require("../../config.js");
 const logger = require("../logger");
 const store = require("./store");
-const { dayKey, monthKey, endOfUtcDay, evaluateBudget, parseMonthlyRemaining, projectMonth } = require("./logic");
+const { dayKey, monthKey, endOfUtcDay, evaluateBudget, parseMonthlyWindow, providerExhausted, projectMonth } = require("./logic");
 
 function evaluate(now) {
   const day = dayKey(now);
@@ -35,12 +35,14 @@ function releaseSearch(day) {
 }
 
 function recordResponse(headers, status, now = Date.now()) {
-  const header = headers?.get?.("x-ratelimit-remaining");
-  logger.debug(`[WebSearchBudget] Brave HTTP ${status}, x-ratelimit-remaining: ${header ?? "absent"}`);
-  const remaining = parseMonthlyRemaining(header);
-  if (remaining !== null) store.setState("provider", { month: monthKey(now), remaining });
+  const limitHeader = headers?.get?.("x-ratelimit-limit");
+  const remainingHeader = headers?.get?.("x-ratelimit-remaining");
+  logger.debug(`[WebSearchBudget] Brave HTTP ${status}, x-ratelimit-limit: ${limitHeader ?? "absent"}, x-ratelimit-remaining: ${remainingHeader ?? "absent"}`);
+  const monthlyLimit = parseMonthlyWindow(limitHeader);
+  const monthlyRemaining = parseMonthlyWindow(remainingHeader);
+  store.setState("provider", monthlyLimit > 0 && monthlyRemaining !== null ? { month: monthKey(now), remaining: monthlyRemaining } : null);
   // Blocks for a day, not the month, so a topped-up credit is noticed by the next day's first try.
-  if (status === 402 || remaining === 0) {
+  if (providerExhausted({ status, monthlyLimit, monthlyRemaining })) {
     store.setState("blockedUntil", endOfUtcDay(now));
     logger.warn(`[WebSearchBudget] Brave reported no allowance left (HTTP ${status}). Web search is off until midnight UTC.`);
   }

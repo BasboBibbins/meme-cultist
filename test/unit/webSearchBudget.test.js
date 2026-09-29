@@ -1,4 +1,4 @@
-const { dayKey, monthKey, daysInMonth, daysLeftInMonth, endOfUtcDay, dailyLimit, evaluateBudget, parseMonthlyRemaining, projectMonth } = require("../../utils/webSearchBudget/logic");
+const { dayKey, monthKey, daysInMonth, daysLeftInMonth, endOfUtcDay, dailyLimit, evaluateBudget, parseMonthlyWindow, providerExhausted, projectMonth } = require("../../utils/webSearchBudget/logic");
 const { CODES, isControlSignal, isReportableFailure } = require("../../utils/toolErrors");
 
 const OCT_1 = Date.UTC(2026, 9, 1, 12);
@@ -77,15 +77,39 @@ describe("evaluateBudget", () => {
   });
 });
 
-describe("parseMonthlyRemaining", () => {
+describe("parseMonthlyWindow", () => {
   test("takes the monthly value from a per-second, per-month pair", () => {
-    expect(parseMonthlyRemaining("1, 842")).toBe(842);
+    expect(parseMonthlyWindow("1, 842")).toBe(842);
   });
 
   test("ignores missing or single-window headers", () => {
-    expect(parseMonthlyRemaining(null)).toBeNull();
-    expect(parseMonthlyRemaining("1")).toBeNull();
-    expect(parseMonthlyRemaining("1, abc")).toBeNull();
+    expect(parseMonthlyWindow(null)).toBeNull();
+    expect(parseMonthlyWindow("1")).toBeNull();
+    expect(parseMonthlyWindow("1, abc")).toBeNull();
+  });
+});
+
+describe("providerExhausted", () => {
+  // Captured from a live Brave response on a credit-billed plan, which has no monthly quota.
+  test("a credit-billed plan reporting 0 of 0 is not exhausted", () => {
+    expect(providerExhausted({ status: 200, monthlyLimit: parseMonthlyWindow("50, 0"), monthlyRemaining: parseMonthlyWindow("49, 0") })).toBe(false);
+  });
+
+  test("a quota plan at 0 remaining is exhausted", () => {
+    expect(providerExhausted({ status: 200, monthlyLimit: 2000, monthlyRemaining: 0 })).toBe(true);
+    expect(providerExhausted({ status: 200, monthlyLimit: 2000, monthlyRemaining: 5 })).toBe(false);
+  });
+
+  test("payment required is always exhausted", () => {
+    expect(providerExhausted({ status: 402, monthlyLimit: null, monthlyRemaining: null })).toBe(true);
+  });
+
+  test("a per-second 429 alone is not a monthly block", () => {
+    expect(providerExhausted({ status: 429, monthlyLimit: 0, monthlyRemaining: 0 })).toBe(false);
+  });
+
+  test("missing headers are not exhaustion", () => {
+    expect(providerExhausted({ status: 200, monthlyLimit: null, monthlyRemaining: null })).toBe(false);
   });
 });
 
