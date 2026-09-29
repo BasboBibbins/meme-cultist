@@ -4,6 +4,7 @@ const { CURRENCY_NAME, WEEKLY_COOLDOWN } = require("../../config.js");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
 const { buildErrorEmbed, buildSuccessEmbed } = require("../../utils/embeds");
+const { rollWeekly } = require("../../utils/claims");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -24,7 +25,7 @@ module.exports = {
       return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `You have already claimed your weekly ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.weekly)}**.`)] });
     }
 
-    const amount = Math.floor(Math.random() * 500) + 500;
+    const amount = rollWeekly();
     await db.add(`${user.id}.bank`, amount);
     await db.add(`${user.id}.stats.weeklies.claimed`, 1);
     await db.set(`${user.id}.cooldowns.weekly`, Date.now() + cooldown);

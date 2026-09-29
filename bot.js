@@ -6,7 +6,7 @@ const fs = require("fs");
 const { Player, GuildQueueEvent, TrackSkipReason, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
-const { initDB, db, applyCommandStatsResets } = require("./database");
+const { initDB, db, applyCommandStatsResets, addNewDBUser } = require("./database");
 const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
 const { trackStart, trackEnd, teardownPanel } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
@@ -549,6 +549,7 @@ if (DELETE_SLASH) {
         }
             
         try {
+          await addNewDBUser(interaction.user);
           const isMusicCommand = (commandName) => musicCommandNames.includes(commandName);
           if (isMusicCommand(command.data.name)) { // provide player context if music command
             const data = {

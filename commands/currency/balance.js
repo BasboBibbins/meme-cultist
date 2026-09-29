@@ -1,7 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require("discord.js");
-const { addNewDBUser, db } = require("../../database");
+const { getPlayerRow } = require("../../database");
 const { CURRENCY_NAME } = require("../../config.js");
-const logger = require("../../utils/logger");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { buildErrorEmbed, buildInfoEmbed } = require("../../utils/embeds");
 
@@ -15,13 +14,12 @@ module.exports = {
         .setRequired(false)),
   async execute(interaction) {
     const user = interaction.options.getUser("user") || interaction.user;
-    const dbUser = await db.get(user.id);
-    if (!dbUser) {
-      logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`, "warn");
-      await addNewDBUser(user);
-    }
     if (user.bot) {
       return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `**${user.displayName}** is a bot, and therefore cannot have a balance.`)], flags: MessageFlags.Ephemeral });
+    }
+    const dbUser = await getPlayerRow(user.id);
+    if (!dbUser) {
+      return await interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, `**${user.displayName}** hasn't started playing yet. They can join in with \`/daily\`.`)], flags: MessageFlags.Ephemeral });
     }
 
     const fetchedUser = await user.fetch();

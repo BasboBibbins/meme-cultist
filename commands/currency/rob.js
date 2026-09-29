@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags } = require("discord.js");
-const { addNewDBUser, db } = require("../../database");
+const { getPlayerRow, db } = require("../../database");
 const { CURRENCY_NAME, ROB_COOLDOWN } = require("../../config.js");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
@@ -17,17 +17,15 @@ module.exports = {
   async execute(interaction) {
     const victim = interaction.options.getUser("user");
     const user = interaction.user;
-    const dbUser = await db.get(victim.id);
+    const dbUser = await getPlayerRow(victim.id);
 
     const errorEmbed = buildErrorEmbed(user, interaction.client);
 
-    if (!dbUser) {
-      logger.warn(`No database entry for user ${victim.displayName } (${victim.id}), creating one...`, "warn");
-      await addNewDBUser(victim);
-    }
-        
     if (victim.bot) {
       return await interaction.reply({ embeds: [errorEmbed.setDescription("You can't rob a bot!")], flags: MessageFlags.Ephemeral });
+    }
+    if (!dbUser) {
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`**${victim.displayName}** hasn't started playing yet, so there's nothing to rob.`)], flags: MessageFlags.Ephemeral });
     }
     if (victim.id === user.id) {
       return await interaction.reply({ embeds: [errorEmbed.setDescription("You can't rob yourself!")], flags: MessageFlags.Ephemeral });

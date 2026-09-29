@@ -1,8 +1,22 @@
-const { DEFAULT_ROLE, RULES_CHANNEL_ID } = require("../config.js");
-const { addNewDBUser, db } = require("../database");
+const { DEFAULT_ROLE, RULES_CHANNEL_ID, CURRENCY_NAME } = require("../config.js");
+const { getPlayerRow } = require("../database");
 const { WELCOME_CHANNEL_ID, RIP_CHANNEL_ID, WELCOME_CHANNEL_NAME, RIP_CHANNEL_NAME } = require("../config.js");
 const logger = require("../utils/logger");
 const { buildBaseEmbed, buildInfoEmbed } = require("./embeds");
+const { sendDM } = require("./dm");
+const { formatChatbotChannelMentions } = require("./channels");
+
+function buildIntroEmbed(client, member) {
+  return buildInfoEmbed(member.user, client, [
+    `I'm **${client.user.username}**, the resident bot of **${member.guild.name}**. Here's some of what I do:`,
+    `🎰 **Casino and economy**: earn ${CURRENCY_NAME} and play blackjack, slots, poker, roulette, horse racing, craps, keno, and duels. Spend your winnings on themes in the \`/shop\`.`,
+    `💬 **Chat**: talk to me in ${formatChatbotChannelMentions(client)}.`,
+    "🎵 **Music**: queue songs in a voice channel with `/play`.",
+    `**Get started with \`/daily\`** to claim your first ${CURRENCY_NAME}. Use \`/help\` any time to learn more.`,
+  ].join("\n\n"))
+    .setTitle(`Welcome to ${member.guild.name}!`)
+    .setThumbnail(client.user.displayAvatarURL({ size: 256 }));
+}
 
 async function ripGen(guildMember, prompt) {
   const victim = guildMember.user;
@@ -41,10 +55,12 @@ module.exports = {
     return await ripGen(victim, prompt);
   },
   welcome: async function (client, member) {
+    const dbUser = await getPlayerRow(member.user.id);
+    if (!dbUser && !member.user.bot) await sendDM(member.user, { embeds: [buildIntroEmbed(client, member)] });
+
     const channel = WELCOME_CHANNEL_NAME ? member.guild.channels.cache.find(ch => ch.name === WELCOME_CHANNEL_NAME) : member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (!channel) return;
 
-    const dbUser = await db.get(member.user.id);
     logger.info(`${dbUser ? "": "New user "}${member.user.username} (${member.user.id}) has ${dbUser ? "re":""}joined ${member.guild.name}!`);
 
     member.roles.add(member.guild.roles.cache.find(role => role.name === DEFAULT_ROLE));
@@ -56,11 +72,6 @@ module.exports = {
       .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 1024 }))
       .setDescription(`Welcome ${dbUser ? "back":""} to ${member.guild.name} <@${member.id}>! Now **GET THE FUCK OUT OF MY DISCORD NORMIE!!!!**\n\nPlease read the rules in <#${RULES_CHANNEL_ID}>, as they are heavily enforced! *Our janitors do it for free!*`);
     await channel.send({ embeds: [embed] });
-
-    if (!dbUser) {
-      logger.warn(`No database entry for user ${member.user.username} (${member.user.id}), creating one...`);
-      await addNewDBUser(member.user);
-    }
   },
 
   goodbye: async function (client, member) {

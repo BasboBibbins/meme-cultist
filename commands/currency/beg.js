@@ -14,7 +14,7 @@ module.exports = {
     const stats = `${user.id}.stats.begs`;
     if (!dbUser) {
       logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`);
-      await addNewDBUser(interaction.user.id);
+      await addNewDBUser(interaction.user);
     }
     const amount = Math.floor(Math.random() * 100) + 1;
     const chance = Math.floor(Math.random() * 100) + 1;

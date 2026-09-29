@@ -1,9 +1,12 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB, db } = require("../../database");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, previewCleanup, runCleanup } = require("../../database");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("../../config.js");
 const logger = require("../../utils/logger");
 const wait = require("util").promisify(setTimeout);
-const { buildErrorEmbed } = require("../../utils/embeds");
+const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
+const { splitPot } = require("../../utils/dbCleanup");
+
+const CLEANUP_CONFIRM_TIMEOUT_MS = 60000;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -64,7 +67,7 @@ module.exports = {
     .addSubcommand (subcommand =>
       subcommand
         .setName("cleanup")
-        .setDescription("[ADMIN] Cleanup the database.")),
+        .setDescription("[ADMIN] Remove departed members and redistribute koku from long inactive members.")),
   async execute(interaction) {
     const subcommand = interaction.options.getSubcommand();
     const user = interaction.options.getUser("user") || interaction.user;
@@ -120,14 +123,71 @@ module.exports = {
         logger.log(`Reset database entry for user ${user.username} (${user.id}) to the default.`, "info");
         break;
       case "cleanup":
-        const deleted = await cleanDB(interaction.client) || []; // returns array or empty array
-        if (deleted.length === 0) {
-          await interaction.editReply({content: "No entries to delete!"});
-          return;
-        }
-        await interaction.editReply({content: `Cleaned up the database. Deleted ${deleted.length} entries.\nDeleted users: ${deleted.map(user => `<@${user.id}>`).join("\n")}`});
-        logger.log("Cleaned up the database.", "info");
+        await runCleanupFlow(interaction);
         break;
     }
   },
 };
+
+const LIST_LIMIT = 10;
+
+function listEntries(entries) {
+  if (entries.length === 0) return "None";
+  const lines = entries.slice(0, LIST_LIMIT).map(e => `<@${e.id}> ${e.amount.toLocaleString("en-US")} ${CURRENCY_NAME}`);
+  if (entries.length > LIST_LIMIT) lines.push(`...and ${entries.length - LIST_LIMIT} more`);
+  return lines.join("\n");
+}
+
+async function runCleanupFlow(interaction) {
+  const plan = await previewCleanup(interaction.client);
+  if (plan.departed.length === 0 && plan.inactive.length === 0) {
+    await interaction.editReply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Nothing to clean up.")] });
+    return;
+  }
+
+  const { jackpot, perRecipient } = splitPot(plan.total, plan.recipients.length, CLEANUP_JACKPOT_SHARE);
+  const preview = buildInfoEmbed(interaction.user, interaction.client, [
+    `**${plan.departed.length}** departed members will be deleted, and **${plan.inactive.length}** members inactive for over ${CLEANUP_INACTIVE_DAYS} days will have their ${CURRENCY_NAME} emptied.`,
+    `**${plan.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${jackpot.toLocaleString("en-US")}** to the jackpot, **${perRecipient.toLocaleString("en-US")}** each to **${plan.recipients.length}** active players.`,
+  ].join("\n\n"))
+    .setTitle("Database Cleanup Preview")
+    .addFields(
+      { name: "Departed", value: listEntries(plan.departed), inline: true },
+      { name: "Inactive", value: listEntries(plan.inactive), inline: true },
+    );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("cleanup_confirm").setLabel("Confirm").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("cleanup_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+  );
+  const message = await interaction.editReply({ embeds: [preview], components: [row] });
+
+  let click;
+  try {
+    click = await message.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id, time: CLEANUP_CONFIRM_TIMEOUT_MS });
+  } catch {
+    await interaction.editReply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleanup timed out. Nothing was changed.")], components: [] });
+    return;
+  }
+  if (click.customId === "cleanup_cancel") {
+    await click.update({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleanup cancelled. Nothing was changed.")], components: [] });
+    return;
+  }
+
+  await click.update({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleaning up...")], components: [] });
+  try {
+    const result = await runCleanup(interaction.client);
+    const done = buildSuccessEmbed(interaction.user, interaction.client, [
+      `Deleted **${result.departed.length}** departed members and emptied **${result.inactive.length}** inactive members.`,
+      `**${result.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${result.jackpot.toLocaleString("en-US")}** to the jackpot, **${result.perRecipient.toLocaleString("en-US")}** each to **${result.recipients.length}** active players.`,
+    ].join("\n\n"))
+      .setTitle("Database Cleanup Complete")
+      .addFields(
+        { name: "Departed", value: listEntries(result.departed), inline: true },
+        { name: "Inactive", value: listEntries(result.inactive), inline: true },
+      );
+    await interaction.editReply({ embeds: [done] });
+  } catch (err) {
+    logger.error(`Database cleanup failed: ${err.stack || err}`);
+    await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, "Cleanup failed partway. Check the logs before running it again.")] });
+  }
+}

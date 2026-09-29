@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require("discord.js");
-const { addNewDBUser, db } = require("../../database");
+const { addNewDBUser, getPlayerRow, db } = require("../../database");
 const { CURRENCY_NAME, DUEL_MIN_BET, DUEL_COOLDOWN } = require("../../config.js");
 const { parseBet } = require("../../utils/betparse");
 const { renderDuel } = require("../../utils/duelCanvas");
@@ -86,15 +86,15 @@ module.exports = {
         await addNewDBUser(challenger);
         challengerDb = await db.get(challenger.id);
       }
-      let opponentDb = await db.get(opponent.id);
-      if (!opponentDb) {
-        await addNewDBUser(opponent);
-        opponentDb = await db.get(opponent.id);
-      }
+      const opponentDb = await getPlayerRow(opponent.id);
 
       // Validation
       if (opponent.bot) {
         errorEmbed.setDescription("You can't duel a bot!");
+        return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
+      }
+      if (!opponentDb) {
+        errorEmbed.setDescription(`**${opponent.displayName}** hasn't started playing yet. They can join in with \`/daily\`.`);
         return interaction.reply({ embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
       }
       if (opponent.id === challenger.id) {

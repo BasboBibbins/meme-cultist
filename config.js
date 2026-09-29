@@ -193,7 +193,7 @@ const config = {
   SLOTS_BONUS_MULTIPLIER: 2,
   SLOTS_DAILY_COOLDOWN: 8.64e7, // default: 24 hours = 8.64e7
   SLOTS_DAILY_FREE_SPINS: 5,
-  SLOTS_DAILY_BET: 50,
+  SLOTS_DAILY_BET: 400,
   SLOTS_DAILY_LINES: 3,
   SLOTS_FULLSCREEN_CHANCE: 0.00004, // 1 in 25,000 paid spins, default 0.00004
   SLOTS_FULLSCREEN_MULTIPLIER: 500, // payout = bet * lines * multiplier
@@ -208,7 +208,24 @@ const config = {
   JACKPOT_SEED: 1000000,
   JACKPOT_CONTRIBUTION_RATE: 0.02,
   JACKPOT_MIN_BET: 1000,
-  JACKPOT_INTEREST_RATE_PERCENT: 2,
+  JACKPOT_INTEREST_TIERS: [
+    { upTo: 5000000, ratePercent: 2 },
+    { upTo: 25000000, ratePercent: 0.5 },
+    { upTo: Infinity, ratePercent: 0 },
+  ],
+  // Above this the pot grows from bets alone.
+  JACKPOT_INTEREST_CAP: 50000000,
+
+  CLEANUP_INACTIVE_DAYS: 365,
+  CLEANUP_JACKPOT_SHARE: 0.5,
+
+  // Claim payouts in koku, inclusive. /help reads these.
+  DAILY_MIN: 1000,
+  DAILY_MAX: 2000,
+  DAILY_STREAK_BONUS_MIN_PER_DAY: 8,
+  DAILY_STREAK_BONUS_MAX_PER_DAY: 80,
+  WEEKLY_MIN: 5000,
+  WEEKLY_MAX: 10000,
 
   // Cooldown durations in ms. /help reads these, so editing here also fixes the docs.
   DAILY_COOLDOWN: 8.64e7,
@@ -216,10 +233,10 @@ const config = {
   ROB_COOLDOWN: 300000,
 
   // Trick or Treat treat range in koku, inclusive. Claims reset at midnight UTC.
-  TRICK_OR_TREAT_MIN: 150,
-  TRICK_OR_TREAT_MAX: 400,
+  TRICK_OR_TREAT_MIN: 1200,
+  TRICK_OR_TREAT_MAX: 3200,
   // Bonus added at zero wallet plus bank, fading logarithmically to 0 at the cap.
-  TRICK_OR_TREAT_WEALTH_BONUS_MAX: 600,
+  TRICK_OR_TREAT_WEALTH_BONUS_MAX: 4800,
   TRICK_OR_TREAT_WEALTH_CAP: 10000000,
   // Share of claims that roll a trick instead of a treat.
   TRICK_OR_TREAT_TRICK_CHANCE: 0.15,

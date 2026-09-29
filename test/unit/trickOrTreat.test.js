@@ -90,10 +90,10 @@ describe("wealthBonus", () => {
   });
 
   test("fades logarithmically", () => {
-    expect(wealthBonus(1000)).toBe(343);
-    expect(wealthBonus(10000)).toBe(257);
-    expect(wealthBonus(100000)).toBe(171);
-    expect(wealthBonus(1000000)).toBe(86);
+    expect(wealthBonus(1000)).toBe(2743);
+    expect(wealthBonus(10000)).toBe(2057);
+    expect(wealthBonus(100000)).toBe(1371);
+    expect(wealthBonus(1000000)).toBe(686);
   });
 
   test("is zero at and above the cap", () => {

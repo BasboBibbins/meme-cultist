@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, escapeMarkdown } = require("discord.js");
-const { addNewDBUser, db } = require("../../database");
+const { addNewDBUser, getPlayerRow, db } = require("../../database");
 const { CURRENCY_NAME, GIVE_CONFIRM_THRESHOLD, GIVE_CONFIRM_TIMEOUT } = require("../../config.js");
 const { parseBet, validateTransferAmount } = require("../../utils/betparse");
 const { formatDuration } = require("../../utils/time");
@@ -84,13 +84,12 @@ module.exports = {
       logger.warn(`No database entry for user ${sender.username} (${sender.id}), creating one...`, "warn");
       await addNewDBUser(sender);
     }
-    if (!(await db.get(receiver.id))) {
-      logger.warn(`No database entry for user ${receiver.username} (${receiver.id}), creating one...`, "warn");
-      await addNewDBUser(receiver);
-    }
     const senderBalance = (await db.get(`${sender.id}.balance`)) || 0;
     if (receiver.bot) {
       return await interaction.reply({ embeds: [errorEmbed.setDescription(`You can't give ${CURRENCY_NAME} to a bot!`)], flags: MessageFlags.Ephemeral });
+    }
+    if (!(await getPlayerRow(receiver.id))) {
+      return await interaction.reply({ embeds: [errorEmbed.setDescription(`**${receiver.displayName}** hasn't started playing yet. They can join in with \`/daily\`.`)], flags: MessageFlags.Ephemeral });
     }
     if (sender.id === receiver.id) {
       return await interaction.reply({ embeds: [errorEmbed.setDescription(`You can't give ${CURRENCY_NAME} to yourself!`)], flags: MessageFlags.Ephemeral });

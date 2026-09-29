@@ -4,6 +4,7 @@ const { CURRENCY_NAME, DAILY_COOLDOWN } = require("../../config.js");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
 const { withUserLock } = require("../../utils/userlock");
+const { rollDaily } = require("../../utils/claims");
 const { buildErrorEmbed, buildSuccessEmbed } = require("../../utils/embeds");
 
 function nextStreak(availableAt, currentStreak, now) {
@@ -24,8 +25,7 @@ async function claimDaily(user) {
 
   const previousStreak = dbUser.stats.dailies.currentStreak || 0;
   const streak = nextStreak(dbUser.cooldowns.daily, previousStreak, now);
-  const bonus = streak > 1 ? Math.floor(Math.random() * (streak * 10)) + streak : 0;
-  const amount = Math.floor(Math.random() * 100) + 100;
+  const { amount, bonus } = rollDaily(streak);
 
   // Each quick.db write rewrites the whole user row, so parallel writes clobber each other.
   await db.set(`${user.id}.stats.dailies.currentStreak`, streak);

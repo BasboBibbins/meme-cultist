@@ -3,7 +3,8 @@ const { ensureDbDir } = require("./dbDir");
 ensureDbDir();
 const db = new QuickDB({ filePath: "./db/jackpot.sqlite" });
 const logger = require("./logger");
-const { JACKPOT_SEED, JACKPOT_CONTRIBUTION_RATE, JACKPOT_MIN_BET, JACKPOT_INTEREST_RATE_PERCENT, CURRENCY_NAME } = require("../config.js");
+const { JACKPOT_SEED, JACKPOT_CONTRIBUTION_RATE, JACKPOT_MIN_BET, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP, CURRENCY_NAME } = require("../config.js");
+const { computeCappedInterest } = require("./interest");
 
 // Default values if not in config
 const SEED = JACKPOT_SEED ?? 1000;
@@ -72,9 +73,15 @@ async function initJackpot() {
   }
 }
 
+async function addToJackpot(amount) {
+  const jackpot = await getJackpot();
+  await db.set("progressive", { ...jackpot, amount: jackpot.amount + amount });
+  logger.log(`Jackpot funded with ${amount.toLocaleString("en-US")} ${CURRENCY}.`);
+}
+
 async function addJackpotInterest() {
   const jackpot = await getJackpot();
-  const interest = Math.floor(jackpot.amount * (JACKPOT_INTEREST_RATE_PERCENT / 100));
+  const interest = computeCappedInterest(jackpot.amount, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP);
   if (interest > 0) {
     await db.set("progressive", {
       ...jackpot,
@@ -92,6 +99,7 @@ module.exports = {
   getJackpotDisplay,
   initJackpot,
   addJackpotInterest,
+  addToJackpot,
   SEED,
   RATE,
   MIN_BET

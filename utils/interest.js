@@ -22,6 +22,10 @@ function computeInterest(bank, tiers) {
   return Math.floor(total);
 }
 
+function computeCappedInterest(amount, tiers, cap) {
+  return amount > cap ? 0 : computeInterest(amount, tiers);
+}
+
 function lastActiveAt(user) {
   const recorded = Number(user?.stats?.lastCommand?.at);
   if (recorded > 0) return recorded;
@@ -49,4 +53,4 @@ function describeTiers(tiers) {
   return parts.join(", ");
 }
 
-module.exports = { computeInterest, lastActiveAt, isActive, describeTiers };
+module.exports = { computeInterest, computeCappedInterest, lastActiveAt, isActive, describeTiers };

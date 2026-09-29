@@ -1,12 +1,12 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } = require("discord.js");
 const { CURRENCY_NAME, INTEREST_ACTIVE_WINDOW_DAYS } = require("../../config.js");
-const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
+const { getPlayerRow, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require("../../utils/openai");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { todayStamp } = require("../../utils/time.js");
-const { buildBaseEmbed } = require("../../utils/embeds");
+const { buildBaseEmbed, buildErrorEmbed } = require("../../utils/embeds");
 const { isActive } = require("../../utils/interest");
 
 function totalNumOfCmds(type) {
@@ -337,13 +337,12 @@ module.exports = {
         .setDescription("Export stats in JSON format. Useful for nerd emojis (like Basbo).")
         .setRequired(false)),
   async execute(interaction) {
-    await interaction.deferReply();
     const user = interaction.options.getUser("user") || interaction.user;
-    const dbUser = await db.get(user.id);
+    const dbUser = await getPlayerRow(user.id);
     if (!dbUser) {
-      logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
-      await addNewDBUser(user);
+      return await interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, `**${user.displayName}** hasn't started playing yet, so there are no stats to show.`)], flags: MessageFlags.Ephemeral });
     }
+    await interaction.deferReply();
 
     const row = new ActionRowBuilder()
       .addComponents(

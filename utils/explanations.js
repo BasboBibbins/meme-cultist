@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_TIERS, INTEREST_ACTIVE_WINDOW_DAYS, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT, TRICK_OR_TREAT_MIN, TRICK_OR_TREAT_MAX, TRICK_OR_TREAT_WEALTH_BONUS_MAX, TRICK_OR_TREAT_WEALTH_CAP, TRICK_OR_TREAT_TRICK_CHANCE, TRICK_OR_TREAT_THEFT_RATE } = require("../config.js");
+const { CURRENCY_NAME, DAILY_MIN, DAILY_MAX, DAILY_STREAK_BONUS_MIN_PER_DAY, DAILY_STREAK_BONUS_MAX_PER_DAY, WEEKLY_MIN, WEEKLY_MAX, INTEREST_TIERS, INTEREST_ACTIVE_WINDOW_DAYS, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT, TRICK_OR_TREAT_MIN, TRICK_OR_TREAT_MAX, TRICK_OR_TREAT_WEALTH_BONUS_MAX, TRICK_OR_TREAT_WEALTH_CAP, TRICK_OR_TREAT_TRICK_CHANCE, TRICK_OR_TREAT_THEFT_RATE } = require("../config.js");
 const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
 const { formatInterval } = require("./time");
 const { describeTiers } = require("./interest");
@@ -65,12 +65,12 @@ module.exports = {
             Dailies and weeklies are a way to earn ${CURRENCY_NAME} every day and week. You can claim your daily and weekly rewards using \`/daily\` and \`/weekly\`, respectively.
             You can only claim these rewards once per day and one per week. You can view your cooldowns by using \`/daily\` and \`/weekly\`.
 
-            Dailies are worth a random amount of ${CURRENCY_NAME} between 100 and 200. You also receive a bonus depending on how many days in a row you have claimed your daily.
-            The bonus is a random amount of ${CURRENCY_NAME} between the number of days in a row and 10 times the number of days in a row.
-            For example, if you have claimed your daily for 5 days in a row, you will get a bonus of between 5 and 50 ${CURRENCY_NAME}.
+            Dailies are worth a random amount of ${CURRENCY_NAME} between ${DAILY_MIN.toLocaleString("en-US")} and ${DAILY_MAX.toLocaleString("en-US")}. You also receive a bonus depending on how many days in a row you have claimed your daily.
+            The bonus is a random amount of ${CURRENCY_NAME} between ${DAILY_STREAK_BONUS_MIN_PER_DAY} and ${DAILY_STREAK_BONUS_MAX_PER_DAY} times the number of days in a row.
+            For example, if you have claimed your daily for 5 days in a row, you will get a bonus of between ${(5 * DAILY_STREAK_BONUS_MIN_PER_DAY).toLocaleString("en-US")} and ${(5 * DAILY_STREAK_BONUS_MAX_PER_DAY).toLocaleString("en-US")} ${CURRENCY_NAME}.
             The bonus resets to 0 if you miss a day.
 
-            Weeklies are worth a random amount of ${CURRENCY_NAME} between 500 and 1000. There are no streak bonuses for weeklies.
+            Weeklies are worth a random amount of ${CURRENCY_NAME} between ${WEEKLY_MIN.toLocaleString("en-US")} and ${WEEKLY_MAX.toLocaleString("en-US")}. There are no streak bonuses for weeklies.
             `,
     note: `
             Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`,
@@ -81,9 +81,9 @@ module.exports = {
     description: `
             \`/trickortreat\` is a Halloween event that runs every October, from the 1st to the 31st.
 
-            Once a day you can knock on the bot's door for a treat worth ${TRICK_OR_TREAT_MIN} to ${TRICK_OR_TREAT_MAX} ${CURRENCY_NAME}, paid straight into your bank. Your claim resets at midnight UTC, not 24 hours after you last claimed.
+            Once a day you can knock on the bot's door for a treat worth ${TRICK_OR_TREAT_MIN.toLocaleString("en-US")} to ${TRICK_OR_TREAT_MAX.toLocaleString("en-US")} ${CURRENCY_NAME}, paid straight into your bank. Your claim resets at midnight UTC, not 24 hours after you last claimed.
 
-            The less you have, the bigger the treat. Your wallet and bank are counted together. With nothing at all you earn up to **${TRICK_OR_TREAT_WEALTH_BONUS_MAX}** extra ${CURRENCY_NAME} on top, and the extra shrinks as your total grows until it reaches zero at **${TRICK_OR_TREAT_WEALTH_CAP.toLocaleString("en-US")}**.
+            The less you have, the bigger the treat. Your wallet and bank are counted together. With nothing at all you earn up to **${TRICK_OR_TREAT_WEALTH_BONUS_MAX.toLocaleString("en-US")}** extra ${CURRENCY_NAME} on top, and the extra shrinks as your total grows until it reaches zero at **${TRICK_OR_TREAT_WEALTH_CAP.toLocaleString("en-US")}**.
 
             But not every door is friendly. **${Math.round(TRICK_OR_TREAT_TRICK_CHANCE * 100)}%** of knocks are a trick instead, and a trick never pays a treat.
             `,
@@ -375,7 +375,7 @@ module.exports = {
             • **Slots:** Triple 7s wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required)
             • **Poker:** A royal flush wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} bet required)
             • Bets below the minimum still contribute to the jackpot but receive a reduced fixed payout instead
-            • The jackpot also earns daily interest, growing even when no one is playing
+            • The jackpot earns daily interest while it is small (${describeTiers(JACKPOT_INTEREST_TIERS.filter(t => t.upTo !== Infinity))}). Above ${JACKPOT_INTEREST_CAP.toLocaleString("en-US")} it grows from bets alone
 
             Use \`/jackpot\` to check the current jackpot amount and last winner.
             `,

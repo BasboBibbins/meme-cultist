@@ -1,5 +1,5 @@
 const { INTEREST_TIERS, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROB_COOLDOWN } = require("../../config.js");
-const { computeInterest, lastActiveAt, isActive, describeTiers } = require("../../utils/interest");
+const { computeInterest, computeCappedInterest, lastActiveAt, isActive, describeTiers } = require("../../utils/interest");
 
 const DAY = 86400000;
 const NOW = Date.UTC(2026, 9, 1);
@@ -42,6 +42,19 @@ describe("computeInterest", () => {
       expect(paid).toBeGreaterThanOrEqual(previous);
       previous = paid;
     }
+  });
+});
+
+describe("computeCappedInterest", () => {
+  const { JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP } = require("../../config.js");
+
+  test("follows the tiers up to the cap", () => {
+    expect(computeCappedInterest(1000000, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP)).toBe(20000);
+    expect(computeCappedInterest(JACKPOT_INTEREST_CAP, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP)).toBe(200000);
+  });
+
+  test("pays nothing once over the cap", () => {
+    expect(computeCappedInterest(JACKPOT_INTEREST_CAP + 1, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP)).toBe(0);
   });
 });
 
