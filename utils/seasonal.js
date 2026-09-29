@@ -1,3 +1,5 @@
+const HALLOWEEN_WINDOW = { start: { month: 10, day: 1 }, end: { month: 10, day: 31 } };
+
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function normalizeAvailability(availability) {
@@ -66,6 +68,23 @@ function windowEndEpoch(availability, date = new Date()) {
   return latest === null ? null : Math.floor(latest / 1000);
 }
 
+// Epoch (seconds) of the soonest future opening, or null when every window is past.
+function windowStartEpoch(availability, date = new Date()) {
+  const nowMs = todayMs(date);
+  let soonest = null;
+
+  for (const range of normalizeAvailability(availability)) {
+    let startMs = resolveRange(range, date).startMs;
+    if (startMs <= nowMs && range.start.year == null) {
+      startMs = resolveRange(range, new Date(Date.UTC(date.getUTCFullYear() + 1, 0, 1))).startMs;
+    }
+    if (startMs <= nowMs) continue;
+    if (soonest === null || startMs < soonest) soonest = startMs;
+  }
+
+  return soonest === null ? null : Math.floor(soonest / 1000);
+}
+
 // One recurring range is enough to bring a window back.
 function isOneTimeAvailability(availability) {
   const ranges = normalizeAvailability(availability);
@@ -108,9 +127,11 @@ function formatAvailability(availability) {
 }
 
 module.exports = {
+  HALLOWEEN_WINDOW,
   normalizeAvailability,
   isWindowActive,
   windowEndEpoch,
+  windowStartEpoch,
   isOneTimeAvailability,
   formatAvailability,
 };

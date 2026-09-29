@@ -185,6 +185,7 @@ async function generateLeaderboardEmbed(page, interaction, allUsers) {
         { name: "Most Commands Used", value: formatTopList(topBy(allUsers, u => totalNumOfCmds(u.value.stats?.commands?.total))), inline: true },
         { name: "Most Dailies Claimed", value: formatTopList(topBy(allUsers, u => u.value.stats?.dailies?.claimed)), inline: true },
         { name: "Most Weeklies Claimed", value: formatTopList(topBy(allUsers, u => u.value.stats?.weeklies?.claimed)), inline: true },
+        { name: "Most Candy Earned", value: formatTopList(topBy(allUsers, u => u.value.stats?.halloween?.earned), CURRENCY_NAME), inline: true },
         { name: "Most Shop Purchases", value: formatTopList(topBy(allUsers, u => u.value.stats?.shop?.purchases)), inline: true },
         { name: "Most Spent at Shop", value: formatTopList(topBy(allUsers, u => u.value.stats?.shop?.spent), CURRENCY_NAME), inline: true },
         { name: "Most Items Owned", value: formatTopList(topBy(allUsers, u => (u.value.inventory?.length || 0) + (u.value.profile?.theme?.owned?.length || 0))), inline: true },

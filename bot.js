@@ -11,6 +11,7 @@ const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_
 const { trackStart, trackEnd, teardownPanel } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
+const { hauntIfPossessed, registerPrankJobs, restorePossessions } = require("./utils/trickOrTreatPranks");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
 const cacheDiag = require("./utils/cacheDiag");
 const loopLag = require("./utils/loopLag");
@@ -108,6 +109,7 @@ client.pokerTables = new Map();
 client.immediateFactsDebounce = new Map();
 client.toolCallHistory = new Map();
 client.perceptionCache = new Map();
+client.possessed = new Map();
 
 if (!fs.existsSync("./db/users.sqlite")) {
   logger.error("Database file not found! Please run `node bot.js dbinit` to create the database.");
@@ -466,6 +468,8 @@ if (DELETE_SLASH) {
         }
       }
     });
+    registerPrankJobs(client);
+    restorePossessions(client);
     jobs.start();
 
     const { CHATBOT_CHANNELS } = require("./config.js");
@@ -717,6 +721,7 @@ if (DELETE_SLASH) {
 
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
+    hauntIfPossessed(message);
     if (!CHATBOT_ENABLED) {
       logger.warn("Chatbot is disabled! Ignoring request...");
       return;

@@ -57,6 +57,7 @@ async function getDefaultDB(user) {
       "weekly": 0,
       "rob": 0,
       "freespins": 0,
+      "trickortreat": 0,
     },
     "stats": {
       "commands": {
@@ -165,6 +166,13 @@ async function getDefaultDB(user) {
         "purchases": 0,
         "spent": 0,
         "biggestPurchase": 0,
+      },
+      "halloween": {
+        "claimed": 0,
+        "treats": 0,
+        "tricks": 0,
+        "earned": 0,
+        "lost": 0,
       },
       "largestBalance": 0,
       "largestBank": 0,

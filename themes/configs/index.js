@@ -13,6 +13,7 @@
 
 const path = require("path");
 const classic = require("./base");
+const { HALLOWEEN_WINDOW } = require("../../utils/seasonal");
 
 const ASSETS_BASE = path.join(__dirname, "..", "..", "assets", "imgs", "slots");
 const BACKGROUND_BASE = path.join(__dirname, "..", "..", "assets", "imgs", "themes");
@@ -704,7 +705,7 @@ const themes = {
   halloween: limited("halloween", "Halloween",
     "Pumpkin orange over a deep purple-black graveyard. Toxic green wins and a moonlit chill.",
     400000, "🎃",
-    { start: { month: 10, day: 1 }, end: { month: 10, day: 31 } },
+    HALLOWEEN_WINDOW,
     halloweenColors,
     {
       slots: {

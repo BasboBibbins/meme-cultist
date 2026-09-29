@@ -27,13 +27,12 @@ async function claimDaily(user) {
   const bonus = streak > 1 ? Math.floor(Math.random() * (streak * 10)) + streak : 0;
   const amount = Math.floor(Math.random() * 100) + 100;
 
-  await Promise.all([
-    db.set(`${user.id}.stats.dailies.currentStreak`, streak),
-    db.set(`${user.id}.stats.dailies.longestStreak`, Math.max(streak, dbUser.stats.dailies.longestStreak || 0)),
-    db.add(`${user.id}.stats.dailies.claimed`, 1),
-    db.add(`${user.id}.bank`, amount + bonus),
-    db.set(`${user.id}.cooldowns.daily`, now + DAILY_COOLDOWN),
-  ]);
+  // Each quick.db write rewrites the whole user row, so parallel writes clobber each other.
+  await db.set(`${user.id}.stats.dailies.currentStreak`, streak);
+  await db.set(`${user.id}.stats.dailies.longestStreak`, Math.max(streak, dbUser.stats.dailies.longestStreak || 0));
+  await db.add(`${user.id}.stats.dailies.claimed`, 1);
+  await db.add(`${user.id}.bank`, amount + bonus);
+  await db.set(`${user.id}.cooldowns.daily`, now + DAILY_COOLDOWN);
 
   return { claimed: true, amount, bonus, streak, lostStreak: streak < previousStreak ? previousStreak : 0 };
 }

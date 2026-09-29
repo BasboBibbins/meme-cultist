@@ -123,6 +123,7 @@ async function generateStatsEmbed(page, interaction, user) {
       const dailies = stats?.stats?.dailies || {};
       const weeklies = stats?.stats?.weeklies || {};
       const shop = stats?.stats?.shop || {};
+      const halloween = stats?.stats?.halloween || {};
       const cooldowns = stats?.cooldowns || {};
       embed.setTitle(`${user.displayName }'s Currency Stats`);
       embed.setFields(
@@ -147,6 +148,13 @@ async function generateStatsEmbed(page, interaction, user) {
           `*Purchases:* **${(shop.purchases ?? 0).toLocaleString("en-US")}**`,
           `*Total Spent:* **${(shop.spent ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
           `*Biggest Purchase:* **${(shop.biggestPurchase ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+        ]), inline: true },
+        { name: "Trick or Treat", value: buildDesc([
+          `*Times Claimed:* **${(halloween.claimed ?? 0).toLocaleString("en-US")}**`,
+          `*Treats:* **${(halloween.treats ?? 0).toLocaleString("en-US")}**`,
+          `*Tricks:* **${(halloween.tricks ?? 0).toLocaleString("en-US")}**`,
+          `*Candy Earned:* **${(halloween.earned ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+          `*Stolen by Ghouls:* **${(halloween.lost ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
         ]), inline: true },
       );
       break;

@@ -1,4 +1,4 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT } = require("../config.js");
+const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT, TRICK_OR_TREAT_MIN, TRICK_OR_TREAT_MAX, TRICK_OR_TREAT_WEALTH_BONUS_MAX, TRICK_OR_TREAT_WEALTH_CAP, TRICK_OR_TREAT_TRICK_CHANCE, TRICK_OR_TREAT_THEFT_RATE } = require("../config.js");
 const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
 const { formatInterval } = require("./time");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
@@ -74,6 +74,28 @@ module.exports = {
     note: `
             Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`,
     cooldown: `\`/daily\` every **${formatInterval(DAILY_COOLDOWN)}**\n\`/weekly\` every **${formatInterval(WEEKLY_COOLDOWN)}**`
+  },
+  trickortreat: {
+    name: "Trick or Treat",
+    description: `
+            \`/trickortreat\` is a Halloween event that runs every October, from the 1st to the 31st.
+
+            Once a day you can knock on the bot's door for a treat worth ${TRICK_OR_TREAT_MIN} to ${TRICK_OR_TREAT_MAX} ${CURRENCY_NAME}, paid straight into your bank. Your claim resets at midnight UTC, not 24 hours after you last claimed.
+
+            The less you have, the bigger the treat. Your wallet and bank are counted together. With nothing at all you earn up to **${TRICK_OR_TREAT_WEALTH_BONUS_MAX}** extra ${CURRENCY_NAME} on top, and the extra shrinks as your total grows until it reaches zero at **${TRICK_OR_TREAT_WEALTH_CAP.toLocaleString("en-US")}**.
+
+            But not every door is friendly. **${Math.round(TRICK_OR_TREAT_TRICK_CHANCE * 100)}%** of knocks are a trick instead, and a trick never pays a treat.
+            `,
+    rules: `
+            Tricks, from most to least common:
+            • **Door slammed:** no treat today.
+            • **Pickpocketed:** a ghoul steals ${TRICK_OR_TREAT_THEFT_RATE * 100}% of everything you have, wallet first, then bank.
+            • **Possessed:** for a while, the spirits react to every message you send.
+            • **Voice stolen:** a spirit posts a message in the channel as you.
+            • **Spooked:** if you're in a voice channel, you get scared right out of it.
+            • **Cursed:** you're timed out for a few minutes.`,
+    note: `
+            Outside October the command tells you when it returns. Your totals appear in \`/stats\`, and the top candy collectors are on \`/leaderboard\`.`
   },
   blackjack: {
     name: "Blackjack",

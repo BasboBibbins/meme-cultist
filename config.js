@@ -208,6 +208,34 @@ const config = {
   WEEKLY_COOLDOWN: 6.048e8,
   ROB_COOLDOWN: 300000,
 
+  // Trick or Treat treat range in koku, inclusive. Claims reset at midnight UTC.
+  TRICK_OR_TREAT_MIN: 150,
+  TRICK_OR_TREAT_MAX: 400,
+  // Bonus added at zero wallet plus bank, fading logarithmically to 0 at the cap.
+  TRICK_OR_TREAT_WEALTH_BONUS_MAX: 600,
+  TRICK_OR_TREAT_WEALTH_CAP: 10000000,
+  // Share of claims that roll a trick instead of a treat.
+  TRICK_OR_TREAT_TRICK_CHANCE: 0.15,
+  // Share of wallet plus bank the theft trick takes, wallet first.
+  TRICK_OR_TREAT_THEFT_RATE: 0.005,
+  TRICK_OR_TREAT_POSSESSED_MS: 3600000,
+  // One set is picked per message. Custom emojis use <:name:id> or <a:name:id>, and a set cannot repeat an emoji.
+  TRICK_OR_TREAT_POSSESSED_COMBOS: [
+    ["🎃", "👻", "💀"],
+    ["🇧", "🅾️", "🇴"],
+    ["🚽", "🪠"],
+    ["🕷️", "🕸️"],
+    ["🧛‍♂️", "🩸"],
+    ["<:hallomiku:1300605144840540160>"],
+  ],
+  TRICK_OR_TREAT_TIMEOUT_MS: 300000,
+  // Channel ID where impersonation posts. Empty, missing, or unusable falls back to the channel /trickortreat ran in.
+  TRICK_OR_TREAT_IMPERSONATION_CHANNEL: process.env.TRICK_OR_TREAT_IMPERSONATION_CHANNEL || "",
+  // Dev only: opens /trickortreat outside October and removes its daily cooldown.
+  HALLOWEEN_FORCE_ACTIVE: process.env.HALLOWEEN_FORCE_ACTIVE === "true",
+  // Dev only: "treat" or a trick id forces that outcome. A forced trick that cannot apply still rerolls.
+  TRICK_OR_TREAT_FORCE_OUTCOME: process.env.TRICK_OR_TREAT_FORCE_OUTCOME || "",
+
   // Transfers at or above this many koku require a button confirmation.
   GIVE_CONFIRM_THRESHOLD: 10000,
   GIVE_CONFIRM_TIMEOUT: 30000,
