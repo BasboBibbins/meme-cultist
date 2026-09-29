@@ -137,17 +137,17 @@ module.exports = {
 
             **Free Spins:** Land 3 or more scatter icons to trigger the Free Spin Bonus — you get free spins with no cost to your balance.
 
-            You can see the paytable by using \`/slots paytable\`. Free daily spins are available with \`/slots daily\` (resets at midnight).
+            You can see the paytable by using \`/slots paytable\`. Free daily spins are available with \`/slots daily\`. The cooldown counts from your last use, not from midnight.
 
-            **Progressive Jackpot:** Triple 7s wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 ${CURRENCY_NAME} to qualify for the jackpot.
+            **Progressive Jackpot:** Three Wilds on a payline win the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line to qualify for the jackpot.
             `,
     rules: `
             1. The goal of slots is to line up matching symbols across paylines.
             2. There are 8 symbols, each with a different multiplier — check the paytable for details.
             3. Wild icons count as any symbol on an active payline.
             4. Landing 3+ scatter icons triggers the Free Spin Bonus.
-            5. Triple 7s wins the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required, free spins eligible).
-            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`,
+            5. Three Wilds on a payline win the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required). Bonus free spins can win it; free daily spins cannot.
+            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for three Wilds.`,
     cooldown: `${SLOTS_DAILY_FREE_SPINS} free spins every **${formatInterval(SLOTS_DAILY_COOLDOWN)}**`,
     limits: `Jackpot eligibility: **${JACKPOT_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME} per line`
   },
@@ -333,7 +333,7 @@ module.exports = {
 
             Once bought, items go to your \`/inventory\` and are yours forever. The daily rotation only controls *what you can buy today*, not what you can use.
 
-            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line) or a royal flush on poker (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME}) wins it.
+            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Three Wilds on a slots payline (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line) or a royal flush on poker (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME}) wins it.
             `,
     note: `
             The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
@@ -372,7 +372,7 @@ module.exports = {
             The progressive jackpot is a shared prize pool that grows with every qualifying bet on slots and poker.
 
             • Every bet contributes 2% to the jackpot pool
-            • **Slots:** Triple 7s wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required)
+            • **Slots:** Three Wilds on a payline win the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required)
             • **Poker:** A royal flush wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} bet required)
             • Bets below the minimum still contribute to the jackpot but receive a reduced fixed payout instead
             • The jackpot earns daily interest while it is small (${describeTiers(JACKPOT_INTEREST_TIERS.filter(t => t.upTo !== Infinity))}). Above ${JACKPOT_INTEREST_CAP.toLocaleString("en-US")} it grows from bets alone
