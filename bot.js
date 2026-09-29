@@ -572,6 +572,7 @@ if (DELETE_SLASH) {
             commands.yearly[cmdName] = (commands.yearly[cmdName] || 0) + 1;
             commands.total[cmdName] = (commands.total[cmdName] || 0) + 1;
             await db.set(`${userId}.stats.commands`, commands);
+            await db.set(`${userId}.stats.lastCommand`, { name: cmdName, at: Date.now() });
 
             // Largest balance/bank checks — narrow writes only, separate from
             // the commands subtree to avoid racing with the midnight interest job.

@@ -174,6 +174,15 @@ async function getDefaultDB(user) {
         "earned": 0,
         "lost": 0,
       },
+      "interest": {
+        "earned": 0,
+        "lastAmount": 0,
+        "lastAt": 0,
+      },
+      "lastCommand": {
+        "name": "",
+        "at": 0,
+      },
       "largestBalance": 0,
       "largestBank": 0,
     },

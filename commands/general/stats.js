@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } = require("discord.js");
-const { CURRENCY_NAME } = require("../../config.js");
+const { CURRENCY_NAME, INTEREST_ACTIVE_WINDOW_DAYS } = require("../../config.js");
 const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require("../../utils/openai");
 const logger = require("../../utils/logger");
@@ -7,6 +7,7 @@ const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { todayStamp } = require("../../utils/time.js");
 const { buildBaseEmbed } = require("../../utils/embeds");
+const { isActive } = require("../../utils/interest");
 
 function totalNumOfCmds(type) {
   return Object.keys(type).reduce((a, b) => a + type[b], 0);
@@ -124,6 +125,7 @@ async function generateStatsEmbed(page, interaction, user) {
       const weeklies = stats?.stats?.weeklies || {};
       const shop = stats?.stats?.shop || {};
       const halloween = stats?.stats?.halloween || {};
+      const interest = stats?.stats?.interest || {};
       const cooldowns = stats?.cooldowns || {};
       embed.setTitle(`${user.displayName }'s Currency Stats`);
       embed.setFields(
@@ -156,6 +158,12 @@ async function generateStatsEmbed(page, interaction, user) {
           `*Candy Earned:* **${(halloween.earned ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
           `*Stolen by Ghouls:* **${(halloween.lost ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
         ]), inline: true },
+        { name: " ", value: " ", inline: false},
+        { name: "Interest", value: buildDesc([
+          `*Lifetime Earned:* **${(interest.earned ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+          interest.lastAt ? `*Last Payout:* **${(interest.lastAmount ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}** <t:${Math.floor(interest.lastAt / 1000)}:R>` : "*Last Payout:* **None yet**",
+          isActive(stats, Date.now(), INTEREST_ACTIVE_WINDOW_DAYS) ? "*Status:* **Earning**" : `*Status:* **Paused**. Interest only pays players who used a command in the last ${INTEREST_ACTIVE_WINDOW_DAYS} days.`,
+        ]), inline: false },
       );
       break;
     }

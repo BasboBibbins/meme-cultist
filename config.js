@@ -151,7 +151,14 @@ const config = {
 
   // Currency/game settings
   CURRENCY_NAME: "koku",
-  INTEREST_RATE: 1,
+  // Marginal brackets: each slice of the bank earns only its own rate.
+  INTEREST_TIERS: [
+    { upTo: 1000000, ratePercent: 1 },
+    { upTo: 10000000, ratePercent: 0.5 },
+    { upTo: 100000000, ratePercent: 0.1 },
+    { upTo: Infinity, ratePercent: 0 },
+  ],
+  INTEREST_ACTIVE_WINDOW_DAYS: 7,
   BLACKJACK_MAX_HANDS: 4,
   ROULETTE_MIN_BET: 10,
   ROULETTE_MAX_BET: 0, // default 5000

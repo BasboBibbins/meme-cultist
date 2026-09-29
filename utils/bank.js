@@ -1,17 +1,38 @@
 const { db } = require("../database");
 const logger = require("./logger");
-const { INTEREST_RATE } = require("../config.js");
+const { INTEREST_TIERS, INTEREST_ACTIVE_WINDOW_DAYS } = require("../config.js");
+const { computeInterest, isActive } = require("./interest");
+const { withUserLock } = require("./userlock");
 
 module.exports = {
   interest: async function () {
     const users = await db.all();
+    const now = Date.now();
+    let paidUsers = 0;
+    let inactiveUsers = 0;
+    let totalPaid = 0;
     for (const user of users) {
-      if (user.value.bank > 0) {
-        const interest = Math.round(user.value.bank * (INTEREST_RATE / 100));
-        await db.add(`${user.id}.bank`, interest);
-        logger.debug(`Interest added to ${user.value.name} (${user.id}). Interest: ${interest}`);
+      if (!(user.value?.bank > 0)) continue;
+      if (!isActive(user.value, now, INTEREST_ACTIVE_WINDOW_DAYS)) {
+        inactiveUsers++;
+        continue;
+      }
+      const paid = await withUserLock(user.id, async () => {
+        const amount = computeInterest(await db.get(`${user.id}.bank`), INTEREST_TIERS);
+        if (amount <= 0) return 0;
+        await db.add(`${user.id}.bank`, amount);
+        await db.add(`${user.id}.stats.interest.earned`, amount);
+        await db.set(`${user.id}.stats.interest.lastAmount`, amount);
+        await db.set(`${user.id}.stats.interest.lastAt`, now);
+        return amount;
+      });
+      if (paid > 0) {
+        paidUsers++;
+        totalPaid += paid;
+        logger.debug(`Interest added to ${user.value.name} (${user.id}). Interest: ${paid}`);
       }
     }
+    logger.info(`Interest paid ${totalPaid.toLocaleString("en-US")} to ${paidUsers} users. ${inactiveUsers} inactive users skipped.`);
   },
   parseAmount: async function (amount, id, subcommand) {
     const dbUser = await db.get(id);
