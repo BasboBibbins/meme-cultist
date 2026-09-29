@@ -31,6 +31,7 @@ function openDb() {
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_msg_id ON message_chunks(message_id, chunk_index);
         CREATE INDEX IF NOT EXISTS idx_msg_channel ON message_chunks(channel_id);
+        CREATE INDEX IF NOT EXISTS idx_msg_channel_time ON message_chunks(channel_id, created_at);
     `);
   try {
     _db.exec(`
@@ -81,23 +82,88 @@ function insertChunk({ channelId, messageId, authorId, content, chunkIndex = 0, 
   return info.changes > 0 ? info.lastInsertRowid : null;
 }
 
-function searchFTS(channelId, query, limit = 30) {
+function rangeClause(range, column = "created_at") {
+  const clauses = [];
+  const params = [];
+  if (range?.afterMs != null) { clauses.push(`${column} >= ?`); params.push(range.afterMs); }
+  if (range?.beforeMs != null) { clauses.push(`${column} < ?`); params.push(range.beforeMs); }
+  return { sql: clauses.map(c => ` AND ${c}`).join(""), params };
+}
+
+const FTS_ORDER = { relevance: "rank", oldest: "mc.created_at ASC", newest: "mc.created_at DESC" };
+
+function searchFTS(channelId, query, limit = 30, { range = null, order = "relevance" } = {}) {
   const db = openDb();
+  const time = rangeClause(range, "mc.created_at");
   try {
-    const rows = db.prepare(`
+    return db.prepare(`
             SELECT mc.id, mc.channel_id, mc.message_id, mc.author_id, mc.content, mc.created_at,
                    rank
             FROM message_chunks_fts
             JOIN message_chunks mc ON mc.id = message_chunks_fts.rowid
-            WHERE message_chunks_fts MATCH ? AND mc.channel_id = ?
-            ORDER BY rank
+            WHERE message_chunks_fts MATCH ? AND mc.channel_id = ?${time.sql}
+            ORDER BY ${FTS_ORDER[order] || FTS_ORDER.relevance}
             LIMIT ?
-        `).all(query, channelId, limit);
-    return rows;
+        `).all(query, channelId, ...time.params, limit);
   } catch (err) {
     logger.warn(`[MessageArchive] FTS5 search failed: ${err.message}`);
     return [];
   }
+}
+
+function countFTS(channelId, query, range = null) {
+  const db = openDb();
+  const time = rangeClause(range, "mc.created_at");
+  try {
+    const row = db.prepare(`
+            SELECT COUNT(*) AS count, MIN(mc.created_at) AS first, MAX(mc.created_at) AS last
+            FROM message_chunks_fts
+            JOIN message_chunks mc ON mc.id = message_chunks_fts.rowid
+            WHERE message_chunks_fts MATCH ? AND mc.channel_id = ?${time.sql}
+        `).get(query, channelId, ...time.params);
+    return { count: row.count, first: row.first, last: row.last };
+  } catch (err) {
+    logger.warn(`[MessageArchive] FTS5 count failed: ${err.message}`);
+    return { count: 0, first: null, last: null };
+  }
+}
+
+// Light rows only, so grouping a year of history never loads its content or vectors.
+function getRangeIndex(channelId, { range = null, order = "oldest", limit = 100000 } = {}) {
+  const db = openDb();
+  const time = rangeClause(range);
+  return db.prepare(`
+        SELECT id, author_id, created_at FROM message_chunks
+        WHERE channel_id = ?${time.sql}
+        ORDER BY created_at ${order === "newest" ? "DESC" : "ASC"}
+        LIMIT ?
+    `).all(channelId, ...time.params, limit);
+}
+
+function getChunksByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const db = openDb();
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const batch = ids.slice(i, i + 500);
+    rows.push(...db.prepare(
+      `SELECT id, message_id, author_id, content, created_at, embedding FROM message_chunks WHERE id IN (${batch.map(() => "?").join(",")})`
+    ).all(...batch));
+  }
+  return rows;
+}
+
+function getTimestamps(channelId, range = null) {
+  const db = openDb();
+  const time = rangeClause(range);
+  return db.prepare(`SELECT created_at FROM message_chunks WHERE channel_id = ?${time.sql} ORDER BY created_at ASC`)
+    .all(channelId, ...time.params).map(r => r.created_at);
+}
+
+function getBounds(channelId) {
+  const db = openDb();
+  const row = db.prepare("SELECT MIN(created_at) AS first, MAX(created_at) AS last FROM message_chunks WHERE channel_id = ?").get(channelId);
+  return { first: row.first, last: row.last };
 }
 
 function searchSemantic(channelId, queryEmbedding, candidateIds, limit = 5) {
@@ -122,12 +188,13 @@ function searchSemantic(channelId, queryEmbedding, candidateIds, limit = 5) {
 }
 
 // Streams the whole channel so memory holds only the top `limit`, not every vector.
-function searchSemanticFull(channelId, queryEmbedding, limit = 5) {
+function searchSemanticFull(channelId, queryEmbedding, limit = 5, range = null) {
   const db = openDb();
   const queryVec = queryEmbedding instanceof Float32Array
     ? queryEmbedding : new Float32Array(queryEmbedding);
   const top = [];
-  const rows = db.prepare("SELECT id, embedding FROM message_chunks WHERE channel_id = ? AND embedding IS NOT NULL").iterate(channelId);
+  const time = rangeClause(range);
+  const rows = db.prepare(`SELECT id, embedding FROM message_chunks WHERE channel_id = ? AND embedding IS NOT NULL${time.sql}`).iterate(channelId, ...time.params);
   for (const r of rows) {
     const vec = bufferToFloatArray(r.embedding);
     if (!vec || vec.length !== queryVec.length) continue;
@@ -284,6 +351,11 @@ function prune({ retentionDays = 0, maxRowsPerChannel = 0 } = {}) {
 module.exports = {
   insertChunk,
   searchFTS,
+  countFTS,
+  getRangeIndex,
+  getChunksByIds,
+  getTimestamps,
+  getBounds,
   searchSemantic,
   searchSemanticFull,
   getUnembeddedForChannel,

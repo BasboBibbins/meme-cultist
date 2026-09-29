@@ -386,6 +386,8 @@ const config = {
   HISTORY_SEMANTIC_MIN_SCORE: parseFloat(process.env.HISTORY_SEMANTIC_MIN_SCORE || "0.70"),
   // The bot writes half the archive at 6x user length, so its own rows would otherwise crowd out users.
   HISTORY_SELF_WEIGHT: 0.5,
+  // Silence longer than this starts a new conversation when search_history summarizes a time range.
+  HISTORY_CONVERSATION_GAP_HOURS: 6,
   // Unembedded archive backlog drains this many rows per job, one job per interval.
   ARCHIVE_EMBED_DRAIN_BATCH: 100,
   ARCHIVE_EMBED_DRAIN_INTERVAL_MS: 900000,

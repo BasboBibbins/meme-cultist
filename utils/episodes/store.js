@@ -216,6 +216,13 @@ function searchSemanticFull(scopePairs, queryEmbedding, limit = 5) {
   return scored.slice(0, limit);
 }
 
+// Ordered by id, not created_at: created_at is when compaction ran, and compaction always takes the oldest history first.
+function getOldestForScope(scopeType, scopeId, limit = 3) {
+  return openDb()
+    .prepare("SELECT id, summary, tags, created_at FROM episodes WHERE scope_type = ? AND scope_id = ? ORDER BY id ASC LIMIT ?")
+    .all(scopeType, scopeId, limit);
+}
+
 function close() {
   if (_db) {
     try { _db.close(); } catch (_) {}
@@ -225,6 +232,7 @@ function close() {
 
 module.exports = {
   addEpisode,
+  getOldestForScope,
   getUnembeddedAny,
   getByIds,
   setEmbedding,

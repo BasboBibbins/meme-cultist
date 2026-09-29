@@ -11,8 +11,9 @@ const messageArchive = require("./messageArchive");
 const { getJackpot, MIN_BET: JACKPOT_MIN_BET, RATE: JACKPOT_RATE } = require("./jackpot");
 const { getDailyShopStock, nextShopResetEpoch, formatPrice } = require("./inventory");
 const explanations = require("./explanations");
-const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE, HISTORY_SEMANTIC_MIN_SCORE, HISTORY_SELF_WEIGHT, KB_LEXICAL_FALLBACK_MIN_SCORE, KB_LOOKUP_TOTAL_CHARS } = require("../config.js");
+const { CURRENCY_NAME, REMINDER_MAX_ACTIVE_PER_USER, REMINDER_MAX_GROUP_SIZE, BRAVE_API_KEY, EPISODE_RECALL_MIN_SCORE, HISTORY_SEMANTIC_MIN_SCORE, HISTORY_SELF_WEIGHT, HISTORY_CONVERSATION_GAP_HOURS, KB_LEXICAL_FALLBACK_MIN_SCORE, KB_LOOKUP_TOTAL_CHARS } = require("../config.js");
 const { buildFTSQueries, fuseRankings } = require("./ftsQuery");
+const { parseRange, groupConversations, selectConversations, pickRepresentative, coverageGaps, isoDate } = require("./historyTime");
 const config = require("../config.js");
 const { fetchPageText } = require("./urlContext");
 const jobs = require("./jobs");
@@ -263,17 +264,25 @@ const TOOLS = [
     function: {
       name: "search_history",
       description:
-        "Keyword + semantic search of this channel's full past message history. " +
-        "Call AT MOST ONCE per turn with a single, comprehensive query covering everything you want to find. " +
-        "If results are empty or thin, synthesize from what is returned. Do NOT retry with re-phrasings. " +
-        "Returns up to 5 hits with author name, content, and timestamp. Hits with from_you: true are your own earlier replies, not something a user said.",
+        "Keyword + semantic search of this channel's full past message history, optionally limited to a time period. " +
+        "Call AT MOST ONCE per turn with a single, comprehensive call. If results are empty or thin, synthesize from what is returned. Do NOT retry with re-phrasings. " +
+        "Hits with from_you: true are your own earlier replies, not something a user said. " +
+        "For time questions, compute after/before as ISO dates from the [Now] block (before is exclusive): " +
+        "'last week' = the previous Monday to Sunday, 'recently' = the last 7 days, 'in 2025' = after 2025-01-01, before 2026-01-01. " +
+        "With no query, it summarizes the period as conversations with sample highlights. " +
+        "order 'oldest' with no query and no dates answers 'what was our first conversation'. " +
+        "With a query and dates, mentions.count answers 'was X ever mentioned'. " +
+        "coverage.gaps are periods with no archive at all: say you have no record of them, never that nothing happened.",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "A single comprehensive query covering everything you want to find." },
-          limit: { type: "integer", description: "Number of results to return (default 5, max 10)." }
+          query: { type: "string", description: "What to find. Omit to summarize a period instead of searching it." },
+          after: { type: "string", description: "Inclusive start, ISO date (YYYY-MM-DD) in UTC." },
+          before: { type: "string", description: "Exclusive end, ISO date (YYYY-MM-DD) in UTC." },
+          order: { type: "string", enum: ["relevance", "oldest", "newest"], description: "relevance (default), or oldest/newest for first or latest occurrences." },
+          limit: { type: "integer", description: "Results, or conversations when summarizing a period (default 5, max 10)." }
         },
-        required: ["query"]
+        required: []
       }
     }
   },
@@ -837,67 +846,171 @@ async function handleLookupKb(args, message, client) {
 
 
 const HISTORY_CANDIDATES = 30;
+const HISTORY_EDGE_ROWS = 400;
+const HISTORY_HIGHLIGHTS = 3;
 
 // Tight AND matches first; OR only tops up, since any single shared word satisfies it.
-function historyKeywordHits(channelId, queries) {
+function historyKeywordHits(channelId, queries, range) {
   if (!queries) return [];
-  const strict = messageArchive.searchFTS(channelId, queries.all, HISTORY_CANDIDATES);
+  const strict = messageArchive.searchFTS(channelId, queries.all, HISTORY_CANDIDATES, { range });
   if (strict.length >= HISTORY_CANDIDATES || queries.tokens.length === 1) return strict;
   const seen = new Set(strict.map(r => r.id));
-  const loose = messageArchive.searchFTS(channelId, queries.any, HISTORY_CANDIDATES).filter(r => !seen.has(r.id));
+  const loose = messageArchive.searchFTS(channelId, queries.any, HISTORY_CANDIDATES, { range }).filter(r => !seen.has(r.id));
   return [...strict, ...loose];
 }
 
 function historyAuthorName(authorId, message, client) {
+  if (authorId === client?.user?.id) return "you";
   return message.guild?.members?.cache?.get(authorId)?.displayName
     || client?.users?.cache?.get(authorId)?.username
     || "unknown user";
 }
 
-async function handleSearchHistory(args, message, client) {
-  if (!args?.query) return { error: "Missing required 'query' argument." };
-  const limit = Math.min(Math.max(args.limit || 5, 1), 10);
-  const channelId = message.channelId;
+function formatHistoryHit(row, message, client, maxLen = 300) {
+  return {
+    message_id: row.message_id,
+    author: historyAuthorName(row.author_id, message, client),
+    author_id: row.author_id,
+    from_you: row.author_id === client?.user?.id,
+    content: row.content.length > maxLen ? row.content.slice(0, maxLen) + "..." : row.content,
+    created_at: row.created_at ? `<t:${Math.floor(row.created_at / 1000)}:R>` : "unknown",
+  };
+}
+
+function invalidHistoryArgs(detail) {
+  return {
+    error: "invalid_arguments",
+    error_code: TOOL_ERROR_CODES.INVALID_INPUT,
+    tool: "search_history",
+    retryable: true,
+    guidance: `${detail} Correct the arguments and call the tool again. Do not tell the user about this.`,
+  };
+}
+
+async function searchHistoryByQuery(channelId, query, { range, order, limit }, message, client) {
+  const queries = buildFTSQueries(query);
   const selfId = client?.user?.id;
+  let ranked;
+  let totalMatches;
 
-  try {
-    const keywordHits = historyKeywordHits(channelId, buildFTSQueries(args.query));
-
+  if (order !== "relevance") {
+    // Time-ordered answers need every keyword match in date order; semantic top-N is not exhaustive over time.
+    const strict = queries ? messageArchive.searchFTS(channelId, queries.all, limit, { range, order }) : [];
+    ranked = strict.length > 0 || !queries || queries.tokens.length === 1
+      ? strict
+      : messageArchive.searchFTS(channelId, queries.any, limit, { range, order });
+  } else {
+    const keywordHits = historyKeywordHits(channelId, queries, range);
     let semanticHits = [];
     try {
-      const { embedding } = await embed({ text: args.query });
-      semanticHits = messageArchive.searchSemanticFull(channelId, embedding, HISTORY_CANDIDATES)
+      const { embedding } = await embed({ text: query });
+      semanticHits = messageArchive.searchSemanticFull(channelId, embedding, HISTORY_CANDIDATES, range)
         .filter(r => r.score >= HISTORY_SEMANTIC_MIN_SCORE);
     } catch (err) {
       logger.warn(`[search_history] Semantic search unavailable, using keywords only: ${err.message}`);
     }
-
-    const ranked = fuseRankings([keywordHits, semanticHits], {
+    ranked = fuseRankings([keywordHits, semanticHits], {
       limit,
       weightFor: (row) => (row.author_id === selfId ? HISTORY_SELF_WEIGHT : 1),
     });
-    if (ranked.length === 0) {
-      return {
-        results: [],
-        total_matches: 0,
-        note: "No matches in this channel's history for that query. Do not retry with paraphrases. Answer from prior context or say you do not have a record of it.",
-      };
-    }
+    totalMatches = new Set([...keywordHits, ...semanticHits].map(r => r.id)).size;
+  }
 
-    const out = {
-      results: ranked.map((r, i) => ({
-        result_index: i + 1,
-        message_id: r.message_id,
-        author: r.author_id === selfId ? "you" : historyAuthorName(r.author_id, message, client),
-        author_id: r.author_id,
-        from_you: r.author_id === selfId,
-        content: r.content.length > 300 ? r.content.slice(0, 300) + "..." : r.content,
-        created_at: r.created_at ? `<t:${Math.floor(r.created_at / 1000)}:R>` : "unknown",
-      })),
-      total_matches: new Set([...keywordHits, ...semanticHits].map(r => r.id)).size,
+  const out = { results: ranked.map((r, i) => ({ result_index: i + 1, ...formatHistoryHit(r, message, client) })) };
+  if (queries && (range || order !== "relevance")) {
+    const mentions = messageArchive.countFTS(channelId, queries.all, range);
+    out.mentions = {
+      count: mentions.count,
+      first_seen: mentions.first ? isoDate(mentions.first) : null,
+      last_seen: mentions.last ? isoDate(mentions.last) : null,
+      matched_words: queries.tokens,
     };
-    if (ranked.length < limit) {
-      out.note = "These are all matches for this query. Do not re-query with variations. Synthesize from these results.";
+    totalMatches = totalMatches ?? mentions.count;
+  }
+  out.total_matches = totalMatches ?? ranked.length;
+  if (ranked.length === 0) {
+    out.note = "No matches in this channel's history for that query. Do not retry with paraphrases. Answer from prior context or say you do not have a record of it.";
+  } else if (ranked.length < limit) {
+    out.note = "These are all matches for this query. Do not re-query with variations. Synthesize from these results.";
+  }
+  return out;
+}
+
+function browseHistory(channelId, { range, order, limit }, message, client) {
+  const newestFirst = order === "newest";
+  const index = messageArchive.getRangeIndex(channelId, {
+    range,
+    order: newestFirst ? "newest" : "oldest",
+    limit: range ? undefined : HISTORY_EDGE_ROWS,
+  });
+  if (newestFirst) index.reverse();
+
+  const gapMs = HISTORY_CONVERSATION_GAP_HOURS * 3600000;
+  const allGroups = groupConversations(index, gapMs);
+  const shown = selectConversations(allGroups, limit, order);
+  const chunks = new Map(messageArchive.getChunksByIds(shown.flat().map(r => r.id)).map(r => [r.id, r]));
+
+  const conversations = shown.map(group => {
+    const rows = group.map(r => chunks.get(r.id)).filter(Boolean);
+    const first = group[0].created_at;
+    const last = group[group.length - 1].created_at;
+    return {
+      started: `<t:${Math.floor(first / 1000)}:f>`,
+      date: isoDate(first),
+      duration_minutes: Math.round((last - first) / 60000),
+      message_count: group.length,
+      participants: [...new Set(group.map(r => historyAuthorName(r.author_id, message, client)))],
+      highlights: pickRepresentative(rows, HISTORY_HIGHLIGHTS, client?.user?.id).map(r => formatHistoryHit(r, message, client, 200)),
+    };
+  });
+
+  const out = {
+    conversations,
+    total_conversations: range ? allGroups.length : undefined,
+    total_messages: range ? index.length : undefined,
+    note: conversations.length === 0
+      ? "No messages in this channel's history for that period. Say you have no record of it, not that nothing happened."
+      : "Summarize these conversations in your own words. Highlights are samples chosen to represent each conversation, not full transcripts.",
+  };
+
+  if (order === "oldest" && !range) {
+    const episodesBefore = episodes.getOldestForScope("channel", channelId, 3);
+    if (episodesBefore.length > 0) {
+      out.earlier_history = episodesBefore.map(e => ({ summary: e.summary, tags: e.tags ? JSON.parse(e.tags) : [] }));
+      out.note += " earlier_history summarizes conversations older than the first archived message, so the very first conversation is described there, not in conversations.";
+    }
+  }
+  return out;
+}
+
+async function handleSearchHistory(args, message, client) {
+  const channelId = message.channelId;
+  const query = typeof args?.query === "string" ? args.query.trim() : "";
+  const order = args?.order || "relevance";
+  const limit = Math.min(Math.max(args?.limit || 5, 1), 10);
+  const range = parseRange(args || {});
+  if (range?.error) return invalidHistoryArgs(range.error);
+  if (!query && !range && order === "relevance") {
+    return invalidHistoryArgs("Provide a query, a date range with after and/or before, or order set to oldest or newest.");
+  }
+
+  try {
+    const out = query
+      ? await searchHistoryByQuery(channelId, query, { range, order, limit }, message, client)
+      : browseHistory(channelId, { range, order, limit }, message, client);
+
+    if (range) {
+      const bounds = messageArchive.getBounds(channelId);
+      out.range = {
+        after: range.afterMs !== null ? isoDate(range.afterMs) : null,
+        before_exclusive: range.beforeMs !== null ? isoDate(range.beforeMs) : null,
+      };
+      out.coverage = {
+        archive_starts: bounds.first ? isoDate(bounds.first) : null,
+        gaps: coverageGaps(messageArchive.getTimestamps(channelId, range), range)
+          .map(([from, to]) => ({ from: isoDate(from), to: isoDate(to) })),
+        note: "Gaps are periods with no archived messages at all. Treat them as unknown, never as proof that nothing was said.",
+      };
     }
     return out;
   } catch (err) {
