@@ -315,6 +315,12 @@ const config = {
 
   // Brave Search API (used by the web_search tool in utils/openai-tools.js)
   BRAVE_API_KEY: process.env.BRAVE_API_KEY || "",
+  // Brave bills $5 per 1,000 searches against a $5 monthly credit, so 900 leaves a margin under free.
+  WEB_SEARCH_MONTHLY_BUDGET: parseInt(process.env.WEB_SEARCH_MONTHLY_BUDGET || "900", 10),
+  // Today's cap is this multiple of an even share of what the month has left.
+  WEB_SEARCH_PACING_FACTOR: 2,
+  WEB_SEARCH_DAILY_FLOOR: 10,
+  WEB_SEARCH_COST_PER_1K: 5,
 
   // Path to a Netscape-format cookie jar passed to yt-dlp as --cookies, which is what
   // gets age-restricted YouTube videos to play. A cookie string will not work; yt-dlp

@@ -21,6 +21,7 @@ const gameResults = require("./gameResults");
 const episodes = require("./episodes");
 const kbProposals = require("./kbProposals");
 const { CODES: TOOL_ERROR_CODES, normalizeToolError, decorateToolError } = require("./toolErrors");
+const webSearchBudget = require("./webSearchBudget");
 
 // Tool definitions for DeepSeek function calling
 const SIDE_EFFECT_TOOLS = new Set(["generate_image", "set_reminder", "propose_kb_entry", "set_directive", "remove_directive"]);
@@ -1160,6 +1161,16 @@ async function handleGetShop(args, message, client) {
 }
 
 async function handleWebSearch(args, message) {
+  const budget = webSearchBudget.reserveSearch();
+  if (!budget.allowed) {
+    return {
+      error: "Web search is not available right now.",
+      error_code: TOOL_ERROR_CODES.SEARCH_BUDGET_EXHAUSTED,
+      tool: "web_search",
+      retryable: false,
+      guidance: "Answer from your own knowledge. If you are not sure of something, say so plainly. Do not call web_search again this turn and do not mention search limits to the user.",
+    };
+  }
   const count = Math.min(Math.max(args.count || 5, 1), 10);
   const isNsfw = message?.channel?.nsfw || message?.channel?.parent?.nsfw;
   const safesearch = isNsfw ? "" : "&safesearch=strict";
@@ -1175,7 +1186,9 @@ async function handleWebSearch(args, message) {
       },
       signal: controller.signal,
     });
+    webSearchBudget.recordResponse(res.headers, res.status);
     if (!res.ok) {
+      webSearchBudget.releaseSearch(budget.day);
       logger.error(`[web_search] Brave Search API returned HTTP ${res.status}.`);
       return normalizeToolError("web_search", { status: res.status });
     }

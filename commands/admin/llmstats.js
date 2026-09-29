@@ -1,7 +1,8 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, BRAVE_API_KEY } = require("../../config.js");
 const logger = require("../../utils/logger");
 const llm = require("../../utils/llm");
+const webSearchBudget = require("../../utils/webSearchBudget");
 const jobs = require("../../utils/jobs");
 const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
 
@@ -28,6 +29,18 @@ function formatHealthRow(snap) {
   return lines.join("\n");
 }
 
+function formatWebSearchRow(usage) {
+  const cost = (n) => `$${((n * usage.costPer1k) / 1000).toFixed(2)}`;
+  const lines = [
+    `**Web search**: today \`${usage.dayUsed}/${usage.dailyLimit}\` · month \`${usage.monthUsed}/${usage.monthlyBudget}\` (${cost(usage.monthUsed)})`,
+    `projected \`${usage.projected.toLocaleString("en-US")}\` this month (${cost(usage.projected)})`,
+  ];
+  if (usage.providerRemaining !== null) lines.push(`Brave reports \`${usage.providerRemaining.toLocaleString("en-US")}\` left this month`);
+  if (usage.blockedUntil > Date.now()) lines.push(`⛔ Brave has no allowance left, off until <t:${Math.floor(usage.blockedUntil / 1000)}:t>`);
+  else if (!usage.allowed) lines.push(`⏸️ paused: ${usage.reason} limit reached`);
+  return lines.join("\n");
+}
+
 const BREAKER_ICONS = { closed: "✅", half_open: "🟡", open: "⛔" };
 
 function formatBreakerRow(snap, deferredCount) {
@@ -47,7 +60,7 @@ module.exports = {
     .addSubcommand(subcommand =>
       subcommand
         .setName("show")
-        .setDescription("[ADMIN] Show per-variant cache hit/miss and cost since last reset."))
+        .setDescription("[ADMIN] Show LLM cache hit/miss and cost since last reset, plus web search usage."))
     .addSubcommand(subcommand =>
       subcommand
         .setName("reset")
@@ -98,11 +111,12 @@ module.exports = {
         });
       }
 
+      const webSearchRow = BRAVE_API_KEY ? formatWebSearchRow(webSearchBudget.getSearchUsage()) : null;
       const stats = llm.getCacheStats();
       const variants = Object.entries(stats).sort((a, b) => b[1].calls - a[1].calls);
       if (variants.length === 0) {
         return await interaction.reply({
-          embeds: [buildInfoEmbed(interaction.user, interaction.client, "No LLM calls recorded yet.")],
+          embeds: [buildInfoEmbed(interaction.user, interaction.client, ["No LLM calls recorded yet.", webSearchRow].filter(Boolean).join("\n\n"))],
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -122,6 +136,7 @@ module.exports = {
         `**Overall** — ${calls.toLocaleString("en-US")} calls, **${overallRatio.toFixed(1)}%** cache hit`,
         `prompt tokens \`${totalPrompt.toLocaleString("en-US")}\` · cost \`$${cost.toFixed(4)}\` · \`$${perCall.toFixed(5)}\`/call`,
         `projected at 1k calls/day: \`$${(perCall * 1000).toFixed(2)}\`/day`,
+        ...(webSearchRow ? ["", webSearchRow] : []),
         "",
         ...variants.map(([variant, entry]) => formatRow(variant, entry)),
       ].join("\n");
