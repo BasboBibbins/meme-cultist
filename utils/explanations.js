@@ -404,6 +404,8 @@ module.exports = {
 
             If you want to say something out-of-character that the bot doesn't use or react to, prefix your message with "${OOC_PREFIX}" and the bot will ignore it completely.
 
+            In a chatbot channel that isn't age-restricted, the bot won't write or look up explicit content. It points you to the age-restricted chatbot channel instead. Dark and edgy humor is fine anywhere.
+
             Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions. Facts are extracted both periodically from summaries and in real-time as you chat.
             If you want your thread to be more roleplay-focused, modify the settings tagged **[RP]** when using \`/context set\`.
 
@@ -578,16 +580,20 @@ module.exports = {
   aifeatures: {
     name: "AI Features",
     description: `
-            The chatbot has additional AI capabilities powered by Google Gemini:
+            The chatbot has additional AI capabilities:
 
-            **Image Vision** — Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself — it won't say "based on the description."
+            **Image Vision:** Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself. It won't say "based on the description."
 
-            **URL Context** — Share a link and the bot will automatically read the page content so it can discuss it with you. It works for any HTML page — articles, docs, blogs, etc. The bot references the content naturally as if it read the page.
+            **URL Context:** Share a link and the bot will automatically read the page content so it can discuss it with you. It works for any HTML page: articles, docs, blogs, etc. The bot references the content naturally as if it read the page.
 
-            **Image Generation** — Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
+            **Image Generation:** Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
+
+            **Web Search:** When a conversation turns to current events, sports, news, or anything recent, the bot looks up the details on its own instead of guessing or asking you, and answers in its normal voice. A quick reaction to something it already covered doesn't trigger a search.
         `,
     note: `
-            Vision and image generation require a Gemini API key. If it's not configured, the bot will let you know rather than pretending.
+            Vision and image generation require a Gemini API key, and web search requires a Brave Search key. If one isn't configured, the bot will let you know rather than pretending.
+
+            For web search: searches are paced against a monthly budget, so on a very busy day the bot may answer from what it already knows.
 
             For URL context: only the first URL per message is fetched. Non-HTML content is skipped. Pages larger than 2MB or with text exceeding 4000 characters are truncated. Fetch requests time out after 8 seconds.
 
