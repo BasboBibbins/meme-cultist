@@ -50,4 +50,16 @@ function splitPot(total, recipientCount, jackpotShare) {
   return { jackpot: total - perRecipient * recipientCount, perRecipient };
 }
 
-module.exports = { isPlayerRow, holdings, effectiveLastActive, isLongInactive, planCleanup, splitPot };
+// The member snapshot can be minutes old: anyone who rejoined keeps their row, and anyone who left since is not paid.
+function reconcileWithLive(plan, isLiveMember) {
+  const departed = plan.departed.filter(e => !isLiveMember(e.id));
+  const recipients = plan.recipients.filter(id => isLiveMember(id));
+  return {
+    departed,
+    recipients,
+    rejoined: plan.departed.length - departed.length,
+    left: plan.recipients.length - recipients.length,
+  };
+}
+
+module.exports = { isPlayerRow, holdings, effectiveLastActive, isLongInactive, planCleanup, splitPot, reconcileWithLive };

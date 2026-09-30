@@ -5,7 +5,7 @@ const { ensureDbDir } = require("./utils/dbDir");
 ensureDbDir();
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const logger = require("./utils/logger");
-const { isPlayerRow, holdings, isLongInactive, planCleanup, splitPot } = require("./utils/dbCleanup");
+const { isPlayerRow, holdings, isLongInactive, planCleanup, splitPot, reconcileWithLive } = require("./utils/dbCleanup");
 const { addToJackpot } = require("./utils/jackpot");
 const { withUserLock } = require("./utils/userlock");
 
@@ -261,18 +261,30 @@ function mergeDefaults(row, defaults) {
 const MEMBER_SNAPSHOT_TTL_MS = 120000;
 let memberSnapshot = null;
 
-async function fetchMembersOnce(guild, now) {
-  if (memberSnapshot?.guildId === guild.id && now - memberSnapshot.at < MEMBER_SNAPSHOT_TTL_MS) return memberSnapshot.members;
+async function loadMemberIds(guild) {
   const members = await guild.members.fetch();
-  memberSnapshot = { guildId: guild.id, at: now, members };
-  return members;
+  return {
+    memberIds: new Set(members.keys()),
+    botIds: new Set(members.filter(m => m.user.bot).map(m => m.id)),
+  };
+}
+
+// Caches the in-flight promise so concurrent callers share one fetch instead of racing into the rate limit.
+async function fetchMembersOnce(guild, now) {
+  if (memberSnapshot?.guildId === guild.id && now - memberSnapshot.at < MEMBER_SNAPSHOT_TTL_MS) return memberSnapshot.pending;
+  const snapshot = { guildId: guild.id, at: now, pending: loadMemberIds(guild) };
+  memberSnapshot = snapshot;
+  try {
+    return await snapshot.pending;
+  } catch (err) {
+    if (memberSnapshot === snapshot) memberSnapshot = null;
+    throw err;
+  }
 }
 
 async function buildCleanupPlan(client, now) {
   const guild = client.guilds.cache.get(GUILD_ID);
-  const members = await fetchMembersOnce(guild, now);
-  const memberIds = new Set(members.keys());
-  const botIds = new Set(members.filter(m => m.user.bot).map(m => m.id));
+  const { memberIds, botIds } = await fetchMembersOnce(guild, now);
   return planCleanup(await db.all(), { memberIds, botIds, now, inactiveDays: CLEANUP_INACTIVE_DAYS, activeDays: INTEREST_ACTIVE_WINDOW_DAYS });
 }
 
@@ -383,10 +395,9 @@ module.exports = {
     const departed = [];
     const inactive = [];
 
-    // The member snapshot can be up to two minutes old; the live cache catches anyone who rejoined since.
     const liveMembers = client.guilds.cache.get(GUILD_ID)?.members?.cache;
-    for (const entry of plan.departed) {
-      if (liveMembers?.has(entry.id)) continue;
+    const live = reconcileWithLive(plan, id => Boolean(liveMembers?.has(id)));
+    for (const entry of live.departed) {
       const amount = await withUserLock(entry.id, async () => {
         const row = await db.get(entry.id);
         await db.delete(entry.id);
@@ -409,15 +420,15 @@ module.exports = {
     }
 
     const total = [...departed, ...inactive].reduce((sum, e) => sum + e.amount, 0);
-    const { jackpot, perRecipient } = splitPot(total, plan.recipients.length, CLEANUP_JACKPOT_SHARE);
+    const { jackpot, perRecipient } = splitPot(total, live.recipients.length, CLEANUP_JACKPOT_SHARE);
     if (jackpot > 0) await addToJackpot(jackpot);
     if (perRecipient > 0) {
-      for (const id of plan.recipients) {
+      for (const id of live.recipients) {
         await withUserLock(id, () => db.add(`${id}.bank`, perRecipient));
       }
     }
 
-    logger.log(`Cleanup: deleted ${departed.length} departed, emptied ${inactive.length} inactive, collected ${total.toLocaleString("en-US")}. Jackpot +${jackpot.toLocaleString("en-US")}, ${plan.recipients.length} players +${perRecipient.toLocaleString("en-US")} each.`);
-    return { departed, inactive, recipients: plan.recipients, total, jackpot, perRecipient };
+    logger.log(`Cleanup: deleted ${departed.length} departed, emptied ${inactive.length} inactive, collected ${total.toLocaleString("en-US")}. Jackpot +${jackpot.toLocaleString("en-US")}, ${live.recipients.length} players +${perRecipient.toLocaleString("en-US")} each. Since the member snapshot: ${live.rejoined} rejoined and kept, ${live.left} recipients left and unpaid.`);
+    return { departed, inactive, recipients: live.recipients, total, jackpot, perRecipient };
   },
 };

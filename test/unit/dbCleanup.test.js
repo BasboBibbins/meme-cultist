@@ -1,4 +1,4 @@
-const { isPlayerRow, holdings, effectiveLastActive, isLongInactive, planCleanup, splitPot } = require("../../utils/dbCleanup");
+const { isPlayerRow, holdings, effectiveLastActive, isLongInactive, planCleanup, splitPot, reconcileWithLive } = require("../../utils/dbCleanup");
 
 const DAY = 86400000;
 const NOW = new Date(2026, 8, 29, 12).getTime();
@@ -105,5 +105,30 @@ describe("splitPot", () => {
       const { jackpot, perRecipient } = splitPot(total, n, 0.5);
       expect(jackpot + perRecipient * n).toBe(total);
     }
+  });
+});
+
+describe("reconcileWithLive", () => {
+  const plan = {
+    departed: [{ id: "gone", amount: 100 }, { id: "back", amount: 50 }],
+    recipients: ["stay", "quit"],
+  };
+
+  test("keeps rejoined members and drops recipients who left since the snapshot", () => {
+    const live = new Set(["back", "stay"]);
+    expect(reconcileWithLive(plan, id => live.has(id))).toEqual({
+      departed: [{ id: "gone", amount: 100 }],
+      recipients: ["stay"],
+      rejoined: 1,
+      left: 1,
+    });
+  });
+
+  test("changes nothing when the snapshot still matches", () => {
+    const live = new Set(["stay", "quit"]);
+    const result = reconcileWithLive(plan, id => live.has(id));
+    expect(result.departed).toEqual(plan.departed);
+    expect(result.recipients).toEqual(plan.recipients);
+    expect(result.rejoined + result.left).toBe(0);
   });
 });
