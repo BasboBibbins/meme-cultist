@@ -4,7 +4,7 @@ const logger = require("./logger");
 const { getCurrentTopUsers, getAllTimeTopUsers } = require("./bank");
 const { generateImage, embed } = require("./llm");
 const { canGenerateImage } = require("./ratelimiter");
-const { isChatbotChannel, formatChatbotChannelMentions } = require("./channels");
+const { isChatbotChannel, formatChatbotChannelMentions, isNsfwChannel } = require("./channels");
 const kbStore = require("./kb");
 const kbPreflight = require("./kb/preflight");
 const messageArchive = require("./messageArchive");
@@ -426,10 +426,10 @@ const TOOLS = [
       function: {
         name: "web_search",
         description:
-          "Search the web to verify or fill in facts. Call it on your own, without being asked, whenever an answer " +
-          "depends on something you are not confident about: specific facts, numbers, dates, names, releases, " +
-          "niche or obscure topics, people, products, games, media, or anything that may have changed recently. " +
-          "Search instead of guessing. Skip it for opinions, banter, and things you know well. " +
+          "Search the web to verify or fill in facts. Call it on your own, without being asked, whenever a good reply " +
+          "depends on facts you are not certain of: current events, news, sports, specific facts, numbers, dates, names, " +
+          "releases, niche or obscure topics, people, products, games, media, or anything that may have changed recently. " +
+          "Search instead of guessing, and instead of asking the user. Skip it only when the reply needs no facts at all. " +
           "Returns top results with title, URL, and snippet. " +
           "Use fetch_page after this to read the full content of a specific result URL.",
         parameters: {
@@ -1262,8 +1262,7 @@ async function handleWebSearch(args, message) {
     };
   }
   const count = Math.min(Math.max(args.count || 5, 1), 10);
-  const isNsfw = message?.channel?.nsfw || message?.channel?.parent?.nsfw;
-  const safesearch = isNsfw ? "" : "&safesearch=strict";
+  const safesearch = isNsfwChannel(message?.channel) ? "" : "&safesearch=strict";
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(args.query)}&count=${count}&result_filter=web${safesearch}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);

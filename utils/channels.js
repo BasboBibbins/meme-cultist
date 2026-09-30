@@ -20,4 +20,15 @@ function isChatbotChannel(channelId, parentId) {
   return CHATBOT_CHANNELS.includes(channelId) || CHATBOT_CHANNELS.includes(parentId);
 }
 
-module.exports = { formatChatbotChannelMentions, isChatbotChannel };
+function isNsfwChannel(channel) {
+  return Boolean(channel?.nsfw || channel?.parent?.nsfw);
+}
+
+// Discord's age-restricted flag is the source of truth, so there is no separate setting to drift from the server's.
+function findNsfwChatbotChannel(client) {
+  return CHATBOT_CHANNELS
+    .map(id => client?.channels?.cache?.get(id))
+    .find(channel => channel?.nsfw) ?? null;
+}
+
+module.exports = { formatChatbotChannelMentions, isChatbotChannel, isNsfwChannel, findNsfwChatbotChannel };
