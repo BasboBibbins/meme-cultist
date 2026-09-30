@@ -321,6 +321,7 @@ const config = {
   WEB_SEARCH_PACING_FACTOR: 2,
   WEB_SEARCH_DAILY_FLOOR: 10,
   WEB_SEARCH_COST_PER_1K: 5,
+  WEB_SEARCH_DB_PATH: process.env.WEB_SEARCH_DB_PATH || "db/web_search.sqlite",
 
   // Path to a Netscape-format cookie jar passed to yt-dlp as --cookies, which is what
   // gets age-restricted YouTube videos to play. A cookie string will not work; yt-dlp
