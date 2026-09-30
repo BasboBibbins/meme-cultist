@@ -167,8 +167,12 @@ describe("formatAgeBucket", () => {
 });
 
 describe("buildChannelContentBlock", () => {
-  test("an age-restricted channel gets no block", () => {
-    expect(buildChannelContentBlock({ nsfwChannel: true, nsfwRoomId: "123", webSearch: true })).toBe("");
+  test("an age-restricted channel welcomes explicit content instead of redirecting", () => {
+    const block = buildChannelContentBlock({ nsfwChannel: true, nsfwRoomId: "123", webSearch: true });
+    expect(block.startsWith("[Channel Content]")).toBe(true);
+    expect(block).toContain("welcome here");
+    expect(block).toContain("adult");
+    expect(block).not.toContain("<#123>");
   });
 
   test("a regular channel points explicit content at the NSFW room and claims precedence", () => {

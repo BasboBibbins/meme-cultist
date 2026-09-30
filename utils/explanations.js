@@ -404,7 +404,7 @@ module.exports = {
 
             If you want to say something out-of-character that the bot doesn't use or react to, prefix your message with "${OOC_PREFIX}" and the bot will ignore it completely.
 
-            In a chatbot channel that isn't age-restricted, the bot won't write or look up explicit content. It points you to the age-restricted chatbot channel instead. Dark and edgy humor is fine anywhere.
+            In a chatbot channel that isn't age-restricted, the bot won't write or look up explicit content. It points you to the age-restricted chatbot channel instead, where it writes what you ask for. Dark and edgy humor is fine anywhere.
 
             Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions. Facts are extracted both periodically from summaries and in real-time as you chat.
             If you want your thread to be more roleplay-focused, modify the settings tagged **[RP]** when using \`/context set\`.
