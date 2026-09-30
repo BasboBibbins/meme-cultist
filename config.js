@@ -367,16 +367,17 @@ const config = {
   SELF_ROLES_DB_PATH: process.env.SELF_ROLES_DB_PATH || "db/self_roles.sqlite",
   ROLES_MODAL_TIMEOUT_MS: parseInt(process.env.ROLES_MODAL_TIMEOUT_MS || "600000", 10),
 
-  // Message archive retention (utils/messageArchive/). Pruned daily by the
-  // midnight job in bot.js. Both axes are independent: rows older than
-  // ARCHIVE_RETENTION_DAYS are dropped first, then each channel is trimmed
-  // down to ARCHIVE_MAX_ROWS_PER_CHANNEL most-recent rows. Set either to 0
-  // to disable that axis.
-  ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "90", 10),
-  ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "10000", 10),
+  // Nightly archive prune by age and by per-channel row count; 0 disables either, and both default off so search sees all history.
+  ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "0", 10),
+  ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "0", 10),
+  // Compaction deletes the archive rows it summarizes into episodes, so it stays off unless deliberately enabled.
+  ARCHIVE_COMPACTION_ENABLED: /^(1|true|yes|on)$/i.test(process.env.ARCHIVE_COMPACTION_ENABLED || ""),
   // Minimum archived chunks per channel before the 6h compaction job converts
   // the oldest SUMMARY_INTERVAL-sized window into an episode entry.
   ARCHIVE_COMPACTION_THRESHOLD: parseInt(process.env.ARCHIVE_COMPACTION_THRESHOLD || "100", 10),
+  // History backfill fetches this many 100-message pages per job, then requeues itself after the delay.
+  ARCHIVE_BACKFILL_PAGES_PER_RUN: 20,
+  ARCHIVE_BACKFILL_DELAY_MS: 2000,
   // Minimum cosine similarity an episode must clear in recall_episode's semantic
   // fallback (the branch taken when FTS finds no keyword match). Without a floor
   // the closest-ranked episodes are always returned, so unrelated queries surface

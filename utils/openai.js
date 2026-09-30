@@ -53,6 +53,7 @@ const llm = require("./llm");
 const personas = require("./personas");
 const kbProposals = require("./kbProposals");
 const messageArchive = require("./messageArchive");
+const { isArchivable } = require("./jobs/backfillHandlers");
 const { assembleSystemPrompt, assembleTurnContext, formatAgeBucket, buildChannelContentBlock, TURN_CONTEXT_LEGEND_BLOCK } = require("./openai-system-prompts");
 const { chatWithSchema, parseAndValidate } = require("./schemas");
 const { mergeDirectives, removeDirective, buildDirectivesBlock } = require("./directives");
@@ -1902,7 +1903,7 @@ async function tickMessageCount(channel, messages, userId) {
       logger.error(`[MemoryTick] Summarization failed for ${channel.name}: ${err.message}`);
     }
     try {
-      archiveMessages(channel.id, messages);
+      await archiveMessages(channel.id, messages);
     } catch (err) {
       logger.error(`[MemoryTick] Archive failed for ${channel.name}: ${err.message}`);
     }
@@ -3099,12 +3100,40 @@ async function handleBotMessage(client, message, customPrompt = null, channelId 
   }
 }
 
-function archiveMessages(channelId, messages) {
+// Read-only on purpose: getUserChatbotData would write a partial row for every historical author.
+async function isArchiveOptedOut(userId, channelId) {
+  const chatbot = await usersDb.get(`${userId}.chatbot`);
+  if (!chatbot) return false;
+  const channels = Array.isArray(chatbot.incognitoChannels) ? chatbot.incognitoChannels : [];
+  return Boolean(chatbot.incognitoMode) || channels.includes(channelId);
+}
+
+async function optedOutCached(cache, userId, channelId) {
+  if (!cache.has(userId)) cache.set(userId, await isArchiveOptedOut(userId, channelId));
+  return cache.get(userId);
+}
+
+async function archiveHistoryMessage(channelId, msg, seenAuthors = new Map()) {
+  if (!isArchivable(msg, { oocPrefix: OOC_PREFIX, bannedRoleId: BANNED_ROLE })) return false;
+  if (await optedOutCached(seenAuthors, msg.author.id, channelId)) return false;
+  return Boolean(messageArchive.insertChunk({
+    channelId,
+    messageId: msg.id,
+    authorId: msg.author.id,
+    content: msg.content,
+    chunkIndex: 0,
+    createdAt: msg.createdTimestamp,
+  }));
+}
+
+async function archiveMessages(channelId, messages) {
   if (!messages || messages.length === 0) return;
   const jobs = require("./jobs");
   const insertedIds = [];
+  const optedOut = new Map();
   for (const msg of messages) {
     if (!msg || !msg.id || !msg.author || !msg.content) continue;
+    if (await optedOutCached(optedOut, msg.author.id, channelId)) continue;
     const id = messageArchive.insertChunk({
       channelId,
       messageId: msg.id,
@@ -3135,6 +3164,7 @@ const updateChannelContext = updateThreadContext;
 module.exports = {
   handleBotMessage,
   buildToolBlock, buildChatbotChannelBlock, IDENTITY_RULES_BLOCK, DISCORD_FORMATTING_BLOCK, TURN_MODE_AMBIENT, NOW_SEARCH_REMINDER,
+  archiveHistoryMessage, isArchiveOptedOut,
   updateThreadContext, addNewThreadContext, getThreadContext,
   deleteThreadContext, getValidMessages, summarizeMessages, generateFacts,
   getChannelContext, addChannelContext, deleteChannelContext, updateChannelContext,
