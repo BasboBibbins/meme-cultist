@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, previewCleanup, runCleanup, db } = require("../../database");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("../../config.js");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_JACKPOT_SHARE, INTEREST_ACTIVE_WINDOW_DAYS } = require("../../config.js");
 const logger = require("../../utils/logger");
 const wait = require("util").promisify(setTimeout);
 const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
@@ -140,19 +140,26 @@ function listEntries(entries) {
   return lines.join("\n");
 }
 
+function cleanupSources(result) {
+  const sources = [];
+  if (result.inactive.length > 0) sources.push(`accounts inactive for over ${CLEANUP_INACTIVE_DAYS} days`);
+  if (result.departed.some(e => e.amount > 0)) sources.push("members who left");
+  return sources.join(" and ");
+}
+
 async function notifyCleanupRecipients(client, guildName, result) {
   if (!(result.perRecipient > 0)) return 0;
   const { amount: jackpotAmount } = await getJackpot();
+  const sources = cleanupSources(result);
   let delivered = 0;
   for (const id of result.recipients) {
     try {
-      const user = await client.users.fetch(id);
-      const bank = (await db.get(`${id}.bank`)) || 0;
+      const [user, bank] = await Promise.all([client.users.fetch(id), db.get(`${id}.bank`)]);
       const embed = buildInfoEmbed(user, client, [
-        `Accounts inactive for over a year in ${guildName} had their ${CURRENCY_NAME} shared out between everyone who played this week. The other half went to the progressive jackpot, which now stands at **${jackpotAmount.toLocaleString("en-US")}** ${CURRENCY_NAME}.`,
-        `You now have **${bank.toLocaleString("en-US")}** ${CURRENCY_NAME} in your bank!`,
+        `Everyone who played in ${guildName} in the last ${INTEREST_ACTIVE_WINDOW_DAYS} days got an equal share of the ${CURRENCY_NAME} reclaimed from ${sources}. The rest went to the progressive jackpot, which now stands at **${jackpotAmount.toLocaleString("en-US")}** ${CURRENCY_NAME}.`,
+        `You now have **${(bank || 0).toLocaleString("en-US")}** ${CURRENCY_NAME} in your bank!`,
       ].join("\n\n"))
-        .setAuthor({ name: `You received ${result.perRecipient.toLocaleString("en-US")} ${CURRENCY_NAME} from the inactive account cleanup!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setAuthor({ name: `You received ${result.perRecipient.toLocaleString("en-US")} ${CURRENCY_NAME} from the account cleanup!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
         .setThumbnail(client.user.displayAvatarURL({ dynamic: true, size: 1024 }));
       if (await sendDM(user, { embeds: [embed] })) delivered++;
     } catch (err) {
@@ -237,7 +244,10 @@ async function runCleanupFlow(interaction) {
     `Deleted **${result.departed.length}** departed members and emptied **${result.inactive.length}** inactive members.`,
     `**${result.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${result.jackpot.toLocaleString("en-US")}** to the jackpot, **${result.perRecipient.toLocaleString("en-US")}** each to **${result.recipients.length}** active players.`,
   ];
-  if (result.perRecipient > 0) lines.push(`Notified **${delivered}** of **${result.recipients.length}** recipients by DM. The rest have DMs off or closed.`);
+  if (result.perRecipient > 0) {
+    const missed = result.recipients.length - delivered;
+    lines.push(`Notified **${delivered}** of **${result.recipients.length}** recipients by DM.${missed > 0 ? ` The other ${missed} could not be reached.` : ""}`);
+  }
   const done = buildSuccessEmbed(interaction.user, interaction.client, lines.join("\n\n"))
     .setTitle("Database Cleanup Complete")
     .addFields(
