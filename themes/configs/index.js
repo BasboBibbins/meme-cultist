@@ -704,7 +704,7 @@ const themes = {
 
   halloween: limited("halloween", "Halloween",
     "Pumpkin orange over a deep purple-black graveyard. Toxic green wins and a moonlit chill.",
-    400000, "🎃",
+    800000, "🎃",
     HALLOWEEN_WINDOW,
     halloweenColors,
     {
@@ -780,7 +780,7 @@ const themes = {
 
   neon: full("neon", "Neon Arcade",
     "A vibrant neon theme with glowing symbols.",
-    200000, 14, "🪩", neonColors,
+    400000, 5, "🪩", neonColors,
     {
       slots: {
         reelBackground:      "rgba(18, 8, 40, 0.75)",
@@ -853,7 +853,7 @@ const themes = {
 
   feudalJapan: full("feudalJapan", "Feudal Japan",
     "Traditional Japanese theme with feudal symbols.",
-    500000, 10, "🎋", feudalJapanColors,
+    1000000, 5, "🎋", feudalJapanColors,
     {
       slots: {
         reelBackground:      "rgba(26, 0, 0, 0.75)",
@@ -926,7 +926,7 @@ const themes = {
 
   cosmic: full("cosmic", "Cosmic",
     "A extraterrestrial theme with cosmic symbols and a starry background.",
-    500000, 10, "🌌", cosmicColors,
+    1000000, 5, "🌌", cosmicColors,
     {
       slots: {
         reelBackground:      "rgba(8, 12, 24, 0.75)",
@@ -998,7 +998,7 @@ const themes = {
 
   dessert: full("dessert", "Sweet Tooth",
     "A candy land of chocolate, bubblegum, and sweets.",
-    500000, 10, "🍰", dessertColors,
+    1000000, 5, "🍰", dessertColors,
     {
       slots: {
         reelBackground:      "rgba(42, 16, 8, 0.75)",
@@ -1070,7 +1070,7 @@ const themes = {
 
   deepSea: full("deepSea", "Deep Sea",
     "Bioluminescent deep ocean with midnight blues, electric teal, and coral pink accents.",
-    500000, 10, "🪸", deepSeaColors,
+    1000000, 5, "🪸", deepSeaColors,
     {
       slots: {
         reelBackground:      "rgba(6, 10, 32, 0.75)",
@@ -1142,7 +1142,7 @@ const themes = {
 
   y2k: full("y2k", "Y2K",
     "Blobject-era glossy futurism. Translucent aqua plastic panels, chrome orange frames, and lime/red accents.",
-    500000, 10, "💾", y2kColors,
+    1000000, 5, "💾", y2kColors,
     {
       slots: {
         reelBackground:      "rgba(220, 242, 255, 0.88)",
@@ -1214,7 +1214,7 @@ const themes = {
 
   glass: full("glass", "Glass",
     "Liquid Glass design language. Frosted translucent panels, soft blue LED accents, and a bright azure glass background. Light, airy, and premium.",
-    300000, 12, "🪟", glassColors,
+    600000, 5, "🪟", glassColors,
     {
       slots: {
         reelBackground:      "rgba(228, 240, 252, 0.85)",
@@ -1286,7 +1286,7 @@ const themes = {
 
   term: full("term", "Term",
     "Terminal aesthetic. Black field, green phosphor glow, CRT scanlines. Welcome to the Matrix.",
-    300000, 12, "🖥️", termColors,
+    600000, 5, "🖥️", termColors,
     {
       slots: {
         reelBackground:      "rgba(0, 0, 0, 0.9)",
@@ -1358,7 +1358,7 @@ const themes = {
 
   bloons: full("bloons", "Bloons",
     "Warm jungle wood and tan tower-defense energy. Sandy paths, banana yellow accents, and a playful aesthetic.",
-    500000, 10, "🎈", bloonsColors,
+    1000000, 5, "🎈", bloonsColors,
     {
       slots: {
         reelBackground:      "rgba(210, 184, 140, 0.85)",
