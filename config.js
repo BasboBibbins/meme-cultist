@@ -217,7 +217,8 @@ const config = {
   JACKPOT_INTEREST_CAP: 50000000,
 
   CLEANUP_INACTIVE_DAYS: 365,
-  CLEANUP_JACKPOT_SHARE: 0.5,
+  CLEANUP_ACTIVE_DAYS: 30,
+  CLEANUP_JACKPOT_SHARE: 0.25,
 
   // Claim payouts in koku, inclusive. /help reads these.
   DAILY_MIN: 1000,

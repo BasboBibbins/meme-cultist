@@ -1,6 +1,6 @@
 const { QuickDB } = require("quick.db");
 const moment = require("moment");
-const { GUILD_ID, CLEANUP_INACTIVE_DAYS, CLEANUP_JACKPOT_SHARE, INTEREST_ACTIVE_WINDOW_DAYS } = require("./config.js");
+const { GUILD_ID, CLEANUP_INACTIVE_DAYS, CLEANUP_ACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("./config.js");
 const { ensureDbDir } = require("./utils/dbDir");
 ensureDbDir();
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
@@ -285,7 +285,7 @@ async function fetchMembersOnce(guild, now) {
 async function buildCleanupPlan(client, now) {
   const guild = client.guilds.cache.get(GUILD_ID);
   const { memberIds, botIds } = await fetchMembersOnce(guild, now);
-  return planCleanup(await db.all(), { memberIds, botIds, now, inactiveDays: CLEANUP_INACTIVE_DAYS, activeDays: INTEREST_ACTIVE_WINDOW_DAYS });
+  return planCleanup(await db.all(), { memberIds, botIds, now, inactiveDays: CLEANUP_INACTIVE_DAYS, activeDays: CLEANUP_ACTIVE_DAYS });
 }
 
 module.exports = {

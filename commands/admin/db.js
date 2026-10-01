@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, previewCleanup, runCleanup, db } = require("../../database");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_JACKPOT_SHARE, INTEREST_ACTIVE_WINDOW_DAYS } = require("../../config.js");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_ACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("../../config.js");
 const logger = require("../../utils/logger");
 const wait = require("util").promisify(setTimeout);
 const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
@@ -156,10 +156,10 @@ async function notifyCleanupRecipients(client, guildName, result) {
     try {
       const [user, bank] = await Promise.all([client.users.fetch(id), db.get(`${id}.bank`)]);
       const embed = buildInfoEmbed(user, client, [
-        `Everyone who played in ${guildName} in the last ${INTEREST_ACTIVE_WINDOW_DAYS} days got an equal share of the ${CURRENCY_NAME} reclaimed from ${sources}. The rest went to the progressive jackpot, which now stands at **${jackpotAmount.toLocaleString("en-US")}** ${CURRENCY_NAME}.`,
+        `Everyone who has gambled in ${guildName} in the last ${CLEANUP_ACTIVE_DAYS} days got an equal share of the ${CURRENCY_NAME} reclaimed from ${sources}. The rest went to the progressive jackpot, which now stands at **${jackpotAmount.toLocaleString("en-US")}** ${CURRENCY_NAME}.`,
         `You now have **${(bank || 0).toLocaleString("en-US")}** ${CURRENCY_NAME} in your bank!`,
       ].join("\n\n"))
-        .setAuthor({ name: `You received ${result.perRecipient.toLocaleString("en-US")} ${CURRENCY_NAME} from the account cleanup!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setAuthor({ name: `Congrats! You've received ${result.perRecipient.toLocaleString("en-US")} ${CURRENCY_NAME}!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
         .setThumbnail(client.user.displayAvatarURL({ dynamic: true, size: 1024 }));
       if (await sendDM(user, { embeds: [embed] })) delivered++;
     } catch (err) {
