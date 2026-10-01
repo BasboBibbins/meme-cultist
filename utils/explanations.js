@@ -1,6 +1,7 @@
-const { CURRENCY_NAME, INTEREST_RATE, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT } = require("../config.js");
+const { CURRENCY_NAME, DAILY_MIN, DAILY_MAX, DAILY_STREAK_BONUS_MIN_PER_DAY, DAILY_STREAK_BONUS_MAX_PER_DAY, WEEKLY_MIN, WEEKLY_MAX, INTEREST_TIERS, INTEREST_ACTIVE_WINDOW_DAYS, JACKPOT_INTEREST_TIERS, JACKPOT_INTEREST_CAP, CHATBOT_CHANNELS, OOC_PREFIX, BLACKJACK_MAX_HANDS, DUEL_MIN_BET, DUEL_COOLDOWN, JACKPOT_MIN_BET, KENO_MIN_BET, KENO_MAX_BET, KENO_DEFAULT_QUICK_PICK, DAILY_COOLDOWN, WEEKLY_COOLDOWN, ROULETTE_MIN_BET, ROULETTE_MAX_BET, RACE_MIN_BET, RACE_MAX_BET, RACE_HOUSE_EDGE, CRAPS_MIN_BET, CRAPS_MAX_BET, SLOTS_DAILY_COOLDOWN, SLOTS_DAILY_FREE_SPINS, HISTORY_RESULT_LIMIT, TRICK_OR_TREAT_MIN, TRICK_OR_TREAT_MAX, TRICK_OR_TREAT_WEALTH_BONUS_MAX, TRICK_OR_TREAT_WEALTH_CAP, TRICK_OR_TREAT_TRICK_CHANCE, TRICK_OR_TREAT_THEFT_RATE } = require("../config.js");
 const { KENO_TOTAL_NUMBERS, KENO_DRAW_COUNT, KENO_MAX_SPOTS } = require("./keno");
 const { formatInterval } = require("./time");
+const { describeTiers } = require("./interest");
 const CURRENCY_NAME_CAPITALIZED = CURRENCY_NAME.charAt(0).toUpperCase() + CURRENCY_NAME.slice(1);
 const chatbotChannelList = CHATBOT_CHANNELS.map(id => `<#${id}>`).join(", ");
 
@@ -25,7 +26,7 @@ module.exports = {
 
             There are two places to store your ${CURRENCY_NAME}: your wallet and your bank. Your wallet is where you store the ${CURRENCY_NAME} you spend on things like gambling, and your bank is where you store the ${CURRENCY_NAME} that you want to keep safe.
             You can transfer ${CURRENCY_NAME} from your wallet to your bank and vice versa using \`/bank [deposit|withdraw] [amount]\`. You can also see how much ${CURRENCY_NAME} you have in your wallet and bank using \`/balance\`.
-            The ${CURRENCY_NAME} in your bank will earn interest every day. The current interest rate is ${INTEREST_RATE}%.
+            The ${CURRENCY_NAME} in your bank earns interest every day at midnight, in brackets: ${describeTiers(INTEREST_TIERS)}. Each slice of your bank earns only its own rate. Interest only pays if you used any command in the last ${INTEREST_ACTIVE_WINDOW_DAYS} days.
 
             To see how much ${CURRENCY_NAME} you have, use \`/balance\`. To see how much ${CURRENCY_NAME} someone else has, use \`/balance @user\`.
 
@@ -46,22 +47,56 @@ module.exports = {
     note: `
             Results are deleted after 30 days, so an old session will drop off even if you have played nothing since.`
   },
+  roles: {
+    name: "Self-Assign Roles",
+    description: `
+            \`/roles\` opens a form with every role you can give yourself, like game roles so people can ping you instead of everyone.
+
+            Roles you already have start checked. Check the ones you want, uncheck the ones you don't, and submit. The bot adds and removes roles to match, then tells you what changed. Nobody else sees the form or the result.
+            `,
+    note: `
+            Only roles an admin has put on the list appear. \`/roles\` never touches any other role you have.
+
+            Admins manage the list with \`/roleconfig add\`, \`/roleconfig remove\`, and \`/roleconfig list\`. Roles that grant moderator permissions, that are above the bot's own role, or that control bot access can never be listed.`
+  },
   dailyweekly: {
     name: "Dailies and Weeklies",
     description: `
             Dailies and weeklies are a way to earn ${CURRENCY_NAME} every day and week. You can claim your daily and weekly rewards using \`/daily\` and \`/weekly\`, respectively.
             You can only claim these rewards once per day and one per week. You can view your cooldowns by using \`/daily\` and \`/weekly\`.
 
-            Dailies are worth a random amount of ${CURRENCY_NAME} between 100 and 200. You also receive a bonus depending on how many days in a row you have claimed your daily.
-            The bonus is a random amount of ${CURRENCY_NAME} between the number of days in a row and 10 times the number of days in a row.
-            For example, if you have claimed your daily for 5 days in a row, you will get a bonus of between 5 and 50 ${CURRENCY_NAME}.
+            Dailies are worth a random amount of ${CURRENCY_NAME} between ${DAILY_MIN.toLocaleString("en-US")} and ${DAILY_MAX.toLocaleString("en-US")}. You also receive a bonus depending on how many days in a row you have claimed your daily.
+            The bonus is a random amount of ${CURRENCY_NAME} between ${DAILY_STREAK_BONUS_MIN_PER_DAY} and ${DAILY_STREAK_BONUS_MAX_PER_DAY} times the number of days in a row.
+            For example, if you have claimed your daily for 5 days in a row, you will get a bonus of between ${(5 * DAILY_STREAK_BONUS_MIN_PER_DAY).toLocaleString("en-US")} and ${(5 * DAILY_STREAK_BONUS_MAX_PER_DAY).toLocaleString("en-US")} ${CURRENCY_NAME}.
             The bonus resets to 0 if you miss a day.
 
-            Weeklies are worth a random amount of ${CURRENCY_NAME} between 500 and 1000. There are no streak bonuses for weeklies.
+            Weeklies are worth a random amount of ${CURRENCY_NAME} between ${WEEKLY_MIN.toLocaleString("en-US")} and ${WEEKLY_MAX.toLocaleString("en-US")}. There are no streak bonuses for weeklies.
             `,
     note: `
             Dailies and weeklies are claimable every 24 hours and 7 days, respectively. They do not reset at midnight, but rather at the time you claimed them.`,
     cooldown: `\`/daily\` every **${formatInterval(DAILY_COOLDOWN)}**\n\`/weekly\` every **${formatInterval(WEEKLY_COOLDOWN)}**`
+  },
+  trickortreat: {
+    name: "Trick or Treat",
+    description: `
+            \`/trickortreat\` is a Halloween event that runs every October, from the 1st to the 31st.
+
+            Once a day you can knock on the bot's door for a treat worth ${TRICK_OR_TREAT_MIN.toLocaleString("en-US")} to ${TRICK_OR_TREAT_MAX.toLocaleString("en-US")} ${CURRENCY_NAME}, paid straight into your bank. Your claim resets at midnight UTC, not 24 hours after you last claimed.
+
+            The less you have, the bigger the treat. Your wallet and bank are counted together. With nothing at all you earn up to **${TRICK_OR_TREAT_WEALTH_BONUS_MAX.toLocaleString("en-US")}** extra ${CURRENCY_NAME} on top, and the extra shrinks as your total grows until it reaches zero at **${TRICK_OR_TREAT_WEALTH_CAP.toLocaleString("en-US")}**.
+
+            But not every door is friendly. **${Math.round(TRICK_OR_TREAT_TRICK_CHANCE * 100)}%** of knocks are a trick instead, and a trick never pays a treat.
+            `,
+    rules: `
+            Tricks, from most to least common:
+            • **Door slammed:** no treat today.
+            • **Pickpocketed:** a ghoul steals ${TRICK_OR_TREAT_THEFT_RATE * 100}% of everything you have, wallet first, then bank.
+            • **Possessed:** for a while, the spirits react to every message you send.
+            • **Voice stolen:** a spirit posts a message in the channel as you.
+            • **Spooked:** if you're in a voice channel, you get scared right out of it.
+            • **Cursed:** you're timed out for a few minutes.`,
+    note: `
+            Outside October the command tells you when it returns. Your totals appear in \`/stats\`, and the top candy collectors are on \`/leaderboard\`.`
   },
   blackjack: {
     name: "Blackjack",
@@ -102,17 +137,17 @@ module.exports = {
 
             **Free Spins:** Land 3 or more scatter icons to trigger the Free Spin Bonus — you get free spins with no cost to your balance.
 
-            You can see the paytable by using \`/slots paytable\`. Free daily spins are available with \`/slots daily\` (resets at midnight).
+            You can see the paytable by using \`/slots paytable\`. Free daily spins are available with \`/slots daily\`. The cooldown counts from your last use, not from midnight.
 
-            **Progressive Jackpot:** Triple 7s wins the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of 10 ${CURRENCY_NAME} to qualify for the jackpot.
+            **Progressive Jackpot:** Three Wilds on a payline win the progressive jackpot! The jackpot grows with every bet on both slots and poker. Minimum bet of ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line to qualify for the jackpot.
             `,
     rules: `
             1. The goal of slots is to line up matching symbols across paylines.
             2. There are 8 symbols, each with a different multiplier — check the paytable for details.
             3. Wild icons count as any symbol on an active payline.
             4. Landing 3+ scatter icons triggers the Free Spin Bonus.
-            5. Triple 7s wins the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required, free spins eligible).
-            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for triple 7s.`,
+            5. Three Wilds on a payline win the progressive jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required). Bonus free spins can win it; free daily spins cannot.
+            6. Bets below ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per line still contribute to the jackpot but receive a reduced 100x payout for three Wilds.`,
     cooldown: `${SLOTS_DAILY_FREE_SPINS} free spins every **${formatInterval(SLOTS_DAILY_COOLDOWN)}**`,
     limits: `Jackpot eligibility: **${JACKPOT_MIN_BET.toLocaleString("en-US")}** ${CURRENCY_NAME} per line`
   },
@@ -298,7 +333,7 @@ module.exports = {
 
             Once bought, items go to your \`/inventory\` and are yours forever. The daily rotation only controls *what you can buy today*, not what you can use.
 
-            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Triple 7s on slots (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line) or a royal flush on poker (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME}) wins it.
+            **Progressive Jackpot:** Slots and poker contribute to a shared progressive jackpot. Three Wilds on a slots payline (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line) or a royal flush on poker (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME}) wins it.
             `,
     note: `
             The shop resets at 00:00 UTC. Different servers see different stocks \u2014 two servers on the same day will have different lineups.`
@@ -337,10 +372,10 @@ module.exports = {
             The progressive jackpot is a shared prize pool that grows with every qualifying bet on slots and poker.
 
             • Every bet contributes 2% to the jackpot pool
-            • **Slots:** Triple 7s wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required)
+            • **Slots:** Three Wilds on a payline win the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} per-line bet required)
             • **Poker:** A royal flush wins the jackpot (minimum ${JACKPOT_MIN_BET.toLocaleString()} ${CURRENCY_NAME} bet required)
             • Bets below the minimum still contribute to the jackpot but receive a reduced fixed payout instead
-            • The jackpot also earns daily interest, growing even when no one is playing
+            • The jackpot earns daily interest while it is small (${describeTiers(JACKPOT_INTEREST_TIERS.filter(t => t.upTo !== Infinity))}). Above ${JACKPOT_INTEREST_CAP.toLocaleString("en-US")} it grows from bets alone
 
             Use \`/jackpot\` to check the current jackpot amount and last winner.
             `,
@@ -368,6 +403,8 @@ module.exports = {
             Responses are generated based on how you communicate with it. Previous messages are used as context, alongside context saved based on your interactions and settings.
 
             If you want to say something out-of-character that the bot doesn't use or react to, prefix your message with "${OOC_PREFIX}" and the bot will ignore it completely.
+
+            In a chatbot channel that isn't age-restricted, the bot won't write or look up explicit content. It points you to the age-restricted chatbot channel instead, where it writes what you ask for. Dark and edgy humor is fine anywhere.
 
             Modifying the thread context is completely optional; the bot will generate summaries, facts, and topics automatically based on your interactions. Facts are extracted both periodically from summaries and in real-time as you chat.
             If you want your thread to be more roleplay-focused, modify the settings tagged **[RP]** when using \`/context set\`.
@@ -543,16 +580,20 @@ module.exports = {
   aifeatures: {
     name: "AI Features",
     description: `
-            The chatbot has additional AI capabilities powered by Google Gemini:
+            The chatbot has additional AI capabilities:
 
-            **Image Vision** — Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself — it won't say "based on the description."
+            **Image Vision:** Attach an image in a chatbot channel and the bot will see and understand it. Include text with your image to give the bot a hint (e.g., "What's wrong with this screenshot?"). The bot reacts as if it opened the image itself. It won't say "based on the description."
 
-            **URL Context** — Share a link and the bot will automatically read the page content so it can discuss it with you. It works for any HTML page — articles, docs, blogs, etc. The bot references the content naturally as if it read the page.
+            **URL Context:** Share a link and the bot will automatically read the page content so it can discuss it with you. It works for any HTML page: articles, docs, blogs, etc. The bot references the content naturally as if it read the page.
 
-            **Image Generation** — Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
+            **Image Generation:** Generate AI images two ways: use \`/generate [prompt]\` as a slash command, or ask the chatbot directly in conversation ("draw me a cat"). Prompts can be up to 1000 characters.
+
+            **Web Search:** When a conversation turns to current events, sports, news, or anything recent, the bot looks up the details on its own instead of guessing or asking you, and answers in its normal voice. A quick reaction to something it already covered doesn't trigger a search.
         `,
     note: `
-            Vision and image generation require a Gemini API key. If it's not configured, the bot will let you know rather than pretending.
+            Vision and image generation require a Gemini API key, and web search requires a Brave Search key. If one isn't configured, the bot will let you know rather than pretending.
+
+            For web search: searches are paced against a monthly budget, so on a very busy day the bot may answer from what it already knows.
 
             For URL context: only the first URL per message is fetched. Non-HTML content is skipped. Pages larger than 2MB or with text exceeding 4000 characters are truncated. Fetch requests time out after 8 seconds.
 

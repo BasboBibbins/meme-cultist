@@ -6,11 +6,12 @@ const fs = require("fs");
 const { Player, GuildQueueEvent, TrackSkipReason, useMainPlayer } = require("discord-player");
 const { YoutubeiExtractor } = require("discord-player-youtubei");
 const { GatewayIntentBits, Events, Client, Collection, InteractionType, Partials, REST, Routes, MessageFlags } = require("discord.js");
-const { initDB, db, applyCommandStatsResets } = require("./database");
-const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN } = require("./config.js");
+const { initDB, db, applyCommandStatsResets, addNewDBUser } = require("./database");
+const { GUILD_ID, CLIENT_ID, CHATBOT_ENABLED, CHATBOT_LOCAL, BANNED_ROLE, APRIL_FOOLS_MODE, TESTING_ROLE, TESTING_MODE, OWNER_ID, FACTS_INTERVAL, SUMMARY_INTERVAL, OOC_PREFIX, EMBED_JOB_MAX_ATTEMPTS, PROVIDER_PROBE_INTERVAL_MIN, ARCHIVE_COMPACTION_ENABLED } = require("./config.js");
 const { trackStart, trackEnd, teardownPanel } = require("./utils/musicPlayer");
 const { welcome, goodbye } = require("./utils/welcome");
 const { interest } = require("./utils/bank");
+const { hauntIfPossessed, registerPrankJobs, restorePossessions } = require("./utils/trickOrTreatPranks");
 const { handleBotMessage, deleteThreadContext, addNewThreadContext, getValidMessages, recordPerception } = require("./utils/openai");
 const cacheDiag = require("./utils/cacheDiag");
 const loopLag = require("./utils/loopLag");
@@ -37,6 +38,7 @@ const DEBUG_MODE = process.argv[2] === "debug";
 const DELETE_SLASH = process.argv[2] === "delete";
 const DELETE_SLASH_ID = process.argv[3];
 const UNDO_APRILFOOLS = process.argv[2] === "afundo";
+const BACKFILL_HISTORY = process.argv[2] === "backfill";
 
 const banned = BANNED_ROLE;
 
@@ -56,6 +58,7 @@ const client = new Client({
 });
 
 schedule.scheduleJob("0 */6 * * *", async () => { // every 6 h
+  if (!ARCHIVE_COMPACTION_ENABLED) return;
   try {
     const { runCompactionJob } = require("./utils/compaction");
     await runCompactionJob();
@@ -108,6 +111,7 @@ client.pokerTables = new Map();
 client.immediateFactsDebounce = new Map();
 client.toolCallHistory = new Map();
 client.perceptionCache = new Map();
+client.possessed = new Map();
 
 if (!fs.existsSync("./db/users.sqlite")) {
   logger.error("Database file not found! Please run `node bot.js dbinit` to create the database.");
@@ -150,6 +154,45 @@ async function killMusicSession(queue, message) {
     queue?.delete();
   } catch (err) {
     logger.warn(`[Music] Could not fully tear down the queue: ${err.message}`);
+  }
+}
+
+async function runHistoryBackfill() {
+  const { CHATBOT_CHANNELS, ARCHIVE_BACKFILL_PAGES_PER_RUN } = require("./config.js");
+  const jobs = require("./utils/jobs");
+  const { runFullBackfill } = require("./utils/jobs/backfillHandlers");
+  const { enqueueMessageDrain } = require("./utils/jobs/embedHandlers");
+  const { archiveHistoryMessage } = require("./utils/openai");
+
+  try {
+    await client.guilds.cache.get(GUILD_ID)?.members.fetch();
+  } catch (err) {
+    logger.warn(`[Backfill] Member fetch failed, so banned-role authors cannot be filtered: ${err.message}`);
+  }
+
+  for (const channelId of CHATBOT_CHANNELS) {
+    let channel;
+    try {
+      channel = await client.channels.fetch(channelId);
+    } catch (err) {
+      logger.warn(`[Backfill] Skipping ${channelId}: ${err.message}`);
+      continue;
+    }
+    if (!channel?.messages) {
+      logger.warn(`[Backfill] Skipping ${channelId}: not a text channel the bot can read.`);
+      continue;
+    }
+    logger.info(`[Backfill] Scanning #${channel.name} (${channelId}) from newest to first message...`);
+    const seenAuthors = new Map();
+    const result = await runFullBackfill(channel, {
+      archive: (msg) => archiveHistoryMessage(channelId, msg, seenAuthors),
+      pagesPerRun: ARCHIVE_BACKFILL_PAGES_PER_RUN,
+      onProgress: ({ scanned, inserted, oldestAt }) => logger.log(`[Backfill] #${channel.name}: ${scanned.toLocaleString("en-US")} scanned, ${inserted.toLocaleString("en-US")} new, back to ${new Date(oldestAt).toISOString().slice(0, 10)}.`),
+    });
+    const reached = result.oldestAt ? new Date(result.oldestAt).toISOString().slice(0, 10) : "an empty channel";
+    logger.info(`[Backfill] #${channel.name}: complete. Reached ${reached}; ${result.inserted.toLocaleString("en-US")} new of ${result.scanned.toLocaleString("en-US")} scanned.`);
+    // Writes to the shared queue, so a running bot embeds the new rows now and a stopped one does on its next start.
+    if (result.inserted > 0) enqueueMessageDrain(jobs, channelId, { maxAttempts: EMBED_JOB_MAX_ATTEMPTS });
   }
 }
 
@@ -233,6 +276,20 @@ if (DELETE_SLASH) {
         process.exit(1);
       }
     });
+} else if (BACKFILL_HISTORY) {
+  // The schedules are module level; a long scan in a second process must not pay interest or probe providers.
+  schedule.gracefulShutdown();
+  client.once(Events.ClientReady, async () => {
+    try {
+      await runHistoryBackfill();
+      await client.destroy();
+      process.exit(0);
+    } catch (err) {
+      logger.error(`[Backfill] Failed: ${err.stack || err}`);
+      process.exit(1);
+    }
+  });
+  client.login(TOKEN);
 } else {
   client.once(Events.ClientReady, async () => {
     if (LOAD_DB) {
@@ -332,8 +389,15 @@ if (DELETE_SLASH) {
     // Handlers live in utils/jobs/embedHandlers.js so their failure behaviour is
     // testable — they were inline here when they silently swallowed errors, which
     // is largely why that went unnoticed.
-    const { registerEmbedHandlers } = require("./utils/jobs/embedHandlers");
-    registerEmbedHandlers(jobs, { kbStore, llm, messageArchive, episodeStore });
+    const { registerEmbedHandlers, enqueueMessageDrain } = require("./utils/jobs/embedHandlers");
+    const { registerBackfillHandler, enqueueBackfill } = require("./utils/jobs/backfillHandlers");
+    const { ARCHIVE_EMBED_DRAIN_BATCH, ARCHIVE_EMBED_DRAIN_INTERVAL_MS } = require("./config.js");
+    registerEmbedHandlers(jobs, {
+      kbStore, llm, messageArchive, episodeStore,
+      drainBatch: ARCHIVE_EMBED_DRAIN_BATCH,
+      drainIntervalMs: ARCHIVE_EMBED_DRAIN_INTERVAL_MS,
+      maxAttempts: EMBED_JOB_MAX_ATTEMPTS,
+    });
 
     // When the embed breaker closes, drain whatever piled up while it was open.
     // Wired here rather than inside the breaker so that module stays unaware of
@@ -341,55 +405,14 @@ if (DELETE_SLASH) {
     const { embedBreaker } = require("./utils/llm/breaker");
     embedBreaker.setOnClose(() => jobs.releaseDeferred(["kb_embed", "message_embed", "episode_embed"]));
 
-    jobs.register("backfill_messages", async (payload) => {
-      const { channelIds } = payload;
-      if (!channelIds || channelIds.length === 0) return;
-      const llm = require("./utils/llm");
-      for (const channelId of channelIds) {
-        try {
-          const channel = await client.channels.fetch(channelId);
-          if (!channel) continue;
-          let lastId = messageArchive.getMaxMessageIdForChannel(channelId);
-          let totalInserted = 0;
-          let hasMore = true;
-          while (hasMore) {
-            const options = lastId ? { limit: 100, before: lastId } : { limit: 100 };
-            const fetched = await channel.messages.fetch(options);
-            if (fetched.size === 0) {
-              hasMore = false;
-              break;
-            }
-            const msgs = Array.from(fetched.values()).reverse();
-            for (const msg of msgs) {
-              if (!msg.content) continue;
-              const id = messageArchive.insertChunk({
-                channelId,
-                messageId: msg.id,
-                authorId: msg.author.id,
-                content: msg.content,
-                chunkIndex: 0,
-                createdAt: msg.createdTimestamp,
-              });
-              if (id) totalInserted++;
-              lastId = msg.id;
-            }
-            if (fetched.size < 100) hasMore = false;
-          }
-          if (totalInserted > 0) {
-            jobs.enqueue({
-              kind: "message_embed",
-              payload: { channelId, chunkIds: [] },
-              run_at: Date.now(),
-              max_attempts: EMBED_JOB_MAX_ATTEMPTS,
-            });
-            logger.log(`[Backfill] Inserted ${totalInserted} messages for ${channelId}, enqueued embed job.`);
-          } else {
-            logger.log(`[Backfill] No new messages for ${channelId}.`);
-          }
-        } catch (err) {
-          logger.error(`[Backfill] Failed for ${channelId}: ${err.message}`);
-        }
-      }
+    const { ARCHIVE_BACKFILL_PAGES_PER_RUN, ARCHIVE_BACKFILL_DELAY_MS } = require("./config.js");
+    const { archiveHistoryMessage } = require("./utils/openai");
+    registerBackfillHandler(jobs, {
+      fetchChannel: (channelId) => client.channels.fetch(channelId),
+      archiveMessage: archiveHistoryMessage,
+      onInserted: (channelId) => enqueueMessageDrain(jobs, channelId, { maxAttempts: EMBED_JOB_MAX_ATTEMPTS }),
+      pagesPerRun: ARCHIVE_BACKFILL_PAGES_PER_RUN,
+      delayMs: ARCHIVE_BACKFILL_DELAY_MS,
     });
 
     jobs.register("reminder", async (payload) => {
@@ -466,22 +489,29 @@ if (DELETE_SLASH) {
         }
       }
     });
+    registerPrankJobs(client);
+    restorePossessions(client);
     jobs.start();
 
     const { CHATBOT_CHANNELS } = require("./config.js");
     for (const channelId of CHATBOT_CHANNELS) {
       try {
-        if (messageArchive.countForChannel(channelId) === 0) {
-          jobs.enqueue({
-            kind: "backfill_messages",
-            payload: { channelIds: [channelId] },
-            run_at: Date.now(),
-          });
-          logger.log(`[Backfill] Triggered for channel ${channelId}`);
+        if (messageArchive.countForChannel(channelId) === 0 && enqueueBackfill(jobs, channelId)) {
+          logger.log(`[Backfill] Full history scan queued for ${channelId} (empty archive).`);
         }
       } catch (err) {
         logger.error(`[Backfill] Trigger failed for ${channelId}: ${err.message}`);
       }
+    }
+
+    try {
+      for (const { channelId, count } of messageArchive.channelsWithUnembedded()) {
+        if (enqueueMessageDrain(jobs, channelId, { maxAttempts: EMBED_JOB_MAX_ATTEMPTS })) {
+          logger.log(`[MessageEmbed] ${count} unembedded chunks in ${channelId}, drain started.`);
+        }
+      }
+    } catch (err) {
+      logger.error(`[MessageEmbed] Drain startup failed: ${err.message}`);
     }
   });
 
@@ -545,6 +575,7 @@ if (DELETE_SLASH) {
         }
             
         try {
+          await addNewDBUser(interaction.user);
           const isMusicCommand = (commandName) => musicCommandNames.includes(commandName);
           if (isMusicCommand(command.data.name)) { // provide player context if music command
             const data = {
@@ -568,6 +599,7 @@ if (DELETE_SLASH) {
             commands.yearly[cmdName] = (commands.yearly[cmdName] || 0) + 1;
             commands.total[cmdName] = (commands.total[cmdName] || 0) + 1;
             await db.set(`${userId}.stats.commands`, commands);
+            await db.set(`${userId}.stats.lastCommand`, { name: cmdName, at: Date.now() });
 
             // Largest balance/bank checks — narrow writes only, separate from
             // the commands subtree to avoid racing with the midnight interest job.
@@ -717,6 +749,7 @@ if (DELETE_SLASH) {
 
   client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
+    hauntIfPossessed(message);
     if (!CHATBOT_ENABLED) {
       logger.warn("Chatbot is disabled! Ignoring request...");
       return;

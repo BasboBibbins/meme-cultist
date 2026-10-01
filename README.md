@@ -19,7 +19,7 @@ Built with discord.js v14, powered by [DeepSeek](https://api-docs.deepseek.com/)
 - Incognito mode, rate limiting, and reply-gated burst protection so it doesn't get spammed to death
 
 ### 🎰 Economy & Gambling
-The currency is **koku**. You've got a wallet and a bank (earns daily interest at midnight).
+The currency is **koku**. You've got a wallet and a bank. The bank earns daily interest at midnight in tiered brackets, paid only to players active in the last week.
 
 **Games:**
 - **Blackjack** — hit, stand, double down, split up to 4 hands, late surrender. Persistent hub panel with a Deal button.

@@ -1,12 +1,13 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, MessageFlags } = require("discord.js");
-const { CURRENCY_NAME } = require("../../config.js");
-const { addNewDBUser, db, applyCommandStatsResets } = require("../../database");
+const { CURRENCY_NAME, INTEREST_ACTIVE_WINDOW_DAYS } = require("../../config.js");
+const { getPlayerRow, db, applyCommandStatsResets } = require("../../database");
 const { getUserChatbotData } = require("../../utils/openai");
 const logger = require("../../utils/logger");
 const { sendDM } = require("../../utils/dm");
 const { randomHexColor } = require("../../utils/randomcolor");
 const { todayStamp } = require("../../utils/time.js");
-const { buildBaseEmbed } = require("../../utils/embeds");
+const { buildBaseEmbed, buildErrorEmbed } = require("../../utils/embeds");
+const { isActive } = require("../../utils/interest");
 
 function totalNumOfCmds(type) {
   return Object.keys(type).reduce((a, b) => a + type[b], 0);
@@ -123,6 +124,8 @@ async function generateStatsEmbed(page, interaction, user) {
       const dailies = stats?.stats?.dailies || {};
       const weeklies = stats?.stats?.weeklies || {};
       const shop = stats?.stats?.shop || {};
+      const halloween = stats?.stats?.halloween || {};
+      const interest = stats?.stats?.interest || {};
       const cooldowns = stats?.cooldowns || {};
       embed.setTitle(`${user.displayName }'s Currency Stats`);
       embed.setFields(
@@ -148,6 +151,19 @@ async function generateStatsEmbed(page, interaction, user) {
           `*Total Spent:* **${(shop.spent ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
           `*Biggest Purchase:* **${(shop.biggestPurchase ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
         ]), inline: true },
+        { name: "Trick or Treat", value: buildDesc([
+          `*Times Claimed:* **${(halloween.claimed ?? 0).toLocaleString("en-US")}**`,
+          `*Treats:* **${(halloween.treats ?? 0).toLocaleString("en-US")}**`,
+          `*Tricks:* **${(halloween.tricks ?? 0).toLocaleString("en-US")}**`,
+          `*Candy Earned:* **${(halloween.earned ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+          `*Stolen by Ghouls:* **${(halloween.lost ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+        ]), inline: true },
+        { name: " ", value: " ", inline: false},
+        { name: "Interest", value: buildDesc([
+          `*Lifetime Earned:* **${(interest.earned ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}**`,
+          interest.lastAt ? `*Last Payout:* **${(interest.lastAmount ?? 0).toLocaleString("en-US")} ${CURRENCY_NAME}** <t:${Math.floor(interest.lastAt / 1000)}:R>` : "*Last Payout:* **None yet**",
+          isActive(stats, Date.now(), INTEREST_ACTIVE_WINDOW_DAYS) ? "*Status:* **Earning**" : `*Status:* **Paused**. Interest only pays players who used a command in the last ${INTEREST_ACTIVE_WINDOW_DAYS} days.`,
+        ]), inline: false },
       );
       break;
     }
@@ -321,13 +337,12 @@ module.exports = {
         .setDescription("Export stats in JSON format. Useful for nerd emojis (like Basbo).")
         .setRequired(false)),
   async execute(interaction) {
-    await interaction.deferReply();
     const user = interaction.options.getUser("user") || interaction.user;
-    const dbUser = await db.get(user.id);
+    const dbUser = await getPlayerRow(user.id);
     if (!dbUser) {
-      logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
-      await addNewDBUser(user);
+      return await interaction.reply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, `**${user.displayName}** hasn't started playing yet, so there are no stats to show.`)], flags: MessageFlags.Ephemeral });
     }
+    await interaction.deferReply();
 
     const row = new ActionRowBuilder()
       .addComponents(

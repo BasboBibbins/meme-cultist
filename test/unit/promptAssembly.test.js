@@ -2,6 +2,7 @@ const {
   assembleSystemPrompt,
   assembleTurnContext,
   formatAgeBucket,
+  buildChannelContentBlock,
 } = require("../../utils/openai-system-prompts");
 
 const ALL_SYSTEM_PARTS = {
@@ -10,6 +11,7 @@ const ALL_SYSTEM_PARTS = {
   discordFormattingBlock: "[FORMATTING]",
   turnContextLegendBlock: "[LEGEND]",
   toolBlock: "[TOOLS]",
+  channelContentBlock: "[CHANNEL_CONTENT]",
   emojiBlock: "[EMOJI]",
   directivesBlock: "[DIRECTIVES]",
   topicBlock: "[TOPIC]",
@@ -38,6 +40,7 @@ describe("assembleSystemPrompt", () => {
       "[FORMATTING]",
       "[LEGEND]",
       "[TOOLS]",
+      "[CHANNEL_CONTENT]",
       "[EMOJI]",
       "[DIRECTIVES]",
       "[PARTICIPANTS]",
@@ -160,5 +163,32 @@ describe("formatAgeBucket", () => {
 
   test("a future timestamp clamps instead of going negative", () => {
     expect(formatAgeBucket(now + 3600000, now)).toBe("just now");
+  });
+});
+
+describe("buildChannelContentBlock", () => {
+  test("an age-restricted channel welcomes explicit content instead of redirecting", () => {
+    const block = buildChannelContentBlock({ nsfwChannel: true, nsfwRoomId: "123", webSearch: true });
+    expect(block.startsWith("[Channel Content]")).toBe(true);
+    expect(block).toContain("welcome here");
+    expect(block).toContain("adult");
+    expect(block).not.toContain("<#123>");
+  });
+
+  test("a regular channel points explicit content at the NSFW room and claims precedence", () => {
+    const block = buildChannelContentBlock({ nsfwChannel: false, nsfwRoomId: "123", webSearch: true });
+    expect(block.startsWith("[Channel Content]")).toBe(true);
+    expect(block.match(/<#123>/g)).toHaveLength(2);
+    expect(block).toContain("overrides any other rule");
+    expect(block).toContain("Safe search");
+  });
+
+  test("the safe search line only appears when web search is on", () => {
+    expect(buildChannelContentBlock({ nsfwChannel: false, nsfwRoomId: "123", webSearch: false })).not.toContain("Safe search");
+  });
+
+  test("without an NSFW room, only the web search restriction remains", () => {
+    expect(buildChannelContentBlock({ nsfwChannel: false, nsfwRoomId: null, webSearch: true })).toMatch(/^NSFW restriction:/);
+    expect(buildChannelContentBlock({ nsfwChannel: false, nsfwRoomId: null, webSearch: false })).toBe("");
   });
 });

@@ -42,13 +42,14 @@ function makeKbEmbed({ kbStore, llm }) {
   };
 }
 
-function makeMessageEmbed({ messageArchive, llm }) {
-  return async function messageEmbed(payload) {
+// Targeted jobs (chunkIds) embed exactly those rows. Untargeted jobs drain the oldest backlog one batch at a time and reschedule themselves until it is empty.
+function makeMessageEmbed({ messageArchive, llm, drainBatch = 100, scheduleDrain = () => {} }) {
+  return async function messageEmbed(payload, ctx = {}) {
     const { channelId, chunkIds } = payload;
-    const all = messageArchive.getUnembeddedForChannel(channelId, 100);
-    const unembedded = chunkIds && chunkIds.length > 0
-      ? all.filter(r => chunkIds.includes(r.id))
-      : all;
+    const targeted = Array.isArray(chunkIds) && chunkIds.length > 0;
+    const unembedded = targeted
+      ? messageArchive.getUnembeddedByIds(channelId, chunkIds)
+      : messageArchive.getUnembeddedForChannel(channelId, drainBatch);
     if (unembedded.length === 0) return;
 
     let embedded = 0;
@@ -65,6 +66,10 @@ function makeMessageEmbed({ messageArchive, llm }) {
     }
     logger.log(`[MessageEmbed] Embedded ${embedded}/${unembedded.length} chunks for ${channelId}`);
     if (lastError) throw summarizeBatchFailure("chunks", unembedded.length - embedded, unembedded.length, lastError);
+    if (!targeted) {
+      const remaining = messageArchive.countUnembedded(channelId);
+      if (remaining > 0) scheduleDrain(channelId, { remaining, jobId: ctx.jobId });
+    }
   };
 }
 
@@ -95,9 +100,40 @@ function makeEpisodeEmbed({ episodeStore, llm }) {
 // Deps are injected rather than required here so the handlers stay testable
 // without loading the SQLite stores.
 function registerEmbedHandlers(jobs, deps) {
+  if (!deps.scheduleDrain) {
+    deps = {
+      ...deps,
+      scheduleDrain: (channelId, { jobId } = {}) => enqueueMessageDrain(jobs, channelId, { delayMs: deps.drainIntervalMs, maxAttempts: deps.maxAttempts, excludeJobId: jobId }),
+    };
+  }
   jobs.register("kb_embed", makeKbEmbed(deps));
   jobs.register("message_embed", makeMessageEmbed(deps));
   jobs.register("episode_embed", makeEpisodeEmbed(deps));
 }
 
-module.exports = { registerEmbedHandlers, makeKbEmbed, makeMessageEmbed, makeEpisodeEmbed };
+function isDrainFor(channelId, excludeJobId) {
+  return (row) => {
+    if (row.id === excludeJobId) return false;
+    try {
+      const payload = JSON.parse(row.payload);
+      return payload.channelId === channelId && !(payload.chunkIds?.length > 0);
+    } catch (_) {
+      return false;
+    }
+  };
+}
+
+// Skips if a drain for the channel is already queued, so restarts and backfills cannot fork parallel chains.
+function enqueueMessageDrain(jobs, channelId, { delayMs = 0, maxAttempts = 8, excludeJobId = null } = {}) {
+  if (jobs.list("message_embed", isDrainFor(channelId, excludeJobId)).length > 0) return false;
+  jobs.enqueue({
+    kind: "message_embed",
+    payload: { channelId, chunkIds: [] },
+    run_at: Date.now() + delayMs,
+    priority: -1,
+    max_attempts: maxAttempts,
+  });
+  return true;
+}
+
+module.exports = { registerEmbedHandlers, makeKbEmbed, makeMessageEmbed, makeEpisodeEmbed, enqueueMessageDrain };

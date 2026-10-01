@@ -1,10 +1,13 @@
 const { QuickDB } = require("quick.db");
 const moment = require("moment");
-const { GUILD_ID } = require("./config.js");
+const { GUILD_ID, CLEANUP_INACTIVE_DAYS, CLEANUP_ACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("./config.js");
 const { ensureDbDir } = require("./utils/dbDir");
 ensureDbDir();
 const db = new QuickDB({ filePath: "./db/users.sqlite" });
 const logger = require("./utils/logger");
+const { isPlayerRow, holdings, isLongInactive, planCleanup, splitPot, reconcileWithLive } = require("./utils/dbCleanup");
+const { addToJackpot } = require("./utils/jackpot");
+const { withUserLock } = require("./utils/userlock");
 
 // Read the user's stats.commands subtree, clear any buckets whose period has
 // rolled over, and persist if anything changed. Returns the in-memory object so
@@ -57,6 +60,7 @@ async function getDefaultDB(user) {
       "weekly": 0,
       "rob": 0,
       "freespins": 0,
+      "trickortreat": 0,
     },
     "stats": {
       "commands": {
@@ -166,6 +170,22 @@ async function getDefaultDB(user) {
         "spent": 0,
         "biggestPurchase": 0,
       },
+      "halloween": {
+        "claimed": 0,
+        "treats": 0,
+        "tricks": 0,
+        "earned": 0,
+        "lost": 0,
+      },
+      "interest": {
+        "earned": 0,
+        "lastAmount": 0,
+        "lastAt": 0,
+      },
+      "lastCommand": {
+        "name": "",
+        "at": 0,
+      },
       "largestBalance": 0,
       "largestBank": 0,
     },
@@ -210,6 +230,64 @@ async function getDefaultDB(user) {
     },
   };
 }
+// Fills fields missing up to three levels deep without touching existing data.
+function mergeDefaults(row, defaults) {
+  let updated = false;
+  const isObject = (v) => v && typeof v === "object" && !Array.isArray(v);
+  for (const [key, value] of Object.entries(defaults)) {
+    if (row[key] === undefined || row[key] === null) {
+      row[key] = value;
+      updated = true;
+    } else if (isObject(row[key]) && isObject(value)) {
+      for (const [subKey, subValue] of Object.entries(value)) {
+        if (row[key][subKey] === undefined || row[key][subKey] === null) {
+          row[key][subKey] = subValue;
+          updated = true;
+        } else if (isObject(row[key][subKey]) && isObject(subValue)) {
+          for (const [deepKey, deepValue] of Object.entries(subValue)) {
+            if (row[key][subKey][deepKey] === undefined || row[key][subKey][deepKey] === null) {
+              row[key][subKey][deepKey] = deepValue;
+              updated = true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return updated;
+}
+
+// Discord allows one full member fetch per guild roughly every 30s, so preview and confirm share one.
+const MEMBER_SNAPSHOT_TTL_MS = 120000;
+let memberSnapshot = null;
+
+async function loadMemberIds(guild) {
+  const members = await guild.members.fetch();
+  return {
+    memberIds: new Set(members.keys()),
+    botIds: new Set(members.filter(m => m.user.bot).map(m => m.id)),
+  };
+}
+
+// Caches the in-flight promise so concurrent callers share one fetch instead of racing into the rate limit.
+async function fetchMembersOnce(guild, now) {
+  if (memberSnapshot?.guildId === guild.id && now - memberSnapshot.at < MEMBER_SNAPSHOT_TTL_MS) return memberSnapshot.pending;
+  const snapshot = { guildId: guild.id, at: now, pending: loadMemberIds(guild) };
+  memberSnapshot = snapshot;
+  try {
+    return await snapshot.pending;
+  } catch (err) {
+    if (memberSnapshot === snapshot) memberSnapshot = null;
+    throw err;
+  }
+}
+
+async function buildCleanupPlan(client, now) {
+  const guild = client.guilds.cache.get(GUILD_ID);
+  const { memberIds, botIds } = await fetchMembersOnce(guild, now);
+  return planCleanup(await db.all(), { memberIds, botIds, now, inactiveDays: CLEANUP_INACTIVE_DAYS, activeDays: CLEANUP_ACTIVE_DAYS });
+}
+
 module.exports = {
   db,
   applyCommandStatsResets,
@@ -233,63 +311,34 @@ module.exports = {
 
     logger.log("Loading database...");
     logger.log(`Found ${users.length} users.`);
-    let newUsers = 0;
     let updatedUsers = 0;
     for (const user of users) {
       if (user.id === client.user.id) continue;
       const dbUser = await db.get(user.id);
-      const defaultDB = await getDefaultDB(user);
-      if (!dbUser) {
-        newUsers++;
-        await db.set(user.id, defaultDB);
-        logger.log(`Adding ${user.username} [${user.id}] to the database.`);
-      } else {
-        let updated = false;
-        // Type-repair migration: legacy schema stored stats.commands.total
-        // as the number 0; convert to {} so per-command counters work.
-        if (dbUser.stats && dbUser.stats.commands && typeof dbUser.stats.commands.total === "number") {
-          dbUser.stats.commands.total = {};
-          updated = true;
-        }
-        for (const [key, value] of Object.entries(defaultDB)) {
-          if (!dbUser[key]) {
-            dbUser[key] = value;
-            updated = true;
-          } else if (dbUser[key] && typeof dbUser[key] === "object" && value && typeof value === "object" && !Array.isArray(value)) {
-            // Deep-merge nested objects (e.g. cooldowns, profile, stats) so new
-            // fields like cooldowns.freespins and profile.theme.equipped are added
-            // to existing users without wiping their current data.
-            for (const [subKey, subValue] of Object.entries(value)) {
-              if (dbUser[key][subKey] === undefined || dbUser[key][subKey] === null) {
-                dbUser[key][subKey] = subValue;
-                updated = true;
-              } else if (dbUser[key][subKey] && typeof dbUser[key][subKey] === "object" && subValue && typeof subValue === "object" && !Array.isArray(subValue)) {
-                for (const [deepKey, deepValue] of Object.entries(subValue)) {
-                  if (dbUser[key][subKey][deepKey] === undefined || dbUser[key][subKey][deepKey] === null) {
-                    dbUser[key][subKey][deepKey] = deepValue;
-                    updated = true;
-                  }
-                }
-              }
-            }
-          }
-        }
-        if (updated) {
-          await db.set(user.id, dbUser);
-          logger.log(`Updated ${user.username} [${user.id}] in the database.`);
-          updatedUsers++;
-        }
+      if (!isPlayerRow(dbUser)) continue;
+      // Legacy schema stored stats.commands.total as the number 0.
+      const repaired = dbUser.stats?.commands && typeof dbUser.stats.commands.total === "number";
+      if (repaired) dbUser.stats.commands.total = {};
+      if (mergeDefaults(dbUser, await getDefaultDB(user)) || repaired) {
+        await db.set(user.id, dbUser);
+        logger.log(`Updated ${user.username} [${user.id}] in the database.`);
+        updatedUsers++;
       }
     }
-    logger.log(`Database loaded. ${newUsers?newUsers:"No"} new users in database. ${updatedUsers?updatedUsers:"No"} users updated.`);
+    logger.log(`Database loaded. ${updatedUsers?updatedUsers:"No"} users updated.`);
   },
   addNewDBUser: async function(user) {
     const dbUser = await db.get(user.id);
+    if (isPlayerRow(dbUser)) return false;
     const defaultDB = await getDefaultDB(user);
-    if (!dbUser) {
-      await db.set(user.id, defaultDB);
-    }
+    if (dbUser) mergeDefaults(dbUser, defaultDB);
+    await db.set(user.id, dbUser || defaultDB);
     logger.log(`Added ${user.username} [${user.id}] to the database.`);
+    return true;
+  },
+  getPlayerRow: async function(userId) {
+    const row = await db.get(userId);
+    return isPlayerRow(row) ? row : null;
   },
   deleteDBUser: async function(user) {
     const dbUser = await db.get(user.id);
@@ -337,28 +386,49 @@ module.exports = {
     await db.set(`${user.id}.${value}`, newValue);
     logger.log(`Set ${value} for ${user.username}} [${user.id}] in the database.`);
   },
-  cleanDB: async function(client) {
-    const guild = client.guilds.cache.get(GUILD_ID);
-    const users = guild.members.cache.map(member => {
-      return {
-        id: member.id,
-        username: member.user.username,
-      };
-    });
-    const dbUsers = await db.all();
-    const deletedUsers = [];
-    for (const dbUser of dbUsers) {
-      const user = users.find(user => user.id === dbUser.id);
-      if (!user) {
-        await db.delete(dbUser.id);
-        deletedUsers.push(dbUser.value);
+  previewCleanup: async function(client) {
+    return await buildCleanupPlan(client, Date.now());
+  },
+  runCleanup: async function(client) {
+    const now = Date.now();
+    const plan = await buildCleanupPlan(client, now);
+    const departed = [];
+    const inactive = [];
+
+    const liveMembers = client.guilds.cache.get(GUILD_ID)?.members?.cache;
+    const live = reconcileWithLive(plan, id => Boolean(liveMembers?.has(id)));
+    for (const entry of live.departed) {
+      const amount = await withUserLock(entry.id, async () => {
+        const row = await db.get(entry.id);
+        await db.delete(entry.id);
+        return isPlayerRow(row) ? holdings(row) : 0;
+      });
+      departed.push({ ...entry, amount });
+    }
+
+    for (const entry of plan.inactive) {
+      const amount = await withUserLock(entry.id, async () => {
+        const row = await db.get(entry.id);
+        if (!isPlayerRow(row) || !isLongInactive(row, now, CLEANUP_INACTIVE_DAYS)) return 0;
+        const balance = Number(row.balance) || 0;
+        const bank = Number(row.bank) || 0;
+        await db.set(`${entry.id}.balance`, Math.min(0, balance));
+        await db.set(`${entry.id}.bank`, Math.min(0, bank));
+        return holdings(row);
+      });
+      if (amount > 0) inactive.push({ ...entry, amount });
+    }
+
+    const total = [...departed, ...inactive].reduce((sum, e) => sum + e.amount, 0);
+    const { jackpot, perRecipient } = splitPot(total, live.recipients.length, CLEANUP_JACKPOT_SHARE);
+    if (jackpot > 0) await addToJackpot(jackpot);
+    if (perRecipient > 0) {
+      for (const id of live.recipients) {
+        await withUserLock(id, () => db.add(`${id}.bank`, perRecipient));
       }
     }
-    if (deletedUsers.length === 0) {
-      logger.log("No users to delete.");
-      return [];
-    }
-    logger.log(`Cleaned the database. Deleted ${deletedUsers.length} users.`);
-    return deletedUsers;
+
+    logger.log(`Cleanup: deleted ${departed.length} departed, emptied ${inactive.length} inactive, collected ${total.toLocaleString("en-US")}. Jackpot +${jackpot.toLocaleString("en-US")}, ${live.recipients.length} players +${perRecipient.toLocaleString("en-US")} each. Since the member snapshot: ${live.rejoined} rejoined and kept, ${live.left} recipients left and unpaid.`);
+    return { departed, inactive, recipients: live.recipients, total, jackpot, perRecipient };
   },
 };

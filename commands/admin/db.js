@@ -1,9 +1,14 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require("discord.js");
-const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, cleanDB, db } = require("../../database");
-const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY } = require("../../config.js");
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
+const { deleteDBUser, deleteDBValue, addNewDBUser, setDBValue, previewCleanup, runCleanup, db } = require("../../database");
+const { OWNER_ID, ADMIN_COMMANDS_OWNER_ONLY, CURRENCY_NAME, CLEANUP_INACTIVE_DAYS, CLEANUP_ACTIVE_DAYS, CLEANUP_JACKPOT_SHARE } = require("../../config.js");
 const logger = require("../../utils/logger");
 const wait = require("util").promisify(setTimeout);
-const { buildErrorEmbed } = require("../../utils/embeds");
+const { buildErrorEmbed, buildInfoEmbed, buildSuccessEmbed } = require("../../utils/embeds");
+const { splitPot } = require("../../utils/dbCleanup");
+const { getJackpot } = require("../../utils/jackpot");
+const { sendDM } = require("../../utils/dm");
+
+const CLEANUP_CONFIRM_TIMEOUT_MS = 60000;
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -64,7 +69,7 @@ module.exports = {
     .addSubcommand (subcommand =>
       subcommand
         .setName("cleanup")
-        .setDescription("[ADMIN] Cleanup the database.")),
+        .setDescription("[ADMIN] Remove departed members and redistribute koku from long inactive members.")),
   async execute(interaction) {
     const subcommand = interaction.options.getSubcommand();
     const user = interaction.options.getUser("user") || interaction.user;
@@ -120,14 +125,134 @@ module.exports = {
         logger.log(`Reset database entry for user ${user.username} (${user.id}) to the default.`, "info");
         break;
       case "cleanup":
-        const deleted = await cleanDB(interaction.client) || []; // returns array or empty array
-        if (deleted.length === 0) {
-          await interaction.editReply({content: "No entries to delete!"});
-          return;
-        }
-        await interaction.editReply({content: `Cleaned up the database. Deleted ${deleted.length} entries.\nDeleted users: ${deleted.map(user => `<@${user.id}>`).join("\n")}`});
-        logger.log("Cleaned up the database.", "info");
+        await runCleanupFlow(interaction);
         break;
     }
   },
 };
+
+const LIST_LIMIT = 10;
+
+function listEntries(entries) {
+  if (entries.length === 0) return "None";
+  const lines = entries.slice(0, LIST_LIMIT).map(e => `<@${e.id}> ${e.amount.toLocaleString("en-US")} ${CURRENCY_NAME}`);
+  if (entries.length > LIST_LIMIT) lines.push(`...and ${entries.length - LIST_LIMIT} more`);
+  return lines.join("\n");
+}
+
+function cleanupSources(result) {
+  const sources = [];
+  if (result.inactive.length > 0) sources.push(`accounts inactive for over ${CLEANUP_INACTIVE_DAYS} days`);
+  if (result.departed.some(e => e.amount > 0)) sources.push("members who left");
+  return sources.join(" and ");
+}
+
+async function notifyCleanupRecipients(client, guildName, result) {
+  if (!(result.perRecipient > 0)) return 0;
+  const { amount: jackpotAmount } = await getJackpot();
+  const sources = cleanupSources(result);
+  let delivered = 0;
+  for (const id of result.recipients) {
+    try {
+      const [user, bank] = await Promise.all([client.users.fetch(id), db.get(`${id}.bank`)]);
+      const embed = buildInfoEmbed(user, client, [
+        `Everyone who has gambled in ${guildName} in the last ${CLEANUP_ACTIVE_DAYS} days got an equal share of the ${CURRENCY_NAME} reclaimed from ${sources}. The rest went to the progressive jackpot, which now stands at **${jackpotAmount.toLocaleString("en-US")}** ${CURRENCY_NAME}.`,
+        `You now have **${(bank || 0).toLocaleString("en-US")}** ${CURRENCY_NAME} in your bank!`,
+      ].join("\n\n"))
+        .setAuthor({ name: `Congrats! You've received ${result.perRecipient.toLocaleString("en-US")} ${CURRENCY_NAME}!`, iconURL: user.displayAvatarURL({ dynamic: true }) })
+        .setThumbnail(client.user.displayAvatarURL({ dynamic: true, size: 1024 }));
+      if (await sendDM(user, { embeds: [embed] })) delivered++;
+    } catch (err) {
+      logger.warn(`[db cleanup] Could not notify recipient ${id}: ${err.message}`);
+    }
+  }
+  return delivered;
+}
+
+function cleanupFailureText(err) {
+  const retryAfter = err?.data?.retry_after;
+  if (retryAfter !== undefined) {
+    const at = Math.ceil(Date.now() / 1000 + retryAfter);
+    return `Discord is rate limiting member lookups. Nothing was changed. Try again <t:${at}:R>.`;
+  }
+  return null;
+}
+
+async function runCleanupFlow(interaction) {
+  let plan;
+  try {
+    plan = await previewCleanup(interaction.client);
+  } catch (err) {
+    logger.error(`Database cleanup preview failed: ${err.stack || err}`);
+    const text = cleanupFailureText(err) || "Could not build the cleanup preview. Nothing was changed.";
+    await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, text)] });
+    return;
+  }
+  if (plan.departed.length === 0 && plan.inactive.length === 0) {
+    await interaction.editReply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Nothing to clean up.")] });
+    return;
+  }
+
+  const { jackpot, perRecipient } = splitPot(plan.total, plan.recipients.length, CLEANUP_JACKPOT_SHARE);
+  const preview = buildInfoEmbed(interaction.user, interaction.client, [
+    `**${plan.departed.length}** departed members will be deleted, and **${plan.inactive.length}** members inactive for over ${CLEANUP_INACTIVE_DAYS} days will have their ${CURRENCY_NAME} emptied.`,
+    `**${plan.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${jackpot.toLocaleString("en-US")}** to the jackpot, **${perRecipient.toLocaleString("en-US")}** each to **${plan.recipients.length}** active players.`,
+  ].join("\n\n"))
+    .setTitle("Database Cleanup Preview")
+    .addFields(
+      { name: "Departed", value: listEntries(plan.departed), inline: true },
+      { name: "Inactive", value: listEntries(plan.inactive), inline: true },
+    );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("cleanup_confirm").setLabel("Confirm").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("cleanup_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+  );
+  const message = await interaction.editReply({ embeds: [preview], components: [row] });
+
+  let click;
+  try {
+    click = await message.awaitMessageComponent({ filter: i => i.user.id === interaction.user.id, time: CLEANUP_CONFIRM_TIMEOUT_MS });
+  } catch {
+    await interaction.editReply({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleanup timed out. Nothing was changed.")], components: [] });
+    return;
+  }
+  if (click.customId === "cleanup_cancel") {
+    await click.update({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleanup cancelled. Nothing was changed.")], components: [] });
+    return;
+  }
+
+  await click.update({ embeds: [buildInfoEmbed(interaction.user, interaction.client, "Cleaning up...")], components: [] });
+  let result;
+  try {
+    result = await runCleanup(interaction.client);
+  } catch (err) {
+    logger.error(`Database cleanup failed: ${err.stack || err}`);
+    const text = cleanupFailureText(err) || "Cleanup failed partway. Check the logs before running it again.";
+    await interaction.editReply({ embeds: [buildErrorEmbed(interaction.user, interaction.client, text)] });
+    return;
+  }
+
+  // Separate from the cleanup's own try: a notification failure must never read as a failed cleanup.
+  let delivered = 0;
+  try {
+    delivered = await notifyCleanupRecipients(interaction.client, interaction.guild?.name || "the server", result);
+  } catch (err) {
+    logger.warn(`[db cleanup] Recipient notifications failed: ${err.message}`);
+  }
+
+  const lines = [
+    `Deleted **${result.departed.length}** departed members and emptied **${result.inactive.length}** inactive members.`,
+    `**${result.total.toLocaleString("en-US")} ${CURRENCY_NAME}** collected: **${result.jackpot.toLocaleString("en-US")}** to the jackpot, **${result.perRecipient.toLocaleString("en-US")}** each to **${result.recipients.length}** active players.`,
+  ];
+  if (result.perRecipient > 0) {
+    const missed = result.recipients.length - delivered;
+    lines.push(`Notified **${delivered}** of **${result.recipients.length}** recipients by DM.${missed > 0 ? ` The other ${missed} could not be reached.` : ""}`);
+  }
+  const done = buildSuccessEmbed(interaction.user, interaction.client, lines.join("\n\n"))
+    .setTitle("Database Cleanup Complete")
+    .addFields(
+      { name: "Departed", value: listEntries(result.departed), inline: true },
+      { name: "Inactive", value: listEntries(result.inactive), inline: true },
+    );
+  await interaction.editReply({ embeds: [done] });
+}

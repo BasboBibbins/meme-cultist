@@ -175,9 +175,9 @@ async function run() {
     }
   });
 
-  await testAsync("search_history: semantic re-rank when rank is poor", async () => {
+  await testAsync("search_history: a semantic match lifts a weaker keyword hit", async () => {
     const originalSearchFTS = require("../../utils/messageArchive").searchFTS;
-    const originalSearchSemantic = require("../../utils/messageArchive").searchSemantic;
+    const originalSearchSemanticFull = require("../../utils/messageArchive").searchSemanticFull;
     const originalEmbed = require("../../utils/llm/adapters/cloudflare").embedText;
     try {
       require("../../utils/messageArchive").searchFTS = () => [
@@ -185,9 +185,8 @@ async function run() {
         { id: 2, author_id: "u1", content: "sushi time", created_at: 1000, rank: 2.1 },
       ];
       require("../../utils/llm/adapters/cloudflare").embedText = async () => ({ embedding: new Float32Array([1, 0, 0]) });
-      require("../../utils/messageArchive").searchSemantic = (cid, emb, candidates, limit) => [
+      require("../../utils/messageArchive").searchSemanticFull = () => [
         { id: 2, author_id: "u1", content: "sushi time", created_at: 1000, score: 0.95 },
-        { id: 1, author_id: "u1", content: "pizza time", created_at: 1000, score: 0.80 },
       ];
       const result = await tools.executeToolCall(
         { function: { name: "search_history", arguments: '{"query":"food"}' } },
@@ -198,7 +197,7 @@ async function run() {
       assert.strictEqual(result.results[0].content, "sushi time");
     } finally {
       require("../../utils/messageArchive").searchFTS = originalSearchFTS;
-      require("../../utils/messageArchive").searchSemantic = originalSearchSemantic;
+      require("../../utils/messageArchive").searchSemanticFull = originalSearchSemanticFull;
       require("../../utils/llm/adapters/cloudflare").embedText = originalEmbed;
     }
   });

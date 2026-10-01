@@ -26,6 +26,7 @@ const CODES = {
   // Internal control signal, not a real failure: the tool worked, the model just
   // used up its per-turn allowance of it. Never shown to a user.
   TOOL_BUDGET_EXHAUSTED: "tool_budget_exhausted",
+  SEARCH_BUDGET_EXHAUSTED: "search_budget_exhausted",
   UNKNOWN: "unknown",
 };
 
@@ -44,6 +45,7 @@ const CODE_META = {
   [CODES.NOT_PERMITTED]: { retryable: false, reason: "that is not allowed here" },
   [CODES.EMPTY_RESULT]: { retryable: false, reason: "the lookup came back empty" },
   [CODES.TOOL_BUDGET_EXHAUSTED]: { retryable: false, reason: "that lookup was already used as much as it can be this turn" },
+  [CODES.SEARCH_BUDGET_EXHAUSTED]: { retryable: false, reason: "web search is resting for now" },
   [CODES.UNKNOWN]: { retryable: true, reason: "something went wrong on the way" },
 };
 
@@ -163,7 +165,7 @@ function isToolError(result) {
 // wrong: bad arguments it should correct, or an allowance it has spent. They must
 // never reach the user-facing failure explanation, or a turn that recovered
 // perfectly well would still open with an apology.
-const CONTROL_SIGNAL_CODES = new Set([CODES.TOOL_BUDGET_EXHAUSTED]);
+const CONTROL_SIGNAL_CODES = new Set([CODES.TOOL_BUDGET_EXHAUSTED, CODES.SEARCH_BUDGET_EXHAUSTED]);
 
 function isControlSignal(result) {
   if (!isToolError(result)) return false;

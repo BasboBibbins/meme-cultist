@@ -89,8 +89,8 @@ const config = {
   // Standing directives — persistent behavioral rules a channel has asked the
   // bot to follow. Unlike facts these never expire and are never compressed.
   DIRECTIVES_ENABLED: true,
-  MAX_DIRECTIVES: 10,
-  DIRECTIVE_MAX_LENGTH: 300,
+  MAX_DIRECTIVES: 20,
+  DIRECTIVE_MAX_LENGTH: 2000,
 
   // Weight of lexical relevance-to-current-turn in fact selection. The
   // remaining weight is split between reinforcement and recency. Set to 0 to
@@ -151,7 +151,14 @@ const config = {
 
   // Currency/game settings
   CURRENCY_NAME: "koku",
-  INTEREST_RATE: 1,
+  // Marginal brackets: each slice of the bank earns only its own rate.
+  INTEREST_TIERS: [
+    { upTo: 1000000, ratePercent: 1 },
+    { upTo: 10000000, ratePercent: 0.5 },
+    { upTo: 100000000, ratePercent: 0.1 },
+    { upTo: Infinity, ratePercent: 0 },
+  ],
+  INTEREST_ACTIVE_WINDOW_DAYS: 7,
   BLACKJACK_MAX_HANDS: 4,
   ROULETTE_MIN_BET: 10,
   ROULETTE_MAX_BET: 0, // default 5000
@@ -186,7 +193,7 @@ const config = {
   SLOTS_BONUS_MULTIPLIER: 2,
   SLOTS_DAILY_COOLDOWN: 8.64e7, // default: 24 hours = 8.64e7
   SLOTS_DAILY_FREE_SPINS: 5,
-  SLOTS_DAILY_BET: 50,
+  SLOTS_DAILY_BET: 400,
   SLOTS_DAILY_LINES: 3,
   SLOTS_FULLSCREEN_CHANCE: 0.00004, // 1 in 25,000 paid spins, default 0.00004
   SLOTS_FULLSCREEN_MULTIPLIER: 500, // payout = bet * lines * multiplier
@@ -201,12 +208,58 @@ const config = {
   JACKPOT_SEED: 1000000,
   JACKPOT_CONTRIBUTION_RATE: 0.02,
   JACKPOT_MIN_BET: 1000,
-  JACKPOT_INTEREST_RATE_PERCENT: 2,
+  JACKPOT_INTEREST_TIERS: [
+    { upTo: 5000000, ratePercent: 2 },
+    { upTo: 25000000, ratePercent: 0.5 },
+    { upTo: Infinity, ratePercent: 0 },
+  ],
+  // Above this the pot grows from bets alone.
+  JACKPOT_INTEREST_CAP: 50000000,
+
+  CLEANUP_INACTIVE_DAYS: 365,
+  CLEANUP_ACTIVE_DAYS: 30,
+  CLEANUP_JACKPOT_SHARE: 0.25,
+
+  // Claim payouts in koku, inclusive. /help reads these.
+  DAILY_MIN: 1000,
+  DAILY_MAX: 2000,
+  DAILY_STREAK_BONUS_MIN_PER_DAY: 8,
+  DAILY_STREAK_BONUS_MAX_PER_DAY: 80,
+  WEEKLY_MIN: 5000,
+  WEEKLY_MAX: 10000,
 
   // Cooldown durations in ms. /help reads these, so editing here also fixes the docs.
   DAILY_COOLDOWN: 8.64e7,
   WEEKLY_COOLDOWN: 6.048e8,
   ROB_COOLDOWN: 300000,
+
+  // Trick or Treat treat range in koku, inclusive. Claims reset at midnight UTC.
+  TRICK_OR_TREAT_MIN: 1200,
+  TRICK_OR_TREAT_MAX: 3200,
+  // Bonus added at zero wallet plus bank, fading logarithmically to 0 at the cap.
+  TRICK_OR_TREAT_WEALTH_BONUS_MAX: 4800,
+  TRICK_OR_TREAT_WEALTH_CAP: 10000000,
+  // Share of claims that roll a trick instead of a treat.
+  TRICK_OR_TREAT_TRICK_CHANCE: 0.15,
+  // Share of wallet plus bank the theft trick takes, wallet first.
+  TRICK_OR_TREAT_THEFT_RATE: 0.005,
+  TRICK_OR_TREAT_POSSESSED_MS: 3600000,
+  // One set is picked per message. Custom emojis use <:name:id> or <a:name:id>, and a set cannot repeat an emoji.
+  TRICK_OR_TREAT_POSSESSED_COMBOS: [
+    ["🎃", "👻", "💀"],
+    ["🇧", "🅾️", "🇴"],
+    ["🚽", "🪠"],
+    ["🕷️", "🕸️"],
+    ["🧛‍♂️", "🩸"],
+    ["<:hallomiku:1300605144840540160>"],
+  ],
+  TRICK_OR_TREAT_TIMEOUT_MS: 300000,
+  // Channel ID where impersonation posts. Empty, missing, or unusable falls back to the channel /trickortreat ran in.
+  TRICK_OR_TREAT_IMPERSONATION_CHANNEL: process.env.TRICK_OR_TREAT_IMPERSONATION_CHANNEL || "",
+  // Dev only: opens /trickortreat outside October and removes its daily cooldown.
+  HALLOWEEN_FORCE_ACTIVE: process.env.HALLOWEEN_FORCE_ACTIVE === "true",
+  // Dev only: "treat" or a trick id forces that outcome. A forced trick that cannot apply still rerolls.
+  TRICK_OR_TREAT_FORCE_OUTCOME: process.env.TRICK_OR_TREAT_FORCE_OUTCOME || "",
 
   // Transfers at or above this many koku require a button confirmation.
   GIVE_CONFIRM_THRESHOLD: 10000,
@@ -263,6 +316,13 @@ const config = {
 
   // Brave Search API (used by the web_search tool in utils/openai-tools.js)
   BRAVE_API_KEY: process.env.BRAVE_API_KEY || "",
+  // Brave bills $5 per 1,000 searches against a $5 monthly credit, so 900 leaves a margin under free.
+  WEB_SEARCH_MONTHLY_BUDGET: parseInt(process.env.WEB_SEARCH_MONTHLY_BUDGET || "900", 10),
+  // Today's cap is this multiple of an even share of what the month has left.
+  WEB_SEARCH_PACING_FACTOR: 2,
+  WEB_SEARCH_DAILY_FLOOR: 10,
+  WEB_SEARCH_COST_PER_1K: 5,
+  WEB_SEARCH_DB_PATH: process.env.WEB_SEARCH_DB_PATH || "db/web_search.sqlite",
 
   // Path to a Netscape-format cookie jar passed to yt-dlp as --cookies, which is what
   // gets age-restricted YouTube videos to play. A cookie string will not work; yt-dlp
@@ -304,22 +364,36 @@ const config = {
   // Persistent personas (utils/personas/)
   PERSONA_DB_PATH: process.env.PERSONA_DB_PATH || "db/personas.sqlite",
 
-  // Message archive retention (utils/messageArchive/). Pruned daily by the
-  // midnight job in bot.js. Both axes are independent: rows older than
-  // ARCHIVE_RETENTION_DAYS are dropped first, then each channel is trimmed
-  // down to ARCHIVE_MAX_ROWS_PER_CHANNEL most-recent rows. Set either to 0
-  // to disable that axis.
-  ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "90", 10),
-  ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "10000", 10),
+  // Self-serve roles (utils/selfRoles/)
+  SELF_ROLES_DB_PATH: process.env.SELF_ROLES_DB_PATH || "db/self_roles.sqlite",
+  ROLES_MODAL_TIMEOUT_MS: parseInt(process.env.ROLES_MODAL_TIMEOUT_MS || "600000", 10),
+
+  // Nightly archive prune by age and by per-channel row count; 0 disables either, and both default off so search sees all history.
+  ARCHIVE_RETENTION_DAYS: parseInt(process.env.ARCHIVE_RETENTION_DAYS || "0", 10),
+  ARCHIVE_MAX_ROWS_PER_CHANNEL: parseInt(process.env.ARCHIVE_MAX_ROWS_PER_CHANNEL || "0", 10),
+  // Compaction deletes the archive rows it summarizes into episodes, so it stays off unless deliberately enabled.
+  ARCHIVE_COMPACTION_ENABLED: /^(1|true|yes|on)$/i.test(process.env.ARCHIVE_COMPACTION_ENABLED || ""),
   // Minimum archived chunks per channel before the 6h compaction job converts
   // the oldest SUMMARY_INTERVAL-sized window into an episode entry.
   ARCHIVE_COMPACTION_THRESHOLD: parseInt(process.env.ARCHIVE_COMPACTION_THRESHOLD || "100", 10),
+  // History backfill fetches this many 100-message pages per job, then requeues itself after the delay.
+  ARCHIVE_BACKFILL_PAGES_PER_RUN: 20,
+  ARCHIVE_BACKFILL_DELAY_MS: 2000,
   // Minimum cosine similarity an episode must clear in recall_episode's semantic
   // fallback (the branch taken when FTS finds no keyword match). Without a floor
   // the closest-ranked episodes are always returned, so unrelated queries surface
   // irrelevant episodes instead of an empty "no record" result. Measured noise
   // sits ~0.51 and genuine matches ~0.58, so 0.55 separates them.
   EPISODE_RECALL_MIN_SCORE: parseFloat(process.env.EPISODE_RECALL_MIN_SCORE || "0.55"),
+  // Unrelated message pairs score a median 0.57 and a p99 of 0.72 on bge-base, so the floor sits near that p99.
+  HISTORY_SEMANTIC_MIN_SCORE: parseFloat(process.env.HISTORY_SEMANTIC_MIN_SCORE || "0.70"),
+  // The bot writes half the archive at 6x user length, so its own rows would otherwise crowd out users.
+  HISTORY_SELF_WEIGHT: 0.5,
+  // Silence longer than this starts a new conversation when search_history summarizes a time range.
+  HISTORY_CONVERSATION_GAP_HOURS: 6,
+  // Unembedded archive backlog drains this many rows per job, one job per interval.
+  ARCHIVE_EMBED_DRAIN_BATCH: 100,
+  ARCHIVE_EMBED_DRAIN_INTERVAL_MS: 900000,
 
   // Polish-milestone toggles
   LOW_BUDGET_MODE: /^(1|true|yes|on)$/i.test(process.env.LOW_BUDGET_MODE || ""),

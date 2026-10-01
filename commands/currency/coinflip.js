@@ -20,7 +20,7 @@ module.exports = {
     const dbUser = await db.get(interaction.user.id);
     if (!dbUser) {
       logger.warn(`No database entry for user ${interaction.user.username} (${interaction.user.id}), creating one...`);
-      await addNewDBUser(interaction.user.id);
+      await addNewDBUser(interaction.user);
     }
 
     const errorEmbed = buildErrorEmbed(interaction.user, interaction.client);

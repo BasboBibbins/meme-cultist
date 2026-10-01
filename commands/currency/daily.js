@@ -1,9 +1,41 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, MessageFlags } = require("discord.js");
 const { addNewDBUser, db } = require("../../database");
 const { CURRENCY_NAME, DAILY_COOLDOWN } = require("../../config.js");
 const { formatTimeLeft } = require("../../utils/time");
 const logger = require("../../utils/logger");
+const { withUserLock } = require("../../utils/userlock");
+const { rollDaily } = require("../../utils/claims");
 const { buildErrorEmbed, buildSuccessEmbed } = require("../../utils/embeds");
+
+function nextStreak(availableAt, currentStreak, now) {
+  if (now - availableAt > DAILY_COOLDOWN) return 1;
+  return currentStreak + 1;
+}
+
+async function claimDaily(user) {
+  let dbUser = await db.get(user.id);
+  if (!dbUser) {
+    logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
+    await addNewDBUser(user);
+    dbUser = await db.get(user.id);
+  }
+
+  const now = Date.now();
+  if (dbUser.cooldowns.daily > now) return { claimed: false, availableAt: dbUser.cooldowns.daily };
+
+  const previousStreak = dbUser.stats.dailies.currentStreak || 0;
+  const streak = nextStreak(dbUser.cooldowns.daily, previousStreak, now);
+  const { amount, bonus } = rollDaily(streak);
+
+  // Each quick.db write rewrites the whole user row, so parallel writes clobber each other.
+  await db.set(`${user.id}.stats.dailies.currentStreak`, streak);
+  await db.set(`${user.id}.stats.dailies.longestStreak`, Math.max(streak, dbUser.stats.dailies.longestStreak || 0));
+  await db.add(`${user.id}.stats.dailies.claimed`, 1);
+  await db.add(`${user.id}.bank`, amount + bonus);
+  await db.set(`${user.id}.cooldowns.daily`, now + DAILY_COOLDOWN);
+
+  return { claimed: true, amount, bonus, streak, lostStreak: streak < previousStreak ? previousStreak : 0 };
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -11,43 +43,27 @@ module.exports = {
     .setDescription(`Claim your daily ${CURRENCY_NAME}.`),
   async execute(interaction) {
     const user = interaction.user;
-    const dbUser = await db.get(user.id);
-    if (!dbUser) {
-      logger.warn(`No database entry for user ${user.username} (${user.id}), creating one...`);
-      await addNewDBUser(user);
+
+    let result;
+    try {
+      result = await withUserLock(user.id, () => claimDaily(user));
+    } catch (err) {
+      logger.error(`Daily claim failed for ${user.username} (${user.id}): ${err}`);
+      return interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `Something went wrong claiming your daily ${CURRENCY_NAME}.`)], flags: MessageFlags.Ephemeral });
     }
 
-    const cooldown = DAILY_COOLDOWN;
-    const db_currentStreak = `${user.id}.stats.dailies.currentStreak`;
-    const db_longestStreak = `${user.id}.stats.dailies.longestStreak`;
-
-    if (dbUser.cooldowns.daily > Date.now()) {
-      return await interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `You have already claimed your daily ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(dbUser.cooldowns.daily)}**.`)] });
+    if (!result.claimed) {
+      return interaction.reply({ embeds: [buildErrorEmbed(user, interaction.client, `You have already claimed your daily ${CURRENCY_NAME}! Next claim available **${await formatTimeLeft(result.availableAt)}**.`)], flags: MessageFlags.Ephemeral });
     }
 
-    let streakprompt = "";
-    if (Date.now() - dbUser.cooldowns.daily > cooldown) {
-      const currentStreak = await db.get(db_currentStreak);
-      if (currentStreak > 1) streakprompt = `\nYou missed a day, so your streak of **${currentStreak}** has been reset!`;
-      await db.set(db_currentStreak, 1);
-    } else {
-      await db.add(db_currentStreak, 1);
-    }
+    const { amount, bonus, streak, lostStreak } = result;
+    const total = amount + bonus;
+    let description = `You claimed your daily ${CURRENCY_NAME}! **${total.toLocaleString("en-US")}** ${CURRENCY_NAME} has been added to your bank.`;
+    if (bonus > 0) description += `\nYou also received a bonus for having a streak of **${streak}**!`;
+    if (lostStreak > 1) description += `\nYou missed a day, so your streak of **${lostStreak}** has been reset!`;
 
-    let streak = await db.get(db_currentStreak);
-    streak = streak || 1;
-
-    if (streak > dbUser.stats.dailies.longestStreak) await db.set(db_longestStreak, streak);
-
-    const bonus = streak > 1?Math.floor(Math.random() * (streak * 10)) + streak:0;
-    const amount = Math.floor(Math.random() * 100) + 100;
-    await db.add(`${user.id}.bank`, amount + bonus);
-    await db.add(`${user.id}.stats.dailies.claimed`, 1);
-    await db.set(`${user.id}.cooldowns.daily`, Date.now() + cooldown);
-
-    const embed = buildSuccessEmbed(user, interaction.client, `You claimed your daily ${CURRENCY_NAME}! **${(amount + bonus).toLocaleString("en-US")}** ${CURRENCY_NAME} has been added to your bank.${bonus>0?`\nYou also received a bonus for having a streak of **${streak}**!`:"" + streakprompt}`);
-    await interaction.reply({ embeds: [embed] });
-    logger.log(`${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${amount + bonus} (${amount} + ${bonus}) ${CURRENCY_NAME}.`);
-    logger.debug(`Current streak: ${streak} | Longest streak: ${dbUser.stats.dailies.longestStreak} | Total claimed: ${dbUser.stats.dailies.claimed}`);
+    await interaction.reply({ embeds: [buildSuccessEmbed(user, interaction.client, description)] });
+    logger.log(`${user.username} (${user.id}) claimed their daily ${CURRENCY_NAME} and received ${total} (${amount} + ${bonus}) ${CURRENCY_NAME}.`);
+    logger.debug(`Current streak: ${streak}`);
   },
 };

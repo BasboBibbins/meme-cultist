@@ -83,7 +83,9 @@ describe("capped tools", () => {
       const res = await call("search_history", { query: `distinct query ${i}` }, ctx);
       expect(res.error_code).toBeUndefined();
     }
-    expect(mockSearchHistory).toHaveBeenCalledTimes(budget);
+    // Each run issues one strict AND query and may top up with an OR query, so count the strict ones.
+    const strictQueries = mockSearchHistory.mock.calls.filter(([, query]) => !query.includes(" OR "));
+    expect(strictQueries).toHaveLength(budget);
   });
 
   test("the call past the cap returns tool_budget_exhausted", async () => {

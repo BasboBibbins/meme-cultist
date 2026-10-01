@@ -8,7 +8,7 @@
 // Every test here exists to pin one rule: if work did not get done, the handler
 // must throw, because throwing is the only signal the queue understands.
 
-const { makeKbEmbed, makeMessageEmbed, makeEpisodeEmbed } = require("../../utils/jobs/embedHandlers");
+const { makeKbEmbed, makeMessageEmbed, makeEpisodeEmbed, enqueueMessageDrain } = require("../../utils/jobs/embedHandlers");
 
 jest.mock("../../utils/logger", () => ({
   log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn(),
@@ -54,8 +54,13 @@ describe("message_embed", () => {
     { id: 3, content: "three" },
   ];
 
-  function makeArchive(rows = chunks) {
-    return { getUnembeddedForChannel: jest.fn(() => rows.map(r => ({ ...r }))), setEmbedding: jest.fn() };
+  function makeArchive(rows = chunks, { remaining = 0 } = {}) {
+    return {
+      getUnembeddedForChannel: jest.fn(() => rows.map(r => ({ ...r }))),
+      getUnembeddedByIds: jest.fn((_, ids) => rows.filter(r => ids.includes(r.id)).map(r => ({ ...r }))),
+      countUnembedded: jest.fn(() => remaining),
+      setEmbedding: jest.fn(),
+    };
   }
 
   test("embeds every chunk on the happy path and does not throw", async () => {
@@ -117,6 +122,71 @@ describe("message_embed", () => {
     await makeMessageEmbed({ messageArchive, llm })({ channelId: "c1", chunkIds: [2] });
     expect(llm.embed).toHaveBeenCalledTimes(1);
     expect(messageArchive.setEmbedding).toHaveBeenCalledWith(2, EMBEDDING);
+  });
+
+  // The old handler read the oldest 100 backlog rows and filtered them to the job's newest ids, which never overlap once a backlog exists.
+  test("targeted jobs fetch their own ids, never the oldest backlog", async () => {
+    const messageArchive = makeArchive();
+    const llm = makeLlm();
+    await makeMessageEmbed({ messageArchive, llm })({ channelId: "c1", chunkIds: [3] });
+    expect(messageArchive.getUnembeddedByIds).toHaveBeenCalledWith("c1", [3]);
+    expect(messageArchive.getUnembeddedForChannel).not.toHaveBeenCalled();
+    expect(messageArchive.setEmbedding).toHaveBeenCalledWith(3, EMBEDDING);
+  });
+
+  test("a drain batch reschedules itself while backlog remains", async () => {
+    const messageArchive = makeArchive(chunks, { remaining: 500 });
+    const scheduleDrain = jest.fn();
+    await makeMessageEmbed({ messageArchive, llm: makeLlm(), drainBatch: 3, scheduleDrain })({ channelId: "c1", chunkIds: [] }, { jobId: 42 });
+    expect(messageArchive.getUnembeddedForChannel).toHaveBeenCalledWith("c1", 3);
+    expect(scheduleDrain).toHaveBeenCalledWith("c1", { remaining: 500, jobId: 42 });
+  });
+
+  test("a drain stops rescheduling once the backlog is empty", async () => {
+    const scheduleDrain = jest.fn();
+    await makeMessageEmbed({ messageArchive: makeArchive(chunks, { remaining: 0 }), llm: makeLlm(), scheduleDrain })({ channelId: "c1", chunkIds: [] });
+    expect(scheduleDrain).not.toHaveBeenCalled();
+  });
+
+  test("targeted jobs never start a drain", async () => {
+    const scheduleDrain = jest.fn();
+    await makeMessageEmbed({ messageArchive: makeArchive(chunks, { remaining: 500 }), llm: makeLlm(), scheduleDrain })({ channelId: "c1", chunkIds: [1] });
+    expect(scheduleDrain).not.toHaveBeenCalled();
+  });
+});
+
+describe("enqueueMessageDrain", () => {
+  function makeJobs(queued = []) {
+    return {
+      list: jest.fn((kind, filter) => queued.filter(filter)),
+      enqueue: jest.fn(),
+    };
+  }
+  const drainRow = (id, channelId) => ({ id, payload: JSON.stringify({ channelId, chunkIds: [] }) });
+
+  test("queues a low-priority drain when none exists", () => {
+    const jobs = makeJobs();
+    expect(enqueueMessageDrain(jobs, "c1", { delayMs: 1000 })).toBe(true);
+    expect(jobs.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "message_embed", payload: { channelId: "c1", chunkIds: [] }, priority: -1,
+    }));
+  });
+
+  test("skips when a drain for that channel is already queued", () => {
+    const jobs = makeJobs([drainRow(7, "c1")]);
+    expect(enqueueMessageDrain(jobs, "c1")).toBe(false);
+    expect(jobs.enqueue).not.toHaveBeenCalled();
+  });
+
+  test("a running drain can queue its own successor", () => {
+    const jobs = makeJobs([drainRow(7, "c1")]);
+    expect(enqueueMessageDrain(jobs, "c1", { excludeJobId: 7 })).toBe(true);
+  });
+
+  test("targeted jobs and other channels do not block a drain", () => {
+    const targeted = { id: 8, payload: JSON.stringify({ channelId: "c1", chunkIds: [5] }) };
+    const jobs = makeJobs([targeted, drainRow(9, "c2")]);
+    expect(enqueueMessageDrain(jobs, "c1")).toBe(true);
   });
 });
 
